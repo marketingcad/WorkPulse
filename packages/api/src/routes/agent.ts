@@ -1,0 +1,71 @@
+import { Hono } from 'hono';
+import { z } from 'zod';
+import { agentRefreshInput, agentRegisterInput, deviceAuthorizeInput, heartbeatInput, ingestBatchInput, screenshotUploadInput } from '@tallywork/contracts';
+import { DomainError, forbidden } from '@tallywork/domain';
+import type { AppEnv } from '../context';
+import { body } from '../lib/http';
+import { rateLimit } from '../middleware/rate-limit';
+import { requireUser, userId } from '../middleware/auth';
+import { runInTenantTx } from '../middleware/tenant';
+import { acknowledgePolicy, bootstrap, createDeviceAuthCode, heartbeat, ingestBatch, loadAgentCtx, refreshDeviceToken, registerDevice, screenshotKeyPrefix, type AgentCtx } from '../services/agent';
+
+type AgentEnv = AppEnv & { Variables: AppEnv['Variables'] & { agent: AgentCtx } };
+
+const MAX_SCREENSHOT_BYTES = 8 * 1024 * 1024;
+
+/** Device principal only; runs inside the device's tenant transaction. */
+const agentOnly = new Hono<AgentEnv>().use(async (c, next) => {
+  const p = c.var.principal;
+  if (!p || p.type !== 'agent') throw new DomainError('unauthenticated', 'device_token_required', 'A device access token is required');
+  await runInTenantTx(c as never, p.organizationId, async () => {
+    c.set('agent', await loadAgentCtx(c.var.tx, c.var.deps, p));
+    await next();
+  });
+});
+
+agentOnly
+  .get('/bootstrap', async (c) => c.json(await bootstrap(c.var.agent)))
+  .post('/policy/ack', async (c) => {
+    const { hash } = await body(c, z.object({ hash: z.string().max(64) }));
+    await acknowledgePolicy(c.var.agent, hash);
+    return c.body(null, 204);
+  })
+  .post('/ingest/batch', rateLimit('ingest', 240, 60), async (c) => c.json(await ingestBatch(c.var.agent, await body(c, ingestBatchInput))))
+  .post('/heartbeat', rateLimit('heartbeat', 30, 60), async (c) => {
+    const i = await body(c, heartbeatInput);
+    return c.json(await heartbeat(c.var.agent, { sessionId: i.session_id, agentVersion: i.agent_version, capabilities: i.capabilities }));
+  })
+  /** Returns where/how to upload one screenshot (direct-to-Blob token, or this API in dev). */
+  .post('/screenshots/upload-intent', async (c) => {
+    const a = c.var.agent;
+    if (!a.policy.screenshots.enabled) throw forbidden('Screenshots are disabled by policy');
+    const i = await body(c, screenshotUploadInput);
+    if (i.bytes > MAX_SCREENSHOT_BYTES) throw new DomainError('validation', 'too_large', 'Screenshot is too large');
+    const ext = i.content_type.split('/')[1];
+    const key = `${screenshotKeyPrefix(a.organizationId, a.membershipId)}${i.captured_at.slice(0, 10)}/${i.screenshot_id}.${ext}`;
+    const up = await a.deps.storage.createUploadToken(key, i.content_type, MAX_SCREENSHOT_BYTES);
+    const thumb = await a.deps.storage.createUploadToken(`${key}.thumb.webp`, 'image/webp', 512 * 1024);
+    return c.json({ storage_key: key, method: up.method, token: up.token, thumb_token: thumb.token, upload_url: up.method === 'api' ? `/api/v1/agent/screenshots/upload?key=${encodeURIComponent(key)}` : null });
+  })
+  /** Fallback upload path (local dev without Blob). */
+  .put('/screenshots/upload', async (c) => {
+    const a = c.var.agent;
+    const key = c.req.query('key') ?? '';
+    if (!key.startsWith(screenshotKeyPrefix(a.organizationId, a.membershipId))) throw forbidden('Invalid key');
+    const type = c.req.header('content-type') ?? '';
+    if (!/^image\/(webp|jpeg|png)$/.test(type)) throw forbidden('Unsupported content type');
+    const buf = Buffer.from(await c.req.arrayBuffer());
+    if (buf.length > MAX_SCREENSHOT_BYTES) throw new DomainError('validation', 'too_large', 'Screenshot is too large');
+    await a.deps.storage.put(key, buf, type);
+    return c.body(null, 204);
+  });
+
+export const agentRoutes = new Hono<AppEnv>()
+  /** Called by the signed-in web page during desktop login (PKCE). */
+  .post('/authorize', requireUser, async (c) => {
+    const i = await body(c, deviceAuthorizeInput);
+    return c.json({ code: await createDeviceAuthCode(c.var.deps, userId(c), i.organization_id, i.code_challenge) });
+  })
+  .post('/register', rateLimit('agent-register', 20, 3600), async (c) => c.json(await registerDevice(c.var.deps, await body(c, agentRegisterInput)), 201))
+  .post('/token', rateLimit('agent-token', 60, 3600), async (c) => c.json(await refreshDeviceToken(c.var.deps, (await body(c, agentRefreshInput)).refresh_token)))
+  .route('/', agentOnly as never);

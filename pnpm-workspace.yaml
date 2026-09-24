@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+  - packages/*
+onlyBuiltDependencies:
+  - electron
+  - esbuild
+  - better-sqlite3-multiple-ciphers
+  - uiohook-napi
+  - "@node-rs/argon2"
+  - sharp
+  - electron-winstaller

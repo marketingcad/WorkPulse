@@ -1,0 +1,8 @@
+@import 'tailwindcss';
+@import '@tallywork/ui/tokens.css';
+@source '../../../../../packages/ui/src';
+
+html, body, #root { height: 100%; }
+body { user-select: none; overflow: hidden; }
+input, textarea { user-select: text; }
+:root { --font-inter: 'Segoe UI Variable', 'Segoe UI', system-ui; }

@@ -44,8 +44,8 @@ agentOnly
     const ext = i.content_type.split('/')[1];
     const key = `${screenshotKeyPrefix(a.organizationId, a.membershipId)}${i.captured_at.slice(0, 10)}/${i.screenshot_id}.${ext}`;
     const up = await a.deps.storage.createUploadToken(key, i.content_type, MAX_SCREENSHOT_BYTES);
-    const thumb = await a.deps.storage.createUploadToken(`${key}.thumb.webp`, 'image/webp', 512 * 1024);
-    return c.json({ storage_key: key, method: up.method, token: up.token, thumb_token: thumb.token, upload_url: up.method === 'api' ? `/api/v1/agent/screenshots/upload?key=${encodeURIComponent(key)}` : null });
+    const thumb = await a.deps.storage.createUploadToken(`${key}.thumb`, i.content_type, 512 * 1024);
+    return c.json({ storage_key: key, thumb_key: `${key}.thumb`, method: up.method, token: up.token, thumb_token: thumb.token, upload_url: up.method === 'api' ? `/api/v1/agent/screenshots/upload?key=${encodeURIComponent(key)}` : null, thumb_upload_url: up.method === 'api' ? `/api/v1/agent/screenshots/upload?key=${encodeURIComponent(`${key}.thumb`)}` : null });
   })
   /** Fallback upload path (local dev without Blob). */
   .put('/screenshots/upload', async (c) => {

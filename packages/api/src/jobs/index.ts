@@ -257,7 +257,7 @@ export async function runDaily(deps: Deps) {
       if (shotCut) {
         const old = await tx.select({ id: screenshots.id, key: screenshots.storageKey }).from(screenshots).where(lt(screenshots.capturedAt, shotCut)).limit(5000);
         if (old.length) {
-          await deps.storage.delete(old.flatMap((s) => [s.key, `${s.key}.thumb.webp`])).catch(() => undefined);
+          await deps.storage.delete(old.flatMap((s) => [s.key, `${s.key}.thumb`])).catch(() => undefined);
           await tx.delete(screenshots).where(inArray(screenshots.id, old.map((s) => s.id)));
         }
         deleted.screenshots = old.length;

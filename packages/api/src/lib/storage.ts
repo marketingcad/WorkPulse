@@ -64,7 +64,7 @@ export class MemoryStorage implements Storage {
   async get(key: string) {
     const o = this.objects.get(key);
     if (!o) return null;
-    return { body: new Response(o.data).body!, contentType: o.contentType };
+    return { body: new Response(new Uint8Array(o.data)).body!, contentType: o.contentType };
   }
 
   async delete(keys: string[]): Promise<void> {
@@ -77,7 +77,52 @@ export class MemoryStorage implements Storage {
   }
 }
 
+/** Local filesystem storage for zero-config development (persists across restarts). */
+export class FileStorage implements Storage {
+  readonly kind = 'file';
+  constructor(private readonly root: string) {}
+
+  private path(key: string) {
+    const safe = key.replace(/\.\./g, '').replace(/^\/+/, '');
+    return `${this.root}/${safe}`;
+  }
+
+  async put(key: string, body: Buffer | ReadableStream | Blob, contentType: string): Promise<void> {
+    const fs = await import('node:fs/promises');
+    const p = this.path(key);
+    await fs.mkdir(p.slice(0, p.lastIndexOf('/')), { recursive: true });
+    const data = Buffer.isBuffer(body) ? body : body instanceof Blob ? Buffer.from(await body.arrayBuffer()) : Buffer.from(await new Response(body).arrayBuffer());
+    await fs.writeFile(p, data);
+    await fs.writeFile(`${p}.type`, contentType);
+  }
+
+  async get(key: string) {
+    const fs = await import('node:fs/promises');
+    try {
+      const data = await fs.readFile(this.path(key));
+      const contentType = await fs.readFile(`${this.path(key)}.type`, 'utf8').catch(() => 'application/octet-stream');
+      return { body: new Response(new Uint8Array(data)).body!, contentType };
+    } catch {
+      return null;
+    }
+  }
+
+  async delete(keys: string[]): Promise<void> {
+    const fs = await import('node:fs/promises');
+    for (const k of keys) {
+      await fs.rm(this.path(k), { force: true });
+      await fs.rm(`${this.path(k)}.type`, { force: true });
+    }
+  }
+
+  async createUploadToken() {
+    return { token: '', method: 'api' as const };
+  }
+}
+
 export function createStorage(env: Record<string, string | undefined> = process.env): Storage {
   const token = env.BLOB_READ_WRITE_TOKEN;
-  return token ? new VercelBlobStorage(token) : new MemoryStorage();
+  if (token) return new VercelBlobStorage(token);
+  if (env.LOCAL_STORAGE_DIR) return new FileStorage(env.LOCAL_STORAGE_DIR);
+  return new MemoryStorage();
 }

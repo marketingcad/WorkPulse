@@ -1,0 +1,216 @@
+/*
+ * Tallywork design tokens — "Calm instrument".
+ * Components reference semantic tokens only. Colour communicates state and priority.
+ */
+@theme {
+  --font-sans: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+
+  --color-bg: var(--tw-bg);
+  --color-surface: var(--tw-surface);
+  --color-surface-muted: var(--tw-surface-muted);
+  --color-surface-sunken: var(--tw-surface-sunken);
+  --color-border: var(--tw-border);
+  --color-border-strong: var(--tw-border-strong);
+  --color-text: var(--tw-text);
+  --color-text-muted: var(--tw-text-muted);
+  --color-text-faint: var(--tw-text-faint);
+  --color-brand: var(--tw-brand);
+  --color-brand-fg: var(--tw-brand-fg);
+  --color-nav: var(--tw-nav);
+  --color-nav-fg: var(--tw-nav-fg);
+  --color-nav-muted: var(--tw-nav-muted);
+  --color-nav-active: var(--tw-nav-active);
+  --color-interactive: var(--tw-interactive);
+  --color-interactive-hover: var(--tw-interactive-hover);
+  --color-interactive-soft: var(--tw-interactive-soft);
+  --color-secondary: var(--tw-secondary);
+  --color-secondary-soft: var(--tw-secondary-soft);
+  --color-success: var(--tw-success);
+  --color-success-soft: var(--tw-success-soft);
+  --color-warning: var(--tw-warning);
+  --color-warning-soft: var(--tw-warning-soft);
+  --color-danger: var(--tw-danger);
+  --color-danger-soft: var(--tw-danger-soft);
+  --color-info: var(--tw-info);
+  --color-info-soft: var(--tw-info-soft);
+  --color-focus: var(--tw-focus);
+  --color-act-1: var(--tw-act-1);
+  --color-act-2: var(--tw-act-2);
+  --color-act-3: var(--tw-act-3);
+  --color-act-4: var(--tw-act-4);
+  --color-act-5: var(--tw-act-5);
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --text-2xs: 11px;
+  --text-2xs--line-height: 14px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 18px;
+  --text-base: 14px;
+  --text-base--line-height: 20px;
+  --text-lg: 16px;
+  --text-lg--line-height: 24px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  --text-2xl: 28px;
+  --text-2xl--line-height: 36px;
+
+  --shadow-overlay: 0 8px 24px -6px rgb(15 34 64 / 0.18), 0 2px 6px -2px rgb(15 34 64 / 0.12);
+}
+
+:root {
+  --tw-bg: #f6f7f9;
+  --tw-surface: #ffffff;
+  --tw-surface-muted: #eef1f5;
+  --tw-surface-sunken: #e7ebf0;
+  --tw-border: #dce1e8;
+  --tw-border-strong: #c3cad4;
+  --tw-text: #141a23;
+  --tw-text-muted: #5a6472;
+  --tw-text-faint: #8a93a0;
+  --tw-brand: #0f2240;
+  --tw-brand-fg: #ffffff;
+  --tw-nav: #0f2240;
+  --tw-nav-fg: #e6ecf5;
+  --tw-nav-muted: #93a3bd;
+  --tw-nav-active: #1b3560;
+  --tw-interactive: #1f5fd1;
+  --tw-interactive-hover: #1a4fb0;
+  --tw-interactive-soft: #e7effc;
+  --tw-secondary: #4b4fc4;
+  --tw-secondary-soft: #ecedfb;
+  --tw-success: #16794a;
+  --tw-success-soft: #e3f3ea;
+  --tw-warning: #9a5b00;
+  --tw-warning-soft: #fdf1dc;
+  --tw-danger: #c0362c;
+  --tw-danger-soft: #fbe7e5;
+  --tw-info: #0e7490;
+  --tw-info-soft: #e0f2f7;
+  --tw-focus: #1f5fd1;
+  /* Activity: single-hue indigo ramp (signal, not verdict) */
+  --tw-act-1: #e4e5f8;
+  --tw-act-2: #bfc1ef;
+  --tw-act-3: #9195e1;
+  --tw-act-4: #6368d2;
+  --tw-act-5: #3d41b0;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --tw-bg: #0e1117;
+    --tw-surface: #161b22;
+    --tw-surface-muted: #1c232d;
+    --tw-surface-sunken: #11161d;
+    --tw-border: #2a323d;
+    --tw-border-strong: #3a4452;
+    --tw-text: #e6eaf0;
+    --tw-text-muted: #9aa4b2;
+    --tw-text-faint: #6b7584;
+    --tw-brand: #e6ecf5;
+    --tw-brand-fg: #0f2240;
+    --tw-nav: #0b1628;
+    --tw-nav-fg: #e6ecf5;
+    --tw-nav-muted: #8594ad;
+    --tw-nav-active: #172a4a;
+    --tw-interactive: #5b8def;
+    --tw-interactive-hover: #7aa3f2;
+    --tw-interactive-soft: #172742;
+    --tw-secondary: #8a8df0;
+    --tw-secondary-soft: #22244a;
+    --tw-success: #3fb27f;
+    --tw-success-soft: #12291f;
+    --tw-warning: #e3a33b;
+    --tw-warning-soft: #2e2311;
+    --tw-danger: #f07167;
+    --tw-danger-soft: #331715;
+    --tw-info: #38b2cc;
+    --tw-info-soft: #0f2a31;
+    --tw-focus: #7aa3f2;
+    --tw-act-1: #25284a;
+    --tw-act-2: #363a73;
+    --tw-act-3: #4f54a6;
+    --tw-act-4: #6d72d4;
+    --tw-act-5: #9a9df0;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --tw-bg: #0e1117;
+  --tw-surface: #161b22;
+  --tw-surface-muted: #1c232d;
+  --tw-surface-sunken: #11161d;
+  --tw-border: #2a323d;
+  --tw-border-strong: #3a4452;
+  --tw-text: #e6eaf0;
+  --tw-text-muted: #9aa4b2;
+  --tw-text-faint: #6b7584;
+  --tw-brand: #e6ecf5;
+  --tw-brand-fg: #0f2240;
+  --tw-nav: #0b1628;
+  --tw-nav-fg: #e6ecf5;
+  --tw-nav-muted: #8594ad;
+  --tw-nav-active: #172a4a;
+  --tw-interactive: #5b8def;
+  --tw-interactive-hover: #7aa3f2;
+  --tw-interactive-soft: #172742;
+  --tw-secondary: #8a8df0;
+  --tw-secondary-soft: #22244a;
+  --tw-success: #3fb27f;
+  --tw-success-soft: #12291f;
+  --tw-warning: #e3a33b;
+  --tw-warning-soft: #2e2311;
+  --tw-danger: #f07167;
+  --tw-danger-soft: #331715;
+  --tw-info: #38b2cc;
+  --tw-info-soft: #0f2a31;
+  --tw-focus: #7aa3f2;
+  --tw-act-1: #25284a;
+  --tw-act-2: #363a73;
+  --tw-act-3: #4f54a6;
+  --tw-act-4: #6d72d4;
+  --tw-act-5: #9a9df0;
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--color-interactive-soft);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -187,7 +187,7 @@ describe('web security', () => {
   it('does not leak internals in errors and sets security headers', async () => {
     const r = await t.app.request(`/api/v1/orgs/${orgA}/clients`, { method: 'POST', headers: { Cookie: adminA.cookie, Origin: 'http://localhost:3000', 'Content-Type': 'application/json' }, body: '{bad json' });
     expect(r.status).toBe(400);
-    const body = await r.json();
+    const body = (await r.json()) as { code: string };
     expect(body.code).toBe('validation_error');
     expect(r.headers.get('x-content-type-options')).toBe('nosniff');
     expect(r.headers.get('x-request-id')).toBeTruthy();

@@ -1,0 +1,95 @@
+'use client';
+import { useMutation, useQuery, useQueryClient, type QueryKey, type UseQueryOptions } from '@tanstack/react-query';
+import { useParams } from 'next/navigation';
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+    public title: string,
+    public requestId?: string,
+    public errors?: Array<{ field: string; message: string }>,
+  ) {
+    super(title);
+  }
+  get request_id() {
+    return this.requestId;
+  }
+  /** Field-level message for forms. */
+  field(name: string): string | undefined {
+    return this.errors?.find((e) => e.field === name)?.message;
+  }
+}
+
+export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal; raw?: boolean } = {}): Promise<T> {
+  const res = await fetch(`/api/v1${path}`, {
+    method: init.method ?? (init.body !== undefined ? 'POST' : 'GET'),
+    headers: init.body !== undefined && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : undefined,
+    body: init.body === undefined ? undefined : init.body instanceof FormData ? init.body : JSON.stringify(init.body),
+    credentials: 'same-origin',
+    signal: init.signal,
+  });
+  if (res.status === 401 && typeof window !== 'undefined' && !path.startsWith('/auth/')) {
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.href = `/login?next=${next}`;
+  }
+  if (!res.ok) {
+    let p: { title?: string; code?: string; request_id?: string; errors?: Array<{ field: string; message: string }> } = {};
+    try {
+      p = await res.json();
+    } catch {
+      /* not json */
+    }
+    throw new ApiError(res.status, p.code ?? 'error', p.title ?? `Request failed (${res.status})`, p.request_id, p.errors);
+  }
+  if (init.raw) return res as unknown as T;
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+export function useOrgId(): string {
+  const p = useParams<{ orgId: string }>();
+  return p.orgId;
+}
+
+/** GET an org-scoped resource: path is relative to /orgs/:orgId. */
+export function useOrgQuery<T>(path: string | null, opts: Partial<UseQueryOptions<T, ApiError>> = {}) {
+  const orgId = useOrgId();
+  return useQuery<T, ApiError>({
+    queryKey: ['org', orgId, path] as QueryKey,
+    queryFn: ({ signal }) => api<T>(`/orgs/${orgId}${path}`, { signal }),
+    enabled: !!path && !!orgId,
+    ...opts,
+  });
+}
+
+/** Mutations against /orgs/:orgId that refresh all org queries on success. */
+export function useOrgMutation<TBody = unknown, TRes = unknown>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string | ((b: TBody) => string), opts: { invalidate?: boolean; onSuccess?: (r: TRes, b: TBody) => void } = {}) {
+  const orgId = useOrgId();
+  const qc = useQueryClient();
+  return useMutation<TRes, ApiError, TBody>({
+    mutationFn: (b) => api<TRes>(`/orgs/${orgId}${typeof path === 'function' ? path(b) : path}`, { method, body: method === 'DELETE' && (b === undefined || b === null) ? undefined : (b ?? {}) }),
+    onSuccess: (r, b) => {
+      if (opts.invalidate !== false) void qc.invalidateQueries({ queryKey: ['org', orgId] });
+      opts.onSuccess?.(r, b);
+    },
+  });
+}
+
+export function qs(params: Record<string, string | number | boolean | string[] | null | undefined>): string {
+  const u = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '') continue;
+    if (Array.isArray(v)) {
+      if (v.length) u.set(k, v.join(','));
+    } else u.set(k, String(v));
+  }
+  const s = u.toString();
+  return s ? `?${s}` : '';
+}
+
+export function errorMessage(e: unknown): string {
+  if (e instanceof ApiError) return e.title;
+  if (e instanceof Error) return e.message;
+  return 'Something went wrong';
+}

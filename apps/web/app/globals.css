@@ -1,0 +1,39 @@
+@import 'tailwindcss';
+@import '@tallywork/ui/tokens.css';
+
+@source '../../../packages/ui/src';
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 4px) scale(0.98);
+  }
+}
+@keyframes slide {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+/* Toast pop is not translated */
+[aria-live] > div {
+  animation-name: fade;
+}
+
+/* Subtle instrument-grid texture used on auth screens */
+.instrument-grid {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.04) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+}

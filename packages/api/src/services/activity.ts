@@ -182,7 +182,7 @@ export async function deleteScreenshot(x: Ctx, id: string, removeTime: boolean) 
     const a = actorRef(x);
     await removeInterval(x.tx, { organizationId: x.org.id, membershipId: s.membershipId, start: s.windowStart, end: new Date(s.windowStart.getTime() + 600_000), action: 'SCREENSHOT_DELETE', reason: 'Screenshot deleted', actor: { type: a.actorType, id: a.actorId } });
   }
-  await x.deps.storage.delete([s.storageKey, `${s.storageKey}.thumb.webp`]).catch(() => undefined);
+  await x.deps.storage.delete([s.storageKey, `${s.storageKey}.thumb`]).catch(() => undefined);
   await emitFrom(x, 'screenshot.deleted', { screenshot_id: id, removed_time: mustRemoveTime }, { workerId: s.membershipId });
   await audit(x, { action: 'screenshot.deleted', targetType: 'screenshot', targetId: id, metadata: { removed_time: mustRemoveTime } });
 }

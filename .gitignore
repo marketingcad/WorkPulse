@@ -12,3 +12,5 @@ coverage
 apps/desktop/release
 
 .vercel
+apps/web/.data
+.playwright-mcp

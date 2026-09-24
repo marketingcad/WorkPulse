@@ -1,0 +1,44 @@
+appId: app.tallywork.desktop
+productName: Tallywork
+directories:
+  buildResources: build
+  output: release/${version}
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - node_modules/uiohook-napi/**
+  - node_modules/get-windows/**
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+win:
+  target: [nsis]
+  artifactName: Tallywork-Setup-${version}.${ext}
+  # Authenticode signing: set CSC_LINK / CSC_KEY_PASSWORD (EV certificate recommended).
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+mac:
+  target: [dmg, zip]
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSAppleEventsUsageDescription: Tallywork reads the active browser tab domain while you track time, when your organization enables URL tracking.
+    NSScreenCaptureUsageDescription: Tallywork captures screenshots while you track time, when your organization enables screenshots.
+  notarize: true
+linux:
+  target: [AppImage, deb]
+  category: Office
+  maintainer: Tallywork
+publish:
+  provider: generic
+  url: ${env.TALLYWORK_UPDATE_URL}

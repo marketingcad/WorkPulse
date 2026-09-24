@@ -75,7 +75,7 @@ export class Client {
         ...(this.bearer ? { Authorization: `Bearer ${this.bearer}` } : {}),
         ...headers,
       },
-      body: body === undefined ? undefined : typeof body === 'string' || body instanceof Uint8Array ? (body as BodyInit) : JSON.stringify(body),
+      body: body === undefined ? undefined : typeof body === 'string' || body instanceof Uint8Array ? (body as never) : JSON.stringify(body),
     });
     const setCookie = res.headers.get('set-cookie');
     if (setCookie) {

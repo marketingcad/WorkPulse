@@ -4,6 +4,8 @@ import { drizzle as drizzlePglite } from 'drizzle-orm/pglite';
 import { migrate as migratePglite } from 'drizzle-orm/pglite/migrator';
 import { PGlite } from '@electric-sql/pglite';
 import pg from 'pg';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
 import { MIGRATIONS_FOLDER, applyRls, schema, type Db } from './index';
 
 export const APP_ROLE = 'tallywork_app';
@@ -42,6 +44,7 @@ export function createDb(url: string, opts: { runAsAppRole?: boolean } = {}): Db
   const runAsAppRole = opts.runAsAppRole ?? true;
   if (url.startsWith('pglite://')) {
     const target = url.slice('pglite://'.length);
+    if (target !== 'memory') mkdirSync(path.dirname(target), { recursive: true });
     const client = target === 'memory' ? new PGlite() : new PGlite(target);
     const db = drizzlePglite(client, { schema, casing: 'snake_case' }) as unknown as Db;
     const ready = (async () => {

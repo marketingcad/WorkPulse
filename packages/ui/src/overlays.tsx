@@ -166,7 +166,7 @@ export function Switch({ checked, onCheckedChange, label, description, disabled,
 export function Tabs({ value, onValueChange, items, children, className }: { value: string; onValueChange: (v: string) => void; items: Array<{ value: string; label: ReactNode; count?: number }>; children?: ReactNode; className?: string }) {
   return (
     <T.Root value={value} onValueChange={onValueChange} className={className}>
-      <T.List className="flex gap-1 overflow-x-auto border-b border-border" aria-label="Sections">
+      <T.List className="scrollbar-none flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border [scrollbar-width:none]" aria-label="Sections">
         {items.map((i) => (
           <T.Trigger
             key={i.value}

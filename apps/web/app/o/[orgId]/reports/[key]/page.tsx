@@ -251,8 +251,8 @@ function ReportRunner() {
         {manager && (teamsQ.data?.length ?? 0) > 0 && <MultiSelect label="Teams" options={(teamsQ.data ?? []).filter((t) => !t.archived_at).map((t) => ({ value: t.id, label: t.name }))} value={params.team_ids} onChange={(v) => set('team_ids', v)} />}
         {(projectsQ.data?.length ?? 0) > 0 && <MultiSelect label="Projects" options={(projectsQ.data ?? []).map((p) => ({ value: p.id, label: p.name, sub: p.client_name ?? undefined }))} value={params.project_ids} onChange={(v) => set('project_ids', v)} />}
         {(clientsQ.data?.length ?? 0) > 0 && <MultiSelect label="Clients" options={(clientsQ.data ?? []).map((c) => ({ value: c.id, label: c.name }))} value={params.client_ids} onChange={(v) => set('client_ids', v)} />}
-        <Select aria-label="Billable" className="w-36" value={params.billable} onChange={(e) => set('billable', e.target.value as Billable)}>
-          <option value="all">All time</option>
+        <Select aria-label="Billable" className="w-52" value={params.billable} onChange={(e) => set('billable', e.target.value as Billable)}>
+          <option value="all">Billable + non-billable</option>
           <option value="billable">Billable only</option>
           <option value="non_billable">Non-billable only</option>
         </Select>

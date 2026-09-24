@@ -213,7 +213,8 @@ export async function entryRevisions(x: Ctx, entryId: string) {
   const [e] = await x.tx.select().from(timeEntries).where(eq(timeEntries.id, entryId));
   if (!e || !can(x.actor, 'time:read', { ownerMembershipId: e.membershipId })) throw notFound('time_entry');
   const rows = await x.tx.select().from(timeEntryRevisions).where(eq(timeEntryRevisions.timeEntryId, entryId)).orderBy(asc(timeEntryRevisions.revision));
-  return rows.map((r) => ({ revision: r.revision, action: r.action, before: r.before, after: r.after, reason: r.reason, actor_type: r.actorType, actor_id: r.actorId, created_at: r.createdAt.toISOString() }));
+  const names = await memberNames(x, [...new Set(rows.filter((r) => r.actorType === 'user' && r.actorId).map((r) => r.actorId!))]);
+  return rows.map((r) => ({ revision: r.revision, action: r.action, before: r.before, after: r.after, reason: r.reason, actor_type: r.actorType, actor_id: r.actorId, actor_name: r.actorType === 'user' && r.actorId ? (names.get(r.actorId) ?? null) : r.actorType === 'agent' ? 'Desktop app' : r.actorType === 'system' ? 'System' : null, created_at: r.createdAt.toISOString() }));
 }
 
 // ─── Manual time ─────────────────────────────────────────────────────────────
@@ -294,9 +295,10 @@ export async function requestManualTime(x: Ctx, input: z.infer<typeof manualTime
 export async function listManualTime(x: Ctx, q: { status?: string; membershipIds?: string[] }): Promise<ManualTimeDto[]> {
   const visible = narrowMemberships(x.actor, 'time:read', q.membershipIds);
   const rows = await x.tx
-    .select({ r: manualTimeRequests, projectName: projects.name })
+    .select({ r: manualTimeRequests, projectName: projects.name, taskTitle: tasks.title })
     .from(manualTimeRequests)
     .innerJoin(projects, eq(projects.id, manualTimeRequests.projectId))
+    .leftJoin(tasks, eq(tasks.id, manualTimeRequests.taskId))
     .where(
       and(
         q.status ? eq(manualTimeRequests.status, q.status as 'PENDING') : undefined,
@@ -306,8 +308,9 @@ export async function listManualTime(x: Ctx, q: { status?: string; membershipIds
     .orderBy(desc(manualTimeRequests.createdAt))
     .limit(500);
   const names = await memberNames(x, [...new Set(rows.map((r) => r.r.membershipId))]);
-  return rows.map(({ r, projectName }) => ({
+  return rows.map(({ r, projectName, taskTitle }) => ({
     id: r.id,
+    task_title: taskTitle,
     membership_id: r.membershipId,
     worker_name: names.get(r.membershipId) ?? '',
     project_id: r.projectId,
@@ -362,6 +365,11 @@ export async function getTimesheet(x: Ctx, membershipId: string, date: string): 
     p.days[e.local_date] = (p.days[e.local_date] ?? 0) + e.duration_seconds;
     p.total += e.duration_seconds;
   }
+  const pids = [...new Set([...byKey.values()].map((p) => p.project_id))];
+  if (pids.length) {
+    const colors = await x.tx.select({ id: projects.id, color: projects.color }).from(projects).where(inArray(projects.id, pids));
+    for (const p of byKey.values()) p.color = colors.find((c) => c.id === p.project_id)?.color;
+  }
   const [prof] = await x.tx.select().from(workerProfiles).where(eq(workerProfiles.membershipId, membershipId));
   const names = await memberNames(x, [membershipId, ...(row?.decidedBy ? [row.decidedBy] : [])]);
   const withAct = entries.filter((e) => e.activity_pct !== null);
@@ -412,7 +420,9 @@ export async function submitTimesheet(x: Ctx, membershipId: string, date: string
   if (membershipId === x.actor.membershipId && !x.actor.grants['timesheets:submit']) throw forbidden();
   await lockWorker(x.tx, membershipId);
   const ts = await ensureTimesheet(x, membershipId, date);
-  if (expectedVersion !== undefined && ts.version !== expectedVersion && ts.version !== 1) throw businessRule('stale_version', 'This timesheet changed; reload and try again');
+  // A brand-new (virtual) timesheet is reported to clients as version 0.
+  const currentVersion = ts.status === 'DRAFT' && ts.version === 1 && !ts.submittedAt ? 0 : ts.version;
+  if (expectedVersion !== undefined && expectedVersion !== currentVersion && expectedVersion !== ts.version) throw businessRule('stale_version', 'This timesheet changed; reload and try again');
   const to = timesheetTransition(ts.status, 'SUBMIT');
   // Snapshot exactly what is being submitted.
   const entries = await x.tx.select().from(timeEntries).where(and(eq(timeEntries.membershipId, membershipId), isNull(timeEntries.deletedAt), sql`${timeEntries.localDate} between ${ts.periodStart} and ${ts.periodEnd}`));

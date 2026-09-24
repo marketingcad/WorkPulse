@@ -54,6 +54,7 @@ export async function activityDay(x: Ctx, membershipId: string, date: string): P
   for (const w of windows) {
     blockStarts.set(w.windowStart.getTime(), {
       window_start: w.windowStart.toISOString(),
+      session_id: w.sessionId,
       project_id: w.projectId,
       project_name: pmap.get(w.projectId)?.name ?? '',
       task_title: w.taskId ? (tmap.get(w.taskId) ?? null) : null,
@@ -73,6 +74,7 @@ export async function activityDay(x: Ctx, membershipId: string, date: string): P
       if (overlap < 1) continue;
       blockStarts.set(t, {
         window_start: new Date(t).toISOString(),
+        session_id: e.sessionId,
         project_id: e.projectId,
         project_name: pmap.get(e.projectId)?.name ?? '',
         task_title: e.taskId ? (tmap.get(e.taskId) ?? null) : null,
@@ -91,6 +93,11 @@ export async function activityDay(x: Ctx, membershipId: string, date: string): P
     const b = blockStarts.get(key);
     const item = { id: s.id, captured_at: s.capturedAt.toISOString(), display_index: s.displayIndex, blurred: s.blurred, thumb_url: mediaUrl(x, s.storageKey, 'thumb'), full_url: mediaUrl(x, s.storageKey) };
     if (b) b.screenshots.push(item);
+    else {
+      // A screenshot whose time was later removed or not yet derived still gets a block.
+      const w = windows.find((x2) => x2.sessionId === s.sessionId);
+      blockStarts.set(key, { window_start: s.windowStart.toISOString(), session_id: s.sessionId, project_id: w?.projectId ?? '', project_name: w ? (pmap.get(w.projectId)?.name ?? '') : '', task_title: null, activity_pct: 0, keyboard_pct: 0, mouse_pct: 0, tracked_seconds: 0, screenshots: [item], idle: false, manual: false });
+    }
   }
   for (const g of idleSegs) {
     for (const b of blockStarts.values()) {

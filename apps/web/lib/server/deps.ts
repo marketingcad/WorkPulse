@@ -17,6 +17,9 @@ function localDataDir(): string {
 }
 
 async function init() {
+  if (process.env.VERCEL && !process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
+    throw new Error('DATABASE_URL is not configured. Connect a Neon database from the Vercel Marketplace and redeploy.');
+  }
   const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? `pglite://${localDataDir().replaceAll('\\', '/')}/pglite`;
   if (!process.env.BLOB_READ_WRITE_TOKEN && !process.env.LOCAL_STORAGE_DIR) process.env.LOCAL_STORAGE_DIR = `${localDataDir()}/blobs`;
   const handle = createDb(url);

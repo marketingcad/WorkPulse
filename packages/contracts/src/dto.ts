@@ -166,6 +166,7 @@ export interface TimeEntryDto {
 
 export interface ActivityBlockDto {
   window_start: string;
+  session_id: string | null;
   project_id: string;
   project_name: string;
   task_title: string | null;
@@ -212,7 +213,7 @@ export interface TimesheetDto {
   billable_seconds: number;
   manual_seconds: number;
   days: Array<{ date: string; seconds: number }>;
-  projects: Array<{ project_id: string; project_name: string; task_id: string | null; task_title: string | null; days: Record<string, number>; total: number }>;
+  projects: Array<{ project_id: string; project_name: string; color?: string; task_id: string | null; task_title: string | null; days: Record<string, number>; total: number }>;
   expected_seconds: number | null;
   avg_activity_pct: number | null;
   version: number;
@@ -240,6 +241,7 @@ export interface ManualTimeDto {
   project_id: string;
   project_name: string;
   task_id: string | null;
+  task_title: string | null;
   started_at: string;
   ended_at: string;
   duration_seconds: number;
@@ -252,6 +254,9 @@ export interface ManualTimeDto {
 export interface BudgetStatusDto {
   id: string;
   subject_type: 'PROJECT' | 'CLIENT';
+  period: 'TOTAL' | 'MONTHLY';
+  warn_pct: number;
+  include_non_billable: boolean;
   subject_id: string;
   subject_name: string;
   kind: 'HOURS' | 'MONEY';

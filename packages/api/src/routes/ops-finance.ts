@@ -34,6 +34,7 @@ import {
   requestTimeOff,
   upsertSchedule,
   upsertTimeOffPolicy,
+  archiveTimeOffPolicy,
 } from '../services/operations';
 import {
   amountsOwed,
@@ -54,6 +55,8 @@ import {
   setRate,
   upsertBudget,
   voidInvoice,
+  deletePayment,
+  deleteDraftInvoice,
 } from '../services/finance';
 import { renderInvoicePdf } from '../lib/invoice-pdf';
 
@@ -84,6 +87,10 @@ export const opsRoutes = new Hono<AppEnv>()
   .get('/time-off/policies', async (c) => c.json(await listTimeOffPolicies(ctx(c))))
   .post('/time-off/policies', async (c) => c.json(await upsertTimeOffPolicy(ctx(c), null, await body(c, timeOffPolicyInput)), 201))
   .put('/time-off/policies/:id', async (c) => c.json(await upsertTimeOffPolicy(ctx(c), c.req.param('id'), await body(c, timeOffPolicyInput))))
+  .post('/time-off/policies/:id/archive', async (c) => {
+    await archiveTimeOffPolicy(ctx(c), c.req.param('id'));
+    return c.body(null, 204);
+  })
   .get('/time-off/balances', async (c) => {
     const x = ctx(c);
     return c.json(await balances(x, query(c, z.object({ membership_id: z.uuid().optional() })).membership_id ?? x.actor.membershipId));
@@ -136,4 +143,12 @@ export const financeRoutes = new Hono<AppEnv>()
   .post('/invoices/:id/send', async (c) => c.json(await sendInvoice(ctx(c), c.req.param('id'))))
   .post('/invoices/:id/void', async (c) => c.json(await voidInvoice(ctx(c), c.req.param('id'))))
   .get('/payments', async (c) => c.json(await listPayments(ctx(c))))
-  .post('/payments', async (c) => c.json(await recordPayment(ctx(c), await body(c, paymentInput)), 201));
+  .post('/payments', async (c) => c.json(await recordPayment(ctx(c), await body(c, paymentInput)), 201))
+  .delete('/payments/:id', async (c) => {
+    await deletePayment(ctx(c), c.req.param('id'));
+    return c.body(null, 204);
+  })
+  .delete('/invoices/:id', async (c) => {
+    await deleteDraftInvoice(ctx(c), c.req.param('id'));
+    return c.body(null, 204);
+  });

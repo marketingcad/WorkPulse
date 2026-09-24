@@ -163,6 +163,9 @@ export async function budgetStatuses(tx: Tx, orgCurrency: string, today: string,
       state: st.state,
       projected: st.projected,
       currency: orgCurrency,
+      period: b.period,
+      warn_pct: b.warnPct,
+      include_non_billable: b.includeNonBillable,
     });
   }
   return out.sort((a, b) => b.pct_used - a.pct_used);
@@ -591,4 +594,32 @@ export async function recordPayment(x: Ctx, input: z.infer<typeof paymentInput>)
   await emitFrom(x, 'payment.received', { payment_id: id, amount_minor: input.amount_minor, currency: input.currency });
   await audit(x, { action: 'payment.recorded', targetType: 'payment', targetId: id, after: input });
   return (await listPayments(x)).find((p) => p.id === id)!;
+}
+
+/** Delete a payment and reverse its allocations (e.g. recorded by mistake). */
+export async function deletePayment(x: Ctx, id: string) {
+  if (!x.actor.grants['payments:manage']) throw forbidden();
+  const [p] = await x.tx.select().from(payments).where(eq(payments.id, id));
+  if (!p) throw notFound('payment');
+  const allocs = await x.tx.select().from(paymentAllocations).where(eq(paymentAllocations.paymentId, id));
+  for (const a of allocs) {
+    await x.tx.update(invoices).set({ paidMinor: sql`greatest(0, ${invoices.paidMinor} - ${a.amountMinor})`, updatedAt: new Date() }).where(eq(invoices.id, a.invoiceId));
+  }
+  await x.tx.delete(payments).where(eq(payments.id, id));
+  await audit(x, { action: 'payment.deleted', targetType: 'payment', targetId: id, before: { ...p, allocations: allocs } });
+}
+
+/** Draft invoices can be deleted outright (their time and expenses become invoiceable again). */
+export async function deleteDraftInvoice(x: Ctx, id: string) {
+  if (!x.actor.grants['invoices:manage']) throw forbidden();
+  const [inv] = await x.tx.select().from(invoices).where(eq(invoices.id, id));
+  if (!inv) throw notFound('invoice');
+  if (inv.status !== 'DRAFT') throw businessRule('invoice_not_draft', 'Only draft invoices can be deleted; void sent invoices instead');
+  const lineIds = (await x.tx.select({ id: invoiceLines.id }).from(invoiceLines).where(eq(invoiceLines.invoiceId, id))).map((l) => l.id);
+  if (lineIds.length) {
+    await x.tx.update(billingEntries).set({ invoiceLineId: null }).where(inArray(billingEntries.invoiceLineId, lineIds));
+    await x.tx.update(expenses).set({ invoiceLineId: null }).where(inArray(expenses.invoiceLineId, lineIds));
+  }
+  await x.tx.delete(invoices).where(eq(invoices.id, id));
+  await audit(x, { action: 'invoice.deleted', targetType: 'invoice', targetId: id, before: { number: inv.number, total: inv.totalMinor } });
 }

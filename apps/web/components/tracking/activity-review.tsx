@@ -71,7 +71,9 @@ export function ActivityReview({ member: memberParam, date, onChange }: { member
   const liveBy = useMemo(() => new Map((live.data ?? []).map((w) => [w.membership_id, w.status])), [live.data]);
 
   // Workers only ever see themselves. Managers who don't track default to their first member.
-  const member = !org.isManagerView ? self : memberParam || (org.membership.tracking_enabled ? self : workers.rows?.[0]?.id) || null;
+  // Managers review their team: default to someone working now, else the first member other than themselves.
+  const firstOther = (live.data ?? []).find((w) => w.status === 'WORKING' && w.membership_id !== self)?.membership_id ?? workers.rows?.find((w) => w.id !== self)?.id;
+  const member = !org.isManagerView ? self : memberParam || firstOther || self;
   const worker = workers.rows?.find((w) => w.id === member);
   const memberName = member === self ? 'You' : (worker?.name ?? 'Member');
   const fallbackTz = worker?.timezone || org.membership.timezone || org.organization.timezone;

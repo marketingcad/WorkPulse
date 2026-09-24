@@ -139,6 +139,13 @@ describe('role scoping inside one organization', () => {
     expect(live).not.toContain(w2Id);
   });
 
+  it('team manager can only change members of teams they manage', async () => {
+    const other = await adminA.post(`/orgs/${orgA}/teams`, { name: 'Sales' });
+    expect((await manager.put(`/orgs/${orgA}/teams/${other.body.id}/members/${w2Id}`, { role: 'MEMBER' })).status).toBe(403);
+    expect((await manager.put(`/orgs/${orgA}/teams/${teamId}/members/${managerId}`, { role: 'MEMBER' })).status).toBe(403);
+    expect((await manager.put(`/orgs/${orgA}/teams/${teamId}/members/${newId()}`, { role: "MEMBER" })).status).toBe(403);
+  });
+
   it('team manager cannot use admin-only resources', async () => {
     for (const path of ['/invoices', '/payments', '/api-keys', '/webhooks', '/audit-logs', '/rates']) {
       expect((await manager.get(`/orgs/${orgA}${path}`)).status, path).toBe(403);

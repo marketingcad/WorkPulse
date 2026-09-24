@@ -56,19 +56,21 @@ export const IconButton = forwardRef<HTMLButtonElement, ButtonProps & { label: s
   );
 });
 
-const field = 'w-full rounded-sm border border-border bg-surface px-2.5 text-sm text-text placeholder:text-text-faint transition-colors hover:border-border-strong focus:border-interactive focus:outline-none focus:ring-2 focus:ring-interactive/20 disabled:bg-surface-muted disabled:text-text-muted aria-[invalid=true]:border-danger';
+/** Fields fill their container unless the caller sets an explicit width. */
+const widthOf = (className?: string) => (/(^|\s)(w-|min-w-|max-w-|flex-1|basis-)/.test(className ?? '') ? '' : 'w-full');
+const field = 'rounded-sm border border-border bg-surface px-2.5 text-sm text-text placeholder:text-text-faint transition-colors hover:border-border-strong focus:border-interactive focus:outline-none focus:ring-2 focus:ring-interactive/20 disabled:bg-surface-muted disabled:text-text-muted aria-[invalid=true]:border-danger';
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...rest }, ref) {
-  return <input ref={ref} className={cx(field, 'h-8', className)} {...rest} />;
+  return <input ref={ref} className={cx(field, widthOf(className), 'h-8', className)} {...rest} />;
 });
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea({ className, ...rest }, ref) {
-  return <textarea ref={ref} className={cx(field, 'min-h-20 py-1.5', className)} {...rest} />;
+  return <textarea ref={ref} className={cx(field, widthOf(className), 'min-h-20 py-1.5', className)} {...rest} />;
 });
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select({ className, children, ...rest }, ref) {
   return (
-    <select ref={ref} className={cx(field, 'h-8 appearance-none bg-[length:12px] bg-[right_8px_center] bg-no-repeat pr-7', "bg-[url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%238a93a0' stroke-width='1.5'/%3E%3C/svg%3E\")]", className)} {...rest}>
+    <select ref={ref} className={cx(field, widthOf(className), 'h-8 appearance-none bg-[length:12px] bg-[right_8px_center] bg-no-repeat pr-7', "bg-[url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%238a93a0' stroke-width='1.5'/%3E%3C/svg%3E\")]", className)} {...rest}>
       {children}
     </select>
   );

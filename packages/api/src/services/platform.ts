@@ -77,7 +77,8 @@ export async function getEffectivePolicy(x: Ctx, membershipId: string): Promise<
 export async function getPolicyLayer(x: Ctx, scopeType: 'ORG' | 'TEAM' | 'WORKER', scopeId: string) {
   if (!x.actor.grants['policies:read']) throw forbidden();
   const [row] = await x.tx.select().from(trackingPolicies).where(and(eq(trackingPolicies.scopeType, scopeType), eq(trackingPolicies.scopeId, scopeId)));
-  const base = scopeType === 'ORG' ? resolvePolicy([]) : resolvePolicy((await x.tx.select().from(trackingPolicies).where(eq(trackingPolicies.scopeType, 'ORG'))).map((r) => ({ scope: 'ORG' as const, scopeId: r.scopeId, doc: r.doc })));
+  // Inherited = everything above this layer (org for teams; org + the member's teams for members).
+  const base = scopeType === 'ORG' ? resolvePolicy([]) : scopeType === 'TEAM' ? resolvePolicy((await x.tx.select().from(trackingPolicies).where(eq(trackingPolicies.scopeType, 'ORG'))).map((r) => ({ scope: 'ORG' as const, scopeId: r.scopeId, doc: r.doc }))) : resolvePolicy((await policyLayers(x.tx, x.org.id, scopeId)).filter((l) => l.scope !== 'WORKER'));
   return { scope_type: scopeType, scope_id: scopeId, doc: row?.doc ?? {}, version: row?.version ?? 0, inherited: base, updated_at: iso(row?.updatedAt) };
 }
 
@@ -124,7 +125,8 @@ export async function createApiKey(x: Ctx, input: z.infer<typeof apiKeyInput>) {
 
 export async function revokeApiKey(x: Ctx, id: string) {
   if (!x.actor.grants['api_keys:manage']) throw forbidden();
-  await x.tx.update(apiKeys).set({ revokedAt: new Date() }).where(eq(apiKeys.id, id));
+  const r = await x.tx.update(apiKeys).set({ revokedAt: new Date() }).where(and(eq(apiKeys.id, id), isNull(apiKeys.revokedAt))).returning({ id: apiKeys.id });
+  if (!r.length) throw notFound('api_key');
   await audit(x, { action: 'api_key.revoked', targetType: 'api_key', targetId: id });
 }
 
@@ -179,7 +181,8 @@ export async function upsertWebhook(x: Ctx, id: string | null, input: z.infer<ty
 
 export async function deleteWebhook(x: Ctx, id: string) {
   if (!x.actor.grants['webhooks:manage']) throw forbidden();
-  await x.tx.delete(webhookEndpoints).where(eq(webhookEndpoints.id, id));
+  const r = await x.tx.delete(webhookEndpoints).where(eq(webhookEndpoints.id, id)).returning({ id: webhookEndpoints.id });
+  if (!r.length) throw notFound('webhook');
   await audit(x, { action: 'webhook.deleted', targetType: 'webhook', targetId: id });
 }
 

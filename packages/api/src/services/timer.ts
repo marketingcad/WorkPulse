@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   activityWindows,
   devices,
+  timeEntries,
   memberships,
   projects,
   sessionTransitions,
@@ -178,19 +179,36 @@ export async function liveWorkers(x: Ctx): Promise<LiveWorkerDto[]> {
   const lastSeen = await x.tx.select({ membershipId: devices.membershipId, seen: sql<Date | null>`max(${devices.lastSeenAt})` }).from(devices).where(inArray(devices.membershipId, ids)).groupBy(devices.membershipId);
   const seenBy = new Map(lastSeen.map((r) => [r.membershipId, r.seen]));
 
+  // Today's totals for everyone in two queries (entries per local date + open segments).
+  const todayOf = new Map(ms.map((m) => [m.id, localDate(now, m.tz)]));
+  const dates = [...new Set(todayOf.values())];
+  const totals = await x.tx
+    .select({ m: timeEntries.membershipId, d: timeEntries.localDate, s: sql<number>`sum(${timeEntries.durationSeconds})::int` })
+    .from(timeEntries)
+    .where(and(inArray(timeEntries.membershipId, ids), inArray(timeEntries.localDate, dates), isNull(timeEntries.deletedAt)))
+    .groupBy(timeEntries.membershipId, timeEntries.localDate);
+  const openWork = live.length
+    ? await x.tx.select({ sessionId: timeSegments.sessionId, startedAt: timeSegments.startedAt }).from(timeSegments).where(and(inArray(timeSegments.sessionId, live.map((s) => s.id)), isNull(timeSegments.endedAt), eq(timeSegments.kind, 'WORK')))
+    : [];
+
   const out: LiveWorkerDto[] = [];
   for (const m of ms) {
     const s = liveBy.get(m.id);
-    const idle = s ? openIdle.some((g) => g.sessionId === s.id && g.kind === 'IDLE') : false;
-    const status: LiveWorkerDto['status'] = !s ? 'OFFLINE' : s.state === 'ACTIVE' ? 'WORKING' : s.state === 'PAUSED' && idle ? 'IDLE' : s.state === 'PAUSED' ? 'IDLE' : 'OFFLINE';
-    const tw = await todayAndWeek(x.tx, m.id, m.tz, x.org.weekStart, now);
+    const onIdle = s ? openIdle.some((g) => g.sessionId === s.id && g.kind === 'IDLE') : false;
+    // WORKING = running; IDLE = paused (idle or break); INTERRUPTED devices count as offline and have no actionable session.
+    const status: LiveWorkerDto['status'] = !s || s.state === 'INTERRUPTED' ? 'OFFLINE' : s.state === 'ACTIVE' ? 'WORKING' : 'IDLE';
+    void onIdle;
+    const ow = s ? openWork.find((w) => w.sessionId === s.id) : undefined;
+    const dayStart = startOfLocalDay(todayOf.get(m.id)!, m.tz);
+    const running = ow ? Math.max(0, Math.round((now.getTime() - Math.max(ow.startedAt.getTime(), dayStart.getTime())) / 1000)) : 0;
+    const tw = { today: (totals.find((t) => t.m === m.id && t.d === todayOf.get(m.id))?.s ?? 0) + running };
     const act = recentAct.find((r) => r.membershipId === m.id);
     const seen = seenBy.get(m.id);
     out.push({
       membership_id: m.id,
       name: m.name,
       status,
-      session_id: s?.id ?? null,
+      session_id: s && s.state !== 'INTERRUPTED' ? s.id : null,
       project_id: s?.projectId ?? null,
       project_name: s ? (ps.find((p) => p.id === s.projectId)?.name ?? null) : null,
       task_title: s?.taskId ? (ts.find((t) => t.id === s.taskId)?.title ?? null) : null,

@@ -74,6 +74,11 @@ export async function setTeamMember(x: Ctx, teamId: string, membershipId: string
   if (!scope) throw forbidden();
   const [t] = await x.tx.select().from(teams).where(eq(teams.id, teamId));
   if (!t) throw notFound('team');
+  // Team-scoped managers may only change teams they manage; nobody edits their own role.
+  if (scope !== 'org' && !x.actor.managedTeamIds.includes(teamId)) throw forbidden('You can only change teams you manage');
+  if (scope !== 'org' && membershipId === x.actor.membershipId) throw forbidden('You cannot change your own team role');
+  const [m] = await x.tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.id, membershipId), eq(memberships.organizationId, x.org.id)));
+  if (!m) throw notFound('worker');
   if (role === null) {
     await x.tx.delete(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.membershipId, membershipId)));
   } else {

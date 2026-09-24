@@ -251,7 +251,8 @@ export async function listInvitations(x: Ctx) {
 
 export async function revokeInvitation(x: Ctx, id: string) {
   if (!x.actor.grants['members:manage']) throw forbidden();
-  await x.tx.update(invitations).set({ revokedAt: new Date() }).where(eq(invitations.id, id));
+  const r = await x.tx.update(invitations).set({ revokedAt: new Date() }).where(and(eq(invitations.id, id), isNull(invitations.acceptedAt))).returning({ id: invitations.id });
+  if (!r.length) throw notFound('invitation');
   await audit(x, { action: 'invitation.revoked', targetType: 'invitation', targetId: id });
 }
 

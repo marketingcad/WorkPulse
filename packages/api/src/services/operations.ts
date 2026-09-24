@@ -68,7 +68,8 @@ export async function upsertSchedule(x: Ctx, id: string | null, input: z.infer<t
     const r = await x.tx.update(workSchedules).set({ ...values, updatedAt: new Date() }).where(eq(workSchedules.id, sid)).returning({ id: workSchedules.id });
     if (!r.length) throw notFound('schedule');
   } else {
-    // A new schedule ends the previous open-ended one.
+    // A new schedule replaces a version starting the same day and ends the previous open-ended one.
+    await x.tx.delete(workSchedules).where(and(eq(workSchedules.membershipId, input.membership_id), eq(workSchedules.effectiveFrom, input.effective_from)));
     await x.tx
       .update(workSchedules)
       .set({ effectiveTo: input.effective_from })
@@ -421,4 +422,11 @@ export async function runAccruals(tx: Tx, deps: Deps, orgId: string, today: stri
   }
   void deps;
   return credited;
+}
+
+export async function archiveTimeOffPolicy(x: Ctx, id: string) {
+  if (!x.actor.grants['time_off:manage']) throw forbidden();
+  const r = await x.tx.update(timeOffPolicies).set({ archivedAt: new Date() }).where(eq(timeOffPolicies.id, id)).returning({ id: timeOffPolicies.id });
+  if (!r.length) throw notFound('time_off_policy');
+  await audit(x, { action: 'time_off_policy.archived', targetType: 'time_off_policy', targetId: id });
 }

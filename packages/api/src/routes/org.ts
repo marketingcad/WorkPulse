@@ -45,6 +45,7 @@ import {
   upsertProject,
   upsertTask,
   upsertTeam,
+  assignmentsFor,
 } from '../services/work';
 import { getEffectivePolicy, getPolicyLayer, listDevices, putPolicyLayer, setDeviceStatus } from '../services/platform';
 import { myAssignments } from '../services/timer';
@@ -75,6 +76,11 @@ export const orgRoutes = new Hono<AppEnv>()
   .delete('/workers/:id', async (c) => {
     await removeWorker(ctx(c), c.req.param('id'));
     return c.body(null, 204);
+  })
+  .get('/workers/:id/assignments', requirePermission('members:read'), async (c) => {
+    const x = ctx(c);
+    await getWorker(x, c.req.param('id'));
+    return c.json(await assignmentsFor(x, x.org.id, c.req.param('id')));
   })
   .get('/workers/:id/effective-policy', async (c) => c.json(await getEffectivePolicy(ctx(c), c.req.param('id'))))
   .get('/invitations', async (c) => c.json(await listInvitations(ctx(c))))
@@ -151,5 +157,9 @@ export const orgRoutes = new Hono<AppEnv>()
   // Policies & devices
   .get('/policies/:scopeType/:scopeId', async (c) => c.json(await getPolicyLayer(ctx(c), scopeType.parse(c.req.param('scopeType')), c.req.param('scopeId'))))
   .put('/policies/:scopeType/:scopeId', async (c) => c.json(await putPolicyLayer(ctx(c), scopeType.parse(c.req.param('scopeType')), c.req.param('scopeId'), await body(c, policyDocInput))))
-  .get('/devices', async (c) => c.json(await listDevices(ctx(c))))
+  .get('/devices', async (c) => {
+    const m = c.req.query('membership_id');
+    const all = await listDevices(ctx(c));
+    return c.json(m ? all.filter((d) => d.membership_id === m) : all);
+  })
   .post('/devices/:id/:action{revoke|approve|reauth}', async (c) => c.json(await setDeviceStatus(ctx(c), c.req.param('id'), c.req.param('action') as 'revoke')));

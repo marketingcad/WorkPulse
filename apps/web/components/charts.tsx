@@ -38,7 +38,7 @@ export function ColumnChart({ data, x, series, format, height = 180, xFormat }: 
   const [hover, setHover] = useState<number | null>(null);
   const totals = data.map((d) => series.reduce((s, se) => s + (Number(d[se.key]) || 0), 0));
   const max = Math.max(1, ...totals);
-  const colorOf = (i: number, s?: string) => s ?? PALETTE[i % PALETTE.length];
+  const colorOf = (i: number, s?: string) => s ?? (series[i]?.key === 'Other' ? 'var(--color-border-strong)' : PALETTE[i % PALETTE.length]);
   return (
     <figure>
       <div className="relative flex items-end gap-[3px]" style={{ height }} role="img" aria-label={`Chart of ${series.map((s) => s.label).join(', ')} by ${x}`}>

@@ -146,7 +146,7 @@ export const auditLogs = pgTable(
     requestId: text(),
     createdAt: tstz().notNull().default(sql`now()`),
   },
-  (t) => [index().on(t.organizationId, t.createdAt), index().on(t.organizationId, t.targetType, t.targetId)],
+  (t) => [index().on(t.organizationId, t.createdAt), index().on(t.organizationId, t.targetType, t.targetId), index().on(t.organizationId, t.actorId)],
 );
 
 export const outboxEvents = pgTable(

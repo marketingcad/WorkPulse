@@ -6,6 +6,7 @@ onlyBuiltDependencies:
   - esbuild
   - better-sqlite3-multiple-ciphers
   - uiohook-napi
+  - get-windows
   - "@node-rs/argon2"
   - sharp
   - electron-winstaller

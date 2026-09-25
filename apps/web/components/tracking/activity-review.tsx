@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, EyeOff, ImageOff, ListTree, PauseCircle, PenLine } from 'lucide-react';
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, EyeOff, ImageOff, ListTree, Monitor, PauseCircle, PenLine } from 'lucide-react';
 import type { ActivityBlockDto, ActivityDayDto, EffectivePolicyDto, LiveWorkerDto } from '@tallywork/contracts';
 import {
   ActivityBar,
@@ -27,7 +27,7 @@ import {
 import { errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg } from '@/lib/org';
 import { DayRibbon } from '@/components/charts';
-import { BLOCK_MS, BlockDetail, blockRange, isLow } from './block-detail';
+import { BLOCK_MS, BlockDetail, blockRange, groupCaptures, isLow } from './block-detail';
 import { useTrackedWorkers } from './filters';
 import { SpansDrawer } from './spans-drawer';
 import { dayStartMs } from './time';
@@ -518,14 +518,17 @@ export function ActivityReview({ member: memberParam, date, onChange }: { member
 }
 
 function BlockTile({ block: b, tz, selected, onSelect }: { block: ActivityBlockDto; tz: string; selected: boolean; onSelect: () => void }) {
-  const shot = b.screenshots[0];
+  const captures = groupCaptures(b.screenshots);
+  // The tile previews the first capture with every screen side by side (2 screens: halves; 3–4: quarters).
+  const screens = captures[0] ?? [];
+  const shot = screens[0];
   const low = isLow(b);
   return (
     <button
       id={`blk-${b.window_start}`}
       onClick={onSelect}
       aria-pressed={selected}
-      aria-label={`${blockRange(b, tz)}, ${b.manual ? 'manual time' : `activity ${b.activity_pct}%`}, ${b.project_name}${b.idle ? ', includes idle' : ''}${low ? ', low activity' : ''}`}
+      aria-label={`${blockRange(b, tz)}, ${b.manual ? 'manual time' : `activity ${b.activity_pct}%`}, ${b.project_name}${screens.length > 1 ? `, ${screens.length} screens` : ''}${b.idle ? ', includes idle' : ''}${low ? ', low activity' : ''}`}
       className={cx(
         'group flex min-w-0 flex-col overflow-hidden rounded-sm border bg-surface text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-interactive/40',
         selected ? 'border-interactive ring-2 ring-interactive/30' : 'border-border hover:border-border-strong',
@@ -533,8 +536,12 @@ function BlockTile({ block: b, tz, selected, onSelect }: { block: ActivityBlockD
     >
       <div className="relative aspect-[16/10] w-full bg-surface-sunken">
         {shot ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={shot.thumb_url} alt="" loading="lazy" className={cx('size-full object-cover', shot.blurred && 'blur-[1.5px]')} />
+          <div className={cx('grid size-full gap-px bg-border', screens.length === 2 && 'grid-cols-2', screens.length > 2 && 'grid-cols-2 grid-rows-2')}>
+            {screens.slice(0, 4).map((s) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={s.id} src={s.thumb_url} alt="" loading="lazy" className={cx('size-full min-h-0 min-w-0 object-cover', s.blurred && 'blur-[1.5px]')} />
+            ))}
+          </div>
         ) : (
           <span className="flex size-full flex-col items-center justify-center gap-1 text-2xs text-text-faint">
             {b.manual ? <PenLine className="size-4" aria-hidden /> : <ImageOff className="size-4" aria-hidden />}
@@ -547,7 +554,17 @@ function BlockTile({ block: b, tz, selected, onSelect }: { block: ActivityBlockD
             Blurred
           </span>
         )}
-        {b.screenshots.length > 1 && <span className="tabular absolute right-1 top-1 rounded-sm bg-surface/90 px-1 text-[10px] font-medium text-text">{b.screenshots.length}</span>}
+        {screens.length > 1 && (
+          <span className="absolute bottom-1 left-1 inline-flex items-center gap-0.5 rounded-sm bg-surface/90 px-1 text-[10px] font-medium text-text" title={`${screens.length} screens`}>
+            <Monitor className="size-2.5" aria-hidden />
+            {screens.length}
+          </span>
+        )}
+        {captures.length > 1 && (
+          <span className="tabular absolute right-1 top-1 rounded-sm bg-surface/90 px-1 text-[10px] font-medium text-text" title={`${captures.length} captures in this block`}>
+            {captures.length}×
+          </span>
+        )}
       </div>
       <div className="flex min-w-0 flex-col gap-1 px-1.5 py-1.5">
         <div className="flex items-center justify-between gap-1">

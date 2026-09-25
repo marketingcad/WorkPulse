@@ -50,6 +50,9 @@ export const billingEntries = pgTable(
     uniqueIndex('billing_entries_active_uq').on(t.timeEntryId).where(sql`${t.voidedAt} is null`),
     index().on(t.organizationId, t.clientId, t.localDate),
     index().on(t.organizationId, t.membershipId, t.localDate),
+    // reopen/void by timesheet; budgets by project and date
+    index().on(t.timesheetId),
+    index().on(t.organizationId, t.projectId, t.localDate),
   ],
 );
 

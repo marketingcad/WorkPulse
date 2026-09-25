@@ -42,6 +42,7 @@ export const trackingSessions = pgTable(
       .where(sql`${t.state} in ('CREATED','ACTIVE','PAUSED','INTERRUPTED')`),
     index().on(t.organizationId, t.membershipId, t.startedAt),
     index().on(t.organizationId, t.state),
+    index('tracking_sessions_live_idx').on(t.state).where(sql`${t.state} <> 'STOPPED'`),
   ],
 );
 
@@ -87,6 +88,7 @@ export const timeSegments = pgTable(
     foreignKey({ columns: [t.organizationId, t.sessionId], foreignColumns: [trackingSessions.organizationId, trackingSessions.id] }).onDelete('cascade'),
     index().on(t.sessionId),
     index().on(t.organizationId, t.membershipId, t.startedAt),
+    index('time_segments_open_idx').on(t.membershipId).where(sql`${t.endedAt} is null`),
   ],
 );
 
@@ -124,6 +126,7 @@ export const timeEntries = pgTable(
     foreignKey({ columns: [t.organizationId, t.taskId], foreignColumns: [tasks.organizationId, tasks.id] }),
     index().on(t.organizationId, t.membershipId, t.localDate),
     index().on(t.organizationId, t.projectId, t.localDate),
+    index().on(t.organizationId, t.localDate),
     index().on(t.sessionId),
   ],
 );
@@ -161,7 +164,7 @@ export const activityMinutes = pgTable(
     activeSeconds: smallint().notNull(),
     trackedSeconds: smallint().notNull().default(60),
   },
-  (t) => [primaryKey({ columns: [t.sessionId, t.minuteStart] }), index().on(t.organizationId, t.membershipId, t.minuteStart)],
+  (t) => [primaryKey({ columns: [t.sessionId, t.minuteStart] }), index().on(t.organizationId, t.membershipId, t.minuteStart), index().on(t.organizationId, t.minuteStart)],
 );
 
 export const activityWindows = pgTable(
@@ -228,7 +231,7 @@ export const screenshots = pgTable(
     deletedBy: uuid(),
     createdAt: tstz().notNull().default(sql`now()`),
   },
-  (t) => [index().on(t.organizationId, t.membershipId, t.capturedAt), index().on(t.sessionId)],
+  (t) => [index().on(t.organizationId, t.membershipId, t.capturedAt), index().on(t.sessionId), index().on(t.organizationId, t.capturedAt)],
 );
 
 export const appSpans = pgTable(
@@ -246,7 +249,7 @@ export const appSpans = pgTable(
     endedAt: tstz().notNull(),
     durationSeconds: integer().notNull(),
   },
-  (t) => [uniqueIndex('app_spans_client_uq').on(t.sessionId, t.clientSpanId), index().on(t.organizationId, t.membershipId, t.startedAt)],
+  (t) => [uniqueIndex('app_spans_client_uq').on(t.sessionId, t.clientSpanId), index().on(t.organizationId, t.membershipId, t.startedAt), index().on(t.organizationId, t.startedAt)],
 );
 
 export const urlSpans = pgTable(
@@ -265,7 +268,7 @@ export const urlSpans = pgTable(
     endedAt: tstz().notNull(),
     durationSeconds: integer().notNull(),
   },
-  (t) => [uniqueIndex('url_spans_client_uq').on(t.sessionId, t.clientSpanId), index().on(t.organizationId, t.membershipId, t.startedAt)],
+  (t) => [uniqueIndex('url_spans_client_uq').on(t.sessionId, t.clientSpanId), index().on(t.organizationId, t.membershipId, t.startedAt), index().on(t.organizationId, t.startedAt)],
 );
 
 /** Idempotency receipts for agent events: (device, client_event_id) processed once. */
@@ -280,7 +283,7 @@ export const ingestReceipts = pgTable(
     reason: text(),
     receivedAt: tstz().notNull().default(sql`now()`),
   },
-  (t) => [primaryKey({ columns: [t.deviceId, t.clientEventId] })],
+  (t) => [primaryKey({ columns: [t.deviceId, t.clientEventId] }), index().on(t.organizationId, t.receivedAt)],
 );
 
 /** Daily rollup per worker × project × task (reporting layer L2). */

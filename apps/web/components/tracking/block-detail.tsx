@@ -16,6 +16,25 @@ export function isLow(b: ActivityBlockDto): boolean {
   return !b.manual && b.activity_pct < LOW_ACTIVITY_PCT;
 }
 
+export type BlockShot = ActivityBlockDto['screenshots'][number];
+
+/**
+ * One capture = every display photographed at the same moment (the agent stamps all
+ * displays of one capture with the same captured_at). Captures are in time order and
+ * each capture's screens are ordered Screen 1, Screen 2, …
+ */
+export function groupCaptures(shots: BlockShot[]): BlockShot[][] {
+  const byTime = new Map<string, BlockShot[]>();
+  for (const s of shots) byTime.set(s.captured_at, [...(byTime.get(s.captured_at) ?? []), s]);
+  return [...byTime.entries()]
+    .sort(([a], [b]) => Date.parse(a) - Date.parse(b))
+    .map(([, group]) => group.sort((a, b) => a.display_index - b.display_index));
+}
+
+export function screenLabel(s: BlockShot): string {
+  return `Screen ${s.display_index + 1}`;
+}
+
 /** Detail body for one 10-minute block: full screenshot(s), activity split, work item, actions. */
 export function BlockDetail({
   block,
@@ -42,7 +61,11 @@ export function BlockDetail({
   inline?: boolean;
 }) {
   const org = useOrg();
-  const shot = block.screenshots[Math.min(shotIdx, block.screenshots.length - 1)];
+  // shotIdx selects a capture (a moment in time); every screen of that capture is shown.
+  const captures = groupCaptures(block.screenshots);
+  const capture = captures[Math.min(shotIdx, captures.length - 1)] ?? [];
+  const shot = capture[0];
+  const multi = capture.length > 1;
   return (
     <div className="flex flex-col">
       <div className={cx('flex items-center gap-1 border-b border-border px-3 py-2', !inline && 'justify-between')}>
@@ -68,31 +91,40 @@ export function BlockDetail({
 
       {shot ? (
         <div className="border-b border-border bg-surface-sunken p-3">
-          <a href={shot.full_url} target="_blank" rel="noreferrer" className="group relative block overflow-hidden rounded-sm border border-border bg-surface" title="Open full size in a new tab">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={shot.full_url} alt={`Screenshot captured at ${fmtTime(shot.captured_at, tz)}${shot.blurred ? ' (blurred)' : ''}`} className="block w-full" />
-            <span className="absolute right-1.5 top-1.5 hidden rounded-sm bg-surface/90 p-1 text-text-muted group-hover:block">
-              <ExternalLink className="size-3.5" aria-hidden />
-            </span>
-          </a>
+          <div className="flex flex-col gap-2">
+            {capture.map((s) => (
+              <figure key={s.id} className="m-0">
+                {multi && <figcaption className="mb-1 text-2xs font-medium text-text-muted">{screenLabel(s)}</figcaption>}
+                <a href={s.full_url} target="_blank" rel="noreferrer" className="group relative block overflow-hidden rounded-sm border border-border bg-surface" title={`Open ${multi ? screenLabel(s).toLowerCase() : 'screenshot'} full size in a new tab`}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={s.full_url} alt={`${multi ? `${screenLabel(s)}, ` : ''}screenshot captured at ${fmtTime(s.captured_at, tz)}${s.blurred ? ' (blurred)' : ''}`} className="block w-full" />
+                  <span className="absolute right-1.5 top-1.5 hidden rounded-sm bg-surface/90 p-1 text-text-muted group-hover:block">
+                    <ExternalLink className="size-3.5" aria-hidden />
+                  </span>
+                </a>
+              </figure>
+            ))}
+          </div>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-text-muted">
-            <span className="tabular">Captured {fmtTime(shot.captured_at, tz)}</span>
-            {shot.blurred && (
+            <span className="tabular">
+              Captured {fmtTime(shot.captured_at, tz)}
+              {multi && ` · ${capture.length} screens`}
+            </span>
+            {capture.some((s) => s.blurred) && (
               <Badge tone="neutral" icon={<EyeOff className="size-3" />}>
                 Blurred by policy
               </Badge>
             )}
-            {block.screenshots.length > 1 && (
-              <div className="ml-auto flex gap-1" role="group" aria-label="Screenshots in this block">
-                {block.screenshots.map((s, i) => (
+            {captures.length > 1 && (
+              <div className="ml-auto flex gap-1" role="group" aria-label="Captures in this block">
+                {captures.map((c, i) => (
                   <button
-                    key={s.id}
+                    key={c[0]!.id}
                     onClick={() => onShotIdx(i)}
                     aria-pressed={i === shotIdx}
                     className={cx('tabular rounded-sm border px-1.5 py-0.5 text-2xs', i === shotIdx ? 'border-interactive bg-interactive-soft text-interactive' : 'border-border hover:bg-surface-muted')}
                   >
-                    {fmtTime(s.captured_at, tz)}
-                    {s.display_index > 0 && ` · screen ${s.display_index + 1}`}
+                    {fmtTime(c[0]!.captured_at, tz)}
                   </button>
                 ))}
               </div>
@@ -127,10 +159,13 @@ export function BlockDetail({
       )}
 
       {shot && canDelete && onDelete && (
-        <div className="border-t border-border px-4 py-3">
-          <Button size="sm" variant="ghost" className="text-danger" icon={<Trash2 className="size-3.5" />} onClick={() => onDelete(shot.id)}>
-            Delete screenshot
-          </Button>
+        <div className="flex flex-wrap gap-1 border-t border-border px-4 py-3">
+          {/* Each screen is its own screenshot, so it can be deleted on its own (e.g. only the screen that showed something private). */}
+          {capture.map((s) => (
+            <Button key={s.id} size="sm" variant="ghost" className="text-danger" icon={<Trash2 className="size-3.5" />} onClick={() => onDelete(s.id)}>
+              {multi ? `Delete ${screenLabel(s).toLowerCase()}` : 'Delete screenshot'}
+            </Button>
+          ))}
         </div>
       )}
       <div className="hidden border-t border-border px-4 py-2.5 text-2xs text-text-faint lg:block">

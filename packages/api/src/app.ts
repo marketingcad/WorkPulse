@@ -18,6 +18,7 @@ import { financeRoutes, opsRoutes } from './routes/ops-finance';
 import { insightRoutes, platformRoutes } from './routes/insight-platform';
 import { agentRoutes } from './routes/agent';
 import { dispatchOutbox, runDaily, runTick } from './jobs';
+import { opsMetrics, readiness } from './services/ops';
 
 export function createApp(deps: Deps) {
   const app = new Hono<AppEnv>().basePath('/api/v1');
@@ -27,7 +28,10 @@ export function createApp(deps: Deps) {
     const rid = c.req.header('x-request-id')?.slice(0, 64) || newId();
     c.set('requestId', rid);
     c.header('X-Request-Id', rid);
+    const started = performance.now();
     await next();
+    // One structured line per request for log drains: route pattern (no ids or query strings), status and latency.
+    if (deps.config.env !== 'test') console.info(JSON.stringify({ level: 'info', msg: 'request', request_id: rid, method: c.req.method, route: c.req.routePath, status: c.res.status, ms: Math.round(performance.now() - started) }));
     // Deliver outbox events right after successful mutations (near-real-time without a worker),
     // and run the minute tick opportunistically (lease-guarded) in case cron is unavailable.
     if (c.req.method !== 'GET' && c.res.status < 400) afterMutation(deps);
@@ -48,6 +52,11 @@ export function createApp(deps: Deps) {
   app.notFound((c) => c.json({ type: 'about:blank', title: 'Not found', status: 404, code: 'route_not_found', request_id: c.var.requestId }, 404));
 
   app.get('/health', (c) => c.json({ ok: true, time: deps.now().toISOString() }));
+  // Readiness for load balancers and uptime checks: 503 when the database does not answer.
+  app.get('/health/ready', async (c) => {
+    const r = await readiness(deps);
+    return c.json(r, r.ok ? 200 : 503);
+  });
 
   // Signed, short-lived media URLs (screenshots). Authorization happened when the URL was minted.
   app.get('/media/:token', async (c) => {
@@ -64,6 +73,8 @@ export function createApp(deps: Deps) {
   // Vercel Cron (Authorization: Bearer CRON_SECRET).
   const cronAuth = (h: string | undefined) => !!deps.config.cronSecret && !!h && safeEqual(h, `Bearer ${deps.config.cronSecret}`);
   app.get('/cron/tick', async (c) => (cronAuth(c.req.header('authorization')) ? c.json(await runTick(deps)) : c.json({ status: 401, code: 'unauthorized' }, 401)));
+  // Monitoring: operational gauges and firing alerts (counts only; cron secret required).
+  app.get('/ops/metrics', async (c) => (cronAuth(c.req.header('authorization')) ? c.json(await opsMetrics(deps)) : c.json({ status: 401, code: 'unauthorized' }, 401)));
   app.get('/cron/daily', async (c) => (cronAuth(c.req.header('authorization')) ? c.json(await runDaily(deps)) : c.json({ status: 401, code: 'unauthorized' }, 401)));
 
   app.use(authenticate);

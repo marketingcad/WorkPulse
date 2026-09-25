@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, shell, Tray, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, crashReporter, ipcMain, Menu, nativeImage, shell, Tray, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IPC, type IpcChannel, type IpcPayload } from '../shared/ipc';
@@ -156,15 +156,28 @@ function registerIpc(): void {
   }
 }
 
+/**
+ * Updates come from TALLYWORK_UPDATE_URL. Rollouts are staged two ways: the channel
+ * (TALLYWORK_UPDATE_CHANNEL = beta | latest; beta machines get releases first) and electron-updater's
+ * stagingPercentage in latest.yml, which offers a release to a growing share of machines
+ * (docs/ops/runbooks.md, "Desktop release").
+ */
 async function setupUpdater(): Promise<void> {
   if (!app.isPackaged || !process.env.TALLYWORK_UPDATE_URL) return;
   const { autoUpdater } = await import('electron-updater');
+  const channel = process.env.TALLYWORK_UPDATE_CHANNEL === 'beta' ? 'beta' : 'latest';
+  autoUpdater.channel = channel;
+  autoUpdater.allowPrerelease = channel === 'beta';
+  autoUpdater.allowDowngrade = false;
   autoUpdater.autoInstallOnAppQuit = true;
   // Never interrupt an active session: download in the background, install on quit.
   const check = () => void autoUpdater.checkForUpdates().catch(() => undefined);
   check();
   setInterval(check, 6 * 3600_000);
 }
+
+// Crash reports (for the crash-free-rate SLO) go to TALLYWORK_CRASH_URL when set; minidumps only, no screen contents.
+if (process.env.TALLYWORK_CRASH_URL) crashReporter.start({ submitURL: process.env.TALLYWORK_CRASH_URL, uploadToServer: true, compress: true, ignoreSystemCrashHandler: true });
 
 app.whenReady().then(async () => {
   app.setAppUserModelId('app.tallywork.desktop');

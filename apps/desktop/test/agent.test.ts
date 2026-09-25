@@ -7,6 +7,7 @@ const { ActivityMonitor, nextShotDelays } = await import('../src/main/services/m
 const { IPC } = await import('../src/shared/ipc');
 const { manualRequestError, reminderKey } = await import('../src/main/services/manual');
 const { DEFAULT_POLICY } = await import('@tallywork/domain');
+const { limitAction, shiftReminder } = await import('../src/main/services/reminders');
 
 describe('privacy contract', () => {
   it('input hook callbacks never read event data (no key codes, no characters, no positions)', () => {
@@ -118,5 +119,32 @@ describe('manual time requests', () => {
     expect(a).toBe(reminderKey({ period_start: '2026-09-14' }, '2026-09-25'));
     expect(a).not.toBe(reminderKey({ period_start: '2026-09-14' }, '2026-09-26'));
     expect(a).not.toBe(reminderKey({ period_start: '2026-09-21' }, '2026-09-25'));
+  });
+});
+
+describe('shift reminders and limit warnings', () => {
+  const shift = { starts_at: '2026-09-28T13:00:00.000Z' };
+  const at = (iso: string) => Date.parse(iso);
+
+  it('reminds once, from 10 minutes before the shift until it starts, only when not tracking', () => {
+    expect(shiftReminder(shift, false, at('2026-09-28T12:49:00Z'), null)).toBeNull();
+    const key = shiftReminder(shift, false, at('2026-09-28T12:52:00Z'), null);
+    expect(key).toBe('shift|2026-09-28T13:00:00.000Z');
+    expect(shiftReminder(shift, false, at('2026-09-28T12:55:00Z'), key)).toBeNull();
+    expect(shiftReminder(shift, true, at('2026-09-28T12:55:00Z'), null)).toBeNull();
+    expect(shiftReminder(shift, false, at('2026-09-28T13:00:00Z'), null)).toBeNull();
+    expect(shiftReminder(null, false, at('2026-09-28T12:55:00Z'), null)).toBeNull();
+  });
+
+  it('warns once 15 minutes before a limit, then stops at it', () => {
+    const limits = { dailySeconds: 8 * 3600, weeklySeconds: 40 * 3600 };
+    expect(limitAction(limits, 7 * 3600, 20 * 3600, '2026-09-28', null)).toBeNull();
+    const warn = limitAction(limits, 7.8 * 3600, 20 * 3600, '2026-09-28', null);
+    expect(warn).toMatchObject({ action: 'warn', kind: 'daily', remainingSeconds: 720 });
+    expect(limitAction(limits, 7.9 * 3600, 20 * 3600, '2026-09-28', warn!.key)).toBeNull();
+    expect(limitAction(limits, 7.9 * 3600, 20 * 3600, '2026-09-29', warn!.key)).toMatchObject({ action: 'warn' });
+    expect(limitAction(limits, 8 * 3600, 20 * 3600, '2026-09-28', warn!.key)).toMatchObject({ action: 'stop', kind: 'daily' });
+    expect(limitAction(limits, 2 * 3600, 39.9 * 3600, '2026-09-28', null)).toMatchObject({ action: 'warn', kind: 'weekly' });
+    expect(limitAction({ dailySeconds: null, weeklySeconds: null }, 99999, 99999, '2026-09-28', null)).toBeNull();
   });
 });

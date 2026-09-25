@@ -6,6 +6,7 @@ import type { AgentState, Assignment, IpcPayload, ManualRequest } from '../../sh
 import { AgentApi, ApiError } from './api';
 import { signIn } from './auth';
 import { manualRequestError, reminderKey } from './manual';
+import { limitAction, shiftReminder } from './reminders';
 import { ActivityMonitor, AppTracker, captureScreens, nextShotDelays } from './monitors';
 import { OfflineQueue, type QueuedEvent } from './queue';
 import { SecureStore } from './secure-store';
@@ -15,6 +16,7 @@ const HEARTBEAT_MS = 60_000;
 const BOOTSTRAP_MS = 5 * 60_000;
 const IDLE_POLL_MS = 5_000;
 const FLUSH_MS = 60_000;
+const REMINDER_MS = 30_000;
 
 /** PUT one object to a Supabase Storage signed upload URL (the URL itself is the credential). */
 async function uploadToSignedUrl(url: string, data: Buffer, contentType: string): Promise<void> {
@@ -47,6 +49,8 @@ interface Bootstrap {
   today_seconds: number;
   week_seconds: number;
   timesheet_due: { period_start: string; period_end: string; status: 'DRAFT' | 'REJECTED'; total_seconds: number; overdue: boolean } | null;
+  next_shift: { starts_at: string; ends_at: string } | null;
+  break_types: Array<{ id: string; name: string; paid: boolean; max_minutes: number | null }>;
 }
 
 /**
@@ -76,6 +80,7 @@ export class Agent extends EventEmitter {
   private todayBase = { seconds: 0, at: Date.now() };
   private weekBase = { seconds: 0, at: Date.now() };
   private manualRequests: ManualRequest[];
+  private breakTypeId: string | null = null;
 
   constructor(
     private serverUrl: string,
@@ -109,6 +114,7 @@ export class Agent extends EventEmitter {
     this.timers.push(setInterval(() => this.checkIdle(), IDLE_POLL_MS));
     this.timers.push(setInterval(() => this.flushObservations(), FLUSH_MS));
     this.timers.push(setInterval(() => this.emitState(), 1_000));
+    this.timers.push(setInterval(() => this.checkReminders(), REMINDER_MS));
     if (this.api.signedIn) await this.refreshBootstrap();
   }
 
@@ -161,6 +167,9 @@ export class Agent extends EventEmitter {
     if (!this.boot.policy.tracking.allowDesktop) throw new Error('Desktop tracking is disabled by your organization');
     if (!this.boot.policy_acknowledged) throw new Error('Please review what is monitored before tracking');
     if (this.queue.full) throw new Error('Offline storage is full. Reconnect to the internet to continue tracking.');
+    const st = this.state();
+    const lim = limitAction(this.boot.policy.limits, st.todaySeconds, st.weekSeconds, this.localToday(), null);
+    if (lim?.action === 'stop') throw new Error(`You have reached your ${lim.kind} time limit`);
     if (this.session) await this.stop();
     const now = new Date().toISOString();
     this.session = { id: newId(), projectId, taskId, startedAt: now, seq: 1, state: 'active', baseSeconds: 0, segmentStartedAt: now, lastEvidenceAt: now, note: '' };
@@ -198,7 +207,13 @@ export class Agent extends EventEmitter {
     }
   }
 
-  pause(kind: 'MANUAL' | 'BREAK' | 'IDLE' = 'MANUAL', at = new Date()): void {
+  /** Take a break of one of the organization's break types (or an untyped break). */
+  takeBreak(breakTypeId: string | null): void {
+    if (breakTypeId && !this.boot?.break_types.some((b) => b.id === breakTypeId)) throw new Error('Unknown break type');
+    this.pause('BREAK', new Date(), breakTypeId);
+  }
+
+  pause(kind: 'MANUAL' | 'BREAK' | 'IDLE' = 'MANUAL', at = new Date(), breakTypeId: string | null = null): void {
     const s = this.session;
     if (!s || s.state !== 'active') return;
     this.flushObservations();
@@ -207,7 +222,8 @@ export class Agent extends EventEmitter {
     s.segmentStartedAt = null;
     s.state = 'paused';
     s.seq++;
-    this.enqueue({ type: 'session.pause', session_id: s.id, seq: s.seq, occurred_at: at.toISOString(), kind });
+    this.enqueue({ type: 'session.pause', session_id: s.id, seq: s.seq, occurred_at: at.toISOString(), kind, ...(breakTypeId ? { break_type_id: breakTypeId } : {}) });
+    this.breakTypeId = kind === 'IDLE' ? null : breakTypeId;
     this.stopMonitors();
     this.persistSession();
     this.emitState();
@@ -219,6 +235,7 @@ export class Agent extends EventEmitter {
     s.state = 'active';
     s.segmentStartedAt = at.toISOString();
     s.seq++;
+    this.breakTypeId = null;
     this.enqueue({ type: 'session.resume', session_id: s.id, seq: s.seq, occurred_at: at.toISOString() });
     this.startMonitors();
     this.persistSession();
@@ -290,6 +307,36 @@ export class Agent extends EventEmitter {
     });
     n.on('click', () => void shell.openExternal(`${this.serverUrl}/o/${b.organization.id}/timesheets?date=${due.period_start}`));
     n.show();
+  }
+
+  // ─── Reminders (shifts, limits) ────────────────────────────────────────────
+  private localToday(): string {
+    return new Date().toLocaleDateString('en-CA', this.boot ? { timeZone: this.boot.worker.timezone } : undefined);
+  }
+
+  private checkReminders(): void {
+    const b = this.boot;
+    if (!b) return;
+    const st = this.state();
+    const tracking = st.tracking.state !== 'stopped';
+    const shiftKey = shiftReminder(b.next_shift, tracking, Date.now(), this.store.readJson<string>('shift-reminded'));
+    if (shiftKey) {
+      this.store.writeJson('shift-reminded', shiftKey);
+      const at = new Date(b.next_shift!.starts_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const n = new Notification({ title: `Your shift starts at ${at}`, body: 'Start the timer when you begin work.' });
+      n.on('click', () => this.emit('show'));
+      n.show();
+    }
+    if (st.tracking.state !== 'active') return;
+    const lim = limitAction(b.policy.limits, st.todaySeconds, st.weekSeconds, this.localToday(), this.store.readJson<string>('limit-warned'));
+    if (!lim) return;
+    if (lim.action === 'warn') {
+      this.store.writeJson('limit-warned', lim.key);
+      new Notification({ title: `${Math.max(1, Math.round(lim.remainingSeconds / 60))} minutes left today`, body: `You are close to your ${lim.kind} time limit. The timer stops when it is reached.` }).show();
+    } else {
+      void this.stop();
+      new Notification({ title: 'Tracking stopped: time limit reached', body: `You have reached your ${lim.kind} time limit.` }).show();
+    }
   }
 
   // ─── Monitors ──────────────────────────────────────────────────────────────
@@ -604,6 +651,9 @@ export class Agent extends EventEmitter {
         ? { periodStart: this.boot.timesheet_due.period_start, periodEnd: this.boot.timesheet_due.period_end, status: this.boot.timesheet_due.status, totalSeconds: this.boot.timesheet_due.total_seconds, overdue: this.boot.timesheet_due.overdue }
         : null,
       manualRequests: this.manualRequests,
+      breakTypes: this.boot?.break_types.map((bt) => ({ id: bt.id, name: bt.name, paid: bt.paid, maxMinutes: bt.max_minutes })) ?? [],
+      breakTypeId: s?.state === 'paused' ? this.breakTypeId : null,
+      nextShift: this.boot?.next_shift ? { startsAt: this.boot.next_shift.starts_at, endsAt: this.boot.next_shift.ends_at } : null,
     };
   }
 

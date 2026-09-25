@@ -57,8 +57,8 @@ export async function workerTimezone(tx: Tx, membershipId: string, fallback: str
   return p?.tz ?? fallback;
 }
 
-async function openSegment(tx: Tx, s: Session, kind: SegmentKind, at: Date): Promise<void> {
-  await tx.insert(timeSegments).values({ id: newId(), organizationId: s.organizationId, sessionId: s.id, membershipId: s.membershipId, kind, startedAt: at });
+async function openSegment(tx: Tx, s: Session, kind: SegmentKind, at: Date, breakTypeId: string | null = null): Promise<void> {
+  await tx.insert(timeSegments).values({ id: newId(), organizationId: s.organizationId, sessionId: s.id, membershipId: s.membershipId, kind, startedAt: at, breakTypeId: kind === 'BREAK' ? breakTypeId : null });
 }
 
 /** Close the open segment (if any) at `at`; WORK segments are converted into time entries. */
@@ -124,7 +124,7 @@ export async function applyTrigger(
   tx: Tx,
   s: Session,
   trigger: SessionTrigger,
-  opts: { at: Date; actor: ActorRef; cause?: string; pauseKind?: 'IDLE' | 'BREAK'; seq?: number; openAt?: Date },
+  opts: { at: Date; actor: ActorRef; cause?: string; pauseKind?: 'IDLE' | 'BREAK'; breakTypeId?: string | null; seq?: number; openAt?: Date },
 ): Promise<Session> {
   const r = transition(s.state, trigger, { pauseKind: opts.pauseKind });
   if (r.noop) return s;
@@ -136,11 +136,11 @@ export async function applyTrigger(
       dates = await closeOpenSegment(tx, s, at);
       break;
     case 'open':
-      await openSegment(tx, s, r.segment.kind, opts.openAt ?? at);
+      await openSegment(tx, s, r.segment.kind, opts.openAt ?? at, opts.breakTypeId);
       break;
     case 'close_and_open':
       dates = await closeOpenSegment(tx, s, at);
-      await openSegment(tx, s, r.segment.kind, at);
+      await openSegment(tx, s, r.segment.kind, at, opts.breakTypeId);
       break;
     case 'none':
       break;
@@ -311,12 +311,19 @@ export async function todayAndWeek(tx: Tx, membershipId: string, timezone: strin
 }
 
 export async function limitReached(tx: Tx, membershipId: string, timezone: string, policy: TrackingPolicy, now: Date, weekStart = 1): Promise<'daily' | 'weekly' | null> {
+  return (await limitExceeded(tx, membershipId, timezone, policy, now, weekStart))?.kind ?? null;
+}
+
+/** The limit that has been reached and by how many seconds it was overshot (so a stop can be placed exactly at the limit). */
+export async function limitExceeded(tx: Tx, membershipId: string, timezone: string, policy: TrackingPolicy, now: Date, weekStart = 1): Promise<{ kind: 'daily' | 'weekly'; overBySeconds: number } | null> {
   const { dailySeconds, weeklySeconds } = policy.limits;
   if (dailySeconds == null && weeklySeconds == null) return null;
   const t = await todayAndWeek(tx, membershipId, timezone, weekStart, now);
-  if (dailySeconds != null && t.today >= dailySeconds) return 'daily';
-  if (weeklySeconds != null && t.week >= weeklySeconds) return 'weekly';
-  return null;
+  const hits: Array<{ kind: 'daily' | 'weekly'; overBySeconds: number }> = [];
+  if (dailySeconds != null && t.today >= dailySeconds) hits.push({ kind: 'daily', overBySeconds: t.today - dailySeconds });
+  if (weeklySeconds != null && t.week >= weeklySeconds) hits.push({ kind: 'weekly', overBySeconds: t.week - weeklySeconds });
+  // The limit reached first is the one overshot the most.
+  return hits.sort((a, b) => b.overBySeconds - a.overBySeconds)[0] ?? null;
 }
 
 // ─── Interval removal (idle discard, screenshot delete) ──────────────────────

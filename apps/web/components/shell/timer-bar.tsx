@@ -1,13 +1,14 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Pause, Play, Square } from 'lucide-react';
+import { ChevronDown, Coffee, Pause, Play, Square } from 'lucide-react';
 import type { CurrentTrackingDto } from '@tallywork/contracts';
-import { Button, StatusBadge, Tooltip, cx, fmtClock } from '@tallywork/ui';
+import { Button, Menu, MenuItem, MenuLabel, MenuSeparator, StatusBadge, Tooltip, cx, fmtClock } from '@tallywork/ui';
 import { api, errorMessage, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useToast } from '@tallywork/ui';
 import { ProjectTaskPicker, type PickerValue } from '../project-task-picker';
+import type { BreakTypeItem } from '../settings/break-types-panel';
 
 /** Live elapsed seconds for a session snapshot (server authoritative, ticks locally). */
 export function useLiveSeconds(cur: CurrentTrackingDto | undefined, fetchedAt: number) {
@@ -42,6 +43,7 @@ export function TimerBar() {
   const [sel, setSel] = useState<PickerValue>({ projectId: null, taskId: null });
   const [busy, setBusy] = useState(false);
   const s = cur?.session ?? null;
+  const breakTypes = useOrgQuery<BreakTypeItem[]>('/break-types', { staleTime: 5 * 60_000 }).data ?? [];
 
   useEffect(() => {
     if (s) setSel({ projectId: s.project_id, taskId: s.task_id });
@@ -78,7 +80,30 @@ export function TimerBar() {
       </div>
       {s ? (
         <>
-          {state === 'ACTIVE' && !desktop && (
+          {state === 'ACTIVE' && !desktop && breakTypes.length > 0 && (
+            <Menu
+              align="end"
+              trigger={
+                <Button size="sm" variant="ghost" className="gap-0.5 px-1.5" aria-label="Pause" disabled={busy}>
+                  <Pause className="size-3.5" />
+                  <ChevronDown className="size-3 text-text-muted" />
+                </Button>
+              }
+            >
+              <MenuItem icon={<Pause className="size-3.5" />} onSelect={() => call('pause')}>
+                Pause
+              </MenuItem>
+              <MenuSeparator />
+              <MenuLabel>Take a break</MenuLabel>
+              {breakTypes.map((b) => (
+                <MenuItem key={b.id} icon={<Coffee className="size-3.5" />} onSelect={() => call('pause', { break_type_id: b.id })}>
+                  <span className="flex-1">{b.name}</span>
+                  <span className="tabular text-xs text-text-muted">{[b.paid ? 'Paid' : 'Unpaid', b.max_minutes !== null && `${b.max_minutes} min`].filter(Boolean).join(' · ')}</span>
+                </MenuItem>
+              ))}
+            </Menu>
+          )}
+          {state === 'ACTIVE' && !desktop && breakTypes.length === 0 && (
             <Tooltip content="Pause (break)">
               <Button size="sm" variant="ghost" className="w-8 px-0" aria-label="Pause" onClick={() => call('pause')} disabled={busy}>
                 <Pause className="size-3.5" />

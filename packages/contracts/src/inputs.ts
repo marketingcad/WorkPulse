@@ -62,6 +62,8 @@ export const updateWorkerInput = z.object({
   tracking_enabled: z.boolean().optional(),
   employment_type: z.enum(['EMPLOYEE', 'CONTRACTOR']).optional(),
   weekly_expected_seconds: z.number().int().min(0).max(7 * 24 * 3600).nullable().optional(),
+  /** employment start date; used for pro-rata time-off accruals */
+  start_date: isoDate.nullable().optional(),
 });
 
 export const roleInput = z.object({
@@ -333,3 +335,19 @@ export const savedReportInput = z.object({
   schedule_timezone: timeZone.nullable().optional(),
   recipients: z.array(z.email()).max(20).default([]),
 });
+
+export const breakTypeInput = z.object({
+  name: nonEmpty(60),
+  paid: z.boolean().default(false),
+  max_minutes: z.number().int().min(1).max(24 * 60).nullable().optional(),
+});
+
+const hours = (max: number) => z.number().int().min(3600).max(max * 3600).nullable();
+export const overtimeRulesInput = z.object({
+  /** overtime after this many seconds in one day (null = no daily rule) */
+  daily_threshold_seconds: hours(24),
+  /** overtime after this many regular seconds in one week (null = no weekly rule) */
+  weekly_threshold_seconds: hours(168),
+});
+
+export const pauseInput = z.object({ break_type_id: z.uuid().nullable().optional() }).default({});

@@ -78,6 +78,10 @@ export const timeSegments = pgTable(
     endedAt: tstz(),
     /** set when the segment has been converted into time entries */
     derivedAt: tstz(),
+    /** BREAK segments: the break type chosen by the worker */
+    breakTypeId: uuid(),
+    /** set once the worker was told this break ran past its maximum */
+    alertedAt: tstz(),
   },
   (t) => [
     foreignKey({ columns: [t.organizationId, t.sessionId], foreignColumns: [trackingSessions.organizationId, trackingSessions.id] }).onDelete('cascade'),

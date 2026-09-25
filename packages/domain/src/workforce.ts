@@ -106,3 +106,38 @@ export function requestedHours(dates: string[], isNonWorking: (d: string) => boo
   const days = dates.filter((d) => !isNonWorking(d)).length;
   return halfDay && days === 1 ? hoursPerDay / 2 : days * hoursPerDay;
 }
+
+/**
+ * Share of an accrual period a member is entitled to when they join part-way through it:
+ * 1 when they were a member for the whole period, otherwise the fraction of days remaining
+ * (joining on the last day still earns one day's share). Dates are inclusive ISO dates.
+ */
+export function proRataFactor(periodStart: string, periodEnd: string, joinedOn: string): number {
+  if (joinedOn <= periodStart) return 1;
+  if (joinedOn > periodEnd) return 0;
+  const day = (d: string) => Date.parse(`${d}T00:00:00Z`) / 86400000;
+  const total = day(periodEnd) - day(periodStart) + 1;
+  const remaining = day(periodEnd) - day(joinedOn) + 1;
+  return Math.round((remaining / total) * 10000) / 10000;
+}
+
+/** Hours that expire at the start of a new year when only `carryOverHours` may be carried (null = unlimited). */
+export function carryOverExpiry(balanceHours: number, carryOverHours: number | null): number {
+  if (carryOverHours === null || balanceHours <= carryOverHours) return 0;
+  return Math.round((balanceHours - carryOverHours) * 100) / 100;
+}
+
+export interface LimitStatus {
+  kind: 'daily' | 'weekly';
+  limitSeconds: number;
+  /** seconds left before the limit (negative = over it) */
+  remainingSeconds: number;
+}
+
+/** The limit closest to being reached, or null when no limit applies. */
+export function nearestLimit(limits: { dailySeconds: number | null; weeklySeconds: number | null }, todaySeconds: number, weekSeconds: number): LimitStatus | null {
+  const c: LimitStatus[] = [];
+  if (limits.dailySeconds != null) c.push({ kind: 'daily', limitSeconds: limits.dailySeconds, remainingSeconds: limits.dailySeconds - todaySeconds });
+  if (limits.weeklySeconds != null) c.push({ kind: 'weekly', limitSeconds: limits.weeklySeconds, remainingSeconds: limits.weeklySeconds - weekSeconds });
+  return c.sort((a, b) => a.remainingSeconds - b.remainingSeconds)[0] ?? null;
+}

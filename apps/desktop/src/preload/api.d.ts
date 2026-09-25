@@ -16,6 +16,7 @@ declare global {
       resolveIdle(choice: 'KEPT' | 'DISCARDED' | 'REASSIGNED', projectId?: string, taskId?: string | null): Promise<void>;
       acknowledgePolicy(): Promise<void>;
       resolveRecovery(resume: boolean): Promise<void>;
+      takeBreak(breakTypeId: string | null): Promise<void>;
       requestManualTime(r: { projectId: string; taskId: string | null; startedAt: string; endedAt: string; reason: string; note?: string }): Promise<void>;
       openWeb(path: string): Promise<void>;
       quit(): Promise<void>;

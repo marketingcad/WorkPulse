@@ -147,6 +147,7 @@ export async function listWorkers(x: Ctx, opts: { includeRemoved?: boolean } = {
     tracking_enabled: p?.trackingEnabled ?? false,
     employment_type: p?.employmentType ?? 'EMPLOYEE',
     weekly_expected_seconds: p?.weeklyExpectedSeconds ?? null,
+    start_date: p?.startDate ?? null,
     team_ids: tm.filter((t) => t.membershipId === m.id).map((t) => t.teamId),
     created_at: m.createdAt.toISOString(),
   }));
@@ -165,7 +166,7 @@ export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<
   const admin = !!x.actor.grants['members:manage'];
   // Workers may only change their own timezone/title.
   if (!admin) {
-    const allowedSelf = isSelf && input.role_id === undefined && input.status === undefined && input.tracking_enabled === undefined && input.employment_type === undefined && input.weekly_expected_seconds === undefined;
+    const allowedSelf = isSelf && input.role_id === undefined && input.status === undefined && input.tracking_enabled === undefined && input.employment_type === undefined && input.weekly_expected_seconds === undefined && input.start_date === undefined;
     if (!allowedSelf) throw forbidden();
   }
   if (input.role_id !== undefined || input.status !== undefined) {
@@ -185,6 +186,7 @@ export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<
   if (input.tracking_enabled !== undefined) profilePatch.trackingEnabled = input.tracking_enabled;
   if (input.employment_type !== undefined) profilePatch.employmentType = input.employment_type;
   if (input.weekly_expected_seconds !== undefined) profilePatch.weeklyExpectedSeconds = input.weekly_expected_seconds;
+  if (input.start_date !== undefined) profilePatch.startDate = input.start_date;
   if (Object.keys(profilePatch).length) {
     await x.tx
       .insert(workerProfiles)

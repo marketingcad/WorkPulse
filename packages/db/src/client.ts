@@ -68,6 +68,10 @@ export function createDb(url: string, opts: { runAsAppRole?: boolean } = {}): Db
   }
 
   const pool = new pg.Pool({ connectionString: url, max: 10, idleTimeoutMillis: 5_000 });
+  // Poolers (Supabase Supavisor, Neon) may close idle connections. pg reports that as an
+  // 'error' event on the pool; without a listener Node crashes the process. The pool
+  // already discards the broken client, so logging is enough.
+  pool.on('error', (e) => console.warn(JSON.stringify({ level: 'warn', msg: 'idle database connection closed', error: e.message })));
   if (runAsAppRole) {
     pool.on('connect', (c) => {
       // Fail loudly (connection error) rather than silently running with bypass rights.

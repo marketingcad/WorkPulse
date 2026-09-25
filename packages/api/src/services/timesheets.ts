@@ -52,6 +52,7 @@ import { effectivePolicy } from './policies';
 import { narrowMemberships } from './scope';
 import { lockWorker, markTimeChanged, validateTrackTarget, workerTimezone, type ActorRef } from './tracking';
 import { memberNames } from './timer';
+import { accrueForTimesheet } from './operations';
 
 function ref(x: Ctx): ActorRef {
   const a = actorRef(x);
@@ -550,6 +551,7 @@ export async function decideTimesheet(x: Ctx, timesheetId: string, action: 'APPR
     await x.tx.update(billingEntries).set({ voidedAt: new Date() }).where(and(eq(billingEntries.timesheetId, ts.id), isNull(billingEntries.voidedAt)));
   }
   if (action === 'APPROVE') await createBillingEntries(x, ts);
+  if (action === 'APPROVE' || action === 'REOPEN') await accrueForTimesheet(x.tx, x.org.id, ts, action);
   await x.tx.update(timesheets).set({ status: to, decidedAt: new Date(), decidedBy: x.actor.membershipId, comment, version: ts.version + 1, updatedAt: new Date() }).where(eq(timesheets.id, ts.id));
   if (to === 'DRAFT' || to === 'REJECTED') await setEntriesLocked(x.tx, ts.membershipId, ts.periodStart, ts.periodEnd, false);
   await recordAction(x, ts, action, to, comment);

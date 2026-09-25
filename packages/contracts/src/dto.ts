@@ -41,6 +41,7 @@ export interface WorkerDto {
   tracking_enabled: boolean;
   employment_type: string;
   weekly_expected_seconds: number | null;
+  start_date: string | null;
   team_ids: string[];
   created_at: string;
 }
@@ -303,6 +304,9 @@ export interface AgentBootstrapDto {
   week_seconds: number;
   /** A timesheet the worker should submit: the last period if still open, or the current one on its last day. */
   timesheet_due: TimesheetDueDto | null;
+  /** current or next shift (today/tomorrow) for reminders */
+  next_shift: { starts_at: string; ends_at: string } | null;
+  break_types: Array<{ id: string; name: string; paid: boolean; max_minutes: number | null }>;
   server_time: string;
   min_agent_version: string;
 }

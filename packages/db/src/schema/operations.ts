@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, jsonb, numeric, pgTable, primaryKey, text, unique, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, numeric, pgTable, primaryKey, text, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import type { AccrualPolicy, AttendanceStatus, OvertimeRules } from '@tallywork/domain';
 import { orgId, pk, timestamps, tstz } from './_helpers';
 
@@ -139,3 +139,33 @@ export const overtimeRuleSets = pgTable('overtime_rule_sets', {
   rules: jsonb().$type<OvertimeRules>().notNull(),
   updatedAt: tstz().notNull().default(sql`now()`),
 });
+
+/** Break types an organization offers (e.g. Lunch, unpaid, 60 min). */
+export const breakTypes = pgTable(
+  'break_types',
+  {
+    id: pk(),
+    organizationId: orgId(),
+    name: text().notNull(),
+    paid: boolean().notNull().default(false),
+    /** a warning is sent when a break runs longer than this (null = no maximum) */
+    maxMinutes: integer(),
+    archivedAt: tstz(),
+    ...timestamps,
+  },
+  (t) => [index().on(t.organizationId)],
+);
+
+/** One row per alert sent about a shift, so each alert goes out once. */
+export const shiftAlerts = pgTable(
+  'shift_alerts',
+  {
+    id: pk(),
+    organizationId: orgId(),
+    membershipId: uuid().notNull(),
+    shiftStart: tstz().notNull(),
+    kind: text().$type<'NOT_STARTED'>().notNull(),
+    createdAt: tstz().notNull().default(sql`now()`),
+  },
+  (t) => [uniqueIndex('shift_alerts_once_uq').on(t.membershipId, t.shiftStart, t.kind)],
+);

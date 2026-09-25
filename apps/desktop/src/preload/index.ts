@@ -21,6 +21,7 @@ const api = {
   stop: () => call('timer:stop'),
   pause: () => call('timer:pause'),
   resume: () => call('timer:resume'),
+  takeBreak: (breakTypeId: string | null) => call('timer:break', { breakTypeId }),
   setNote: (note: string) => call('notes:set', { note }),
   resolveIdle: (choice: 'KEPT' | 'DISCARDED' | 'REASSIGNED', projectId?: string, taskId?: string | null) => call('idle:resolve', { choice, projectId, taskId }),
   acknowledgePolicy: () => call('policy:ack'),

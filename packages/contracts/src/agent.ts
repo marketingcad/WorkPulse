@@ -18,7 +18,7 @@ const seq = z.number().int().min(1).max(2_000_000_000);
 
 export const agentEvent = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('session.start'), seq, project_id: id, task_id: id.nullable().optional(), note: z.string().max(1000).optional() }),
-  z.object({ ...base, type: z.literal('session.pause'), seq, kind: z.enum(['IDLE', 'BREAK', 'MANUAL']).default('MANUAL') }),
+  z.object({ ...base, type: z.literal('session.pause'), seq, kind: z.enum(['IDLE', 'BREAK', 'MANUAL']).default('MANUAL'), break_type_id: id.nullable().optional() }),
   z.object({ ...base, type: z.literal('session.resume'), seq }),
   z.object({ ...base, type: z.literal('session.stop'), seq }),
   z.object({ ...base, type: z.literal('session.interrupted'), seq, last_evidence_at: isoDateTime, cause: z.enum(['sleep', 'shutdown', 'crash', 'lock', 'network']) }),

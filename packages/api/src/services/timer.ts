@@ -20,6 +20,7 @@ import { audit } from './events';
 import { effectivePolicy } from './policies';
 import { narrowMemberships } from './scope';
 import { applyTrigger, liveSession, lockWorker, recentSessions, startSession, toSessionDtos, todayAndWeek, workerTimezone, type ActorRef } from './tracking';
+import { assertBreakType } from './operations';
 import { assignmentsFor } from './work';
 
 function ref(x: Ctx): ActorRef {
@@ -79,9 +80,10 @@ export async function webStop(x: Ctx) {
   return currentTracking(x);
 }
 
-export async function webPause(x: Ctx) {
+export async function webPause(x: Ctx, input: { breakTypeId?: string | null } = {}) {
   const s = await myLive(x);
-  await applyTrigger(x.tx, s, 'PAUSE', { at: x.deps.now(), actor: ref(x), pauseKind: 'BREAK', cause: 'user_pause' });
+  const breakTypeId = await assertBreakType(x.tx, input.breakTypeId);
+  await applyTrigger(x.tx, s, 'PAUSE', { at: x.deps.now(), actor: ref(x), pauseKind: 'BREAK', breakTypeId, cause: 'user_pause' });
   return currentTracking(x);
 }
 
@@ -138,7 +140,7 @@ export async function getSession(x: Ctx, sessionId: string) {
     ...dto!,
     worker_name: names.get(s.membershipId) ?? '',
     transitions: transitions.map((t) => ({ from: t.fromState, to: t.toState, trigger: t.trigger, cause: t.cause, actor_type: t.actorType, occurred_at: t.occurredAt.toISOString() })),
-    segments: segments.map((g) => ({ kind: g.kind, started_at: g.startedAt.toISOString(), ended_at: g.endedAt?.toISOString() ?? null })),
+    segments: segments.map((g) => ({ kind: g.kind, break_type_id: g.breakTypeId, started_at: g.startedAt.toISOString(), ended_at: g.endedAt?.toISOString() ?? null })),
   };
 }
 

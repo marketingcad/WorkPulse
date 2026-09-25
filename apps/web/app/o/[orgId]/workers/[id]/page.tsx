@@ -153,6 +153,7 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
             <Stat label="Timezone" value={w.timezone} />
             <Stat label="Employment" value={w.employment_type === 'CONTRACTOR' ? 'Contractor' : 'Employee'} />
             <Stat label="Expected per week" value={w.weekly_expected_seconds === null ? 'Not set' : org.fmtDuration(w.weekly_expected_seconds)} />
+            <Stat label="Start date" value={w.start_date ? fmtDate(w.start_date) : 'Not set'} />
             <Stat
               label="Time tracking"
               value={
@@ -257,6 +258,7 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
     tracking_enabled: w.tracking_enabled,
     employment_type: w.employment_type,
     weekly: secondsToHours(w.weekly_expected_seconds),
+    start_date: w.start_date ?? '',
   });
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -276,6 +278,7 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
       body.tracking_enabled = f.tracking_enabled;
       body.employment_type = f.employment_type;
       body.weekly_expected_seconds = hoursToSeconds(f.weekly);
+      body.start_date = f.start_date || null;
       if (!w.is_owner && f.role_id !== w.role_id) body.role_id = f.role_id;
     }
     try {
@@ -331,6 +334,9 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
           </Field>
           <Field label="Expected hours per week" htmlFor="wk-hours" hint="Used for timesheet variance. Leave empty for none." error={err?.field('weekly_expected_seconds')}>
             <Input id="wk-hours" type="number" min={0} max={168} step={0.5} inputMode="decimal" className="tabular" value={f.weekly} onChange={(e) => setF({ ...f, weekly: e.target.value })} />
+          </Field>
+          <Field label="Start date" htmlFor="wk-start" hint="Employment start. Time-off accruals are pro-rated from it." error={err?.field('start_date')}>
+            <Input id="wk-start" type="date" value={f.start_date} onChange={(e) => setF({ ...f, start_date: e.target.value })} />
           </Field>
           <div className="sm:col-span-2">
             <Switch checked={f.tracking_enabled} onCheckedChange={(v) => setF({ ...f, tracking_enabled: v })} label="Time tracking" description="When off, this member cannot start timers on the web or desktop app." />

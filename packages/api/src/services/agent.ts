@@ -54,6 +54,7 @@ import { assignmentsFor } from './work';
 import { loadActor, loadOrg } from '../middleware/tenant';
 import type { Ctx } from './ctx';
 import { requestManualTime, timesheetDue } from './timesheets';
+import { assertBreakType, listBreakTypes, nextShift } from './operations';
 
 const ACCESS_TTL_SECONDS = 10 * 60;
 const REFRESH_TTL_DAYS = 30;
@@ -213,6 +214,8 @@ export async function bootstrap(a: AgentCtx): Promise<AgentBootstrapDto> {
     today_seconds: tw.today,
     week_seconds: tw.week,
     timesheet_due: await timesheetDue(await memberCtx(a), a.membershipId, localDate(now, tz)),
+    next_shift: await nextShift(tx, a.membershipId, tz, now),
+    break_types: await listBreakTypes({ tx }),
     server_time: now.toISOString(),
     min_agent_version: a.deps.config.minAgentVersion,
   };
@@ -335,7 +338,9 @@ async function processEvent(a: AgentCtx, ev: AgentEvent, correct: (iso: string) 
         actor,
         seq: ev.seq,
         cause: ev.type === 'session.interrupted' ? ev.cause : undefined,
-        pauseKind: ev.type === 'session.pause' && ev.kind === 'BREAK' ? 'BREAK' : 'IDLE',
+        // Only an idle pause is idle time; a manual pause is a break (as on the web).
+        pauseKind: ev.type === 'session.pause' && ev.kind === 'IDLE' ? 'IDLE' : 'BREAK',
+        breakTypeId: ev.type === 'session.pause' && ev.kind !== 'IDLE' ? await assertBreakType(a.tx, ev.break_type_id) : null,
       });
       return;
     }

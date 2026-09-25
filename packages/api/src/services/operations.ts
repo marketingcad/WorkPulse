@@ -1,10 +1,15 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  breakTypes,
   holidays,
   memberships,
+  overtimeRuleSets,
+  shiftAlerts,
   shifts,
   timeEntries,
+  timeSegments,
+  trackingSessions,
   timeOffLedger,
   timeOffPolicies,
   timeOffPolicyMembers,
@@ -14,8 +19,11 @@ import {
   type Tx,
 } from '@tallywork/db';
 import {
+  DEFAULT_OVERTIME,
   accrualCredit,
+  addDaysToDate,
   businessRule,
+  carryOverExpiry,
   can,
   classifyAttendance,
   dayOfWeek,
@@ -25,16 +33,20 @@ import {
   localDate,
   newId,
   notFound,
+  proRataFactor,
   requestedHours,
+  splitAtLocalMidnight,
   validation,
   zonedWallTimeToUtc,
   type AccrualPolicy,
   type AttendanceStatus,
+  type OvertimeRules,
 } from '@tallywork/domain';
-import type { holidayInput, scheduleInput, timeOffAdjustInput, timeOffPolicyInput, timeOffRequestInput } from '@tallywork/contracts';
+import type { breakTypeInput, holidayInput, overtimeRulesInput, scheduleInput, timeOffAdjustInput, timeOffPolicyInput, timeOffRequestInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
 import { audit, emitFrom } from './events';
+import { approversFor, notify } from './notify';
 import { narrowMemberships } from './scope';
 import { memberNames } from './timer';
 
@@ -161,6 +173,18 @@ export async function computeAttendance(tx: Tx, orgId: string, lateGraceMinutes:
     .from(timeOffRequests)
     .where(and(inArray(timeOffRequests.membershipId, membershipIds), eq(timeOffRequests.status, 'APPROVED'), lte(timeOffRequests.startDate, to), gte(timeOffRequests.endDate, from)));
   const hols = new Set((await tx.select({ d: holidays.date }).from(holidays).where(and(gte(holidays.date, from), lte(holidays.date, to)))).map((h) => h.d));
+  // Time entries only exist once a work segment closes, so a timer running right now counts too.
+  const running = await tx
+    .select({ m: timeSegments.membershipId, start: timeSegments.startedAt, tz: trackingSessions.timezone })
+    .from(timeSegments)
+    .innerJoin(trackingSessions, eq(trackingSessions.id, timeSegments.sessionId))
+    .where(and(inArray(timeSegments.membershipId, membershipIds), isNull(timeSegments.endedAt), eq(timeSegments.kind, 'WORK')));
+  for (const r of running) {
+    if (now <= r.start) continue;
+    for (const pc of splitAtLocalMidnight({ start: r.start, end: now }, r.tz)) {
+      if (pc.localDate >= from && pc.localDate <= to) entries.push({ m: r.m, d: pc.localDate, s: pc.start, e: pc.end, dur: Math.round((pc.end.getTime() - pc.start.getTime()) / 1000) });
+    }
+  }
   const out: Omit<AttendanceRow, 'worker_name'>[] = [];
   for (const m of membershipIds) {
     for (const date of eachDate(from, to)) {
@@ -399,29 +423,80 @@ export async function adjustBalance(x: Ctx, input: z.infer<typeof timeOffAdjustI
   return balances(x, input.membership_id);
 }
 
-/** Daily job: grant monthly/annual accruals (idempotent per period). */
-export async function runAccruals(tx: Tx, deps: Deps, orgId: string, today: string): Promise<number> {
-  const ps = await tx.select().from(timeOffPolicies).where(and(isNull(timeOffPolicies.archivedAt), inArray(sql`${timeOffPolicies.accrual}->>'type'`, ['monthly', 'annual'])));
-  let credited = 0;
+/** Members a policy applies to, with the date they joined (profile start date, else membership creation). */
+async function policyMembers(tx: Tx, p: typeof timeOffPolicies.$inferSelect, tz: string) {
+  const rows = await tx
+    .select({ id: memberships.id, createdAt: memberships.createdAt, startDate: workerProfiles.startDate })
+    .from(memberships)
+    .leftJoin(workerProfiles, eq(workerProfiles.membershipId, memberships.id))
+    .where(eq(memberships.status, 'ACTIVE'));
+  const allowed = p.appliesToAll ? null : new Set((await tx.select({ id: timeOffPolicyMembers.membershipId }).from(timeOffPolicyMembers).where(eq(timeOffPolicyMembers.policyId, p.id))).map((m) => m.id));
+  return rows.filter((r) => !allowed || allowed.has(r.id)).map((r) => ({ id: r.id, joinedOn: r.startDate ?? localDate(r.createdAt, tz) }));
+}
+
+async function ledgerOf(tx: Tx, policyId: string, membershipId: string) {
+  const rows = await tx.select().from(timeOffLedger).where(and(eq(timeOffLedger.policyId, policyId), eq(timeOffLedger.membershipId, membershipId)));
+  return { rows, balance: ledgerBalance(rows.map((l) => ({ hours: l.hours, kind: l.kind }))) };
+}
+
+/**
+ * Daily job. Idempotent per period, and catches up if a run was missed:
+ * - at the start of each year, balances above the carry-over cap expire (CARRYOVER_EXPIRY)
+ * - monthly/annual policies credit once per period; members who joined mid-period get a pro-rata share
+ */
+export async function runAccruals(tx: Tx, deps: Deps, orgId: string, today: string, tz = 'UTC'): Promise<number> {
+  const ps = await tx.select().from(timeOffPolicies).where(isNull(timeOffPolicies.archivedAt));
+  const yearStart = `${today.slice(0, 4)}-01-01`;
+  let written = 0;
   for (const p of ps) {
-    const periodStart = p.accrual.type === 'monthly' ? `${today.slice(0, 8)}01` : `${today.slice(0, 4)}-01-01`;
-    if (today !== periodStart) continue;
-    const members = p.appliesToAll
-      ? (await tx.select({ id: memberships.id }).from(memberships).where(eq(memberships.status, 'ACTIVE'))).map((m) => m.id)
-      : (await tx.select({ id: timeOffPolicyMembers.membershipId }).from(timeOffPolicyMembers).where(eq(timeOffPolicyMembers.policyId, p.id))).map((m) => m.id);
-    for (const m of members) {
-      const [already] = await tx.select({ id: timeOffLedger.id }).from(timeOffLedger).where(and(eq(timeOffLedger.policyId, p.id), eq(timeOffLedger.membershipId, m), eq(timeOffLedger.kind, 'ACCRUAL'), eq(timeOffLedger.effectiveDate, periodStart))).limit(1);
-      if (already) continue;
-      const ledger = await tx.select().from(timeOffLedger).where(and(eq(timeOffLedger.policyId, p.id), eq(timeOffLedger.membershipId, m)));
-      const credit = accrualCredit(p.accrual, ledgerBalance(ledger.map((l) => ({ hours: l.hours, kind: l.kind }))));
-      if (credit > 0) {
-        await tx.insert(timeOffLedger).values({ id: newId(), organizationId: orgId, policyId: p.id, membershipId: m, hours: credit, kind: 'ACCRUAL', effectiveDate: periodStart });
-        credited++;
+    if (p.accrual.type === 'none') continue;
+    const periodic = p.accrual.type === 'monthly' || p.accrual.type === 'annual';
+    const periodStart = p.accrual.type === 'monthly' ? `${today.slice(0, 8)}01` : yearStart;
+    const periodEnd = p.accrual.type === 'monthly' ? addDaysToDate(`${addDaysToDate(periodStart, 32).slice(0, 8)}01`, -1) : `${today.slice(0, 4)}-12-31`;
+    for (const m of await policyMembers(tx, p, tz)) {
+      let { rows, balance } = await ledgerOf(tx, p.id, m.id);
+      // Carry-over first, so this year's credit is not what expires.
+      if (p.accrual.carryOverHours !== null && m.joinedOn < yearStart && !rows.some((l) => l.kind === 'CARRYOVER_EXPIRY' && l.effectiveDate === yearStart)) {
+        const prior = ledgerBalance(rows.filter((l) => l.effectiveDate < yearStart).map((l) => ({ hours: l.hours, kind: l.kind })));
+        const expire = carryOverExpiry(prior, p.accrual.carryOverHours);
+        if (expire > 0) {
+          await tx.insert(timeOffLedger).values({ id: newId(), organizationId: orgId, policyId: p.id, membershipId: m.id, hours: -expire, kind: 'CARRYOVER_EXPIRY', note: `Above the ${p.accrual.carryOverHours}h carry-over limit`, effectiveDate: yearStart });
+          balance -= expire;
+          written++;
+        }
+      }
+      if (!periodic || m.joinedOn > today) continue;
+      if (rows.some((l) => l.kind === 'ACCRUAL' && l.effectiveDate === periodStart && !l.requestId)) continue;
+      const factor = proRataFactor(periodStart, periodEnd, m.joinedOn);
+      const credit = Math.round(accrualCredit({ ...p.accrual, maxBalanceHours: null }, balance) * factor * 100) / 100;
+      const capped = p.accrual.maxBalanceHours === null ? credit : Math.max(0, Math.min(credit, p.accrual.maxBalanceHours - balance));
+      if (capped > 0) {
+        await tx.insert(timeOffLedger).values({ id: newId(), organizationId: orgId, policyId: p.id, membershipId: m.id, hours: Math.round(capped * 100) / 100, kind: 'ACCRUAL', note: factor < 1 ? `Pro-rata (${Math.round(factor * 100)}%)` : null, effectiveDate: periodStart });
+        written++;
       }
     }
   }
   void deps;
-  return credited;
+  return written;
+}
+
+/**
+ * Per-hour-worked accrual on timesheet approval (credited once per timesheet), and its
+ * reversal when the timesheet is reopened. The ledger row references the timesheet id.
+ */
+export async function accrueForTimesheet(tx: Tx, orgId: string, t: { id: string; membershipId: string; periodEnd: string; totalSeconds: number }, action: 'APPROVE' | 'REOPEN') {
+  const ps = (await policiesForMember(tx, t.membershipId)).filter((p) => p.accrual.type === 'per_hour_worked');
+  for (const p of ps) {
+    const { rows, balance } = await ledgerOf(tx, p.id, t.membershipId);
+    const net = Math.round(rows.filter((l) => l.requestId === t.id).reduce((sum, l) => sum + l.hours, 0) * 100) / 100;
+    if (action === 'REOPEN') {
+      if (net > 0) await tx.insert(timeOffLedger).values({ id: newId(), organizationId: orgId, policyId: p.id, membershipId: t.membershipId, hours: -net, kind: 'REVERSAL', requestId: t.id, note: 'Timesheet reopened', effectiveDate: t.periodEnd });
+      continue;
+    }
+    if (net > 0) continue;
+    const credit = accrualCredit(p.accrual, balance, t.totalSeconds / 3600);
+    if (credit > 0) await tx.insert(timeOffLedger).values({ id: newId(), organizationId: orgId, policyId: p.id, membershipId: t.membershipId, hours: credit, kind: 'ACCRUAL', requestId: t.id, note: 'Hours worked (approved timesheet)', effectiveDate: t.periodEnd });
+  }
 }
 
 export async function archiveTimeOffPolicy(x: Ctx, id: string) {
@@ -429,4 +504,113 @@ export async function archiveTimeOffPolicy(x: Ctx, id: string) {
   const r = await x.tx.update(timeOffPolicies).set({ archivedAt: new Date() }).where(eq(timeOffPolicies.id, id)).returning({ id: timeOffPolicies.id });
   if (!r.length) throw notFound('time_off_policy');
   await audit(x, { action: 'time_off_policy.archived', targetType: 'time_off_policy', targetId: id });
+}
+
+// ─── Break types ─────────────────────────────────────────────────────────────
+export async function listBreakTypes(x: Pick<Ctx, 'tx'>) {
+  const rows = await x.tx.select().from(breakTypes).where(isNull(breakTypes.archivedAt)).orderBy(asc(breakTypes.name));
+  return rows.map((b) => ({ id: b.id, name: b.name, paid: b.paid, max_minutes: b.maxMinutes }));
+}
+
+export async function upsertBreakType(x: Ctx, id: string | null, input: z.infer<typeof breakTypeInput>) {
+  if (!x.actor.grants['org:update']) throw forbidden();
+  const values = { name: input.name, paid: input.paid, maxMinutes: input.max_minutes ?? null };
+  let bid = id;
+  if (bid) {
+    const r = await x.tx.update(breakTypes).set({ ...values, updatedAt: new Date() }).where(and(eq(breakTypes.id, bid), isNull(breakTypes.archivedAt))).returning({ id: breakTypes.id });
+    if (!r.length) throw notFound('break_type');
+  } else {
+    bid = newId();
+    await x.tx.insert(breakTypes).values({ id: bid, organizationId: x.org.id, ...values });
+  }
+  await audit(x, { action: id ? 'break_type.updated' : 'break_type.created', targetType: 'break_type', targetId: bid, after: input });
+  return (await listBreakTypes(x)).find((b) => b.id === bid)!;
+}
+
+export async function archiveBreakType(x: Ctx, id: string) {
+  if (!x.actor.grants['org:update']) throw forbidden();
+  const r = await x.tx.update(breakTypes).set({ archivedAt: new Date() }).where(and(eq(breakTypes.id, id), isNull(breakTypes.archivedAt))).returning({ id: breakTypes.id });
+  if (!r.length) throw notFound('break_type');
+  await audit(x, { action: 'break_type.archived', targetType: 'break_type', targetId: id });
+}
+
+/** A break type the worker may use, or a 404 (archived or another organization's). */
+export async function assertBreakType(tx: Tx, id: string | null | undefined): Promise<string | null> {
+  if (!id) return null;
+  const [b] = await tx.select({ id: breakTypes.id }).from(breakTypes).where(and(eq(breakTypes.id, id), isNull(breakTypes.archivedAt)));
+  if (!b) throw notFound('break_type');
+  return b.id;
+}
+
+/** Tell workers (once per break) when a break runs past its type's maximum. */
+export async function alertLongBreaks(tx: Tx, deps: Deps, orgId: string, now: Date): Promise<number> {
+  const open = await tx
+    .select({ seg: timeSegments, bt: breakTypes })
+    .from(timeSegments)
+    .innerJoin(breakTypes, eq(breakTypes.id, timeSegments.breakTypeId))
+    .where(and(eq(timeSegments.kind, 'BREAK'), isNull(timeSegments.endedAt), isNull(timeSegments.alertedAt), sql`${breakTypes.maxMinutes} is not null`));
+  let n = 0;
+  for (const { seg, bt } of open) {
+    if (now.getTime() - seg.startedAt.getTime() <= bt.maxMinutes! * 60_000) continue;
+    await tx.update(timeSegments).set({ alertedAt: now }).where(eq(timeSegments.id, seg.id));
+    await notify(tx, deps, orgId, [seg.membershipId], { type: 'break.overrun', title: `Your ${bt.name.toLowerCase()} break is over ${bt.maxMinutes} minutes`, body: 'Resume your timer when you are back.', link: '/', payload: { segment_id: seg.id } });
+    n++;
+  }
+  return n;
+}
+
+// ─── Overtime rules ──────────────────────────────────────────────────────────
+export async function getOvertimeRules(x: Ctx): Promise<OvertimeRules> {
+  const [r] = await x.tx.select().from(overtimeRuleSets);
+  return r?.rules ?? DEFAULT_OVERTIME;
+}
+
+export async function setOvertimeRules(x: Ctx, input: z.infer<typeof overtimeRulesInput>): Promise<OvertimeRules> {
+  if (!x.actor.grants['org:update']) throw forbidden();
+  const before = await getOvertimeRules(x);
+  const rules: OvertimeRules = { dailyThresholdSeconds: input.daily_threshold_seconds, weeklyThresholdSeconds: input.weekly_threshold_seconds };
+  await x.tx.insert(overtimeRuleSets).values({ organizationId: x.org.id, rules }).onConflictDoUpdate({ target: overtimeRuleSets.organizationId, set: { rules, updatedAt: new Date() } });
+  await audit(x, { action: 'overtime_rules.updated', targetType: 'organization', targetId: x.org.id, before, after: rules });
+  return rules;
+}
+
+// ─── Shift alerts & reminders ────────────────────────────────────────────────
+/**
+ * Every minute: when a scheduled shift started more than the grace period ago and the worker
+ * has not started tracking (and is not on leave or a holiday), tell the worker and their
+ * managers, once per shift. Only shifts that started within the last two hours are checked.
+ */
+export async function runShiftAlerts(tx: Tx, deps: Deps, orgId: string, tz: string, graceMinutes: number, now: Date): Promise<number> {
+  const today = localDate(now, tz);
+  const members = (await tx.select({ id: memberships.id }).from(memberships).innerJoin(workerProfiles, eq(workerProfiles.membershipId, memberships.id)).where(and(eq(memberships.status, 'ACTIVE'), eq(workerProfiles.trackingEnabled, true)))).map((m) => m.id);
+  if (!members.length) return 0;
+  const from = addDaysToDate(today, -1);
+  const due = (await computeShifts(tx, members, from, today)).filter((sh) => {
+    const late = now.getTime() - Date.parse(sh.starts_at);
+    return late > graceMinutes * 60_000 && late < 2 * 3600_000 && now.getTime() < Date.parse(sh.ends_at);
+  });
+  if (!due.length) return 0;
+  const rows = await computeAttendance(tx, orgId, graceMinutes, [...new Set(due.map((d) => d.membership_id))], from, today, now);
+  let sent = 0;
+  for (const sh of due) {
+    const a = rows.find((r) => r.membership_id === sh.membership_id && r.date === sh.date);
+    if (a && a.status !== 'ABSENT') continue; // tracking started, on leave, or a holiday
+    const inserted = await tx.insert(shiftAlerts).values({ id: newId(), organizationId: orgId, membershipId: sh.membership_id, shiftStart: new Date(sh.starts_at), kind: 'NOT_STARTED' }).onConflictDoNothing().returning({ id: shiftAlerts.id });
+    if (!inserted.length) continue;
+    const name = (await memberNames({ tx }, [sh.membership_id])).get(sh.membership_id);
+    const at = new Date(sh.starts_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz });
+    await notify(tx, deps, orgId, [sh.membership_id], { type: 'shift.not_started', title: `Your shift started at ${at}`, body: 'Start your timer, or ask your manager to update your schedule.', link: '/' });
+    const managers = (await approversFor(tx, orgId, sh.membership_id, 'attendance:read')).filter((id) => id !== sh.membership_id);
+    await notify(tx, deps, orgId, managers, { type: 'shift.not_started', title: `${name ?? 'A team member'} has not started their ${at} shift`, link: '/attendance', payload: { membership_id: sh.membership_id, shift_start: sh.starts_at } });
+    sent++;
+  }
+  return sent;
+}
+
+/** The worker's current or next shift today/tomorrow, for desktop reminders. */
+export async function nextShift(tx: Tx, membershipId: string, tz: string, now: Date): Promise<{ starts_at: string; ends_at: string } | null> {
+  const today = localDate(now, tz);
+  const list = await computeShifts(tx, [membershipId], today, addDaysToDate(today, 1));
+  const s = list.filter((sh) => Date.parse(sh.ends_at) > now.getTime()).sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))[0];
+  return s ? { starts_at: s.starts_at, ends_at: s.ends_at } : null;
 }

@@ -190,6 +190,10 @@ function Timer({ s, onSettings, onMonitoring, onManual }: { s: AgentState; onSet
   const [q, setQ] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState(t.note);
+  const [breakMenu, setBreakMenu] = useState(false);
+  const currentBreak = s.breakTypes.find((b) => b.id === s.breakTypeId);
+  const shiftToday = s.nextShift && new Date(s.nextShift.startsAt).toDateString() === new Date(now).toDateString() ? s.nextShift : null;
+  const hm = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const selectedProject = s.assignments.find((a) => a.project_id === t.projectId);
   const selectedTask = selectedProject?.tasks.find((x) => x.id === t.taskId);
 
@@ -237,8 +241,13 @@ function Timer({ s, onSettings, onMonitoring, onManual }: { s: AgentState; onSet
         <div className="flex items-center justify-between text-xs">
           <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-semibold ${t.state === 'active' ? 'bg-success-soft text-success' : t.state === 'paused' ? 'bg-warning-soft text-warning' : 'bg-surface-muted text-text-muted'}`}>
             <span className={`size-1.5 rounded-full ${t.state === 'active' ? 'animate-pulse bg-success' : t.state === 'paused' ? 'bg-warning' : 'bg-text-faint'}`} />
-            {t.state === 'active' ? 'Tracking' : t.state === 'paused' ? 'Paused' : 'Not tracking'}
+            {t.state === 'active' ? 'Tracking' : t.state === 'paused' ? (currentBreak ? `On break · ${currentBreak.name}` : 'Paused') : 'Not tracking'}
           </span>
+          {shiftToday && t.state === 'stopped' && (
+            <span className="text-text-muted" title="Your scheduled shift">
+              Shift {hm(shiftToday.startsAt)}–{hm(shiftToday.endsAt)}
+            </span>
+          )}
           {!s.sync.online ? (
             <span className="inline-flex items-center gap-1 text-warning" title="Your time is saved on this computer and will sync when you are back online.">
               <CloudOff className="size-3.5" /> Offline · {s.sync.queued} saved
@@ -262,9 +271,36 @@ function Timer({ s, onSettings, onMonitoring, onManual }: { s: AgentState; onSet
           {tracking ? (
             <>
               {t.state === 'active' ? (
-                <button onClick={() => run(bridge.pause)} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-sm border border-border bg-surface text-sm font-medium hover:bg-surface-muted">
-                  <Pause className="size-4" /> Pause
-                </button>
+                <div className="relative flex flex-1">
+                  <button
+                    onClick={() => (s.breakTypes.length ? setBreakMenu((m) => !m) : run(bridge.pause))}
+                    aria-haspopup={s.breakTypes.length ? 'menu' : undefined}
+                    aria-expanded={s.breakTypes.length ? breakMenu : undefined}
+                    className="flex h-10 flex-1 items-center justify-center gap-2 rounded-sm border border-border bg-surface text-sm font-medium hover:bg-surface-muted"
+                  >
+                    <Pause className="size-4" /> {s.breakTypes.length ? 'Break' : 'Pause'}
+                  </button>
+                  {breakMenu && (
+                    <ul role="menu" className="absolute left-0 top-11 z-10 w-52 rounded-sm border border-border bg-surface py-1 shadow-overlay">
+                      {s.breakTypes.map((b) => (
+                        <li key={b.id}>
+                          <button role="menuitem" onClick={() => (setBreakMenu(false), void run(() => bridge.takeBreak(b.id)))} className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-muted">
+                            <span className="truncate">{b.name}</span>
+                            <span className="shrink-0 text-2xs text-text-faint">
+                              {b.paid ? 'paid' : 'unpaid'}
+                              {b.maxMinutes ? ` · ${b.maxMinutes}m` : ''}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                      <li>
+                        <button role="menuitem" onClick={() => (setBreakMenu(false), void run(bridge.pause))} className="w-full px-3 py-1.5 text-left text-sm text-text-muted hover:bg-surface-muted">
+                          Just pause
+                        </button>
+                      </li>
+                    </ul>
+                  )}
+                </div>
               ) : (
                 <button onClick={() => run(bridge.resume)} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-sm bg-interactive-soft text-sm font-medium text-interactive">
                   <Play className="size-4" /> Resume

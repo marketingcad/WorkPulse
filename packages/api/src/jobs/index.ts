@@ -23,12 +23,12 @@ import { localDate, type TrackingPolicy } from '@tallywork/domain';
 import type { Deps } from '../context';
 import { auditSystem, emit } from '../services/events';
 import { checkBudgets } from '../services/finance';
-import { runAccruals } from '../services/operations';
+import { alertLongBreaks, runAccruals, runShiftAlerts } from '../services/operations';
 import { approversFor, membersWith, notify } from '../services/notify';
 import { effectivePolicy } from '../services/policies';
 import { deliverWebhooks, enqueueWebhooks } from '../services/platform';
 import { recomputeUsageDays, recomputeWorkerDays } from '../services/projector';
-import { applyTrigger, limitReached, lockWorker, resolveIdle } from '../services/tracking';
+import { applyTrigger, limitExceeded, lockWorker, resolveIdle } from '../services/tracking';
 import { memberNames } from '../services/timer';
 
 const MAX_ATTEMPTS = 10;
@@ -211,8 +211,13 @@ export async function sweepSessions(deps: Deps): Promise<Record<string, number>>
         }
       }
       const [org] = await tx.select().from(organizations).where(eq(organizations.id, s.organizationId));
-      if (s.state === 'ACTIVE' && (await limitReached(tx, s.membershipId, s.timezone, policy, now, org?.weekStart ?? 1))) {
-        await applyTrigger(tx, s, 'LIMIT_REACHED', { at: now, actor: SYSTEM, cause: 'limit' });
+      const hit = s.state === 'ACTIVE' ? await limitExceeded(tx, s.membershipId, s.timezone, policy, now, org?.weekStart ?? 1) : null;
+      if (hit) {
+        // Stop at the moment the limit was reached, not when this sweep ran.
+        const [open] = await tx.select({ startedAt: timeSegments.startedAt }).from(timeSegments).where(and(eq(timeSegments.sessionId, s.id), isNull(timeSegments.endedAt)));
+        const exact = new Date(now.getTime() - hit.overBySeconds * 1000);
+        const at = open && exact < open.startedAt ? open.startedAt : exact;
+        await applyTrigger(tx, s, 'LIMIT_REACHED', { at, actor: SYSTEM, cause: `${hit.kind}_limit` });
         await notify(tx, deps, s.organizationId, [s.membershipId], { type: 'limit.reached', title: 'Tracking stopped: time limit reached', link: '/' });
         stats.limit++;
       }
@@ -233,13 +238,28 @@ export async function markDevicesOffline(deps: Deps): Promise<number> {
   return stale.length;
 }
 
-/** Every minute: sweep sessions, dispatch events, deliver webhooks. */
+/** Shift "not started" alerts and long-break warnings, per organization. */
+export async function runWorkforceAlerts(deps: Deps): Promise<{ shifts: number; breaks: number }> {
+  const now = deps.now();
+  const out = { shifts: 0, breaks: 0 };
+  const orgs = await withSystem(deps.db, (tx) => tx.select({ id: organizations.id, tz: organizations.timezone, settings: organizations.settings }).from(organizations));
+  for (const o of orgs) {
+    await withTenant(deps.db, o.id, async (tx) => {
+      out.shifts += await runShiftAlerts(tx, deps, o.id, o.tz, o.settings.lateGraceMinutes, now);
+      out.breaks += await alertLongBreaks(tx, deps, o.id, now);
+    });
+  }
+  return out;
+}
+
+/** Every minute: sweep sessions, workforce alerts, dispatch events, deliver webhooks. */
 export async function runTick(deps: Deps) {
   const sessions = await sweepSessions(deps);
+  const workforce = await runWorkforceAlerts(deps);
   const offline = await markDevicesOffline(deps);
   const dispatched = await dispatchOutbox(deps, 200);
   const webhooks = await withSystem(deps.db, (tx) => deliverWebhooks(tx, deps, 50));
-  return { sessions, offline, dispatched, webhooks };
+  return { sessions, workforce, offline, dispatched, webhooks };
 }
 
 /** Daily: retention cleanup, accruals, overdue invoices, housekeeping. */
@@ -274,7 +294,7 @@ export async function runDaily(deps: Deps) {
       await tx.delete(outboxEvents).where(and(sql`${outboxEvents.processedAt} is not null`, lt(outboxEvents.processedAt, new Date(deps.now().getTime() - 14 * 86400_000))));
       if (Object.values(deleted).some((n) => n > 0)) await auditSystem(tx, o.id, { action: 'retention.cleanup', metadata: deleted });
 
-      const accrued = await runAccruals(tx, deps, o.id, today);
+      const accrued = await runAccruals(tx, deps, o.id, today, o.timezone);
 
       const overdue = await tx.select().from(invoices).where(and(eq(invoices.status, 'SENT'), lt(invoices.dueDate, today), sql`${invoices.paidMinor} < ${invoices.totalMinor}`, sql`${invoices.dueDate} = ${new Date(Date.parse(today) - 86400_000).toISOString().slice(0, 10)}`));
       for (const i of overdue) await emit(tx, o.id, 'invoice.overdue', { invoice_id: i.id, number: i.number });

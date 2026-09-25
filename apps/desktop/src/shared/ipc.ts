@@ -13,6 +13,7 @@ export const IPC = {
   'timer:stop': z.void(),
   'timer:pause': z.void(),
   'timer:resume': z.void(),
+  'timer:break': z.object({ breakTypeId: z.uuid().nullable() }),
   'timer:switch': z.object({ projectId: z.uuid(), taskId: z.uuid().nullable() }),
   'notes:set': z.object({ note: z.string().max(1000) }),
   'idle:resolve': z.object({ choice: z.enum(['KEPT', 'DISCARDED', 'REASSIGNED']), projectId: z.uuid().optional(), taskId: z.uuid().nullable().optional() }),
@@ -78,6 +79,12 @@ export interface AgentState {
   timesheetDue: { periodStart: string; periodEnd: string; status: 'DRAFT' | 'REJECTED'; totalSeconds: number; overdue: boolean } | null;
   /** Recent manual time requests made on this device, newest first. */
   manualRequests: ManualRequest[];
+  /** break types the organization offers */
+  breakTypes: Array<{ id: string; name: string; paid: boolean; maxMinutes: number | null }>;
+  /** break type of the current break, when paused on one */
+  breakTypeId: string | null;
+  /** current or next shift (today/tomorrow) */
+  nextShift: { startsAt: string; endsAt: string } | null;
 }
 
 export interface ManualRequest {

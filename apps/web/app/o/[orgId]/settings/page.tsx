@@ -1,10 +1,12 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { OrgContextDto } from '@tallywork/contracts';
 import { Button, Field, Input, PageHeader, Panel, PermissionState, Select, Switch, fmtDuration, useToast } from '@tallywork/ui';
 import { ApiError, useOrgMutation } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { CURRENCIES, WEEKDAYS, timeZones } from '@/components/settings/options';
+import { BreakTypesPanel } from '@/components/settings/break-types-panel';
+import { OvertimePanel } from '@/components/settings/overtime-panel';
 
 type DurationFormat = 'hm' | 'clock' | 'decimal';
 type PayType = 'weekly' | 'biweekly' | 'semimonthly' | 'monthly';
@@ -78,13 +80,13 @@ export default function OrgSettingsPage() {
   const invalid = !f.name.trim() || (f.payType === 'biweekly' && !f.anchorDate) || f.lateGraceMinutes < 0 || f.lateGraceMinutes > 240 || f.budgetWarnPct < 1 || f.budgetWarnPct > 100 || f.sessionTtlHours < 1 || f.sessionTtlHours > 2160;
   const num = (v: string) => (v === '' ? 0 : Math.round(Number(v)));
 
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!invalid) submit();
+  };
+
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!invalid) submit();
-      }}
-    >
+    <>
       <PageHeader
         title="Organization"
         description="Defaults that apply to everyone in this organization."
@@ -93,7 +95,7 @@ export default function OrgSettingsPage() {
             <Button disabled={!dirty || m.isPending} onClick={() => setF(initial)}>
               Discard
             </Button>
-            <Button type="submit" variant="primary" disabled={!dirty || invalid} loading={m.isPending}>
+            <Button type="submit" form="org-settings" variant="primary" disabled={!dirty || invalid} loading={m.isPending}>
               Save changes
             </Button>
           </>
@@ -105,95 +107,102 @@ export default function OrgSettingsPage() {
         </p>
       )}
       <div className="flex max-w-3xl flex-col gap-4">
-        <Panel title="General">
-          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-            <Field label="Organization name" htmlFor="org-name" error={err?.field('name')} required className="sm:col-span-2">
-              <Input id="org-name" value={f.name} maxLength={100} onChange={(e) => set('name', e.target.value)} />
-            </Field>
-            <Field label="Time zone" htmlFor="org-tz" hint="Used for days, weeks, pay periods and attendance." error={err?.field('timezone')}>
-              <Select id="org-tz" value={f.timezone} onChange={(e) => set('timezone', e.target.value)}>
-                {zones.map((z) => (
-                  <option key={z} value={z}>
-                    {z.replace(/_/g, ' ')}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Week starts on" htmlFor="org-ws">
-              <Select id="org-ws" value={f.week_start} onChange={(e) => set('week_start', Number(e.target.value))}>
-                {WEEKDAYS.map((d, i) => (
-                  <option key={d} value={i}>
-                    {d}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Currency" htmlFor="org-cur" hint="Default for rates, invoices and reports." error={err?.field('currency')}>
-              <Select id="org-cur" value={f.currency} onChange={(e) => set('currency', e.target.value)}>
-                {[...new Set([f.currency, ...CURRENCIES])].map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Duration format" htmlFor="org-df" hint={`7 hours 45 minutes shows as ${fmtDuration(27900, f.durationFormat)}`}>
-              <Select id="org-df" value={f.durationFormat} onChange={(e) => set('durationFormat', e.target.value as DurationFormat)}>
-                <option value="hm">Hours and minutes (7h 45m)</option>
-                <option value="clock">Clock (7:45)</option>
-                <option value="decimal">Decimal (7.75)</option>
-              </Select>
-            </Field>
-          </div>
-        </Panel>
-
-        <Panel title="Pay period">
-          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-            <Field label="Pay period" htmlFor="org-pp" hint="Timesheets are submitted and approved per pay period.">
-              <Select id="org-pp" value={f.payType} onChange={(e) => set('payType', e.target.value as PayType)}>
-                <option value="weekly">Weekly</option>
-                <option value="biweekly">Every two weeks</option>
-                <option value="semimonthly">Twice a month (1st–15th, 16th–end)</option>
-                <option value="monthly">Monthly</option>
-              </Select>
-            </Field>
-            {f.payType === 'biweekly' && (
-              <Field label="First day of a pay period" htmlFor="org-anchor" hint="Any past start date; periods repeat every 14 days from it." error={err?.field('pay_period.anchorDate') ?? (!f.anchorDate ? 'Pick an anchor date' : undefined)} required>
-                <Input id="org-anchor" type="date" value={f.anchorDate} onChange={(e) => set('anchorDate', e.target.value)} />
+        <form id="org-settings" onSubmit={onSubmit} className="flex flex-col gap-4">
+          <Panel title="General">
+            <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+              <Field label="Organization name" htmlFor="org-name" error={err?.field('name')} required className="sm:col-span-2">
+                <Input id="org-name" value={f.name} maxLength={100} onChange={(e) => set('name', e.target.value)} />
               </Field>
-            )}
-          </div>
-        </Panel>
-
-        <Panel title="Attendance & budgets">
-          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-            <Field label="Late grace period (minutes)" htmlFor="org-late" hint="Starting within this many minutes of a shift is not marked late." error={err?.field('settings.lateGraceMinutes')}>
-              <Input id="org-late" type="number" min={0} max={240} className="tabular" value={f.lateGraceMinutes} onChange={(e) => set('lateGraceMinutes', num(e.target.value))} />
-            </Field>
-            <Field label="Budget warning at (%)" htmlFor="org-budget" hint="Budgets turn to warning when this share is used." error={err?.field('settings.budgetWarnPct')}>
-              <Input id="org-budget" type="number" min={1} max={100} className="tabular" value={f.budgetWarnPct} onChange={(e) => set('budgetWarnPct', num(e.target.value))} />
-            </Field>
-          </div>
-        </Panel>
-
-        <Panel title="Security">
-          <div className="flex flex-col gap-4 p-4">
-            <Switch checked={f.requireDeviceApproval} onCheckedChange={(v) => set('requireDeviceApproval', v)} label="Require device approval" description="New desktop app installs stay pending until an admin approves them on the Devices page." />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Require two-factor authentication" htmlFor="org-mfa" hint="Coming soon: the preference is saved, but sign-in does not enforce it yet.">
-                <Select id="org-mfa" value={f.enforceMfa} onChange={(e) => set('enforceMfa', e.target.value as Form['enforceMfa'])}>
-                  <option value="none">Not required</option>
-                  <option value="admins">Admins only</option>
-                  <option value="all">Everyone</option>
+              <Field label="Time zone" htmlFor="org-tz" hint="Used for days, weeks, pay periods and attendance." error={err?.field('timezone')}>
+                <Select id="org-tz" value={f.timezone} onChange={(e) => set('timezone', e.target.value)}>
+                  {zones.map((z) => (
+                    <option key={z} value={z}>
+                      {z.replace(/_/g, ' ')}
+                    </option>
+                  ))}
                 </Select>
               </Field>
-              <Field label="Session lifetime (hours)" htmlFor="org-ttl" hint={`People are signed out after ${f.sessionTtlHours >= 48 ? `${Math.round(f.sessionTtlHours / 24)} days` : `${f.sessionTtlHours} hours`}. Max 2160 (90 days).`} error={err?.field('settings.sessionTtlHours')}>
-                <Input id="org-ttl" type="number" min={1} max={2160} className="tabular" value={f.sessionTtlHours} onChange={(e) => set('sessionTtlHours', num(e.target.value))} />
+              <Field label="Week starts on" htmlFor="org-ws">
+                <Select id="org-ws" value={f.week_start} onChange={(e) => set('week_start', Number(e.target.value))}>
+                  {WEEKDAYS.map((d, i) => (
+                    <option key={d} value={i}>
+                      {d}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Currency" htmlFor="org-cur" hint="Default for rates, invoices and reports." error={err?.field('currency')}>
+                <Select id="org-cur" value={f.currency} onChange={(e) => set('currency', e.target.value)}>
+                  {[...new Set([f.currency, ...CURRENCIES])].map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Duration format" htmlFor="org-df" hint={`7 hours 45 minutes shows as ${fmtDuration(27900, f.durationFormat)}`}>
+                <Select id="org-df" value={f.durationFormat} onChange={(e) => set('durationFormat', e.target.value as DurationFormat)}>
+                  <option value="hm">Hours and minutes (7h 45m)</option>
+                  <option value="clock">Clock (7:45)</option>
+                  <option value="decimal">Decimal (7.75)</option>
+                </Select>
               </Field>
             </div>
-          </div>
-        </Panel>
+          </Panel>
+
+          <Panel title="Pay period">
+            <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+              <Field label="Pay period" htmlFor="org-pp" hint="Timesheets are submitted and approved per pay period.">
+                <Select id="org-pp" value={f.payType} onChange={(e) => set('payType', e.target.value as PayType)}>
+                  <option value="weekly">Weekly</option>
+                  <option value="biweekly">Every two weeks</option>
+                  <option value="semimonthly">Twice a month (1st–15th, 16th–end)</option>
+                  <option value="monthly">Monthly</option>
+                </Select>
+              </Field>
+              {f.payType === 'biweekly' && (
+                <Field label="First day of a pay period" htmlFor="org-anchor" hint="Any past start date; periods repeat every 14 days from it." error={err?.field('pay_period.anchorDate') ?? (!f.anchorDate ? 'Pick an anchor date' : undefined)} required>
+                  <Input id="org-anchor" type="date" value={f.anchorDate} onChange={(e) => set('anchorDate', e.target.value)} />
+                </Field>
+              )}
+            </div>
+          </Panel>
+
+          <Panel title="Attendance & budgets">
+            <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+              <Field label="Late grace period (minutes)" htmlFor="org-late" hint="Starting within this many minutes of a shift is not marked late." error={err?.field('settings.lateGraceMinutes')}>
+                <Input id="org-late" type="number" min={0} max={240} className="tabular" value={f.lateGraceMinutes} onChange={(e) => set('lateGraceMinutes', num(e.target.value))} />
+              </Field>
+              <Field label="Budget warning at (%)" htmlFor="org-budget" hint="Budgets turn to warning when this share is used." error={err?.field('settings.budgetWarnPct')}>
+                <Input id="org-budget" type="number" min={1} max={100} className="tabular" value={f.budgetWarnPct} onChange={(e) => set('budgetWarnPct', num(e.target.value))} />
+              </Field>
+            </div>
+          </Panel>
+        </form>
+
+        <OvertimePanel />
+        <BreakTypesPanel />
+
+        <form onSubmit={onSubmit}>
+          <Panel title="Security">
+            <div className="flex flex-col gap-4 p-4">
+              <Switch checked={f.requireDeviceApproval} onCheckedChange={(v) => set('requireDeviceApproval', v)} label="Require device approval" description="New desktop app installs stay pending until an admin approves them on the Devices page." />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Require two-factor authentication" htmlFor="org-mfa" hint="Coming soon: the preference is saved, but sign-in does not enforce it yet.">
+                  <Select id="org-mfa" value={f.enforceMfa} onChange={(e) => set('enforceMfa', e.target.value as Form['enforceMfa'])}>
+                    <option value="none">Not required</option>
+                    <option value="admins">Admins only</option>
+                    <option value="all">Everyone</option>
+                  </Select>
+                </Field>
+                <Field label="Session lifetime (hours)" htmlFor="org-ttl" hint={`People are signed out after ${f.sessionTtlHours >= 48 ? `${Math.round(f.sessionTtlHours / 24)} days` : `${f.sessionTtlHours} hours`}. Max 2160 (90 days).`} error={err?.field('settings.sessionTtlHours')}>
+                  <Input id="org-ttl" type="number" min={1} max={2160} className="tabular" value={f.sessionTtlHours} onChange={(e) => set('sessionTtlHours', num(e.target.value))} />
+                </Field>
+              </div>
+            </div>
+          </Panel>
+        </form>
       </div>
-    </form>
+    </>
   );
 }

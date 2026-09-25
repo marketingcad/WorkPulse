@@ -15,6 +15,13 @@
       "when": 1790342951213,
       "tag": "0001_timesheet_snapshot_history",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790347844091,
+      "tag": "0002_workforce_operations",
+      "breakpoints": true
     }
   ]
 }

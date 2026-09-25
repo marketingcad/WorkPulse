@@ -128,6 +128,7 @@ function registerIpc(): void {
     'timer:stop': () => agent.stop(),
     'timer:pause': () => agent.pause('MANUAL'),
     'timer:resume': () => agent.resume(),
+    'timer:break': (p: IpcPayload<'timer:break'>) => agent.takeBreak(p.breakTypeId),
     'timer:switch': (p: { projectId: string; taskId: string | null }) => agent.start(p.projectId, p.taskId),
     'notes:set': (p: { note: string }) => agent.setNote(p.note),
     'idle:resolve': (p: { choice: 'KEPT' | 'DISCARDED' | 'REASSIGNED'; projectId?: string; taskId?: string | null }) => agent.resolveIdle(p.choice, p.projectId, p.taskId),

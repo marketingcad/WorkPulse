@@ -13,6 +13,8 @@ import {
   timeOffAdjustInput,
   timeOffPolicyInput,
   timeOffRequestInput,
+  breakTypeInput,
+  overtimeRulesInput,
 } from '@tallywork/contracts';
 import type { AppEnv } from '../context';
 import { body, idList, query } from '../lib/http';
@@ -35,6 +37,11 @@ import {
   upsertSchedule,
   upsertTimeOffPolicy,
   archiveTimeOffPolicy,
+  archiveBreakType,
+  getOvertimeRules,
+  listBreakTypes,
+  setOvertimeRules,
+  upsertBreakType,
 } from '../services/operations';
 import {
   amountsOwed,
@@ -78,6 +85,15 @@ export const opsRoutes = new Hono<AppEnv>()
     const q = query(c, range);
     return c.json(await listAttendance(ctx(c), q.from, q.to, q.membership_ids));
   })
+  .get('/break-types', async (c) => c.json(await listBreakTypes(ctx(c))))
+  .post('/break-types', async (c) => c.json(await upsertBreakType(ctx(c), null, await body(c, breakTypeInput)), 201))
+  .put('/break-types/:id', async (c) => c.json(await upsertBreakType(ctx(c), c.req.param('id'), await body(c, breakTypeInput))))
+  .delete('/break-types/:id', async (c) => {
+    await archiveBreakType(ctx(c), c.req.param('id'));
+    return c.body(null, 204);
+  })
+  .get('/overtime-rules', requirePermission('org:read'), async (c) => c.json(await getOvertimeRules(ctx(c))))
+  .put('/overtime-rules', async (c) => c.json(await setOvertimeRules(ctx(c), await body(c, overtimeRulesInput))))
   .get('/holidays', async (c) => c.json(await listHolidays(ctx(c), query(c, z.object({ year: z.coerce.number().int().optional() })).year)))
   .post('/holidays', async (c) => c.json(await addHoliday(ctx(c), await body(c, holidayInput)), 201))
   .delete('/holidays/:id', async (c) => {

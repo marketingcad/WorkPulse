@@ -12,6 +12,7 @@ import {
   timeEntryDeleteInput,
   timeEntrySplitInput,
   timeEntryUpdateInput,
+  pauseInput,
 } from '@tallywork/contracts';
 import { localDate } from '@tallywork/domain';
 import type { AppEnv } from '../context';
@@ -48,7 +49,10 @@ export const timeRoutes = new Hono<AppEnv>()
     return c.json(await webStart(ctx(c), { projectId: i.project_id, taskId: i.task_id ?? null, note: i.note ?? null, source }));
   })
   .post('/tracking/stop', async (c) => c.json(await webStop(ctx(c))))
-  .post('/tracking/pause', async (c) => c.json(await webPause(ctx(c))))
+  .post('/tracking/pause', async (c) => {
+    const i = c.req.header('content-type')?.includes('json') ? await body(c, pauseInput) : {};
+    return c.json(await webPause(ctx(c), { breakTypeId: i.break_type_id }));
+  })
   .post('/tracking/resume', async (c) => c.json(await webResume(ctx(c))))
   .post('/tracking/switch', requirePermission('tracking:track'), async (c) => {
     const i = await body(c, switchTaskInput);

@@ -9,7 +9,11 @@ import {
   applyUrlPolicy,
   budgetStatus,
   can,
+  accrualCredit,
+  carryOverExpiry,
   classifyAttendance,
+  nearestLimit,
+  proRataFactor,
   crossedThresholds,
   deriveInvoiceStatus,
   detectIdle,
@@ -232,5 +236,63 @@ describe('workforce', () => {
   });
   it('computes ledger balances', () => {
     expect(ledgerBalance([{ hours: 8, kind: 'ACCRUAL' }, { hours: -4, kind: 'REQUEST' }, { hours: 4, kind: 'REVERSAL' }])).toBe(8);
+  });
+});
+
+describe('workforce (Phase 8 gate)', () => {
+  const day = (h: number, m = 0) => new Date(Date.UTC(2026, 8, 25, h, m));
+  const base = { scheduledStart: day(9), scheduledEnd: day(17), firstIn: null, lastOut: null, workedSeconds: 0, onLeave: false, isHoliday: false, lateGraceMinutes: 5, now: day(20) };
+  it.each([
+    ['on time', { firstIn: day(9, 4), lastOut: day(17), workedSeconds: 8 * 3600 }, { status: 'PRESENT', lateSeconds: 0, earlyLeaveSeconds: 0, overtimeSeconds: 0 }],
+    ['exactly at grace', { firstIn: day(9, 5), lastOut: day(17), workedSeconds: 8 * 3600 }, { status: 'PRESENT', lateSeconds: 0 }],
+    ['late past grace', { firstIn: day(9, 6), lastOut: day(17), workedSeconds: 8 * 3600 }, { status: 'LATE', lateSeconds: 360 }],
+    ['absent after the shift started', {}, { status: 'ABSENT' }],
+    ['not absent yet inside grace', { now: day(9, 3) }, { status: 'UNSCHEDULED' }],
+    ['on leave', { onLeave: true }, { status: 'ON_LEAVE' }],
+    ['holiday', { isHoliday: true }, { status: 'HOLIDAY' }],
+    ['worked on a holiday', { isHoliday: true, firstIn: day(10), lastOut: day(12), workedSeconds: 7200 }, { status: 'LATE' }],
+    ['early leave only counted once the shift is over', { firstIn: day(9), lastOut: day(15), workedSeconds: 6 * 3600, now: day(16) }, { earlyLeaveSeconds: 0 }],
+    ['early leave', { firstIn: day(9), lastOut: day(15), workedSeconds: 6 * 3600 }, { status: 'PRESENT', earlyLeaveSeconds: 2 * 3600 }],
+    ['overtime beyond the shift', { firstIn: day(9), lastOut: day(19), workedSeconds: 10 * 3600 }, { overtimeSeconds: 2 * 3600 }],
+    ['unscheduled work', { scheduledStart: null, scheduledEnd: null, firstIn: day(9), workedSeconds: 3600 }, { status: 'PRESENT', scheduledSeconds: 0 }],
+  ])('attendance: %s', (_name, o, expected) => {
+    expect(classifyAttendance({ ...base, ...o } as Parameters<typeof classifyAttendance>[0])).toMatchObject(expected);
+  });
+
+  it('configurable overtime: daily first, weekly on the remaining regular hours', () => {
+    const week = [10, 10, 8, 8, 8, 4].map((h) => h * 3600); // 48h
+    expect(splitOvertime(week, { dailyThresholdSeconds: 8 * 3600, weeklyThresholdSeconds: 40 * 3600 })).toEqual({ regular: 40 * 3600, overtime: 8 * 3600 });
+    expect(splitOvertime(week, { dailyThresholdSeconds: null, weeklyThresholdSeconds: null })).toEqual({ regular: 48 * 3600, overtime: 0 });
+    expect(splitOvertime(week, { dailyThresholdSeconds: 9 * 3600, weeklyThresholdSeconds: 45 * 3600 })).toEqual({ regular: 45 * 3600, overtime: 3 * 3600 });
+  });
+
+  it('accrual: monthly/annual credit, per hour worked, and the balance cap', () => {
+    const monthly = { type: 'monthly' as const, amountHours: 8, maxBalanceHours: null, carryOverHours: null };
+    expect(accrualCredit(monthly, 100)).toBe(8);
+    expect(accrualCredit({ ...monthly, maxBalanceHours: 20 }, 16)).toBe(4);
+    expect(accrualCredit({ ...monthly, maxBalanceHours: 20 }, 25)).toBe(0);
+    expect(accrualCredit({ type: 'per_hour_worked', amountHours: 0.0385, maxBalanceHours: null, carryOverHours: null }, 0, 40)).toBe(1.54);
+  });
+
+  it('accrual: pro-rata for members who join mid-period', () => {
+    expect(proRataFactor('2026-09-01', '2026-09-30', '2026-08-15')).toBe(1);
+    expect(proRataFactor('2026-09-01', '2026-09-30', '2026-09-01')).toBe(1);
+    expect(proRataFactor('2026-09-01', '2026-09-30', '2026-09-16')).toBe(0.5);
+    expect(proRataFactor('2026-09-01', '2026-09-30', '2026-09-30')).toBe(0.0333);
+    expect(proRataFactor('2026-09-01', '2026-09-30', '2026-10-01')).toBe(0);
+    expect(proRataFactor('2026-01-01', '2026-12-31', '2026-07-02')).toBe(0.5014);
+  });
+
+  it('accrual: carry-over cap at year end', () => {
+    expect(carryOverExpiry(60, 40)).toBe(20);
+    expect(carryOverExpiry(30, 40)).toBe(0);
+    expect(carryOverExpiry(60, null)).toBe(0);
+    expect(carryOverExpiry(12.5, 0)).toBe(12.5);
+  });
+
+  it('limits: the nearest limit and its remaining time', () => {
+    expect(nearestLimit({ dailySeconds: null, weeklySeconds: null }, 100, 100)).toBeNull();
+    expect(nearestLimit({ dailySeconds: 8 * 3600, weeklySeconds: 40 * 3600 }, 7 * 3600, 39.5 * 3600)).toEqual({ kind: 'weekly', limitSeconds: 40 * 3600, remainingSeconds: 1800 });
+    expect(nearestLimit({ dailySeconds: 8 * 3600, weeklySeconds: null }, 8.5 * 3600, 0)).toMatchObject({ kind: 'daily', remainingSeconds: -1800 });
   });
 });

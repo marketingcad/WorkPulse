@@ -7,7 +7,7 @@ import type { TrackingPolicy } from '@tallywork/domain';
  */
 export const IPC = {
   'state:get': z.void(),
-  'auth:login': z.object({ serverUrl: z.url().max(300).optional() }),
+  'auth:login': z.object({ serverUrl: z.url({ protocol: /^https?$/ }).max(300).optional() }),
   'auth:logout': z.void(),
   'timer:start': z.object({ projectId: z.uuid(), taskId: z.uuid().nullable() }),
   'timer:stop': z.void(),

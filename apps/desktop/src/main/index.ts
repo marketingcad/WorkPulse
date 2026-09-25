@@ -5,7 +5,7 @@ import { IPC, type IpcChannel } from '../shared/ipc';
 import { Agent } from './services/agent';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_SERVER = process.env.TALLYWORK_SERVER ?? (app.isPackaged ? 'https://tallywork.vercel.app' : 'http://localhost:3000');
+const DEFAULT_SERVER = process.env.TALLYWORK_SERVER ?? (app.isPackaged ? 'https://tallywork-alpha.vercel.app' : 'http://localhost:3000');
 
 let win: BrowserWindow | null = null;
 let tray: Tray | null = null;

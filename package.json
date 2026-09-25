@@ -2,7 +2,9 @@
   "name": "tallywork",
   "private": true,
   "packageManager": "pnpm@10.18.0",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "turbo run dev --filter=@tallywork/web",
     "build": "turbo run build",

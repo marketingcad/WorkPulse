@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, test, build (web + api)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r --filter "./packages/*" --filter @tallywork/web typecheck
+      - run: pnpm --filter @tallywork/domain --filter @tallywork/db --filter @tallywork/api test
+      - run: pnpm --filter @tallywork/web build
+        env:
+          APP_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
+
+  desktop:
+    name: Desktop agent (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @tallywork/desktop typecheck
+      - run: pnpm --filter @tallywork/desktop test
+      - run: pnpm --filter @tallywork/desktop build
+      # Signed installers: set CSC_LINK/CSC_KEY_PASSWORD (Windows/macOS) and APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID (notarization),
+      # then run `pnpm --filter @tallywork/desktop dist` on tagged releases.

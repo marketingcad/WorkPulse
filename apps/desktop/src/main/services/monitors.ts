@@ -86,11 +86,8 @@ export class ActivityMonitor {
     return this.drain();
   }
 
-  private rollMinute(force: boolean): void {
-    const now = Date.now();
-    const currentMinute = Math.floor(now / 60_000) * 60_000;
-    if (!force && currentMinute === this.minuteStart) return;
-    const end = force ? now : this.minuteStart + 60_000;
+  /** Close the bucket for [minuteStart, end) and advance to the next minute. */
+  private closeBucket(end: number): void {
     const from = Math.max(this.minuteStart, this.trackedFrom);
     const tracked = Math.max(0, Math.min(60, Math.round((end - from) / 1000)));
     if (tracked > 0) {
@@ -106,9 +103,27 @@ export class ActivityMonitor {
     }
     this.kb = 0;
     this.mouse = 0;
-    this.activeSecs = new Set([...this.activeSecs].filter((s) => s >= Math.floor(currentMinute / 1000)));
-    this.minuteStart = currentMinute;
-    this.trackedFrom = currentMinute;
+    const next = this.minuteStart + 60_000;
+    this.activeSecs = new Set([...this.activeSecs].filter((s) => s >= Math.floor(next / 1000)));
+    this.minuteStart = next;
+    this.trackedFrom = next;
+  }
+
+  private rollMinute(force: boolean): void {
+    const now = Date.now();
+    const currentMinute = Math.floor(now / 60_000) * 60_000;
+    // Close every completed minute (a delayed timer may have skipped some; cap at 1h).
+    let guard = 0;
+    while (this.minuteStart < currentMinute && guard++ < 60) this.closeBucket(this.minuteStart + 60_000);
+    if (this.minuteStart < currentMinute) {
+      this.minuteStart = currentMinute;
+      this.trackedFrom = currentMinute;
+    }
+    if (force) {
+      this.closeBucket(now);
+      this.minuteStart = currentMinute;
+      this.trackedFrom = now;
+    }
   }
 
   drain(): MinuteBucket[] {

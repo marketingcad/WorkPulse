@@ -51,6 +51,9 @@ import {
   type ActorRef,
 } from './tracking';
 import { assignmentsFor } from './work';
+import { loadActor, loadOrg } from '../middleware/tenant';
+import type { Ctx } from './ctx';
+import { requestManualTime, timesheetDue } from './timesheets';
 
 const ACCESS_TTL_SECONDS = 10 * 60;
 const REFRESH_TTL_DAYS = 30;
@@ -168,6 +171,21 @@ export async function loadAgentCtx(tx: Tx, deps: Deps, p: { deviceId: string; me
   return { tx, deps, organizationId: p.organizationId, orgTimezone: org!.timezone, weekStart: org!.weekStart, membershipId: p.membershipId, deviceId: p.deviceId, userId: p.userId, policy };
 }
 
+/** The device's worker as a regular tenant actor, for reusing member-facing services with the same rules. */
+async function memberCtx(a: AgentCtx): Promise<Ctx> {
+  const principal = { type: 'agent' as const, deviceId: a.deviceId, membershipId: a.membershipId, organizationId: a.organizationId, userId: a.userId };
+  return {
+    tx: a.tx,
+    deps: a.deps,
+    actor: await loadActor(a.tx, principal, a.organizationId, a.membershipId),
+    org: await loadOrg(a.tx, a.organizationId),
+    requestId: 'agent',
+    ip: null,
+    userAgent: null,
+    policyCache: new Map([[a.membershipId, a.policy]]),
+  };
+}
+
 function agentActor(a: AgentCtx): ActorRef {
   return { type: 'agent', id: a.deviceId };
 }
@@ -194,6 +212,7 @@ export async function bootstrap(a: AgentCtx): Promise<AgentBootstrapDto> {
     current_session: live ? { id: live.id, state: live.state, project_id: live.projectId, task_id: live.taskId, started_at: live.startedAt.toISOString() } : null,
     today_seconds: tw.today,
     week_seconds: tw.week,
+    timesheet_due: await timesheetDue(await memberCtx(a), a.membershipId, localDate(now, tz)),
     server_time: now.toISOString(),
     min_agent_version: a.deps.config.minAgentVersion,
   };
@@ -429,6 +448,11 @@ async function processEvent(a: AgentCtx, ev: AgentEvent, correct: (iso: string) 
         })
         .onConflictDoNothing();
       await emit(a.tx, a.organizationId, 'screenshot.captured', { screenshot_id: ev.screenshot_id, session_id: s.id }, { workerId: a.membershipId, sessionId: s.id, actor });
+      return;
+    }
+    case 'manual_time.request': {
+      // Same rules as the web: policy, reason, overlap, locked periods, approval.
+      await requestManualTime(await memberCtx(a), { project_id: ev.project_id, task_id: ev.task_id ?? null, started_at: ev.started_at, ended_at: ev.ended_at, reason: ev.reason, note: ev.note }, { id: ev.event_id });
       return;
     }
   }

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, shell, Tray, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { IPC, type IpcChannel } from '../shared/ipc';
+import { IPC, type IpcChannel, type IpcPayload } from '../shared/ipc';
 import { Agent } from './services/agent';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -133,6 +133,7 @@ function registerIpc(): void {
     'idle:resolve': (p: { choice: 'KEPT' | 'DISCARDED' | 'REASSIGNED'; projectId?: string; taskId?: string | null }) => agent.resolveIdle(p.choice, p.projectId, p.taskId),
     'policy:ack': () => agent.acknowledgePolicy(),
     'recovery:resolve': (p: { resume: boolean }) => agent.resolveRecovery(p.resume),
+    'manualTime:request': (p: IpcPayload<'manualTime:request'>) => agent.requestManualTime(p),
     'app:openWeb': (p: { path: string }) => shell.openExternal(`${agent.state().serverUrl}${p.path}`),
     'app:quit': () => quit(),
   };

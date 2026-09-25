@@ -25,6 +25,7 @@ const api = {
   resolveIdle: (choice: 'KEPT' | 'DISCARDED' | 'REASSIGNED', projectId?: string, taskId?: string | null) => call('idle:resolve', { choice, projectId, taskId }),
   acknowledgePolicy: () => call('policy:ack'),
   resolveRecovery: (resume: boolean) => call('recovery:resolve', { resume }),
+  requestManualTime: (r: { projectId: string; taskId: string | null; startedAt: string; endedAt: string; reason: string; note?: string }) => call('manualTime:request', r),
   openWeb: (path: string) => call('app:openWeb', { path }),
   quit: () => call('app:quit'),
 };

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, foreignKey, index, integer, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
+import { boolean, foreignKey, index, integer, pgTable, text, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import type { TimesheetStatus } from '@tallywork/domain';
 import { orgId, pk, timestamps, tstz } from './_helpers';
 import { memberships } from './identity';
@@ -47,10 +47,13 @@ export const timesheetEntries = pgTable(
     billable: boolean().notNull(),
     source: text().notNull(),
     snapshotAt: tstz().notNull().default(sql`now()`),
+    /** Set when a later submission replaces this snapshot; the row itself is never changed otherwise. */
+    supersededAt: tstz(),
   },
   (t) => [
     foreignKey({ columns: [t.organizationId, t.timesheetId], foreignColumns: [timesheets.organizationId, timesheets.id] }).onDelete('cascade'),
     index().on(t.timesheetId),
+    uniqueIndex('timesheet_entries_current_uq').on(t.timesheetId, t.timeEntryId).where(sql`${t.supersededAt} is null`),
   ],
 );
 

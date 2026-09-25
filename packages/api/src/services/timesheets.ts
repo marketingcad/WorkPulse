@@ -39,6 +39,7 @@ import {
 } from '@tallywork/domain';
 import type {
   ApprovalQueueItemDto,
+  TimesheetDueDto,
   ManualTimeDto,
   TimeEntryDto,
   TimesheetDto,
@@ -146,6 +147,18 @@ async function assertNoOverlap(tx: Tx, membershipId: string, start: Date, end: D
   if (clash) throw businessRule('time_overlap', 'This time overlaps another time entry');
 }
 
+/** New or moved time may not land in a period whose timesheet is submitted or approved. */
+async function assertPeriodsOpen(x: Ctx, membershipId: string, dates: string[]) {
+  const starts = [...new Set(dates.map((d) => periodOf(x, d).start))];
+  if (!starts.length) return;
+  const [closed] = await x.tx
+    .select({ status: timesheets.status, periodStart: timesheets.periodStart })
+    .from(timesheets)
+    .where(and(eq(timesheets.membershipId, membershipId), inArray(timesheets.periodStart, starts), inArray(timesheets.status, ['SUBMITTED', 'APPROVED'])))
+    .limit(1);
+  if (closed) throw businessRule('timesheet_locked', `The timesheet for this period is ${closed.status.toLowerCase()}; reopen it before changing its time`, { period_start: closed.periodStart });
+}
+
 export async function updateTimeEntry(x: Ctx, entryId: string, input: z.infer<typeof timeEntryUpdateInput>) {
   const { e, policy, isSelf, isManager } = await loadEntryForEdit(x, entryId);
   if (policy.timeEdits.reasonRequired && !isManager && isSelf && !input.reason) throw validation('A reason is required to edit time');
@@ -161,6 +174,7 @@ export async function updateTimeEntry(x: Ctx, entryId: string, input: z.infer<ty
 
   const pieces = splitAtLocalMidnight({ start, end }, e.timezone);
   if (pieces.length > 1) throw validation('An entry cannot cross midnight; split it into two entries');
+  await assertPeriodsOpen(x, e.membershipId, [pieces[0]!.localDate]);
   const before = { started_at: e.startedAt, ended_at: e.endedAt, project_id: e.projectId, task_id: e.taskId, billable: e.billable, note: e.note };
   const after = { started_at: start, ended_at: end, project_id: projectId, task_id: taskId, billable: input.billable ?? e.billable, note: input.note !== undefined ? input.note : e.note };
   await x.tx
@@ -186,7 +200,8 @@ export async function updateTimeEntry(x: Ctx, entryId: string, input: z.infer<ty
 }
 
 export async function splitTimeEntry(x: Ctx, entryId: string, at: Date, reason: string | null) {
-  const { e } = await loadEntryForEdit(x, entryId);
+  const { e, policy, isSelf, isManager } = await loadEntryForEdit(x, entryId);
+  if (policy.timeEdits.reasonRequired && isSelf && !isManager && !reason) throw validation('A reason is required to split time');
   if (at <= e.startedAt || at >= e.endedAt) throw validation('Split point must be inside the entry');
   const d1 = Math.round((at.getTime() - e.startedAt.getTime()) / 1000);
   const d2 = Math.round((e.endedAt.getTime() - at.getTime()) / 1000);
@@ -248,7 +263,7 @@ async function insertManualEntry(x: Ctx, req: typeof manualTimeRequests.$inferSe
   return dates;
 }
 
-export async function requestManualTime(x: Ctx, input: z.infer<typeof manualTimeInput>) {
+export async function requestManualTime(x: Ctx, input: z.infer<typeof manualTimeInput>, opts: { id?: string } = {}) {
   const membershipId = input.membership_id ?? x.actor.membershipId;
   const forSelf = membershipId === x.actor.membershipId;
   if (forSelf && !x.actor.grants['manual_time:request']) throw forbidden();
@@ -264,9 +279,11 @@ export async function requestManualTime(x: Ctx, input: z.infer<typeof manualTime
   await validateTrackTarget(x.tx, membershipId, input.project_id, input.task_id ?? null);
   await lockWorker(x.tx, membershipId);
   await assertNoOverlap(x.tx, membershipId, start, end, []);
+  const tz = await workerTimezone(x.tx, membershipId, x.org.timezone);
+  await assertPeriodsOpen(x, membershipId, splitAtLocalMidnight({ start, end }, tz).map((pc) => pc.localDate));
   const [p] = await x.tx.select({ billable: projects.billableDefault }).from(projects).where(eq(projects.id, input.project_id));
   const autoApprove = !policy.manualTime.requiresApproval || !forSelf || x.actor.grants['manual_time:approve'] === 'org';
-  const id = newId();
+  const id = opts.id ?? newId();
   const [req] = await x.tx
     .insert(manualTimeRequests)
     .values({
@@ -336,6 +353,8 @@ export async function decideManualTime(x: Ctx, id: string, approve: boolean, com
   const [updated] = await x.tx.update(manualTimeRequests).set({ status, decidedBy: x.actor.membershipId, decidedAt: new Date(), decisionComment: comment }).where(eq(manualTimeRequests.id, id)).returning();
   if (approve) {
     await assertNoOverlap(x.tx, r.membershipId, r.startedAt, r.endedAt, []);
+    const tz = await workerTimezone(x.tx, r.membershipId, x.org.timezone);
+    await assertPeriodsOpen(x, r.membershipId, splitAtLocalMidnight({ start: r.startedAt, end: r.endedAt }, tz).map((pc) => pc.localDate));
     await insertManualEntry(x, updated!);
   }
   await x.tx.insert(approvalActions).values({ id: newId(), organizationId: x.org.id, subjectType: 'MANUAL_TIME', subjectId: id, action: approve ? 'APPROVE' : 'REJECT', fromStatus: 'PENDING', toStatus: status, comment, actorId: x.actor.membershipId });
@@ -344,6 +363,25 @@ export async function decideManualTime(x: Ctx, id: string, approve: boolean, com
 }
 
 // ─── Timesheets ──────────────────────────────────────────────────────────────
+/** The timesheet a worker should submit now: last period if still open (overdue), else the current one on its last day. */
+export async function timesheetDue(x: Ctx, membershipId: string, today: string): Promise<TimesheetDueDto | null> {
+  if (membershipId !== x.actor.membershipId || !x.actor.grants['timesheets:submit']) return null;
+  const current = periodOf(x, today);
+  const previous = periodOf(x, addDaysToDate(current.start, -1));
+  const candidates = [{ p: previous, overdue: true }, ...(today === current.end ? [{ p: current, overdue: false }] : [])];
+  for (const { p, overdue } of candidates) {
+    const [row] = await x.tx.select({ status: timesheets.status }).from(timesheets).where(and(eq(timesheets.membershipId, membershipId), eq(timesheets.periodStart, p.start)));
+    const status = row?.status ?? 'DRAFT';
+    if (status !== 'DRAFT' && status !== 'REJECTED') continue;
+    const [sum] = await x.tx
+      .select({ s: sql<number>`coalesce(sum(${timeEntries.durationSeconds}),0)::int` })
+      .from(timeEntries)
+      .where(and(eq(timeEntries.membershipId, membershipId), isNull(timeEntries.deletedAt), sql`${timeEntries.localDate} between ${p.start} and ${p.end}`));
+    if ((sum?.s ?? 0) > 0) return { period_start: p.start, period_end: p.end, status, total_seconds: sum!.s, overdue };
+  }
+  return null;
+}
+
 function periodOf(x: Ctx, date: string) {
   return periodFor(date, x.org.payPeriod, x.org.weekStart);
 }
@@ -426,7 +464,8 @@ export async function submitTimesheet(x: Ctx, membershipId: string, date: string
   const to = timesheetTransition(ts.status, 'SUBMIT');
   // Snapshot exactly what is being submitted.
   const entries = await x.tx.select().from(timeEntries).where(and(eq(timeEntries.membershipId, membershipId), isNull(timeEntries.deletedAt), sql`${timeEntries.localDate} between ${ts.periodStart} and ${ts.periodEnd}`));
-  await x.tx.delete(timesheetEntries).where(eq(timesheetEntries.timesheetId, ts.id));
+  // Earlier snapshots (e.g. one that was approved, then reopened) are kept as history.
+  await x.tx.update(timesheetEntries).set({ supersededAt: new Date() }).where(and(eq(timesheetEntries.timesheetId, ts.id), isNull(timesheetEntries.supersededAt)));
   if (entries.length) {
     await x.tx.insert(timesheetEntries).values(
       entries.map((e) => ({ id: newId(), organizationId: x.org.id, timesheetId: ts.id, timeEntryId: e.id, revision: e.revision, projectId: e.projectId, taskId: e.taskId, localDate: e.localDate, durationSeconds: e.durationSeconds, billable: e.billable, source: e.source })),
@@ -465,7 +504,7 @@ async function loadTimesheetForDecision(x: Ctx, timesheetId: string) {
 
 /** Price approved time: one billing entry per time entry, snapshotting the rates. */
 async function createBillingEntries(x: Ctx, ts: typeof timesheets.$inferSelect) {
-  const snap = await x.tx.select().from(timesheetEntries).where(eq(timesheetEntries.timesheetId, ts.id));
+  const snap = await x.tx.select().from(timesheetEntries).where(and(eq(timesheetEntries.timesheetId, ts.id), isNull(timesheetEntries.supersededAt)));
   if (!snap.length) return;
   const rateRows = await x.tx.select().from(billingRates);
   const rates: Rate[] = rateRows.map((r) => ({ id: r.id, kind: r.kind, scope: r.scope, scopeId: r.scopeId, amountMinor: r.amountMinor, currency: r.currency, effectiveFrom: r.effectiveFrom, effectiveTo: r.effectiveTo }));

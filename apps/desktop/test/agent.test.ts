@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('electron', () => ({ desktopCapturer: {}, nativeImage: {}, screen: {} }));
 const { ActivityMonitor, nextShotDelays } = await import('../src/main/services/monitors');
 const { IPC } = await import('../src/shared/ipc');
+const { manualRequestError, reminderKey } = await import('../src/main/services/manual');
+const { DEFAULT_POLICY } = await import('@tallywork/domain');
 
 describe('privacy contract', () => {
   it('input hook callbacks never read event data (no key codes, no characters, no positions)', () => {
@@ -80,5 +82,41 @@ describe('IPC contract', () => {
     expect(IPC['app:openWeb'].safeParse({ path: 'https://evil.test' }).success).toBe(false);
     expect(IPC['app:openWeb'].safeParse({ path: '/o/123/activity' }).success).toBe(true);
     expect(IPC['auth:login'].safeParse({ serverUrl: 'javascript:alert(1)' }).success).toBe(false);
+  });
+});
+
+describe('manual time requests', () => {
+  const project = { project_id: '0190a000-0000-7000-8000-000000000001', project_name: 'Alpha', color: '#000', client_name: null, tasks: [{ id: '0190a000-0000-7000-8000-000000000002', title: 'Design', status: 'OPEN' }] };
+  const now = Date.parse('2026-09-25T18:00:00Z');
+  const req = (o: Record<string, unknown> = {}) => ({ projectId: project.project_id, taskId: null, startedAt: '2026-09-25T13:00:00Z', endedAt: '2026-09-25T14:00:00Z', reason: 'Workshop', ...o });
+
+  it('validates locally before queueing (the server re-checks on delivery)', () => {
+    expect(manualRequestError(req(), DEFAULT_POLICY, [project], now)).toBeNull();
+    expect(manualRequestError(req({ taskId: project.tasks[0]!.id }), DEFAULT_POLICY, [project], now)).toBeNull();
+    expect(manualRequestError(req({ projectId: '0190a000-0000-7000-8000-000000000009' }), DEFAULT_POLICY, [project], now)).toMatch(/not assigned/);
+    expect(manualRequestError(req({ taskId: '0190a000-0000-7000-8000-000000000009' }), DEFAULT_POLICY, [project], now)).toMatch(/task/);
+    expect(manualRequestError(req({ endedAt: '2026-09-25T12:00:00Z' }), DEFAULT_POLICY, [project], now)).toMatch(/after start/);
+    expect(manualRequestError(req({ endedAt: '2026-09-25T19:00:00Z' }), DEFAULT_POLICY, [project], now)).toMatch(/future/);
+    expect(manualRequestError(req({ startedAt: '2026-09-24T12:00:00Z' }), DEFAULT_POLICY, [project], now)).toMatch(/24 hours/);
+    expect(manualRequestError(req({ reason: '  ' }), DEFAULT_POLICY, [project], now)).toMatch(/reason/);
+    const noReason = { ...DEFAULT_POLICY, manualTime: { ...DEFAULT_POLICY.manualTime, reasonRequired: false } };
+    expect(manualRequestError(req({ reason: '' }), noReason, [project], now)).toBeNull();
+    const off = { ...DEFAULT_POLICY, manualTime: { ...DEFAULT_POLICY.manualTime, allowed: false } };
+    expect(manualRequestError(req(), off, [project], now)).toMatch(/disabled/);
+  });
+
+  it('IPC payload is strict', () => {
+    expect(IPC['manualTime:request'].safeParse(req()).success).toBe(true);
+    expect(IPC['manualTime:request'].safeParse(req({ startedAt: 'yesterday' })).success).toBe(false);
+    expect(IPC['manualTime:request'].safeParse(req({ reason: 'x'.repeat(501) })).success).toBe(false);
+    expect(IPC['manualTime:request'].safeParse({ ...req(), projectId: 'nope' }).success).toBe(false);
+  });
+
+  it('reminds about a due timesheet at most once per period per day', () => {
+    expect(reminderKey(null, '2026-09-25')).toBeNull();
+    const a = reminderKey({ period_start: '2026-09-14' }, '2026-09-25');
+    expect(a).toBe(reminderKey({ period_start: '2026-09-14' }, '2026-09-25'));
+    expect(a).not.toBe(reminderKey({ period_start: '2026-09-14' }, '2026-09-26'));
+    expect(a).not.toBe(reminderKey({ period_start: '2026-09-21' }, '2026-09-25'));
   });
 });

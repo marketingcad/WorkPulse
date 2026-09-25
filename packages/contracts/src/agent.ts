@@ -89,6 +89,18 @@ export const agentEvent = z.discriminatedUnion('type', [
     sha256: z.string().regex(/^[0-9a-f]{64}$/),
     storage_key: z.string().max(300),
   }),
+  /** Queued while offline too; event_id becomes the request id. Times are what the worker entered, so no skew correction. */
+  z.object({
+    event_id: id,
+    occurred_at: isoDateTime,
+    type: z.literal('manual_time.request'),
+    project_id: id,
+    task_id: id.nullable().optional(),
+    started_at: isoDateTime,
+    ended_at: isoDateTime,
+    reason: z.string().trim().min(1).max(500).optional(),
+    note: z.string().max(1000).optional(),
+  }),
 ]);
 export type AgentEvent = z.infer<typeof agentEvent>;
 

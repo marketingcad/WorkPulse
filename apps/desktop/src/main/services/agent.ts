@@ -1,10 +1,11 @@
-import { Notification, powerMonitor } from 'electron';
+import { Notification, powerMonitor, shell } from 'electron';
 import { EventEmitter } from 'node:events';
 import { put } from '@vercel/blob/client';
 import { newId, type TrackingPolicy } from '@tallywork/domain';
-import type { AgentState, Assignment } from '../../shared/ipc';
+import type { AgentState, Assignment, IpcPayload, ManualRequest } from '../../shared/ipc';
 import { AgentApi, ApiError } from './api';
 import { signIn } from './auth';
+import { manualRequestError, reminderKey } from './manual';
 import { ActivityMonitor, AppTracker, captureScreens, nextShotDelays } from './monitors';
 import { OfflineQueue, type QueuedEvent } from './queue';
 import { SecureStore } from './secure-store';
@@ -39,6 +40,7 @@ interface Bootstrap {
   current_session: { id: string; state: string; project_id: string; task_id: string | null; started_at: string } | null;
   today_seconds: number;
   week_seconds: number;
+  timesheet_due: { period_start: string; period_end: string; status: 'DRAFT' | 'REJECTED'; total_seconds: number; overdue: boolean } | null;
 }
 
 /**
@@ -67,6 +69,7 @@ export class Agent extends EventEmitter {
   private lastProject: AgentState['lastProject'];
   private todayBase = { seconds: 0, at: Date.now() };
   private weekBase = { seconds: 0, at: Date.now() };
+  private manualRequests: ManualRequest[];
 
   constructor(
     private serverUrl: string,
@@ -75,6 +78,7 @@ export class Agent extends EventEmitter {
     super();
     this.session = this.store.readJson<LocalSession>('session');
     this.lastProject = this.store.readJson<AgentState['lastProject']>('last-project');
+    this.manualRequests = this.store.readJson<ManualRequest[]>('manual-requests') ?? [];
     this.phase = this.api.signedIn ? 'ready' : 'signed_out';
     if (this.api.serverUrl) this.serverUrl = this.api.serverUrl;
     this.api.onSignedOut = (reason) => {
@@ -220,6 +224,66 @@ export class Agent extends EventEmitter {
     this.session.note = note;
     this.enqueue({ type: 'session.note', session_id: this.session.id, occurred_at: new Date().toISOString(), note });
     this.persistSession();
+  }
+
+  // ─── Manual time ───────────────────────────────────────────────────────────
+  /** Queue a manual time request. It is saved on this computer first, so it works offline. */
+  async requestManualTime(r: IpcPayload<'manualTime:request'>): Promise<void> {
+    if (!this.boot) throw new Error('Not ready');
+    const problem = manualRequestError(r, this.boot.policy, this.boot.assignments);
+    if (problem) throw new Error(problem);
+    if (this.queue.full) throw new Error('Offline storage is full. Reconnect to the internet first.');
+    const id = newId();
+    this.queue.push({
+      event_id: id,
+      type: 'manual_time.request',
+      occurred_at: new Date().toISOString(),
+      project_id: r.projectId,
+      task_id: r.taskId,
+      started_at: new Date(r.startedAt).toISOString(),
+      ended_at: new Date(r.endedAt).toISOString(),
+      ...(r.reason.trim() ? { reason: r.reason.trim() } : {}),
+      ...(r.note ? { note: r.note } : {}),
+    });
+    this.manualRequests = [{ id, projectId: r.projectId, startedAt: r.startedAt, endedAt: r.endedAt, status: 'queued' as const, message: null }, ...this.manualRequests].slice(0, 10);
+    this.store.writeJson('manual-requests', this.manualRequests);
+    this.emitState();
+    void this.sync();
+  }
+
+  /** Delivery results for queued manual requests; rejections (overlap, locked timesheet…) are shown to the worker. */
+  private settleManualRequests(results: Array<{ event_id: string; status: string; message?: string }>): void {
+    let changed = false;
+    for (const r of results) {
+      const m = this.manualRequests.find((x) => x.id === r.event_id);
+      if (!m || m.status !== 'queued') continue;
+      changed = true;
+      if (r.status === 'rejected') {
+        m.status = 'rejected';
+        m.message = r.message ?? 'The request was not accepted';
+        new Notification({ title: 'Manual time not added', body: m.message }).show();
+      } else {
+        m.status = 'sent';
+      }
+    }
+    if (changed) {
+      this.store.writeJson('manual-requests', this.manualRequests);
+      this.emitState();
+    }
+  }
+
+  private remindTimesheet(b: Bootstrap): void {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: b.worker.timezone });
+    const key = reminderKey(b.timesheet_due, today);
+    if (!key || this.store.readJson<string>('timesheet-reminded') === key) return;
+    this.store.writeJson('timesheet-reminded', key);
+    const due = b.timesheet_due!;
+    const n = new Notification({
+      title: due.overdue ? 'Timesheet not submitted' : 'Timesheet due today',
+      body: `Your timesheet for ${due.period_start} – ${due.period_end} is ready to review and submit.`,
+    });
+    n.on('click', () => void shell.openExternal(`${this.serverUrl}/o/${b.organization.id}/timesheets?date=${due.period_start}`));
+    n.show();
   }
 
   // ─── Monitors ──────────────────────────────────────────────────────────────
@@ -415,6 +479,7 @@ export class Agent extends EventEmitter {
         const batch = this.queue.peek(200);
         const res = await this.api.request<{ results: Array<{ event_id: string; status: string; code?: string; message?: string }>; session: { id: string; state: string; end_reason: string | null } | null; policy_hash: string }>('POST', '/agent/ingest/batch', { sent_at: new Date().toISOString(), events: batch });
         this.queue.ack(res.results.map((r) => r.event_id));
+        this.settleManualRequests(res.results);
         const rejected = res.results.filter((r) => r.status === 'rejected');
         this.syncError = rejected.length ? (rejected[0]!.message ?? 'Some data was rejected') : null;
         if (rejected.some((r) => r.code === 'limit_reached' || r.code === 'session_already_running')) this.reconcile(res.session);
@@ -462,6 +527,7 @@ export class Agent extends EventEmitter {
       const b = await this.api.request<Bootstrap>('GET', '/agent/bootstrap');
       const policyChanged = this.boot && this.boot.policy_hash !== b.policy_hash;
       this.boot = b;
+      this.remindTimesheet(b);
       this.todayBase = { seconds: b.today_seconds, at: Date.now() };
       this.weekBase = { seconds: b.week_seconds, at: Date.now() };
       if (this.recovery) this.recovery.projectName = b.assignments.find((a) => a.project_id === this.session?.projectId)?.project_name ?? '';
@@ -525,6 +591,10 @@ export class Agent extends EventEmitter {
       sync: { queued: this.queue.size, lastSyncAt: this.lastSyncAt, online: this.online, error: this.syncError },
       capabilities: this.capabilities,
       lastProject: this.lastProject,
+      timesheetDue: this.boot?.timesheet_due
+        ? { periodStart: this.boot.timesheet_due.period_start, periodEnd: this.boot.timesheet_due.period_end, status: this.boot.timesheet_due.status, totalSeconds: this.boot.timesheet_due.total_seconds, overdue: this.boot.timesheet_due.overdue }
+        : null,
+      manualRequests: this.manualRequests,
     };
   }
 

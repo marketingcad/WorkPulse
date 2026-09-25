@@ -5,7 +5,8 @@ import type { SecureStore } from './secure-store';
 export interface QueuedEvent {
   event_id: string;
   type: string;
-  session_id: string;
+  /** absent for events not tied to a session (e.g. manual time requests) */
+  session_id?: string;
   occurred_at: string;
   [k: string]: unknown;
 }

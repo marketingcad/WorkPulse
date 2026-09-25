@@ -1,0 +1,2 @@
+ALTER TABLE "timesheet_entries" ADD COLUMN "superseded_at" timestamp with time zone;--> statement-breakpoint
+CREATE UNIQUE INDEX "timesheet_entries_current_uq" ON "timesheet_entries" USING btree ("timesheet_id","time_entry_id") WHERE "timesheet_entries"."superseded_at" is null;

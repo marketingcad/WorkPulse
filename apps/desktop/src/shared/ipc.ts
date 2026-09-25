@@ -18,6 +18,14 @@ export const IPC = {
   'idle:resolve': z.object({ choice: z.enum(['KEPT', 'DISCARDED', 'REASSIGNED']), projectId: z.uuid().optional(), taskId: z.uuid().nullable().optional() }),
   'policy:ack': z.void(),
   'recovery:resolve': z.object({ resume: z.boolean() }),
+  'manualTime:request': z.object({
+    projectId: z.uuid(),
+    taskId: z.uuid().nullable(),
+    startedAt: z.iso.datetime({ offset: true }),
+    endedAt: z.iso.datetime({ offset: true }),
+    reason: z.string().trim().max(500),
+    note: z.string().max(1000).optional(),
+  }),
   'app:openWeb': z.object({ path: z.string().max(200).regex(/^\/[\w\-/?=&.]*$/) }),
   'app:quit': z.void(),
 } as const;
@@ -66,4 +74,18 @@ export interface AgentState {
   sync: { queued: number; lastSyncAt: string | null; online: boolean; error: string | null };
   capabilities: Record<string, boolean>;
   lastProject: { projectId: string; taskId: string | null } | null;
+  /** A timesheet waiting to be submitted (from the server). */
+  timesheetDue: { periodStart: string; periodEnd: string; status: 'DRAFT' | 'REJECTED'; totalSeconds: number; overdue: boolean } | null;
+  /** Recent manual time requests made on this device, newest first. */
+  manualRequests: ManualRequest[];
+}
+
+export interface ManualRequest {
+  id: string;
+  projectId: string;
+  startedAt: string;
+  endedAt: string;
+  /** queued = saved on this computer, not yet delivered */
+  status: 'queued' | 'sent' | 'rejected';
+  message: string | null;
 }

@@ -301,8 +301,18 @@ export interface AgentBootstrapDto {
   current_session: { id: string; state: string; project_id: string; task_id: string | null; started_at: string } | null;
   today_seconds: number;
   week_seconds: number;
+  /** A timesheet the worker should submit: the last period if still open, or the current one on its last day. */
+  timesheet_due: TimesheetDueDto | null;
   server_time: string;
   min_agent_version: string;
+}
+
+export interface TimesheetDueDto {
+  period_start: string;
+  period_end: string;
+  status: 'DRAFT' | 'REJECTED';
+  total_seconds: number;
+  overdue: boolean;
 }
 
 export interface NotificationDto {

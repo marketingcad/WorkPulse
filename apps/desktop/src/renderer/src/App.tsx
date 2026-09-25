@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Camera, Check, ChevronLeft, CloudOff, ExternalLink, Eye, Globe, Keyboard, LogOut, MapPin, Pause, Play, RefreshCw, Search, Settings, Square, TimerOff, AppWindow } from 'lucide-react';
+import { Camera, Check, ChevronLeft, ClipboardCheck, ClockPlus, CloudOff, ExternalLink, Eye, Globe, Keyboard, LogOut, MapPin, Pause, Play, RefreshCw, Search, Settings, Square, TimerOff, AppWindow } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
 
 const bridge = window.tallywork;
@@ -13,6 +13,15 @@ function fmtHm(sec: number): string {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
+}
+
+function fmtRange(fromIso: string, toIso: string): string {
+  const d = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return `${d(fromIso)} – ${d(toIso)}`;
+}
+
+function localDateInput(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function useAgentState(): AgentState | null {
@@ -36,16 +45,17 @@ function useTick(active: boolean): number {
 
 export function App() {
   const s = useAgentState();
-  const [view, setView] = useState<'timer' | 'monitoring' | 'settings'>('timer');
+  const [view, setView] = useState<'timer' | 'monitoring' | 'settings' | 'manual'>('timer');
   if (!s) return <div className="h-full bg-nav" />;
   if (s.phase === 'signed_out' || s.phase === 'signing_in') return <SignIn s={s} />;
   if (!s.account) return <Loading />;
   if (s.recoveryPrompt) return <Recovery s={s} />;
   if (!s.policyAcknowledged || view === 'monitoring') return <Monitoring s={s} onBack={s.policyAcknowledged ? () => setView('timer') : undefined} />;
   if (view === 'settings') return <SettingsView s={s} onBack={() => setView('timer')} />;
+  if (view === 'manual') return <ManualTime s={s} onBack={() => setView('timer')} />;
   return (
     <>
-      <Timer s={s} onSettings={() => setView('settings')} onMonitoring={() => setView('monitoring')} />
+      <Timer s={s} onSettings={() => setView('settings')} onMonitoring={() => setView('monitoring')} onManual={s.policy?.manualTime.allowed ? () => setView('manual') : undefined} />
       {s.idlePrompt && <IdleSheet s={s} />}
     </>
   );
@@ -173,7 +183,7 @@ function Monitoring({ s, onBack }: { s: AgentState; onBack?: () => void }) {
   );
 }
 
-function Timer({ s, onSettings, onMonitoring }: { s: AgentState; onSettings: () => void; onMonitoring: () => void }) {
+function Timer({ s, onSettings, onMonitoring, onManual }: { s: AgentState; onSettings: () => void; onMonitoring: () => void; onManual?: () => void }) {
   const t = s.tracking;
   const now = useTick(t.state === 'active');
   const elapsed = t.baseSeconds + (t.segmentStartedAt ? (now - Date.parse(t.segmentStartedAt)) / 1000 : 0);
@@ -208,6 +218,11 @@ function Timer({ s, onSettings, onMonitoring }: { s: AgentState; onSettings: () 
           <div className="truncate text-2xs text-nav-muted">{s.account!.name}</div>
         </div>
         <div className="flex items-center gap-1">
+          {onManual && (
+            <button onClick={onManual} aria-label="Add manual time" title="Add manual time" className="rounded-sm p-1.5 text-nav-muted hover:bg-white/10 hover:text-nav-fg">
+              <ClockPlus className="size-4" />
+            </button>
+          )}
           <button onClick={onMonitoring} aria-label="What is monitored" title="What is monitored" className="rounded-sm p-1.5 text-nav-muted hover:bg-white/10 hover:text-nav-fg">
             <Eye className="size-4" />
           </button>
@@ -314,6 +329,23 @@ function Timer({ s, onSettings, onMonitoring }: { s: AgentState; onSettings: () 
         </ul>
       </section>
 
+      {s.timesheetDue && (
+        <button
+          onClick={() => void bridge.openWeb(`/o/${s.account!.organizationId}/timesheets?date=${s.timesheetDue!.periodStart}`)}
+          className={`flex items-center gap-2 border-t border-border px-4 py-2 text-left text-xs ${s.timesheetDue.overdue ? 'bg-warning-soft text-warning' : 'bg-interactive-soft text-interactive'}`}
+        >
+          <ClipboardCheck className="size-4 shrink-0" />
+          <span className="min-w-0 flex-1">
+            <span className="font-semibold">{s.timesheetDue.overdue ? 'Timesheet not submitted' : 'Timesheet due today'}</span>
+            <span className="block truncate">
+              {fmtRange(s.timesheetDue.periodStart, s.timesheetDue.periodEnd)} · {fmtHm(s.timesheetDue.totalSeconds)}
+              {s.timesheetDue.status === 'REJECTED' ? ' · changes requested' : ''}
+            </span>
+          </span>
+          <ExternalLink className="size-3.5 shrink-0" />
+        </button>
+      )}
+
       <footer className="grid grid-cols-3 border-t border-border bg-surface text-center">
         <div className="px-2 py-2">
           <div className="text-2xs text-text-muted">Today</div>
@@ -370,6 +402,124 @@ function Recovery({ s }: { s: AgentState }) {
       <button onClick={() => void bridge.resolveRecovery(false)} className="h-10 rounded-sm border border-border text-sm font-medium">
         Keep it stopped
       </button>
+    </div>
+  );
+}
+
+const field = 'mt-1 h-8 w-full rounded-sm border border-border bg-surface px-2 text-sm focus:border-interactive focus:outline-none';
+
+/** Manual time request. Saved on this computer first, so it can be filed offline and is sent on reconnect. */
+function ManualTime({ s, onBack }: { s: AgentState; onBack: () => void }) {
+  const policy = s.policy!.manualTime;
+  const [projectId, setProjectId] = useState(s.lastProject?.projectId ?? s.assignments[0]?.project_id ?? '');
+  const [taskId, setTaskId] = useState<string>('');
+  const [date, setDate] = useState(localDateInput());
+  const [from, setFrom] = useState('09:00');
+  const [to, setTo] = useState('10:00');
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const project = s.assignments.find((a) => a.project_id === projectId);
+  const startedAt = new Date(`${date}T${from}`);
+  const endedAt = new Date(`${date}T${to}`);
+  const seconds = (endedAt.getTime() - startedAt.getTime()) / 1000;
+  const name = (id: string) => s.assignments.find((a) => a.project_id === id)?.project_name ?? 'Project';
+  const time = (iso: string) => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+  const submit = async () => {
+    setError(null);
+    setSaved(false);
+    try {
+      await bridge.requestManualTime({ projectId, taskId: taskId || null, startedAt: startedAt.toISOString(), endedAt: endedAt.toISOString(), reason });
+      setReason('');
+      setSaved(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': Error: /, '') : 'Could not save');
+    }
+  };
+
+  return (
+    <div className="flex h-full flex-col bg-surface">
+      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
+        <button onClick={onBack} aria-label="Back" className="rounded-sm p-1 text-text-muted hover:bg-surface-muted">
+          <ChevronLeft className="size-4" />
+        </button>
+        <ClockPlus className="size-4 text-interactive" />
+        <h1 className="text-sm font-semibold">Add manual time</h1>
+      </header>
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        <label className="block text-xs text-text-muted">
+          Project
+          <select value={projectId} onChange={(e) => (setProjectId(e.target.value), setTaskId(''))} className={field}>
+            {s.assignments.map((a) => (
+              <option key={a.project_id} value={a.project_id}>
+                {a.project_name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {project && project.tasks.length > 0 && (
+          <label className="mt-2 block text-xs text-text-muted">
+            Task (optional)
+            <select value={taskId} onChange={(e) => setTaskId(e.target.value)} className={field}>
+              <option value="">No task</option>
+              {project.tasks.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <div className="mt-2 grid grid-cols-[1.4fr_1fr_1fr] gap-2">
+          <label className="block text-xs text-text-muted">
+            Date
+            <input type="date" value={date} max={localDateInput()} onChange={(e) => setDate(e.target.value)} className={field} />
+          </label>
+          <label className="block text-xs text-text-muted">
+            From
+            <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} className={field} />
+          </label>
+          <label className="block text-xs text-text-muted">
+            To
+            <input type="time" value={to} onChange={(e) => setTo(e.target.value)} className={field} />
+          </label>
+        </div>
+        <label className="mt-2 block text-xs text-text-muted">
+          Reason{policy.reasonRequired ? '' : ' (optional)'}
+          <input value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Client meeting away from my computer" className={field} />
+        </label>
+        <p className="mt-2 text-2xs text-text-muted">
+          {seconds > 0 ? fmtHm(seconds) : '—'} · times in this computer's time zone. {policy.requiresApproval ? 'Your manager approves manual time before it counts.' : 'It is added to your timesheet right away.'}
+        </p>
+        {error && <p className="mt-2 rounded-sm bg-danger-soft px-2.5 py-1.5 text-xs text-danger">{error}</p>}
+        {saved && <p className="mt-2 rounded-sm bg-success-soft px-2.5 py-1.5 text-xs text-success">{s.sync.online ? 'Request sent.' : 'Saved on this computer. It will be sent when you are back online.'}</p>}
+        <button disabled={!projectId || seconds <= 0} onClick={() => void submit()} className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-white hover:bg-interactive-hover disabled:opacity-50">
+          <Check className="size-4" /> {policy.requiresApproval ? 'Request time' : 'Add time'}
+        </button>
+
+        {s.manualRequests.length > 0 && (
+          <>
+            <h2 className="mt-5 text-xs font-semibold text-text-muted">Recent requests from this computer</h2>
+            <ul className="mt-1 divide-y divide-border">
+              {s.manualRequests.map((r) => (
+                <li key={r.id} className="py-2 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate font-medium">{name(r.projectId)}</span>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-2xs font-semibold ${r.status === 'rejected' ? 'bg-danger-soft text-danger' : r.status === 'queued' ? 'bg-warning-soft text-warning' : 'bg-success-soft text-success'}`}>
+                      {r.status === 'queued' ? 'Waiting to send' : r.status === 'sent' ? 'Sent' : 'Not added'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-text-muted">
+                    {time(r.startedAt)} – {new Date(r.endedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                  </div>
+                  {r.message && <div className="text-xs text-danger">{r.message}</div>}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
     </div>
   );
 }

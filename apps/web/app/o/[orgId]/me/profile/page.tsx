@@ -21,6 +21,10 @@ const NOTIFICATION_TYPES: Array<{ type: string; label: string; manager?: boolean
   { type: 'manual_time.approved', label: 'My manual time was approved' },
   { type: 'budget.warning', label: 'A budget reached its warning threshold', manager: true },
   { type: 'policy.changed', label: 'Monitoring settings that apply to me changed' },
+  { type: 'shift.not_started', label: 'My shift started and my timer is not running (managers: a team member’s)' },
+  { type: 'break.overrun', label: 'My break ran over its maximum length' },
+  { type: 'timesheet.late_time', label: 'Time was added to a submitted or approved timesheet', manager: true },
+  { type: 'digest.daily', label: 'Daily summary (email)' },
 ];
 
 export default function ProfilePage() {

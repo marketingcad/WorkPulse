@@ -26,6 +26,7 @@ import {
   useToast,
 } from '@tallywork/ui';
 import { api, errorMessage, qs, useOrgQuery } from '@/lib/api';
+import { useOrgStream } from '@/lib/stream';
 import { useOrg } from '@/lib/org';
 import { useCurrentTracking, useLiveSeconds } from '@/components/shell/timer-bar';
 import { StackedBars } from '@/components/charts';
@@ -70,11 +71,12 @@ export default function OverviewPage() {
   const [scope, setScope] = useState<'ALL' | 'ME' | 'WORKER'>(org.isManagerView ? 'ALL' : 'ME');
   const [worker, setWorker] = useState<string>('');
   const [editing, setEditing] = useState(false);
+  useOrgStream(['/dashboard/widgets']);
   const layoutQ = useOrgQuery<Layout>(`/dashboard/layout?scope=${scope}`);
   const [draft, setDraft] = useState<WidgetCfg[] | null>(null);
   const widgets = draft ?? layoutQ.data?.widgets ?? [];
   const keys = widgets.map((w) => w.key).join(',');
-  const dataQ = useOrgQuery<Record<string, any>>(keys ? `/dashboard/widgets${qs({ keys, scope, membership_id: scope === 'WORKER' ? worker : undefined })}` : null, { refetchInterval: 30_000, enabled: !!keys && (scope !== 'WORKER' || !!worker) });
+  const dataQ = useOrgQuery<Record<string, any>>(keys ? `/dashboard/widgets${qs({ keys, scope, membership_id: scope === 'WORKER' ? worker : undefined })}` : null, { refetchInterval: 120_000, enabled: !!keys && (scope !== 'WORKER' || !!worker) });
   const workersQ = useOrgQuery<WorkerDto[]>(org.isManagerView ? '/workers' : null);
 
   useEffect(() => {

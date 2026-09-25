@@ -19,15 +19,16 @@ import {
   withTenant,
   type Tx,
 } from '@tallywork/db';
-import { localDate, type TrackingPolicy } from '@tallywork/domain';
+import { addDaysToDate, localDate, type TrackingPolicy } from '@tallywork/domain';
 import type { Deps } from '../context';
 import { auditSystem, emit } from '../services/events';
+import { sendDigests } from '../services/digest';
 import { checkBudgets } from '../services/finance';
 import { alertLongBreaks, runAccruals, runShiftAlerts } from '../services/operations';
 import { approversFor, membersWith, notify } from '../services/notify';
 import { effectivePolicy } from '../services/policies';
 import { deliverWebhooks, enqueueWebhooks } from '../services/platform';
-import { recomputeUsageDays, recomputeWorkerDays } from '../services/projector';
+import { reconcileWorkerDays, recomputeUsageDays, recomputeWorkerDays } from '../services/projector';
 import { applyTrigger, limitExceeded, lockWorker, resolveIdle } from '../services/tracking';
 import { memberNames } from '../services/timer';
 
@@ -308,12 +309,17 @@ export async function runDaily(deps: Deps) {
 
       const accrued = await runAccruals(tx, deps, o.id, today, o.timezone);
 
+      // Rollups drive dashboards and reports: rebuild any worker-day that no longer matches its entries.
+      const rollups = await reconcileWorkerDays(tx, o.id, addDaysToDate(today, -35), today);
+      if (rollups.drifted > 0) await auditSystem(tx, o.id, { action: 'rollups.reconciled', metadata: rollups });
+
       const overdue = await tx.select().from(invoices).where(and(eq(invoices.status, 'SENT'), lt(invoices.dueDate, today), sql`${invoices.paidMinor} < ${invoices.totalMinor}`, isNull(invoices.overdueNotifiedAt)));
       for (const i of overdue) {
         await tx.update(invoices).set({ overdueNotifiedAt: deps.now() }).where(eq(invoices.id, i.id));
         await emit(tx, o.id, 'invoice.overdue', { invoice_id: i.id, number: i.number });
       }
-      summary[o.id] = { deleted, accrued, overdue: overdue.length };
+      const digests = await sendDigests(tx, deps, o.id, today);
+      summary[o.id] = { deleted, accrued, overdue: overdue.length, rollups, digests };
     });
   }
   await withSystem(deps.db, (tx) => tx.delete(rateLimitBuckets).where(lt(rateLimitBuckets.windowStart, new Date(deps.now().getTime() - 2 * 86400_000))));

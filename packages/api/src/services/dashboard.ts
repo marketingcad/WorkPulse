@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   dashboardLayouts,
   devices,
+  timeSegments,
   invoices,
   manualTimeRequests,
   memberships,
@@ -14,13 +15,15 @@ import {
   timesheets,
   trackingSessions,
 } from '@tallywork/db';
-import { addDaysToDate, deriveInvoiceStatus, forbidden, localDate, startOfWeek } from '@tallywork/domain';
+import { addDaysToDate, deriveInvoiceStatus, forbidden, localDate, splitAtLocalMidnight, startOfWeek } from '@tallywork/domain';
 import type { dashboardLayoutInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { listScreenshots } from './activity';
 import { budgetStatuses } from './finance';
 import { listAttendance } from './operations';
+import { effectivePolicy } from './policies';
 import { narrowMemberships } from './scope';
+import { todayAndWeek, workerTimezone } from './tracking';
 import { currentTracking, liveWorkers, listSessions } from './timer';
 import { memberNames } from './timer';
 
@@ -125,28 +128,51 @@ export async function widgetData(x: Ctx, keys: string[], scope: 'ALL' | 'ME' | '
   if (want.has('worked_today') || want.has('tracked_week') || want.has('activity') || want.has('hours_by_project')) {
     const week = await rollups(weekStart, weekEnd);
     const prevWeek = await rollups(addDaysToDate(weekStart, -7), addDaysToDate(weekStart, -1));
-    const live = target === 'all' || target.length !== 1 ? null : await currentTracking(x, target[0]!);
     const sum = (rows: typeof week, pred: (r: (typeof week)[number]) => boolean = () => true) => rows.filter(pred).reduce((s, r) => s + r.trackedSeconds + r.manualSeconds, 0);
-    // Rollups exclude the running segment; add it when looking at one worker.
-    const liveExtra = live?.session?.current_segment_started_at ? Math.max(0, live.today_seconds - sum(week, (r) => r.localDate === today)) : 0;
-    const todayS = sum(week, (r) => r.localDate === today) + liveExtra;
-    const weekS = sum(week) + liveExtra;
+    // Rollups only hold finished work segments; add every timer running right now, per local day.
+    const running = await x.tx
+      .select({ m: timeSegments.membershipId, start: timeSegments.startedAt, tz: trackingSessions.timezone, projectId: trackingSessions.projectId, billable: projects.billableDefault })
+      .from(timeSegments)
+      .innerJoin(trackingSessions, eq(trackingSessions.id, timeSegments.sessionId))
+      .innerJoin(projects, eq(projects.id, trackingSessions.projectId))
+      .where(and(isNull(timeSegments.endedAt), eq(timeSegments.kind, 'WORK'), memberFilter(timeSegments.membershipId)));
+    const liveByDay = new Map<string, number>();
+    const liveByProject = new Map<string, number>();
+    const liveWorkersToday = new Set<string>();
+    let liveBillableToday = 0;
+    for (const r of running) {
+      if (now <= r.start) continue;
+      for (const pc of splitAtLocalMidnight({ start: r.start, end: now }, r.tz)) {
+        if (pc.localDate < weekStart || pc.localDate > weekEnd) continue;
+        const secs = Math.round((pc.end.getTime() - pc.start.getTime()) / 1000);
+        liveByDay.set(pc.localDate, (liveByDay.get(pc.localDate) ?? 0) + secs);
+        liveByProject.set(r.projectId, (liveByProject.get(r.projectId) ?? 0) + secs);
+        if (pc.localDate === today) {
+          liveWorkersToday.add(r.m);
+          if (r.billable) liveBillableToday += secs;
+        }
+      }
+    }
+    const liveWeek = [...liveByDay.values()].reduce((a, b) => a + b, 0);
+    const todayS = sum(week, (r) => r.localDate === today) + (liveByDay.get(today) ?? 0);
+    const weekS = sum(week) + liveWeek;
     const act = week.reduce((s, r) => s + r.activeSeconds, 0);
     const actT = week.reduce((s, r) => s + r.activityTrackedSeconds, 0);
-    const workers = new Set(week.filter((r) => r.localDate === today).map((r) => r.membershipId)).size;
-    out.worked_today = { seconds: todayS, workers, billable_seconds: week.filter((r) => r.localDate === today && r.billable).reduce((s, r) => s + r.trackedSeconds + r.manualSeconds, 0) };
+    const workers = new Set([...week.filter((r) => r.localDate === today).map((r) => r.membershipId), ...liveWorkersToday]).size;
+    out.worked_today = { seconds: todayS, workers, billable_seconds: week.filter((r) => r.localDate === today && r.billable).reduce((s, r) => s + r.trackedSeconds + r.manualSeconds, 0) + liveBillableToday };
     out.tracked_week = {
       seconds: weekS,
       previous_seconds: sum(prevWeek),
       billable_seconds: sum(week, (r) => r.billable),
       by_day: Array.from({ length: 7 }, (_, i) => {
         const d = addDaysToDate(weekStart, i);
-        return { date: d, seconds: sum(week, (r) => r.localDate === d) + (d === today ? liveExtra : 0) };
+        return { date: d, seconds: sum(week, (r) => r.localDate === d) + (liveByDay.get(d) ?? 0) };
       }),
     };
     out.activity = { pct: actT > 0 ? Math.round((act / actT) * 100) : null, previous_pct: (() => { const a = prevWeek.reduce((s, r) => s + r.activeSeconds, 0); const t = prevWeek.reduce((s, r) => s + r.activityTrackedSeconds, 0); return t > 0 ? Math.round((a / t) * 100) : null; })() };
     const byProject = new Map<string, number>();
     for (const r of week) byProject.set(r.projectId, (byProject.get(r.projectId) ?? 0) + r.trackedSeconds + r.manualSeconds);
+    for (const [p, secs] of liveByProject) byProject.set(p, (byProject.get(p) ?? 0) + secs);
     const pnames = byProject.size ? await x.tx.select({ id: projects.id, name: projects.name, color: projects.color }).from(projects).where(inArray(projects.id, [...byProject.keys()])) : [];
     out.hours_by_project = [...byProject.entries()].map(([id, s]) => ({ project_id: id, name: pnames.find((p) => p.id === id)?.name ?? '', color: pnames.find((p) => p.id === id)?.color ?? '#4B4FC4', seconds: s })).sort((a, b) => b.seconds - a.seconds).slice(0, 8);
   }
@@ -227,9 +253,19 @@ export async function widgetData(x: Ctx, keys: string[], scope: 'ALL' | 'ME' | '
     out.devices_offline = rows.map((d) => ({ id: d.id, name: d.name, last_seen_at: d.lastSeenAt?.toISOString() ?? null }));
   }
 
-  if (want.has('weekly_limits')) {
-    // Weekly limit usage is shown for the actor (workers) — managers use the Limits report.
-    out.weekly_limits = null;
+  if (want.has('weekly_limits') && g['tracking:track']) {
+    // The actor's own limits and how much of them is used (null when no limit applies).
+    const policy = await effectivePolicy(x.tx, x.org.id, x.actor.membershipId, x.policyCache);
+    const { dailySeconds, weeklySeconds } = policy.limits;
+    if (dailySeconds == null && weeklySeconds == null) out.weekly_limits = null;
+    else {
+      const tz = await workerTimezone(x.tx, x.actor.membershipId, x.org.timezone);
+      const used = await todayAndWeek(x.tx, x.actor.membershipId, tz, x.org.weekStart, now);
+      out.weekly_limits = {
+        daily: dailySeconds == null ? null : { limit_seconds: dailySeconds, used_seconds: used.today },
+        weekly: weeklySeconds == null ? null : { limit_seconds: weeklySeconds, used_seconds: used.week },
+      };
+    }
   }
   void memberships;
   void trackingSessions;

@@ -17,6 +17,8 @@ export async function recomputeWorkerDays(tx: Tx, organizationId: string, member
      where membership_id = ${membershipId} and deleted_at is null and local_date in ${sql.raw(`(${dates.map((d) => `'${d.replace(/[^0-9-]/g, '')}'`).join(',')})`)}
      group by organization_id, membership_id, local_date, project_id, coalesce(task_id::text, ''), billable
   `);
+  // Activity windows are per project/task, but a day can have a billable and a non-billable row
+  // for the same task: put the activity on one row (the larger one) so it is never counted twice.
   await tx.execute(sql`
     update rollup_worker_day r
        set active_seconds = a.active, activity_tracked_seconds = a.tracked, updated_at = now()
@@ -25,8 +27,15 @@ export async function recomputeWorkerDays(tx: Tx, organizationId: string, member
           from activity_windows
          where membership_id = ${membershipId} and local_date in ${sql.raw(`(${dates.map((d) => `'${d.replace(/[^0-9-]/g, '')}'`).join(',')})`)}
          group by 1, 2, 3
-      ) a
+      ) a,
+      (
+        select distinct on (local_date, project_id, task_key) local_date, project_id, task_key, billable
+          from rollup_worker_day
+         where membership_id = ${membershipId} and local_date in ${sql.raw(`(${dates.map((d) => `'${d.replace(/[^0-9-]/g, '')}'`).join(',')})`)}
+         order by local_date, project_id, task_key, tracked_seconds + manual_seconds desc, billable desc
+      ) t
      where r.membership_id = ${membershipId} and r.local_date = a.local_date and r.project_id = a.project_id and r.task_key = a.task_key
+       and t.local_date = r.local_date and t.project_id = r.project_id and t.task_key = r.task_key and t.billable = r.billable
   `);
   void organizationId;
 }
@@ -47,4 +56,32 @@ export async function recomputeUsageDays(tx: Tx, membershipId: string, dates: st
      where u.membership_id = ${membershipId} and to_char(u.started_at at time zone s.timezone, 'YYYY-MM-DD') in ${list}
      group by 1, 2, 3, 4, 5, 6
   `);
+}
+
+/**
+ * Nightly reconciliation: compare each worker-day's rollup total with the time entries it is
+ * built from, and rebuild the days that drifted. Returns how many worker-days were checked and
+ * rebuilt (the drift metric).
+ */
+export async function reconcileWorkerDays(tx: Tx, organizationId: string, from: string, to: string): Promise<{ checked: number; drifted: number }> {
+  const res = await tx.execute<{ membership_id: string; local_date: string; source: number; rollup: number }>(sql`
+    with src as (
+      select membership_id, local_date, sum(duration_seconds)::bigint as s
+        from time_entries where deleted_at is null and local_date between ${from} and ${to}
+       group by 1, 2
+    ), agg as (
+      select membership_id, local_date, sum(tracked_seconds + manual_seconds)::bigint as s
+        from rollup_worker_day where local_date between ${from} and ${to}
+       group by 1, 2
+    )
+    select coalesce(src.membership_id, agg.membership_id) as membership_id, coalesce(src.local_date, agg.local_date) as local_date,
+           coalesce(src.s, 0)::bigint as source, coalesce(agg.s, 0)::bigint as rollup
+      from src full outer join agg on agg.membership_id = src.membership_id and agg.local_date = src.local_date
+  `);
+  const rows = (res as unknown as { rows: Array<{ membership_id: string; local_date: string; source: number; rollup: number }> }).rows;
+  const drifted = rows.filter((r) => Number(r.source) !== Number(r.rollup));
+  const byWorker = new Map<string, string[]>();
+  for (const r of drifted) byWorker.set(r.membership_id, [...(byWorker.get(r.membership_id) ?? []), r.local_date]);
+  for (const [m, dates] of byWorker) await recomputeWorkerDays(tx, organizationId, m, dates);
+  return { checked: rows.length, drifted: drifted.length };
 }

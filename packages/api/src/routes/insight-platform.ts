@@ -10,6 +10,8 @@ import { toCsv, toPdf, toXlsx } from '../lib/export';
 import { ctx } from '../services/ctx';
 import { audit } from '../services/events';
 import { getLayout, resetLayout, saveLayout, widgetData } from '../services/dashboard';
+import { eventReader } from '../services/stream';
+import { streamSSE } from 'hono/streaming';
 import { reportCatalog, runReport } from '../services/reports';
 import {
   WEBHOOK_EVENTS,
@@ -39,6 +41,30 @@ export const insightRoutes = new Hono<AppEnv>()
   .get('/dashboard/layout', async (c) => c.json(await getLayout(ctx(c), scope.parse(c.req.query('scope') ?? 'ALL'))))
   .put('/dashboard/layout', async (c) => c.json(await saveLayout(ctx(c), await body(c, dashboardLayoutInput))))
   .delete('/dashboard/layout', async (c) => c.json(await resetLayout(ctx(c), scope.parse(c.req.query('scope') ?? 'ALL'))))
+  /**
+   * Server-sent events for live views (dashboard, live view, timer). Runs outside the request
+   * transaction; each poll is a short tenant transaction. Closes after streamMaxMs; the browser
+   * reconnects with Last-Event-ID and misses nothing.
+   */
+  .get('/stream', async (c) => {
+    const x = ctx(c);
+    const reader = eventReader(x, c.req.header('last-event-id') ?? c.req.query('last_event_id'));
+    const { streamPollMs, streamMaxMs } = x.deps.config;
+    c.header('Cache-Control', 'no-cache, no-transform');
+    c.header('X-Accel-Buffering', 'no');
+    return streamSSE(c, async (stream) => {
+      let open = true;
+      stream.onAbort(() => {
+        open = false;
+      });
+      await stream.writeSSE({ event: 'ready', id: reader.cursor, data: '{}', retry: 3000 });
+      const until = Date.now() + streamMaxMs;
+      while (open && Date.now() < until) {
+        for (const e of await reader.next()) await stream.writeSSE({ event: 'change', id: e.id, data: JSON.stringify({ type: e.type, worker_id: e.worker_id }) });
+        await stream.sleep(streamPollMs);
+      }
+    });
+  })
   .get('/dashboard/widgets', async (c) => {
     const q = query(c, z.object({ keys: z.string().max(1000), scope: scope.default('ALL'), membership_id: z.uuid().optional() }));
     return c.json(await widgetData(ctx(c), q.keys.split(','), q.scope, q.membership_id));

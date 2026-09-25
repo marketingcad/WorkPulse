@@ -27,6 +27,7 @@ import {
   type Column,
 } from '@tallywork/ui';
 import { errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
+import { useOrgStream } from '@/lib/stream';
 import { todayIn, useOrg } from '@/lib/org';
 import { SessionDrawer } from '@/components/tracking/session-drawer';
 
@@ -40,7 +41,9 @@ export default function LivePage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [stopping, setStopping] = useState<LiveWorkerDto | null>(null);
   const allowed = org.can('tracking:read');
-  const q = useOrgQuery<LiveWorkerDto[]>(allowed ? '/tracking/live' : null, { refetchInterval: 15_000, refetchIntervalInBackground: false });
+  useOrgStream(['/tracking/live']);
+  // The stream refreshes on every change; the slow poll only keeps elapsed times and idle states fresh.
+  const q = useOrgQuery<LiveWorkerDto[]>(allowed ? '/tracking/live' : null, { refetchInterval: 60_000, refetchIntervalInBackground: false });
   const forceStop = useOrgMutation<{ id: string }, SessionDto>('POST', (b) => `/sessions/${b.id}/force-stop`);
   const canForceStop = org.can('tracking:force_stop');
 

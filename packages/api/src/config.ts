@@ -8,6 +8,9 @@ export interface Config {
   sessionTtlHours: number;
   /** allow signups without email verification (dev/demo only) */
   requireEmailVerification: boolean;
+  /** live stream: how often it checks for new events, and how long one connection stays open */
+  streamPollMs: number;
+  streamMaxMs: number;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -23,5 +26,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     minAgentVersion: env.MIN_AGENT_VERSION ?? '0.1.0',
     sessionTtlHours: Number(env.SESSION_TTL_HOURS ?? 24 * 14),
     requireEmailVerification: env.REQUIRE_EMAIL_VERIFICATION === 'true',
+    streamPollMs: Number(env.STREAM_POLL_MS ?? 2000),
+    // Below the function timeout; the browser's EventSource reconnects and resumes from Last-Event-ID.
+    streamMaxMs: Number(env.STREAM_MAX_MS ?? 55_000),
   };
 }

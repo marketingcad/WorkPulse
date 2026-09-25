@@ -195,3 +195,15 @@ export const rateLimitBuckets = pgTable('rate_limit_buckets', {
   windowStart: tstz().notNull(),
 });
 
+
+/** One row per digest email sent, so the daily job sends each member at most one per day. */
+export const digestSends = pgTable(
+  'digest_sends',
+  {
+    organizationId: orgId(),
+    membershipId: uuid().notNull(),
+    digestDate: text().notNull(),
+    sentAt: tstz().notNull().default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.membershipId, t.digestDate] })],
+);

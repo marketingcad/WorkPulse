@@ -60,8 +60,8 @@ function ref(x: Ctx): ActorRef {
 }
 
 // ─── Time entries ────────────────────────────────────────────────────────────
-export async function listTimeEntries(x: Ctx, q: { from: string; to: string; membershipIds?: string[]; projectId?: string }): Promise<TimeEntryDto[]> {
-  const visible = narrowMemberships(x.actor, 'time:read', q.membershipIds);
+export async function listTimeEntries(x: Ctx, q: { from: string; to: string; membershipIds?: string[]; projectId?: string }, permission: 'time:read' | 'timesheets:read' = 'time:read'): Promise<TimeEntryDto[]> {
+  const visible = narrowMemberships(x.actor, permission, q.membershipIds);
   const rows = await x.tx
     .select({ e: timeEntries, projectName: projects.name, taskTitle: tasks.title, workerName: users.name })
     .from(timeEntries)
@@ -405,7 +405,8 @@ export async function getTimesheet(x: Ctx, membershipId: string, date: string): 
   if (!can(x.actor, 'timesheets:read', { ownerMembershipId: membershipId })) throw notFound('timesheet');
   const period = periodOf(x, date);
   const [row] = await x.tx.select().from(timesheets).where(and(eq(timesheets.membershipId, membershipId), eq(timesheets.periodStart, period.start)));
-  const entries = await listTimeEntries(x, { from: period.start, to: period.end, membershipIds: [membershipId] });
+  // A timesheet shows its own entries: reading it needs timesheets:read, not time:read.
+  const entries = await listTimeEntries(x, { from: period.start, to: period.end, membershipIds: [membershipId] }, 'timesheets:read');
   const days = eachDate(period.start, period.end).map((d) => ({ date: d, seconds: entries.filter((e) => e.local_date === d).reduce((s, e) => s + e.duration_seconds, 0) }));
   const byKey = new Map<string, TimesheetDto['projects'][number]>();
   for (const e of entries) {

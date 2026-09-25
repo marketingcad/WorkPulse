@@ -24,6 +24,7 @@ import type { Deps } from '../context';
 import { auditSystem, emit } from '../services/events';
 import { sendDigests } from '../services/digest';
 import { processReportRuns, runSchedules } from '../services/report-runs';
+import { runSyncs } from '../services/integrations';
 import { checkBudgets } from '../services/finance';
 import { alertLongBreaks, runAccruals, runShiftAlerts } from '../services/operations';
 import { approversFor, membersWith, notify } from '../services/notify';
@@ -140,7 +141,7 @@ async function handleEvent(tx: Tx, deps: Deps, e: Envelope): Promise<void> {
     default:
       break;
   }
-  await enqueueWebhooks(tx, org, e);
+  await enqueueWebhooks(tx, org, e, deps.now());
 }
 
 /** Process pending outbox events. Each event runs in its own tenant transaction. */
@@ -275,8 +276,9 @@ export async function runTick(deps: Deps) {
   reports.processed += await processReportRuns(deps, 3);
   const offline = await markDevicesOffline(deps);
   const dispatched = await dispatchOutbox(deps, 200);
-  const webhooks = await withSystem(deps.db, (tx) => deliverWebhooks(tx, deps, 50));
-  return { sessions, workforce, reports, offline, dispatched, webhooks };
+  const webhooks = await deliverWebhooks(deps, 50);
+  const integrations = await runSyncs(deps);
+  return { sessions, workforce, reports, offline, dispatched, webhooks, integrations };
 }
 
 /** Daily: retention cleanup, accruals, overdue invoices, housekeeping. */

@@ -11,6 +11,7 @@ import { ctx } from '../services/ctx';
 import { audit } from '../services/events';
 import { getLayout, resetLayout, saveLayout, widgetData } from '../services/dashboard';
 import { eventReader } from '../services/stream';
+import { connectionInput, createConnection, deleteConnection, listConnections, listProviders, requestSync } from '../services/integrations';
 import { streamSSE } from 'hono/streaming';
 import { reportCatalog, runReport } from '../services/reports';
 import { createSavedReport, listRuns, listSavedReports, queueExport, updateSavedReport } from '../services/report-runs';
@@ -32,6 +33,7 @@ import {
   setNotificationPrefs,
   setRetention,
   testWebhook,
+  rotateWebhookSecret,
   uploadReceipt,
   upsertWebhook,
 } from '../services/platform';
@@ -126,6 +128,15 @@ export const platformRoutes = new Hono<AppEnv>()
     await deleteWebhook(ctx(c), c.req.param('id'));
     return c.body(null, 204);
   })
+  .get('/integrations/providers', async (c) => c.json(listProviders()))
+  .get('/integrations', async (c) => c.json(await listConnections(ctx(c))))
+  .post('/integrations', async (c) => c.json(await createConnection(ctx(c), await body(c, connectionInput)), 201))
+  .delete('/integrations/:id', async (c) => {
+    await deleteConnection(ctx(c), c.req.param('id'));
+    return c.body(null, 204);
+  })
+  .post('/integrations/:id/sync', async (c) => c.json(await requestSync(ctx(c), c.req.param('id')), 202))
+  .post('/webhooks/:id/rotate-secret', async (c) => c.json(await rotateWebhookSecret(ctx(c), c.req.param('id'))))
   .get('/webhooks/:id/deliveries', async (c) => c.json(await listDeliveries(ctx(c), c.req.param('id'))))
   .post('/webhooks/:id/deliveries/:deliveryId/replay', async (c) => c.json(await replayDelivery(ctx(c), c.req.param('id'), c.req.param('deliveryId'))))
   .post('/webhooks/:id/test', async (c) => c.json(await testWebhook(ctx(c), c.req.param('id'))))

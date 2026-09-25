@@ -209,3 +209,39 @@ export const digestSends = pgTable(
   },
   (t) => [primaryKey({ columns: [t.membershipId, t.digestDate] })],
 );
+
+/** A connection to an external system (e.g. a project tool or accounting system). */
+export const integrationConnections = pgTable(
+  'integration_connections',
+  {
+    id: pk(),
+    organizationId: orgId(),
+    provider: text().notNull(),
+    name: text().notNull(),
+    status: text().$type<'ACTIVE' | 'PAUSED' | 'ERROR'>().notNull().default('ACTIVE'),
+    /** non-secret settings */
+    config: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    /** credentials, encrypted with the app secret; never returned by the API */
+    secretEnc: text(),
+    syncRequestedAt: tstz(),
+    lastSyncAt: tstz(),
+    lastError: text(),
+    createdBy: uuid().notNull(),
+    ...timestamps,
+  },
+  (t) => [index().on(t.organizationId)],
+);
+
+/** Which external record a Tallywork record corresponds to, per connection. */
+export const externalRefs = pgTable(
+  'external_refs',
+  {
+    organizationId: orgId(),
+    connectionId: uuid().notNull(),
+    entityType: text().notNull(),
+    entityId: uuid().notNull(),
+    externalId: text().notNull(),
+    syncedAt: tstz().notNull().default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.connectionId, t.entityType, t.externalId] }), index().on(t.connectionId, t.entityType, t.entityId)],
+);

@@ -8,6 +8,9 @@ import { problemFromError } from './lib/http';
 import { safeEqual, verifyToken } from './lib/crypto';
 import { authenticate } from './middleware/auth';
 import { tenant } from './middleware/tenant';
+import { rateLimit } from './middleware/rate-limit';
+
+export const API_KEY_REQUESTS_PER_MINUTE = 600;
 import { authRoutes, meRoutes } from './routes/auth';
 import { orgRoutes } from './routes/org';
 import { timeRoutes } from './routes/time';
@@ -68,6 +71,9 @@ export function createApp(deps: Deps) {
   app.route('/me', meRoutes);
   app.route('/agent', agentRoutes);
 
+  // API keys are rate limited per key (people and devices have their own limits on auth and ingest).
+  const apiKeyLimit = rateLimit('api-key', API_KEY_REQUESTS_PER_MINUTE, 60);
+  app.use('/orgs/:orgId/*', (c, next) => (c.var.principal?.type === 'api_key' ? apiKeyLimit(c, next) : next()));
   app.use('/orgs/:orgId/*', tenant);
   app.route('/orgs/:orgId', orgRoutes);
   app.route('/orgs/:orgId', timeRoutes);

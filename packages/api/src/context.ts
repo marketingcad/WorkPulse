@@ -13,6 +13,8 @@ export interface Deps {
   /** Run work after the response is sent (Next.js `after()` in production). */
   defer: (task: () => Promise<void>) => void;
   now: () => Date;
+  /** Outbound webhook transport (defaults to postToPublicUrl; tests substitute a fake). */
+  httpPost?: import('./lib/ssrf').HttpPost;
 }
 
 export type Principal =

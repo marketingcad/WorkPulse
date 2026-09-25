@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { History, MoreHorizontal, Pencil, Plus, RotateCcw, Send, Trash2, Webhook } from 'lucide-react';
+import { History, KeyRound, MoreHorizontal, Pencil, Plus, RotateCcw, Send, Trash2, Webhook } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -64,9 +64,11 @@ import crypto from 'node:crypto';
 function verify(rawBody, header, secret) {
   // header: "t=1727260000,v1=5f2b…"
   const parts = Object.fromEntries(header.split(',').map((p) => p.split('=')));
-  const expected = crypto.createHmac('sha256', secret).update(\`\${parts.t}.\${rawBody}\`).digest('hex');
+  const expected = crypto.createHmac('sha256', secret).update(\`\${parts.t}.\${rawBody}\`).digest('base64url');
   const fresh = Math.abs(Date.now() / 1000 - Number(parts.t)) < 300; // reject replays older than 5 min
-  return fresh && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(parts.v1));
+  const a = Buffer.from(expected);
+  const b = Buffer.from(parts.v1 ?? '');
+  return fresh && a.length === b.length && crypto.timingSafeEqual(a, b);
 }`;
 
 export default function WebhooksPage() {
@@ -77,6 +79,7 @@ export default function WebhooksPage() {
   const [editing, setEditing] = useState<Endpoint | 'new' | null>(null);
   const [deleting, setDeleting] = useState<Endpoint | null>(null);
   const [deliveriesFor, setDeliveriesFor] = useState<Endpoint | null>(null);
+  const [rotated, setRotated] = useState<string | null>(null);
   const del = useOrgMutation<{ id: string }>('DELETE', (b) => `/webhooks/${b.id}`, {
     onSuccess: () => {
       toast.success('Endpoint deleted');
@@ -88,6 +91,15 @@ export default function WebhooksPage() {
     try {
       await api(`/orgs/${org.organization.id}/webhooks/${e.id}/test`, { method: 'POST', body: {} });
       toast.success('Test event queued. It appears under Deliveries within a minute.', { label: 'View', onClick: () => setDeliveriesFor(e) });
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
+  };
+
+  const rotate = async (e: Endpoint) => {
+    try {
+      const r = await api<{ secret: string }>(`/orgs/${org.organization.id}/webhooks/${e.id}/rotate-secret`, { method: 'POST', body: {} });
+      setRotated(r.secret);
     } catch (err) {
       toast.error(errorMessage(err));
     }
@@ -149,6 +161,9 @@ export default function WebhooksPage() {
               <MenuItem icon={<Pencil className="size-3.5" />} onSelect={() => setEditing(e)}>
                 Edit
               </MenuItem>
+              <MenuItem icon={<KeyRound className="size-3.5" />} onSelect={() => rotate(e)}>
+                Rotate signing secret
+              </MenuItem>
               <MenuSeparator />
               <MenuItem icon={<Trash2 className="size-3.5" />} danger onSelect={() => setDeleting(e)}>
                 Delete
@@ -206,7 +221,7 @@ export default function WebhooksPage() {
             <p className="text-text-muted">Every request carries these headers. Verify the signature before trusting the body, and use the raw request body exactly as received.</p>
             <CodeBlock>{`Tallywork-Event: timesheet.approved\nTallywork-Delivery: <delivery id>\nTallywork-Signature: t=<unix>,v1=<HMAC-SHA256(secret, t + "." + body)>`}</CodeBlock>
             <p className="text-text-muted">
-              <span className="font-mono text-xs">v1</span> is the lowercase hex HMAC-SHA256 of the timestamp, a dot, and the raw body, keyed with the endpoint’s signing secret. Reject requests whose timestamp is more than 5 minutes old. Respond with any 2xx status within 10 seconds.
+              <span className="font-mono text-xs">v1</span> is the base64url-encoded HMAC-SHA256 of the timestamp, a dot, and the raw body, keyed with the endpoint’s signing secret. Reject requests whose timestamp is more than 5 minutes old. Respond with any 2xx status within 10 seconds.
             </p>
             <CodeBlock copy>{VERIFY_SNIPPET}</CodeBlock>
           </div>
@@ -215,6 +230,9 @@ export default function WebhooksPage() {
 
       <EndpointDialog open={editing !== null} endpoint={editing === 'new' ? null : editing} events={q.data?.events ?? []} onOpenChange={(o) => !o && setEditing(null)} />
       <DeliveriesDrawer endpoint={deliveriesFor} onClose={() => setDeliveriesFor(null)} />
+      <Dialog open={!!rotated} onOpenChange={(o) => !o && setRotated(null)} title="New signing secret" width={560} footer={<Button variant="primary" onClick={() => setRotated(null)}>I have stored the secret</Button>}>
+        {rotated && <SecretReveal label="Signing secret" secret={rotated} warning="The old secret stopped working. Update your endpoint to verify with this one; it will not be shown again." />}
+      </Dialog>
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}

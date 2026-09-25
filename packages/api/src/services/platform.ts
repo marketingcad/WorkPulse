@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   apiKeys,
@@ -15,6 +15,7 @@ import {
   webhookDeliveries,
   webhookEndpoints,
   type Tx,
+  withSystem,
 } from '@tallywork/db';
 import { API_KEY_SCOPES, can, forbidden, newId, notFound, resolvePolicy, type DeepPartial, type TrackingPolicy } from '@tallywork/domain';
 import type { AuditLogDto, DeviceDto, EffectivePolicyDto, NotificationDto, apiKeyInput, policyDocInput, retentionInput, webhookInput } from '@tallywork/contracts';
@@ -25,7 +26,7 @@ import { policyHash, policyLayers } from './policies';
 import { membershipFilter } from './scope';
 import { memberNames } from './timer';
 import { decrypt, encrypt, hmac, randomToken } from '../lib/crypto';
-import { assertPublicUrl } from '../lib/ssrf';
+import { assertPublicUrl, postToPublicUrl } from '../lib/ssrf';
 import { iso } from '../lib/http';
 
 // ─── Devices ─────────────────────────────────────────────────────────────────
@@ -198,7 +199,7 @@ export async function replayDelivery(x: Ctx, endpointId: string, deliveryId: str
   const [d] = await x.tx.select().from(webhookDeliveries).where(and(eq(webhookDeliveries.id, deliveryId), eq(webhookDeliveries.endpointId, endpointId)));
   if (!d) throw notFound('delivery');
   const nid = newId();
-  await x.tx.insert(webhookDeliveries).values({ id: nid, organizationId: x.org.id, endpointId, eventId: d.eventId, eventType: d.eventType, payload: d.payload as object, nextAttemptAt: new Date() });
+  await x.tx.insert(webhookDeliveries).values({ id: nid, organizationId: x.org.id, endpointId, eventId: d.eventId, eventType: d.eventType, payload: d.payload as object, nextAttemptAt: x.deps.now() });
   await audit(x, { action: 'webhook.replayed', targetType: 'webhook_delivery', targetId: deliveryId });
   return { id: nid };
 }
@@ -206,67 +207,96 @@ export async function replayDelivery(x: Ctx, endpointId: string, deliveryId: str
 export async function testWebhook(x: Ctx, endpointId: string) {
   if (!x.actor.grants['webhooks:manage']) throw forbidden();
   const id = newId();
-  await x.tx.insert(webhookDeliveries).values({ id, organizationId: x.org.id, endpointId, eventId: newId(), eventType: 'webhook.test', payload: { event_type: 'webhook.test', organization_id: x.org.id, sent_at: new Date().toISOString() }, nextAttemptAt: new Date() });
+  await x.tx.insert(webhookDeliveries).values({ id, organizationId: x.org.id, endpointId, eventId: newId(), eventType: 'webhook.test', payload: { event_type: 'webhook.test', organization_id: x.org.id, sent_at: x.deps.now().toISOString() }, nextAttemptAt: x.deps.now() });
   return { id };
 }
 
-const RETRY_SCHEDULE_MINUTES = [1, 5, 30, 120, 360, 720, 1440];
+/** Minutes to wait after the 1st, 2nd, … failed attempt; after the last one the delivery is DEAD. */
+export const RETRY_SCHEDULE_MINUTES = [1, 5, 30, 120, 360, 720, 1440];
 const DISABLE_AFTER_FAILURES = 50;
+const LEASE_MS = 2 * 60_000;
 
-/** Deliver due webhook attempts (called from the cron tick). */
-export async function deliverWebhooks(tx: Tx, deps: Deps, limit = 25): Promise<number> {
-  const due = await tx
-    .select({ d: webhookDeliveries, w: webhookEndpoints })
-    .from(webhookDeliveries)
-    .innerJoin(webhookEndpoints, eq(webhookEndpoints.id, webhookDeliveries.endpointId))
-    .where(and(eq(webhookDeliveries.status, 'PENDING'), lt(webhookDeliveries.nextAttemptAt, deps.now()), eq(webhookEndpoints.enabled, true)))
-    .orderBy(asc(webhookDeliveries.nextAttemptAt))
-    .limit(limit);
-  for (const { d, w } of due) {
+/** Tallywork-Signature header: `t=<unix seconds>,v1=<base64url HMAC-SHA256 of "<t>.<body>">`. */
+export function webhookSignature(secret: string, body: string, unixSeconds: number): string {
+  return `t=${unixSeconds},v1=${hmac(secret, `${unixSeconds}.${body}`)}`;
+}
+
+/**
+ * Deliver due webhook attempts (called from the cron tick). Deliveries are claimed with a short
+ * lease in one small transaction, sent outside any transaction (a slow endpoint never holds a
+ * database connection), and each result is recorded in its own transaction.
+ */
+export async function deliverWebhooks(deps: Deps, limit = 25): Promise<number> {
+  const now = deps.now();
+  const claimed = await withSystem(deps.db, async (tx) => {
+    const due = await tx
+      .select({ d: webhookDeliveries, w: webhookEndpoints })
+      .from(webhookDeliveries)
+      .innerJoin(webhookEndpoints, eq(webhookEndpoints.id, webhookDeliveries.endpointId))
+      .where(and(eq(webhookDeliveries.status, 'PENDING'), lte(webhookDeliveries.nextAttemptAt, now), eq(webhookEndpoints.enabled, true)))
+      .orderBy(asc(webhookDeliveries.nextAttemptAt))
+      .limit(limit);
+    const out: typeof due = [];
+    for (const row of due) {
+      const lease = new Date(now.getTime() + LEASE_MS);
+      const [ok] = await tx.update(webhookDeliveries).set({ nextAttemptAt: lease }).where(and(eq(webhookDeliveries.id, row.d.id), eq(webhookDeliveries.status, 'PENDING'), lte(webhookDeliveries.nextAttemptAt, now))).returning({ id: webhookDeliveries.id });
+      if (ok) out.push(row);
+    }
+    return out;
+  });
+  const post = deps.httpPost ?? postToPublicUrl;
+  for (const { d, w } of claimed) {
     const body = JSON.stringify(d.payload);
-    const ts = Math.floor(Date.now() / 1000);
+    const ts = Math.floor(deps.now().getTime() / 1000);
     const secret = decrypt(deps.config.appSecret, w.secretEnc, 'webhook');
     const started = Date.now();
     let status: number | null = null;
     let text = '';
     try {
-      await assertPublicUrl(w.url); // re-check at delivery time (DNS rebinding)
-      const res = await fetch(w.url, {
-        method: 'POST',
-        redirect: 'manual',
-        signal: AbortSignal.timeout(10_000),
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'Tallywork-Webhooks/1.0', 'Tallywork-Event': d.eventType, 'Tallywork-Delivery': d.id, 'Tallywork-Signature': `t=${ts},v1=${hmac(secret, `${ts}.${body}`)}` },
-        body,
-      });
+      const res = await post(w.url, { 'Content-Type': 'application/json', 'User-Agent': 'Tallywork-Webhooks/1.0', 'Tallywork-Event': d.eventType, 'Tallywork-Delivery': d.id, 'Tallywork-Signature': webhookSignature(secret, body, ts) }, body, 10_000);
       status = res.status;
-      text = (await res.text()).slice(0, 1000);
+      text = res.body;
     } catch (e) {
       text = e instanceof Error ? e.message.slice(0, 500) : 'delivery failed';
     }
     const ok = status !== null && status >= 200 && status < 300;
     const attempt = d.attempt + 1;
     const retry = RETRY_SCHEDULE_MINUTES[attempt - 1];
-    await tx
-      .update(webhookDeliveries)
-      .set({ attempt, status: ok ? 'SUCCEEDED' : retry ? 'PENDING' : 'DEAD', responseStatus: status, responseBody: text, durationMs: Date.now() - started, nextAttemptAt: ok || !retry ? null : new Date(Date.now() + retry * 60_000), updatedAt: new Date() })
-      .where(eq(webhookDeliveries.id, d.id));
-    const failures = ok ? 0 : w.failureCount + 1;
-    await tx
-      .update(webhookEndpoints)
-      .set({ failureCount: failures, ...(failures >= DISABLE_AFTER_FAILURES ? { enabled: false, disabledReason: 'Disabled after repeated delivery failures' } : {}) })
-      .where(eq(webhookEndpoints.id, w.id));
+    const doneAt = deps.now();
+    await withSystem(deps.db, async (tx) => {
+      await tx
+        .update(webhookDeliveries)
+        .set({ attempt, status: ok ? 'SUCCEEDED' : retry ? 'PENDING' : 'DEAD', responseStatus: status, responseBody: text, durationMs: Date.now() - started, nextAttemptAt: ok || !retry ? null : new Date(doneAt.getTime() + retry * 60_000), updatedAt: doneAt })
+        .where(eq(webhookDeliveries.id, d.id));
+      const [ep] = await tx
+        .update(webhookEndpoints)
+        .set({ failureCount: ok ? 0 : sql`${webhookEndpoints.failureCount} + 1` })
+        .where(eq(webhookEndpoints.id, w.id))
+        .returning({ failures: webhookEndpoints.failureCount });
+      if (ep && ep.failures >= DISABLE_AFTER_FAILURES) await tx.update(webhookEndpoints).set({ enabled: false, disabledReason: 'Disabled after repeated delivery failures' }).where(eq(webhookEndpoints.id, w.id));
+    });
   }
-  return due.length;
+  return claimed.length;
+}
+
+/** New signing secret for an endpoint; the old one stops working immediately. Shown once. */
+export async function rotateWebhookSecret(x: Ctx, id: string) {
+  if (!x.actor.grants['webhooks:manage']) throw forbidden();
+  const secret = `whsec_${randomToken(24)}`;
+  const r = await x.tx.update(webhookEndpoints).set({ secretEnc: encrypt(x.deps.config.appSecret, secret, 'webhook'), updatedAt: new Date() }).where(eq(webhookEndpoints.id, id)).returning({ id: webhookEndpoints.id });
+  if (!r.length) throw notFound('webhook');
+  await audit(x, { action: 'webhook.secret_rotated', targetType: 'webhook', targetId: id });
+  return { id, secret, note: 'Store the signing secret now. It will not be shown again.' };
 }
 
 /** Fan out an outbox event to subscribed webhook endpoints. */
-export async function enqueueWebhooks(tx: Tx, organizationId: string, envelope: { event_id: string; event_type: string; occurred_at?: string; payload?: unknown }): Promise<void> {
+export async function enqueueWebhooks(tx: Tx, organizationId: string, envelope: { event_id: string; event_type: string; occurred_at?: string; payload?: unknown }, now = new Date()): Promise<void> {
   if (!(WEBHOOK_EVENTS as readonly string[]).includes(envelope.event_type)) return;
   const eps = await tx.select().from(webhookEndpoints).where(eq(webhookEndpoints.enabled, true));
   const subscribed = eps.filter((e) => e.events.includes('*') || e.events.includes(envelope.event_type));
   if (!subscribed.length) return;
   const payload = { event_id: envelope.event_id, event_type: envelope.event_type, organization_id: organizationId, occurred_at: envelope.occurred_at, data: envelope.payload };
-  await tx.insert(webhookDeliveries).values(subscribed.map((e) => ({ id: newId(), organizationId, endpointId: e.id, eventId: envelope.event_id, eventType: envelope.event_type, payload, nextAttemptAt: new Date() })));
+  await tx.insert(webhookDeliveries).values(subscribed.map((e) => ({ id: newId(), organizationId, endpointId: e.id, eventId: envelope.event_id, eventType: envelope.event_type, payload, nextAttemptAt: now })));
 }
 
 // ─── Audit ───────────────────────────────────────────────────────────────────

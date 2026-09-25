@@ -2,9 +2,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Logo, fmtClock } from '@tallywork/ui';
+import { t, useBrowserLocale } from '@/lib/i18n';
 
 /** Split auth layout: brand instrument panel (desktop) + form. */
 export function AuthShell({ title, subtitle, children, footer }: { title: string; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode }) {
+  // Signed out: there is no account setting yet, so dates and numbers follow the browser.
+  useBrowserLocale();
   return (
     <div className="grid min-h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <aside className="instrument-grid relative hidden flex-col justify-between overflow-hidden bg-[#0f2240] p-10 text-[#e6ecf5] lg:flex">
@@ -13,7 +16,7 @@ export function AuthShell({ title, subtitle, children, footer }: { title: string
           <span className="text-lg font-bold tracking-tight">Tallywork</span>
         </Link>
         <InstrumentPreview />
-        <p className="max-w-sm text-sm text-[#93a3bd]">Time tracking, activity, timesheets and billing — transparent to the people doing the work.</p>
+        <p className="max-w-sm text-sm text-[#93a3bd]">{t('auth.tagline')}</p>
       </aside>
       <main id="main" className="flex items-center justify-center px-4 py-10 sm:px-8">
         <div className="w-full max-w-sm">
@@ -44,12 +47,12 @@ function InstrumentPreview() {
       <div className="rounded-lg border border-white/10 bg-white/[0.04] p-5 backdrop-blur-[1px]">
         <div className="flex items-center justify-between text-xs text-[#93a3bd]">
           <span className="inline-flex items-center gap-1.5">
-            <span className="size-2 rounded-full bg-[#3fb27f]" /> Tracking
+            <span className="size-2 rounded-full bg-[#3fb27f]" /> {t('auth.preview.tracking')}
           </span>
-          <span>Globex — Website Redesign</span>
+          <span>{t('auth.preview.project')}</span>
         </div>
         <div className="tabular mt-4 text-center font-mono text-5xl font-medium tracking-tight text-white">{fmtClock(s)}</div>
-        <div className="mt-1 text-center text-xs text-[#93a3bd]">Landing page · Today 6h 42m</div>
+        <div className="mt-1 text-center text-xs text-[#93a3bd]">{t('auth.preview.task')}</div>
         <div className="mt-6 flex h-16 items-end gap-1.5" aria-hidden>
           {bars.map((b, i) => (
             <span key={i} className="flex-1 rounded-t-[2px] bg-[#6368d2]" style={{ height: `${b}%`, opacity: 0.35 + (b / 100) * 0.65 }} />
@@ -57,7 +60,7 @@ function InstrumentPreview() {
         </div>
         <div className="mt-2 flex justify-between font-mono text-[10px] text-[#8594ad]">
           <span>09:00</span>
-          <span>activity · 10-min blocks</span>
+          <span>{t('auth.preview.axis')}</span>
           <span>11:00</span>
         </div>
       </div>

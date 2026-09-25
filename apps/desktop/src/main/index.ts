@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IPC, type IpcChannel, type IpcPayload } from '../shared/ipc';
 import { Agent } from './services/agent';
+import { readManagedConfig } from './services/managed-config';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SERVER = process.env.TALLYWORK_SERVER ?? (app.isPackaged ? 'https://tallywork-alpha.vercel.app' : 'http://localhost:3000');
@@ -162,10 +163,10 @@ function registerIpc(): void {
  * stagingPercentage in latest.yml, which offers a release to a growing share of machines
  * (docs/ops/runbooks.md, "Desktop release").
  */
-async function setupUpdater(): Promise<void> {
+async function setupUpdater(managedChannel?: 'latest' | 'beta'): Promise<void> {
   if (!app.isPackaged || !process.env.TALLYWORK_UPDATE_URL) return;
   const { autoUpdater } = await import('electron-updater');
-  const channel = process.env.TALLYWORK_UPDATE_CHANNEL === 'beta' ? 'beta' : 'latest';
+  const channel = managedChannel ?? (process.env.TALLYWORK_UPDATE_CHANNEL === 'beta' ? 'beta' : 'latest');
   autoUpdater.channel = channel;
   autoUpdater.allowPrerelease = channel === 'beta';
   autoUpdater.allowDowngrade = false;
@@ -181,7 +182,9 @@ if (process.env.TALLYWORK_CRASH_URL) crashReporter.start({ submitURL: process.en
 
 app.whenReady().then(async () => {
   app.setAppUserModelId('app.tallywork.desktop');
-  agent = new Agent(DEFAULT_SERVER, app.getVersion());
+  const managed = await readManagedConfig();
+  if (managed.launchAtLogin !== undefined) app.setLoginItemSettings({ openAtLogin: managed.launchAtLogin });
+  agent = new Agent(managed.serverUrl ?? DEFAULT_SERVER, app.getVersion(), managed.serverUrl ?? null);
   registerIpc();
   await agent.init();
   win = createWindow();
@@ -193,7 +196,7 @@ app.whenReady().then(async () => {
   });
   agent.on('show', () => showWindow());
   updateTray();
-  void setupUpdater();
+  void setupUpdater(managed.updateChannel);
 });
 
 app.on('before-quit', (e) => {

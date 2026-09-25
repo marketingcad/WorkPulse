@@ -8,6 +8,7 @@ import type { MeDto, NotificationDto } from '@tallywork/contracts';
 import { Avatar, IconButton, Logo, Menu, MenuItem, MenuLabel, MenuSeparator, Popover, cx, fmtRelative } from '@tallywork/ui';
 import { api, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { t } from '@/lib/i18n';
 import { filterNav, type NavItem } from './nav';
 import { TimerBar } from './timer-bar';
 
@@ -38,13 +39,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-dvh">
       {/* Desktop / tablet sidebar */}
-      <aside className={cx('sticky top-0 hidden h-dvh shrink-0 flex-col bg-nav text-nav-fg transition-[width] duration-150 md:flex', collapsed ? 'w-16' : 'w-60')} aria-label="Primary">
+      <aside className={cx('sticky top-0 hidden h-dvh shrink-0 flex-col bg-nav text-nav-fg transition-[width] duration-150 md:flex', collapsed ? 'w-16' : 'w-60')} aria-label={t('nav.primary')}>
         <Sidebar collapsed={collapsed} onToggle={toggle} />
       </aside>
       {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <button className="absolute inset-0 bg-black/40" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />
+          <button className="absolute inset-0 bg-black/40" aria-label={t('nav.close')} onClick={() => setMobileOpen(false)} />
           <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-nav text-nav-fg shadow-overlay">
             <Sidebar collapsed={false} onClose={() => setMobileOpen(false)} />
           </aside>
@@ -52,11 +53,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-surface/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-surface/80 sm:px-4">
-          <IconButton label="Open navigation" className="md:hidden" onClick={() => setMobileOpen(true)}>
+          <IconButton label={t('nav.open')} className="md:hidden" onClick={() => setMobileOpen(true)}>
             <MenuIcon className="size-4" />
           </IconButton>
           <div className="min-w-0 flex-1">{org.can('tracking:track') && org.membership.tracking_enabled && <TimerBar />}</div>
-          {org.organization.is_demo && <span className="hidden rounded-full border border-warning/40 bg-warning-soft px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide text-warning lg:inline">Demo data</span>}
+          {org.organization.is_demo && <span className="hidden rounded-full border border-warning/40 bg-warning-soft px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide text-warning lg:inline">{t('shell.demoData')}</span>}
           <Notifications />
           <UserMenu />
         </header>
@@ -119,7 +120,7 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
           <li key={i.href + i.label}>
             <Link
               href={`${org.base}${i.href}`}
-              title={collapsed ? i.label : undefined}
+              title={collapsed ? t(i.label) : undefined}
               aria-current={active ? 'page' : undefined}
               className={cx(
                 'relative flex h-8 items-center gap-2.5 rounded-sm text-sm transition-colors',
@@ -129,7 +130,7 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
             >
               {active && <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-[#8a8df0]" aria-hidden />}
               <Icon className="size-4 shrink-0" aria-hidden />
-              {!collapsed && <span className="truncate">{i.label}</span>}
+              {!collapsed && <span className="truncate">{t(i.label)}</span>}
             </Link>
           </li>
         );
@@ -142,7 +143,7 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
       <div className={cx('flex h-14 shrink-0 items-center border-b border-white/10', collapsed ? 'justify-center px-2' : 'gap-2 px-3')}>
         <OrgSwitcher collapsed={collapsed} />
         {onClose && (
-          <button className="ml-auto rounded-sm p-1.5 text-nav-muted hover:bg-nav-active hover:text-nav-fg" onClick={onClose} aria-label="Close navigation">
+          <button className="ml-auto rounded-sm p-1.5 text-nav-muted hover:bg-nav-active hover:text-nav-fg" onClick={onClose} aria-label={t('nav.close')}>
             <X className="size-4" />
           </button>
         )}
@@ -169,11 +170,11 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
                 aria-controls={panelId}
                 className={cx(
                   'flex h-7 w-full items-center gap-1 rounded-sm px-2.5 text-2xs font-semibold uppercase tracking-wider transition-colors',
-                  isOpen ? 'text-nav-fg/90' : 'text-nav-muted/80',
+                  isOpen ? 'text-nav-fg/90' : 'text-nav-muted',
                   'hover:bg-white/5 hover:text-nav-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#8a8df0]',
                 )}
               >
-                <span className="flex-1 truncate text-left">{g.label}</span>
+                <span className="flex-1 truncate text-left">{t(g.label)}</span>
                 <ChevronRight className={cx('size-3.5 shrink-0 transition-transform duration-200 ease-out motion-reduce:transition-none', isOpen && 'rotate-90')} aria-hidden />
               </button>
               {/* grid-rows 0fr ↔ 1fr animates to the content's natural height */}
@@ -194,9 +195,9 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
         })}
       </nav>
       {onToggle && (
-        <button onClick={onToggle} className={cx('flex h-10 shrink-0 items-center gap-2 border-t border-white/10 text-xs text-nav-muted hover:text-nav-fg', collapsed ? 'justify-center' : 'px-4')} aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}>
+        <button onClick={onToggle} className={cx('flex h-10 shrink-0 items-center gap-2 border-t border-white/10 text-xs text-nav-muted hover:text-nav-fg', collapsed ? 'justify-center' : 'px-4')} aria-label={collapsed ? t('nav.expand') : t('nav.collapseLabel')}>
           {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-          {!collapsed && 'Collapse'}
+          {!collapsed && t('nav.collapse')}
         </button>
       )}
     </>
@@ -211,7 +212,7 @@ function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
     <Menu
       align="start"
       trigger={
-        <button className={cx('flex min-w-0 items-center gap-2 rounded-sm py-1 text-left hover:bg-white/5', collapsed ? 'px-1' : 'flex-1 px-1.5')} aria-label="Switch organization">
+        <button className={cx('flex min-w-0 items-center gap-2 rounded-sm py-1 text-left hover:bg-white/5', collapsed ? 'px-1' : 'flex-1 px-1.5')} aria-label={t('shell.switchOrg')}>
           <Logo size={26} className="shrink-0 text-white" />
           {!collapsed && (
             <>
@@ -225,7 +226,7 @@ function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
         </button>
       }
     >
-      <MenuLabel>Organizations</MenuLabel>
+      <MenuLabel>{t('shell.organizations')}</MenuLabel>
       {me?.organizations.map((o) => (
         <MenuItem key={o.id} onSelect={() => router.push(`/o/${o.id}`)} icon={o.id === org.organization.id ? <Check className="size-3.5" /> : <span className="size-3.5" />}>
           <span className="truncate">{o.name}</span>
@@ -233,7 +234,7 @@ function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
       ))}
       <MenuSeparator />
       <MenuItem icon={<Plus className="size-3.5" />} onSelect={() => router.push('/welcome')}>
-        New organization
+        {t('shell.newOrg')}
       </MenuItem>
     </Menu>
   );
@@ -252,22 +253,22 @@ function Notifications() {
       align="end"
       className="w-[min(380px,calc(100vw-24px))] p-0"
       trigger={
-        <button className="relative inline-flex size-8 items-center justify-center rounded-sm text-text-muted hover:bg-surface-muted hover:text-text" aria-label={`Notifications${data?.unread ? `, ${data.unread} unread` : ''}`}>
+        <button className="relative inline-flex size-8 items-center justify-center rounded-sm text-text-muted hover:bg-surface-muted hover:text-text" aria-label={data?.unread ? t('shell.notificationsUnread', { count: data.unread }) : t('shell.notifications')}>
           <Bell className="size-4" />
-          {!!data?.unread && <span className="tabular absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">{data.unread > 9 ? '9+' : data.unread}</span>}
+          {!!data?.unread && <span className="tabular absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-on-accent">{data.unread > 9 ? '9+' : data.unread}</span>}
         </button>
       }
     >
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-        <span className="text-sm font-semibold">Notifications</span>
+        <span className="text-sm font-semibold">{t('shell.notifications')}</span>
         {!!data?.unread && (
           <button onClick={markAll} className="text-xs font-medium text-interactive hover:underline">
-            Mark all read
+            {t('shell.markAllRead')}
           </button>
         )}
       </div>
       <ul className="max-h-96 divide-y divide-border overflow-y-auto">
-        {!data?.data.length && <li className="px-4 py-8 text-center text-sm text-text-muted">You are all caught up.</li>}
+        {!data?.data.length && <li className="px-4 py-8 text-center text-sm text-text-muted">{t('shell.allCaughtUp')}</li>}
         {data?.data.map((n) => (
           <li key={n.id}>
             <Link href={n.link ? `${org.base}${n.link}` : org.base} className={cx('flex gap-3 px-4 py-3 hover:bg-surface-muted', !n.read_at && 'bg-interactive-soft/40')}>
@@ -289,33 +290,33 @@ function ThemeSwitch() {
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>('system');
   useEffect(() => {
     try {
-      const t = (localStorage.getItem('tw.theme') as 'light' | 'dark' | null) ?? 'system';
-      setTheme(t);
+      const saved = (localStorage.getItem('tw.theme') as 'light' | 'dark' | null) ?? 'system';
+      setTheme(saved);
     } catch {
       /* ignore */
     }
   }, []);
-  const apply = (t: 'system' | 'light' | 'dark') => {
-    setTheme(t);
+  const apply = (mode: 'system' | 'light' | 'dark') => {
+    setTheme(mode);
     try {
-      if (t === 'system') localStorage.removeItem('tw.theme');
-      else localStorage.setItem('tw.theme', t);
+      if (mode === 'system') localStorage.removeItem('tw.theme');
+      else localStorage.setItem('tw.theme', mode);
     } catch {
       /* ignore */
     }
-    if (t === 'system') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', t);
+    if (mode === 'system') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', mode);
   };
   return (
-    <div className="flex gap-1 px-2 py-1.5" role="radiogroup" aria-label="Theme">
+    <div className="flex gap-1 px-2 py-1.5" role="radiogroup" aria-label={t('shell.theme')}>
       {(
         [
           ['light', Sun],
           ['dark', Moon],
           ['system', Monitor],
         ] as const
-      ).map(([t, Icon]) => (
-        <button key={t} role="radio" aria-checked={theme === t} onClick={() => apply(t)} className={cx('flex flex-1 items-center justify-center rounded-sm py-1', theme === t ? 'bg-surface-muted text-text' : 'text-text-muted hover:text-text')} aria-label={`${t} theme`}>
+      ).map(([mode, Icon]) => (
+        <button key={mode} role="radio" aria-checked={theme === mode} onClick={() => apply(mode)} className={cx('flex flex-1 items-center justify-center rounded-sm py-1', theme === mode ? 'bg-surface-muted text-text' : 'text-text-muted hover:text-text')} aria-label={t(`shell.theme.${mode}`)}>
           <Icon className="size-3.5" />
         </button>
       ))}
@@ -331,7 +332,7 @@ function UserMenu() {
   return (
     <Menu
       trigger={
-        <button className="flex items-center gap-2 rounded-sm p-1 hover:bg-surface-muted" aria-label="Account menu">
+        <button className="flex items-center gap-2 rounded-sm p-1 hover:bg-surface-muted" aria-label={t('shell.accountMenu')}>
           <Avatar name={name || '?'} size={28} />
         </button>
       }
@@ -342,7 +343,7 @@ function UserMenu() {
       </div>
       <MenuSeparator />
       <MenuItem icon={<UserRound className="size-3.5" />} onSelect={() => router.push(`${org.base}/me/profile`)}>
-        Profile & devices
+        {t('shell.profileDevices')}
       </MenuItem>
       <ThemeSwitch />
       <MenuSeparator />
@@ -353,7 +354,7 @@ function UserMenu() {
           window.location.href = '/login';
         }}
       >
-        Sign out
+        {t('shell.signOut')}
       </MenuItem>
     </Menu>
   );

@@ -6,6 +6,7 @@ import { Badge, Button, EmptyState, ErrorState, Field, Input, PageHeader, Panel,
 import type { OrgContextDto } from '@tallywork/contracts';
 import { ApiError, api, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { SupportAccessPanel } from '@/components/security/support-access-panel';
 
 interface Retention {
   data_class: string;
@@ -85,6 +86,7 @@ export default function SecurityPage() {
       <div className="flex max-w-4xl flex-col gap-4">
         {canSecurity ? <SecuritySettingsPanel /> : <SecuritySummary />}
         {canRetention && <RetentionPanel />}
+        {org.can('settings:security') && <SupportAccessPanel />}
       </div>
     </>
   );

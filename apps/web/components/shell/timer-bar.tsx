@@ -6,6 +6,7 @@ import type { CurrentTrackingDto } from '@tallywork/contracts';
 import { Button, Menu, MenuItem, MenuLabel, MenuSeparator, StatusBadge, Tooltip, cx, fmtClock } from '@tallywork/ui';
 import { api, errorMessage, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { t } from '@/lib/i18n';
 import { useToast } from '@tallywork/ui';
 import { ProjectTaskPicker, type PickerValue } from '../project-task-picker';
 import type { BreakTypeItem } from '../settings/break-types-panel';
@@ -72,7 +73,7 @@ export function TimerBar() {
   return (
     <div className="flex min-w-0 items-center gap-2">
       <div className="hidden min-w-0 max-w-sm flex-1 sm:block">
-        <ProjectTaskPicker value={sel} onChange={onPick} compact disabled={busy || desktop} placeholder="What are you working on?" />
+        <ProjectTaskPicker value={sel} onChange={onPick} compact disabled={busy || desktop} placeholder={t('timer.placeholder')} />
       </div>
       <div className={cx('tabular flex h-8 items-center gap-2 rounded-sm px-2 font-mono text-sm', live.running ? 'bg-success-soft text-success' : 'text-text-muted')} aria-live="off">
         <span className={cx('size-1.5 rounded-full', live.running ? 'animate-pulse bg-success' : 'bg-text-faint')} aria-hidden />
@@ -84,52 +85,52 @@ export function TimerBar() {
             <Menu
               align="end"
               trigger={
-                <Button size="sm" variant="ghost" className="gap-0.5 px-1.5" aria-label="Pause" disabled={busy}>
+                <Button size="sm" variant="ghost" className="gap-0.5 px-1.5" aria-label={t('timer.pause')} disabled={busy}>
                   <Pause className="size-3.5" />
                   <ChevronDown className="size-3 text-text-muted" />
                 </Button>
               }
             >
               <MenuItem icon={<Pause className="size-3.5" />} onSelect={() => call('pause')}>
-                Pause
+                {t('timer.pause')}
               </MenuItem>
               <MenuSeparator />
-              <MenuLabel>Take a break</MenuLabel>
+              <MenuLabel>{t('timer.takeBreak')}</MenuLabel>
               {breakTypes.map((b) => (
                 <MenuItem key={b.id} icon={<Coffee className="size-3.5" />} onSelect={() => call('pause', { break_type_id: b.id })}>
                   <span className="flex-1">{b.name}</span>
-                  <span className="tabular text-xs text-text-muted">{[b.paid ? 'Paid' : 'Unpaid', b.max_minutes !== null && `${b.max_minutes} min`].filter(Boolean).join(' · ')}</span>
+                  <span className="tabular text-xs text-text-muted">{[b.paid ? t('timer.paid') : t('timer.unpaid'), b.max_minutes !== null && t('timer.minutes', { count: b.max_minutes })].filter(Boolean).join(' · ')}</span>
                 </MenuItem>
               ))}
             </Menu>
           )}
           {state === 'ACTIVE' && !desktop && breakTypes.length === 0 && (
-            <Tooltip content="Pause (break)">
-              <Button size="sm" variant="ghost" className="w-8 px-0" aria-label="Pause" onClick={() => call('pause')} disabled={busy}>
+            <Tooltip content={t('timer.pauseBreak')}>
+              <Button size="sm" variant="ghost" className="w-8 px-0" aria-label={t('timer.pause')} onClick={() => call('pause')} disabled={busy}>
                 <Pause className="size-3.5" />
               </Button>
             </Tooltip>
           )}
           {state === 'PAUSED' && !desktop && (
             <Button size="sm" variant="subtle" icon={<Play className="size-3.5" />} onClick={() => call('resume')} disabled={busy}>
-              Resume
+              {t('timer.resume')}
             </Button>
           )}
           {desktop ? (
-            <StatusBadge status="DESKTOP" label="Tracking on desktop" />
+            <StatusBadge status="DESKTOP" label={t('timer.onDesktop')} />
           ) : (
             <Button size="sm" variant="danger" icon={<Square className="size-3 fill-current" />} onClick={() => call('stop')} loading={busy}>
-              <span className="hidden sm:inline">Stop</span>
+              <span className="sr-only sm:not-sr-only">{t('timer.stop')}</span>
             </Button>
           )}
         </>
       ) : (
-        <Button size="sm" variant="primary" icon={<Play className="size-3.5 fill-current" />} onClick={() => (sel.projectId ? call('start', { project_id: sel.projectId, task_id: sel.taskId }) : toast.info('Choose a project first'))} loading={busy}>
-          <span className="hidden sm:inline">Start</span>
+        <Button size="sm" variant="primary" icon={<Play className="size-3.5 fill-current" />} onClick={() => (sel.projectId ? call('start', { project_id: sel.projectId, task_id: sel.taskId }) : toast.info(t('timer.chooseProject')))} loading={busy}>
+          <span className="sr-only sm:not-sr-only">{t('timer.start')}</span>
         </Button>
       )}
       <span className="tabular hidden whitespace-nowrap text-xs text-text-muted lg:inline">
-        Today <span className="font-semibold text-text">{org.fmtDuration(live.today)}</span>
+        {t('timer.today')} <span className="font-semibold text-text">{org.fmtDuration(live.today)}</span>
       </span>
     </div>
   );

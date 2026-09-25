@@ -48,6 +48,8 @@ export interface AgentState {
   phase: 'signed_out' | 'signing_in' | 'ready' | 'error';
   error: string | null;
   serverUrl: string;
+  /** the server is set by the organization's device management and cannot be changed */
+  serverManaged: boolean;
   version: string;
   account: { name: string; email: string; organization: string; organizationId: string; membershipId: string; timezone: string } | null;
   device: { id: string; status: string } | null;
@@ -74,6 +76,8 @@ export interface AgentState {
   recoveryPrompt: { sessionId: string; lastEvidenceAt: string; projectName: string } | null;
   sync: { queued: number; lastSyncAt: string | null; online: boolean; error: string | null };
   capabilities: Record<string, boolean>;
+  /** Browsers whose Tallywork extension is connected (Windows); others fall back to reading the address bar. */
+  browserExtension: string[];
   lastProject: { projectId: string; taskId: string | null } | null;
   /** A timesheet waiting to be submitted (from the server). */
   timesheetDue: { periodStart: string; periodEnd: string; status: 'DRAFT' | 'REJECTED'; totalSeconds: number; overdue: boolean } | null;

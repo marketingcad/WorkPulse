@@ -3,6 +3,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronRight, Search } from 'lucide-react';
 import { cx } from './primitives';
 import { EmptyState, SkeletonRows } from './display';
+import { t } from './i18n';
 
 export interface Column<T> {
   key: string;
@@ -58,7 +59,7 @@ export function DataTable<T>({
   footer,
   initialSort,
   searchable,
-  searchPlaceholder = 'Search…',
+  searchPlaceholder = t('table.searchPlaceholder'),
   toolbar,
   density = 'compact',
   rowClassName,
@@ -124,7 +125,7 @@ export function DataTable<T>({
                   setPage(0);
                 }}
                 placeholder={searchPlaceholder}
-                aria-label="Search table"
+                aria-label={t('table.searchLabel')}
                 className="h-7 w-full rounded-sm border border-border bg-surface pl-7 pr-2 text-sm placeholder:text-text-faint focus:border-interactive focus:outline-none"
               />
             </label>
@@ -134,10 +135,10 @@ export function DataTable<T>({
       )}
       {selectable && sel.size > 0 && bulkActions && (
         <div className="flex items-center gap-3 border-b border-border bg-interactive-soft px-3 py-1.5 text-sm">
-          <span className="font-medium text-interactive">{sel.size} selected</span>
+          <span className="font-medium text-interactive">{t('table.selected', { count: sel.size })}</span>
           <div className="flex items-center gap-1.5">{bulkActions([...sel])}</div>
           <button className="ml-auto text-xs text-text-muted hover:text-text" onClick={() => onSelectedChange?.(new Set())}>
-            Clear
+            {t('common.clear')}
           </button>
         </div>
       )}
@@ -145,7 +146,7 @@ export function DataTable<T>({
       {loading && !rows ? (
         <SkeletonRows cols={Math.min(columns.length, 6)} />
       ) : filtered.length === 0 ? (
-        (empty ?? <EmptyState title={q ? 'No matches' : 'Nothing here yet'} description={q ? 'Try a different search.' : undefined} />)
+        (empty ?? <EmptyState title={q ? t('table.noMatches') : t('table.empty')} description={q ? t('table.tryDifferentSearch') : undefined} />)
       ) : (
         <>
           {/* Desktop/tablet table */}
@@ -156,7 +157,7 @@ export function DataTable<T>({
                 <tr className="border-b border-border bg-surface-muted/60">
                   {selectable && (
                     <th className="w-9 px-3">
-                      <input type="checkbox" aria-label="Select all rows" checked={allOnPage} onChange={toggleAll} className="size-3.5 accent-[var(--color-interactive)]" />
+                      <input type="checkbox" aria-label={t('table.selectAll')} checked={allOnPage} onChange={toggleAll} className="size-3.5 accent-[var(--color-interactive)]" />
                     </th>
                   )}
                   {columns.map((c) => {
@@ -199,7 +200,7 @@ export function DataTable<T>({
                     >
                       {selectable && (
                         <td className="px-3" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" aria-label="Select row" checked={sel.has(k)} onChange={() => toggle(k)} className="size-3.5 accent-[var(--color-interactive)]" />
+                          <input type="checkbox" aria-label={t('table.selectRow')} checked={sel.has(k)} onChange={() => toggle(k)} className="size-3.5 accent-[var(--color-interactive)]" />
                         </td>
                       )}
                       {columns.map((c) => (
@@ -247,14 +248,14 @@ export function DataTable<T>({
           {pages > 1 && (
             <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-text-muted">
               <span className="tabular">
-                {page * pageSize + 1}–{Math.min(filtered.length, (page + 1) * pageSize)} of {filtered.length}
+                {t('table.range', { from: page * pageSize + 1, to: Math.min(filtered.length, (page + 1) * pageSize), total: filtered.length })}
               </span>
               <div className="flex gap-1">
                 <button disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="rounded-sm border border-border px-2 py-0.5 disabled:opacity-40">
-                  Previous
+                  {t('common.previous')}
                 </button>
                 <button disabled={page >= pages - 1} onClick={() => setPage((p) => p + 1)} className="rounded-sm border border-border px-2 py-0.5 disabled:opacity-40">
-                  Next
+                  {t('common.next')}
                 </button>
               </div>
             </div>
@@ -268,7 +269,7 @@ export function DataTable<T>({
 export function PageHeader({ title, description, actions, breadcrumbs, children }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; breadcrumbs?: ReactNode; children?: ReactNode }) {
   return (
     <div className="mb-5 flex flex-col gap-3">
-      {breadcrumbs && <nav aria-label="Breadcrumb" className="text-xs text-text-muted">{breadcrumbs}</nav>}
+      {breadcrumbs && <nav aria-label={t('common.breadcrumb')} className="text-xs text-text-muted">{breadcrumbs}</nav>}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-semibold tracking-tight">{title}</h1>

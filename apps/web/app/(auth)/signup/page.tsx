@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button, Field, Input } from '@tallywork/ui';
 import { AuthShell } from '@/components/auth-shell';
 import { api, ApiError } from '@/lib/api';
+import { t } from '@/lib/i18n';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -23,36 +24,36 @@ export default function SignupPage() {
       });
       router.replace(`/o/${r.organization_id}?welcome=1`);
     } catch (e2) {
-      setErr(e2 instanceof ApiError ? e2 : new ApiError(500, 'error', 'Could not create your account'));
+      setErr(e2 instanceof ApiError ? e2 : new ApiError(500, 'error', t('auth.signup.failed')));
       setLoading(false);
     }
   }
 
   return (
     <AuthShell
-      title="Create your organization"
-      subtitle="Start tracking time with your team in minutes."
+      title={t('auth.signup.title')}
+      subtitle={t('auth.signup.subtitle')}
       footer={
         <>
-          Already have an account?{' '}
+          {t('auth.signup.haveAccount')}{' '}
           <Link href="/login" className="font-medium text-interactive hover:underline">
-            Sign in
+            {t('auth.signIn')}
           </Link>
         </>
       }
     >
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-        <Field label="Your name" htmlFor="name" error={err?.field('name')}>
+        <Field label={t('auth.yourName')} htmlFor="name" error={err?.field('name')}>
           <Input id="name" autoComplete="name" value={form.name} onChange={set('name')} required autoFocus />
         </Field>
-        <Field label="Work email" htmlFor="email" error={err?.field('email')}>
+        <Field label={t('auth.workEmail')} htmlFor="email" error={err?.field('email')}>
           <Input id="email" type="email" autoComplete="email" value={form.email} onChange={set('email')} required />
         </Field>
-        <Field label="Password" htmlFor="password" hint="At least 10 characters." error={err?.field('password')}>
+        <Field label={t('auth.password')} htmlFor="password" hint={t('auth.passwordHint')} error={err?.field('password')}>
           <Input id="password" type="password" autoComplete="new-password" value={form.password} onChange={set('password')} required minLength={10} />
         </Field>
-        <Field label="Organization name" htmlFor="org" hint="You can change this later.">
-          <Input id="org" value={form.organization_name} onChange={set('organization_name')} placeholder="Acme Studio" />
+        <Field label={t('auth.signup.orgName')} htmlFor="org" hint={t('auth.signup.orgHint')}>
+          <Input id="org" value={form.organization_name} onChange={set('organization_name')} placeholder={t('auth.signup.orgPlaceholder')} />
         </Field>
         {err && !err.errors && (
           <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
@@ -60,9 +61,9 @@ export default function SignupPage() {
           </p>
         )}
         <Button type="submit" variant="primary" size="md" loading={loading} className="w-full">
-          Create organization
+          {t('auth.signup.submit')}
         </Button>
-        <p className="text-xs text-text-faint">Monitoring features stay off until you enable them, and your team is always told what is tracked.</p>
+        <p className="text-xs text-text-faint">{t('auth.signup.monitoringNote')}</p>
       </form>
     </AuthShell>
   );

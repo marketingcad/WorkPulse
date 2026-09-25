@@ -71,6 +71,13 @@
       "when": 1790359917145,
       "tag": "0009_hot_path_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790363930632,
+      "tag": "0010_support_grants",
+      "breakpoints": true
     }
   ]
 }

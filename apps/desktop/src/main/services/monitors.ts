@@ -168,9 +168,19 @@ export class AppTracker {
   private timer: NodeJS.Timeout | null = null;
   private readonly apps: AppSpan[] = [];
   private readonly urls: UrlSpan[] = [];
+  private sampling = false;
   available = false;
   urlsAvailable = process.platform === 'darwin';
-  constructor(private policy: () => TrackingPolicy | null) {}
+  /**
+   * @param resolveUrl active-tab URL for the foreground browser when the OS doesn't expose it
+   *   (Windows: browser extension, else the address bar). Called only when URL tracking is enabled.
+   */
+  constructor(
+    private policy: () => TrackingPolicy | null,
+    private readonly resolveUrl?: { available: boolean; resolve(exe: string | null): Promise<{ url: string } | null> },
+  ) {
+    if (resolveUrl?.available) this.urlsAvailable = true;
+  }
 
   async init(): Promise<void> {
     try {
@@ -208,19 +218,31 @@ export class AppTracker {
   }
 
   private async sample(): Promise<void> {
-    if (!this.activeWindow) return;
+    if (!this.activeWindow || this.sampling) return;
+    this.sampling = true;
+    try {
+      await this.sampleOnce();
+    } finally {
+      this.sampling = false;
+    }
+  }
+
+  private async sampleOnce(): Promise<void> {
     let w: Awaited<ReturnType<NonNullable<AppTracker['activeWindow']>>>;
     try {
-      w = await this.activeWindow();
+      w = await this.activeWindow!();
     } catch {
       return;
     }
-    const now = Date.now();
     const app = w?.owner?.name ?? 'Unknown';
     const appId = w?.owner?.bundleId ?? (w?.owner?.path ? w.owner.path.split(/[\\/]/).pop() ?? null : null);
     const p = this.policy();
+    let rawUrl = w?.url ?? null;
+    if (!rawUrl && p?.urls.enabled && this.resolveUrl?.available) rawUrl = (await this.resolveUrl.resolve(w?.owner?.path ?? null).catch(() => null))?.url ?? null;
+    // The sample time is taken after the (possibly slow) URL lookup so spans don't overlap.
+    const now = Date.now();
     // Domain-only (or excluded) is decided HERE, on the device, before anything is stored.
-    const trimmed = w?.url && p ? applyUrlPolicy(w.url, p.urls) : null;
+    const trimmed = rawUrl && p ? applyUrlPolicy(rawUrl, p.urls) : null;
     const c = this.current;
     if (!c || c.app !== app || c.domain !== (trimmed?.domain ?? null)) {
       this.close(now);

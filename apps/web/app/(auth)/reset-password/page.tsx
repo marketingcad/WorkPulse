@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Button, Field, Input } from '@tallywork/ui';
 import { AuthShell } from '@/components/auth-shell';
 import { api, errorMessage } from '@/lib/api';
+import { t } from '@/lib/i18n';
 
 function Form() {
   const token = useSearchParams().get('token') ?? '';
@@ -14,9 +15,9 @@ function Form() {
   if (state === 'done')
     return (
       <p className="rounded-sm bg-success-soft px-3 py-2 text-sm text-success">
-        Password updated.{' '}
+        {t('auth.reset.done')}{' '}
         <Link href="/login" className="font-medium underline">
-          Sign in
+          {t('auth.signIn')}
         </Link>
       </p>
     );
@@ -36,11 +37,11 @@ function Form() {
         }
       }}
     >
-      <Field label="New password" htmlFor="pw" hint="At least 10 characters." error={error}>
+      <Field label={t('auth.reset.newPassword')} htmlFor="pw" hint={t('auth.passwordHint')} error={error}>
         <Input id="pw" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={10} required autoFocus />
       </Field>
       <Button type="submit" variant="primary" size="md" loading={state === 'loading'}>
-        Update password
+        {t('auth.reset.submit')}
       </Button>
     </form>
   );
@@ -48,7 +49,7 @@ function Form() {
 
 export default function ResetPasswordPage() {
   return (
-    <AuthShell title="Choose a new password">
+    <AuthShell title={t('auth.reset.title')}>
       <Suspense>
         <Form />
       </Suspense>

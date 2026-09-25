@@ -21,7 +21,7 @@ export function Stepper({ steps, current, onStep }: { steps: string[]; current: 
               <span
                 className={cx(
                   'tabular flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold',
-                  done ? 'border-interactive bg-interactive text-white' : active ? 'border-interactive text-interactive' : 'border-border text-text-faint',
+                  done ? 'border-interactive bg-interactive text-on-accent' : active ? 'border-interactive text-interactive' : 'border-border text-text-faint',
                 )}
               >
                 {done ? <Check className="size-3.5" aria-hidden /> : i + 1}

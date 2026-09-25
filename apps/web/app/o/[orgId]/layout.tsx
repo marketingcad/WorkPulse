@@ -2,10 +2,11 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
-import type { OrgContextDto } from '@tallywork/contracts';
+import type { MeDto, OrgContextDto } from '@tallywork/contracts';
 import { ErrorState, Logo, Spinner } from '@tallywork/ui';
 import { api } from '@/lib/api';
 import { OrgProvider } from '@/lib/org';
+import { useAccountLocale } from '@/lib/i18n';
 import { AppShell } from '@/components/shell/app-shell';
 import { MfaEnrollmentRequired, isMfaEnrollmentError } from '@/components/security/mfa-required';
 
@@ -13,6 +14,9 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
   const { orgId } = useParams<{ orgId: string }>();
   const qc = useQueryClient();
   const { data, error, refetch } = useQuery({ queryKey: ['org', orgId, 'context'], queryFn: () => api<OrgContextDto>(`/orgs/${orgId}`), staleTime: 60_000 });
+  // Dates, numbers and (later) text follow the person's own language setting.
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<MeDto>('/me') }).data;
+  useAccountLocale(me?.user.locale);
   // Any org request refused because two-factor is now required (e.g. an admin just turned it on) switches to the enrollment screen.
   const [mfaBlocked, setMfaBlocked] = useState(false);
   useEffect(() => {

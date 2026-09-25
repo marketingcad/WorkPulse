@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Tallywork",
+  "description": "Shares the website in your active tab with the Tallywork desktop app, only while your timer is running.",
+  "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0Igs0LU/Mazqk/p+UwxjSGXl8oystrxQavJmNh0oMKfAMiT8yhsNwGYU4ZqFlqnwSgyquPWfIGrJaWCeTI1brYlwi9dQPVopvUntDTiX5b1xVH4PLff242XoLPrKaAmsYeG8NOMuM8j6dnV8+AJdksmkYL/EWqq/+G8tN/RseWmeRuRdWGEAcvqxPj7fmVvSrOY7sq1eCu7ZLfUabVIKVpUTWPFpzbNTLOt2ml6YZfibtyM14pF+8S7VvqIpTUaaoFacTo5JOIzgtnq14rxNZdMbK/ewrevkGmPgegRc0WIVw7kbXRYcBh1awNqiw2Wcz3XEIc8ibOjEJ12wRWPIwwIDAQAB",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "tabs",
+    "alarms"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Tallywork"
+  },
+  "incognito": "not_allowed"
+}

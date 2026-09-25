@@ -97,14 +97,18 @@ function SignIn({ s }: { s: AgentState }) {
         <h1 className="text-xl font-semibold">Sign in to start tracking</h1>
         <p className="mt-1.5 text-sm text-nav-muted">Your browser will open to confirm it is you. The desktop app never sees your password.</p>
         {s.error && <p className="mt-3 rounded-sm bg-danger/20 px-3 py-2 text-sm text-[#ffb4ad]">{s.error}</p>}
-        <button disabled={busy} onClick={() => void bridge.login(server)} className="mt-5 flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-white hover:bg-interactive-hover disabled:opacity-60">
+        <button disabled={busy} onClick={() => void bridge.login(server)} className="mt-5 flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-60">
           {busy ? <RefreshCw className="size-4 animate-spin" /> : <ExternalLink className="size-4" />}
           {busy ? 'Waiting for browser…' : 'Sign in with browser'}
         </button>
-        <button onClick={() => setAdvanced((a) => !a)} className="mt-3 text-xs text-nav-muted hover:text-nav-fg">
-          {advanced ? 'Hide' : 'Server settings'}
-        </button>
-        {advanced && (
+        {s.serverManaged ? (
+          <p className="mt-3 text-xs text-nav-muted">Server set by your organization: {s.serverUrl}</p>
+        ) : (
+          <button onClick={() => setAdvanced((a) => !a)} className="mt-3 text-xs text-nav-muted hover:text-nav-fg">
+            {advanced ? 'Hide' : 'Server settings'}
+          </button>
+        )}
+        {advanced && !s.serverManaged && (
           <label className="mt-2 block text-xs text-nav-muted">
             Server URL
             <input value={server} onChange={(e) => setServer(e.target.value)} className="mt-1 h-8 w-full rounded-sm border border-white/15 bg-white/5 px-2 text-sm text-nav-fg focus:border-interactive focus:outline-none" />
@@ -127,6 +131,19 @@ function Row({ icon, label, value, on }: { icon: React.ReactNode; label: string;
       <span className={`mt-0.5 rounded-full px-2 py-0.5 text-2xs font-semibold ${on ? 'bg-interactive-soft text-interactive' : 'bg-surface-muted text-text-muted'}`}>{on ? 'On' : 'Off'}</span>
     </li>
   );
+}
+
+/** How websites are recorded, in plain words (what, and on Windows, by which means). */
+function websitesText(mode: 'domain' | 'full', s: AgentState): string {
+  const what = mode === 'domain' ? 'Website domains only (e.g. github.com), not full addresses.' : 'Website addresses without query strings.';
+  if (!s.capabilities.urls) return `${what} Not available on this computer.`;
+  if (navigator.userAgent.includes('Windows')) {
+    const how = s.browserExtension.length
+      ? `Read by the Tallywork browser extension in ${s.browserExtension.join(', ')}; other browsers: from the address bar.`
+      : 'Read from the browser address bar (install the Tallywork browser extension for exact addresses).';
+    return `${what} ${how} Private/incognito windows are skipped when the extension is installed.`;
+  }
+  return what;
 }
 
 /** Transparency: exactly what this policy collects. Must be acknowledged on first run and on every change. */
@@ -152,7 +169,7 @@ function Monitoring({ s, onBack }: { s: AgentState; onBack?: () => void }) {
           <Row icon={<Keyboard className="size-4" />} label="Activity level" value="How often you use the keyboard and mouse, per minute. Keystrokes and typed text are never recorded." on={p.activity.enabled && s.capabilities.input !== false} />
           <Row icon={<Camera className="size-4" />} label="Screenshots" value={p.screenshots.enabled ? `${p.screenshots.perTenMinutes} per 10 minutes, all displays${p.screenshots.blur ? ', blurred on this device before upload' : ''}.` : 'Not captured.'} on={p.screenshots.enabled} />
           <Row icon={<AppWindow className="size-4" />} label="Applications" value="Name of the app in the foreground and for how long." on={p.apps.enabled} />
-          <Row icon={<Globe className="size-4" />} label="Websites" value={p.urls.enabled ? (p.urls.mode === 'domain' ? 'Website domains only (e.g. github.com), not full addresses.' : 'Website addresses without query strings.') : 'Not recorded.'} on={p.urls.enabled} />
+          <Row icon={<Globe className="size-4" />} label="Websites" value={p.urls.enabled ? websitesText(p.urls.mode, s) : 'Not recorded.'} on={p.urls.enabled} />
           <Row icon={<MapPin className="size-4" />} label="Location" value="Never collected by the desktop app." on={false} />
           <Row icon={<TimerOff className="size-4" />} label="Idle detection" value={p.idle.enabled ? `After ${p.idle.thresholdMinutes} minutes without input you choose to keep or discard that time.` : 'Off.'} on={p.idle.enabled} />
         </ul>
@@ -173,7 +190,7 @@ function Monitoring({ s, onBack }: { s: AgentState; onBack?: () => void }) {
               setBusy(true);
               await bridge.acknowledgePolicy().finally(() => setBusy(false));
             }}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-white hover:bg-interactive-hover disabled:opacity-60"
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-60"
           >
             <Check className="size-4" /> I understand
           </button>
@@ -306,7 +323,7 @@ function Timer({ s, onSettings, onMonitoring, onManual }: { s: AgentState; onSet
                   <Play className="size-4" /> Resume
                 </button>
               )}
-              <button onClick={() => run(bridge.stop)} className="flex h-10 flex-[1.4] items-center justify-center gap-2 rounded-sm bg-danger text-sm font-semibold text-white hover:opacity-90">
+              <button onClick={() => run(bridge.stop)} className="flex h-10 flex-[1.4] items-center justify-center gap-2 rounded-sm bg-danger text-sm font-semibold text-on-accent hover:opacity-90">
                 <Square className="size-3.5 fill-current" /> Stop tracking
               </button>
             </>
@@ -314,7 +331,7 @@ function Timer({ s, onSettings, onMonitoring, onManual }: { s: AgentState; onSet
             <button
               disabled={!s.lastProject && !selectedProject}
               onClick={() => run(() => bridge.start(s.lastProject!.projectId, s.lastProject!.taskId))}
-              className="flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-white hover:bg-interactive-hover disabled:opacity-50"
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-50"
             >
               <Play className="size-4 fill-current" /> {s.lastProject ? 'Start tracking' : 'Pick a project to start'}
             </button>
@@ -412,7 +429,7 @@ function IdleSheet({ s }: { s: AgentState }) {
           {time(i.startedAt)} – {i.endedAt ? time(i.endedAt) : 'now'} with no keyboard or mouse activity. Keep that time?
         </p>
         <div className="mt-4 flex flex-col gap-2">
-          <button onClick={() => void bridge.resolveIdle('KEPT')} className="h-10 rounded-sm bg-interactive text-sm font-semibold text-white hover:bg-interactive-hover">
+          <button onClick={() => void bridge.resolveIdle('KEPT')} className="h-10 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover">
             Keep — I was working
           </button>
           <button onClick={() => void bridge.resolveIdle('DISCARDED')} className="h-10 rounded-sm border border-border text-sm font-medium hover:bg-surface-muted">
@@ -432,7 +449,7 @@ function Recovery({ s }: { s: AgentState }) {
       <p className="text-sm text-text-muted">
         Your timer{r.projectName ? ` on ${r.projectName}` : ''} was running. Time until {new Date(r.lastEvidenceAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} is saved; the gap since then is not counted.
       </p>
-      <button onClick={() => void bridge.resolveRecovery(true)} className="h-10 rounded-sm bg-interactive text-sm font-semibold text-white">
+      <button onClick={() => void bridge.resolveRecovery(true)} className="h-10 rounded-sm bg-interactive text-sm font-semibold text-on-accent">
         Resume tracking
       </button>
       <button onClick={() => void bridge.resolveRecovery(false)} className="h-10 rounded-sm border border-border text-sm font-medium">
@@ -530,7 +547,7 @@ function ManualTime({ s, onBack }: { s: AgentState; onBack: () => void }) {
         </p>
         {error && <p className="mt-2 rounded-sm bg-danger-soft px-2.5 py-1.5 text-xs text-danger">{error}</p>}
         {saved && <p className="mt-2 rounded-sm bg-success-soft px-2.5 py-1.5 text-xs text-success">{s.sync.online ? 'Request sent.' : 'Saved on this computer. It will be sent when you are back online.'}</p>}
-        <button disabled={!projectId || seconds <= 0} onClick={() => void submit()} className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-white hover:bg-interactive-hover disabled:opacity-50">
+        <button disabled={!projectId || seconds <= 0} onClick={() => void submit()} className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-50">
           <Check className="size-4" /> {policy.requiresApproval ? 'Request time' : 'Add time'}
         </button>
 

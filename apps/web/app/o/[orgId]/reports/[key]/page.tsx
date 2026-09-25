@@ -316,7 +316,7 @@ function ReportRunner() {
                   on ? 'border-secondary bg-secondary-soft text-secondary' : 'border-border bg-surface text-text-muted hover:border-border-strong hover:text-text',
                 )}
               >
-                {on && <span className="tabular inline-flex size-4 items-center justify-center rounded-full bg-secondary text-2xs text-white">{idx + 1}</span>}
+                {on && <span className="tabular inline-flex size-4 items-center justify-center rounded-full bg-secondary text-2xs text-on-accent">{idx + 1}</span>}
                 {GROUP_LABEL[g] ?? g}
               </button>
             );

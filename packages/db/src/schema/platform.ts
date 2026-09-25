@@ -133,7 +133,7 @@ export const auditLogs = pgTable(
   {
     id: pk(),
     organizationId: orgId(),
-    actorType: text().$type<'user' | 'agent' | 'system' | 'api_key'>().notNull(),
+    actorType: text().$type<'user' | 'agent' | 'system' | 'api_key' | 'support'>().notNull(),
     actorId: uuid(),
     action: text().notNull(),
     targetType: text(),
@@ -247,4 +247,19 @@ export const externalRefs = pgTable(
     syncedAt: tstz().notNull().default(sql`now()`),
   },
   (t) => [primaryKey({ columns: [t.connectionId, t.entityType, t.externalId] }), index().on(t.connectionId, t.entityType, t.entityId)],
+);
+
+/** Time-limited, read-only access an organization grants to Tallywork support staff. */
+export const supportGrants = pgTable(
+  'support_grants',
+  {
+    id: pk(),
+    organizationId: orgId(),
+    grantedBy: uuid().notNull(),
+    reason: text().notNull(),
+    expiresAt: tstz().notNull(),
+    revokedAt: tstz(),
+    createdAt: tstz().notNull().default(sql`now()`),
+  },
+  (t) => [index().on(t.organizationId, t.expiresAt)],
 );

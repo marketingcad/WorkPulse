@@ -485,7 +485,7 @@ function ActivityTab({ w }: { w: WorkerDto }) {
         title={`Review ${w.name}'s activity`}
         description="Screenshots, activity levels, apps and URLs are in the activity review, day by day."
         action={
-          <Link href={`${org.base}/activity?member=${w.id}`} className="inline-flex h-8 items-center rounded-sm bg-interactive px-3 text-sm font-medium text-white hover:bg-interactive-hover">
+          <Link href={`${org.base}/activity?member=${w.id}`} className="inline-flex h-8 items-center rounded-sm bg-interactive px-3 text-sm font-medium text-on-accent hover:bg-interactive-hover">
             Open activity review
           </Link>
         }

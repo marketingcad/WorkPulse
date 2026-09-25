@@ -8,6 +8,7 @@ import * as T from '@radix-ui/react-tabs';
 import * as TT from '@radix-ui/react-tooltip';
 import { CheckCircle2, X, XCircle } from 'lucide-react';
 import { Button, cx } from './primitives';
+import { t } from './i18n';
 
 // ─── Dialog ──────────────────────────────────────────────────────────────────
 export function Dialog({ open, onOpenChange, title, description, children, footer, width = 480 }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: ReactNode; children: ReactNode; footer?: ReactNode; width?: number }) {
@@ -24,7 +25,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
               <D.Title className="text-lg font-semibold">{title}</D.Title>
               {description ? <D.Description className="mt-0.5 text-sm text-text-muted">{description}</D.Description> : <D.Description className="sr-only">{title}</D.Description>}
             </div>
-            <D.Close className="rounded-sm p-1 text-text-muted hover:bg-surface-muted hover:text-text" aria-label="Close">
+            <D.Close className="rounded-sm p-1 text-text-muted hover:bg-surface-muted hover:text-text" aria-label={t('common.close')}>
               <X className="size-4" />
             </D.Close>
           </div>
@@ -46,11 +47,11 @@ export function Drawer({ open, onOpenChange, title, subtitle, children, actions,
           <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-3.5">
             <div className="min-w-0">
               <D.Title className="truncate text-lg font-semibold">{title}</D.Title>
-              {subtitle ? <D.Description className="truncate text-sm text-text-muted">{subtitle}</D.Description> : <D.Description className="sr-only">Details</D.Description>}
+              {subtitle ? <D.Description className="truncate text-sm text-text-muted">{subtitle}</D.Description> : <D.Description className="sr-only">{t('common.details')}</D.Description>}
             </div>
             <div className="flex shrink-0 items-center gap-1">
               {actions}
-              <D.Close className="rounded-sm p-1.5 text-text-muted hover:bg-surface-muted hover:text-text" aria-label="Close">
+              <D.Close className="rounded-sm p-1.5 text-text-muted hover:bg-surface-muted hover:text-text" aria-label={t('common.close')}>
                 <X className="size-4" />
               </D.Close>
             </div>
@@ -62,7 +63,7 @@ export function Drawer({ open, onOpenChange, title, subtitle, children, actions,
   );
 }
 
-export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel = 'Confirm', danger, onConfirm, loading }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: ReactNode; confirmLabel?: string; danger?: boolean; onConfirm: () => void; loading?: boolean }) {
+export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel = t('common.confirm'), danger, onConfirm, loading }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: ReactNode; confirmLabel?: string; danger?: boolean; onConfirm: () => void; loading?: boolean }) {
   return (
     <Dialog
       open={open}
@@ -71,7 +72,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
       width={420}
       footer={
         <>
-          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
           <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={loading}>
             {confirmLabel}
           </Button>
@@ -163,22 +164,45 @@ export function Switch({ checked, onCheckedChange, label, description, disabled,
   );
 }
 
+const TAB_CLASS =
+  'relative -mb-px inline-flex h-9 shrink-0 items-center gap-1.5 border-b-2 border-transparent px-3 text-sm font-medium text-text-muted hover:text-text data-[state=active]:border-interactive data-[state=active]:text-text';
+
+/**
+ * Section tabs. With children, the children are the selected tab's panel (real tab semantics).
+ * Without children the tabs only switch a filter on content shown elsewhere, so they render as
+ * toggle buttons (aria-pressed): a tab would have to point at a panel that does not exist.
+ */
 export function Tabs({ value, onValueChange, items, children, className }: { value: string; onValueChange: (v: string) => void; items: Array<{ value: string; label: ReactNode; count?: number }>; children?: ReactNode; className?: string }) {
+  const count = (i: { count?: number }) => i.count !== undefined && <span className="tabular rounded-full bg-surface-muted px-1.5 text-2xs text-text-muted">{i.count}</span>;
+  if (children === undefined || children === null) {
+    return (
+      <div role="group" aria-label={t('common.sections')} className={cx('scrollbar-none flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border [scrollbar-width:none]', className)}>
+        {items.map((i) => (
+          <button key={i.value} type="button" aria-pressed={i.value === value} data-state={i.value === value ? 'active' : 'inactive'} onClick={() => onValueChange(i.value)} className={TAB_CLASS}>
+            {i.label}
+            {count(i)}
+          </button>
+        ))}
+      </div>
+    );
+  }
   return (
     <T.Root value={value} onValueChange={onValueChange} className={className}>
-      <T.List className="scrollbar-none flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border [scrollbar-width:none]" aria-label="Sections">
+      <T.List className="scrollbar-none flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border [scrollbar-width:none]" aria-label={t('common.sections')}>
         {items.map((i) => (
           <T.Trigger
             key={i.value}
             value={i.value}
-            className="relative -mb-px inline-flex h-9 shrink-0 items-center gap-1.5 border-b-2 border-transparent px-3 text-sm font-medium text-text-muted hover:text-text data-[state=active]:border-interactive data-[state=active]:text-text"
+            className={TAB_CLASS}
           >
             {i.label}
-            {i.count !== undefined && <span className="tabular rounded-full bg-surface-muted px-1.5 text-2xs text-text-muted">{i.count}</span>}
+            {count(i)}
           </T.Trigger>
         ))}
       </T.List>
-      {children}
+      <T.Content value={value} tabIndex={-1} className="focus:outline-none">
+        {children}
+      </T.Content>
     </T.Root>
   );
 }

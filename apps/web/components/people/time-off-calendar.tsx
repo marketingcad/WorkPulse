@@ -95,7 +95,7 @@ export function TimeOffCalendar() {
                       focus === d && 'ring-2 ring-inset ring-interactive/50',
                     )}
                   >
-                    <span className={cx('tabular text-xs font-medium', d === today && 'inline-flex size-5 items-center justify-center rounded-full bg-interactive text-white')}>{Number(d.slice(8))}</span>
+                    <span className={cx('tabular text-xs font-medium', d === today && 'inline-flex size-5 items-center justify-center rounded-full bg-interactive text-on-accent')}>{Number(d.slice(8))}</span>
                     {h && (
                       <span className="truncate text-2xs font-medium text-text-muted" title={h.name}>
                         {h.name}

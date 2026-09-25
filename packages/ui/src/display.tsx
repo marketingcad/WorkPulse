@@ -2,6 +2,7 @@
 import type { ReactNode } from 'react';
 import { AlertTriangle, CircleCheck, CircleDashed, CircleDot, CircleX, Clock, Inbox, Lock, MinusCircle, PauseCircle } from 'lucide-react';
 import { cx } from './primitives';
+import { t } from './i18n';
 
 export type Tone = 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'brand' | 'secondary';
 
@@ -15,52 +16,52 @@ const TONE: Record<Tone, string> = {
   secondary: 'bg-secondary-soft text-secondary',
 };
 
-/** Status always pairs colour with an icon and text. */
+/** Status always pairs colour with an icon and text. `label` is a message key. */
 const STATUS_MAP: Record<string, { tone: Tone; icon: ReactNode; label?: string }> = {
   ACTIVE: { tone: 'success', icon: <CircleDot className="size-3" /> },
-  WORKING: { tone: 'success', icon: <CircleDot className="size-3" />, label: 'Working' },
-  TRACKING: { tone: 'success', icon: <CircleDot className="size-3" />, label: 'Tracking' },
+  WORKING: { tone: 'success', icon: <CircleDot className="size-3" />, label: 'status.WORKING' },
+  TRACKING: { tone: 'success', icon: <CircleDot className="size-3" />, label: 'status.TRACKING' },
   APPROVED: { tone: 'success', icon: <CircleCheck className="size-3" /> },
   PAID: { tone: 'success', icon: <CircleCheck className="size-3" /> },
   PRESENT: { tone: 'success', icon: <CircleCheck className="size-3" /> },
   SUCCEEDED: { tone: 'success', icon: <CircleCheck className="size-3" /> },
   DONE: { tone: 'success', icon: <CircleCheck className="size-3" /> },
   REIMBURSED: { tone: 'success', icon: <CircleCheck className="size-3" /> },
-  healthy: { tone: 'success', icon: <CircleCheck className="size-3" />, label: 'Healthy' },
+  healthy: { tone: 'success', icon: <CircleCheck className="size-3" />, label: 'status.healthy' },
   KEPT: { tone: 'success', icon: <CircleCheck className="size-3" /> },
   SUBMITTED: { tone: 'warning', icon: <Clock className="size-3" /> },
   PENDING: { tone: 'warning', icon: <Clock className="size-3" /> },
-  IDLE: { tone: 'warning', icon: <PauseCircle className="size-3" />, label: 'Idle' },
+  IDLE: { tone: 'warning', icon: <PauseCircle className="size-3" />, label: 'status.IDLE' },
   PAUSED: { tone: 'warning', icon: <PauseCircle className="size-3" /> },
   LATE: { tone: 'warning', icon: <AlertTriangle className="size-3" /> },
-  PARTIALLY_PAID: { tone: 'warning', icon: <Clock className="size-3" />, label: 'Partially paid' },
-  warning: { tone: 'warning', icon: <AlertTriangle className="size-3" />, label: 'Warning' },
+  PARTIALLY_PAID: { tone: 'warning', icon: <Clock className="size-3" />, label: 'status.PARTIALLY_PAID' },
+  warning: { tone: 'warning', icon: <AlertTriangle className="size-3" />, label: 'status.warning' },
   INTERRUPTED: { tone: 'warning', icon: <AlertTriangle className="size-3" /> },
-  IN_PROGRESS: { tone: 'info', icon: <CircleDashed className="size-3" />, label: 'In progress' },
+  IN_PROGRESS: { tone: 'info', icon: <CircleDashed className="size-3" />, label: 'status.IN_PROGRESS' },
   SENT: { tone: 'info', icon: <Clock className="size-3" /> },
   INVITED: { tone: 'info', icon: <Clock className="size-3" /> },
-  ON_LEAVE: { tone: 'info', icon: <MinusCircle className="size-3" />, label: 'On leave' },
+  ON_LEAVE: { tone: 'info', icon: <MinusCircle className="size-3" />, label: 'status.ON_LEAVE' },
   HOLIDAY: { tone: 'info', icon: <MinusCircle className="size-3" /> },
   MANUAL: { tone: 'info', icon: <Clock className="size-3" /> },
-  WEB: { tone: 'info', icon: <CircleDot className="size-3" />, label: 'Web' },
-  DESKTOP: { tone: 'secondary', icon: <CircleDot className="size-3" />, label: 'Desktop' },
+  WEB: { tone: 'info', icon: <CircleDot className="size-3" />, label: 'status.WEB' },
+  DESKTOP: { tone: 'secondary', icon: <CircleDot className="size-3" />, label: 'status.DESKTOP' },
   REJECTED: { tone: 'danger', icon: <CircleX className="size-3" /> },
   OVERDUE: { tone: 'danger', icon: <AlertTriangle className="size-3" /> },
   ABSENT: { tone: 'danger', icon: <CircleX className="size-3" /> },
   REVOKED: { tone: 'danger', icon: <CircleX className="size-3" /> },
   FAILED: { tone: 'danger', icon: <CircleX className="size-3" /> },
   DEAD: { tone: 'danger', icon: <CircleX className="size-3" /> },
-  exceeded: { tone: 'danger', icon: <AlertTriangle className="size-3" />, label: 'Exceeded' },
+  exceeded: { tone: 'danger', icon: <AlertTriangle className="size-3" />, label: 'status.exceeded' },
   DISCARDED: { tone: 'danger', icon: <CircleX className="size-3" /> },
   SUSPENDED: { tone: 'danger', icon: <Lock className="size-3" /> },
-  OFFLINE: { tone: 'neutral', icon: <MinusCircle className="size-3" />, label: 'Offline' },
+  OFFLINE: { tone: 'neutral', icon: <MinusCircle className="size-3" />, label: 'status.OFFLINE' },
   STOPPED: { tone: 'neutral', icon: <MinusCircle className="size-3" /> },
   DRAFT: { tone: 'neutral', icon: <CircleDashed className="size-3" /> },
-  TODO: { tone: 'neutral', icon: <CircleDashed className="size-3" />, label: 'To do' },
+  TODO: { tone: 'neutral', icon: <CircleDashed className="size-3" />, label: 'status.TODO' },
   VOID: { tone: 'neutral', icon: <MinusCircle className="size-3" /> },
   CANCELLED: { tone: 'neutral', icon: <MinusCircle className="size-3" /> },
   ARCHIVED: { tone: 'neutral', icon: <MinusCircle className="size-3" /> },
-  NOT_SUBMITTED: { tone: 'neutral', icon: <CircleDashed className="size-3" />, label: 'Not submitted' },
+  NOT_SUBMITTED: { tone: 'neutral', icon: <CircleDashed className="size-3" />, label: 'status.NOT_SUBMITTED' },
 };
 
 export function humanize(s: string): string {
@@ -81,7 +82,7 @@ export function StatusBadge({ status, label, className }: { status: string; labe
   const m: { tone: Tone; icon: ReactNode; label?: string } = STATUS_MAP[status] ?? { tone: 'neutral', icon: <CircleDashed className="size-3" /> };
   return (
     <Badge tone={m.tone} icon={m.icon} className={className}>
-      {label ?? m.label ?? humanize(status)}
+      {label ?? (m.label ? t(m.label) : humanize(status))}
     </Badge>
   );
 }
@@ -100,7 +101,7 @@ export function Avatar({ name, size = 28, className }: { name: string; size?: nu
     <span
       aria-hidden
       className={cx('inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white', className)}
-      style={{ width: size, height: size, fontSize: Math.max(10, size * 0.38), background: `hsl(${h} 42% 42%)` }}
+      style={{ width: size, height: size, fontSize: Math.max(10, size * 0.38), background: `hsl(${h} 50% 32%)` }}
     >
       {initials || '?'}
     </span>
@@ -127,7 +128,7 @@ export function WorkerStatus({ status }: { status: 'WORKING' | 'IDLE' | 'OFFLINE
       <span className={cx('relative inline-flex size-2 rounded-full', cls)}>
         {status === 'WORKING' && <span className="absolute inset-0 animate-ping rounded-full bg-success opacity-40" />}
       </span>
-      {status === 'WORKING' ? 'Working' : status === 'IDLE' ? 'Idle' : 'Offline'}
+      {status === 'WORKING' ? t('worker.working') : status === 'IDLE' ? t('worker.idle') : t('worker.offline')}
     </span>
   );
 }
@@ -137,7 +138,7 @@ export function ActivityBar({ pct, keyboardPct, mousePct, className, showLabel =
   if (pct === null || pct === undefined) return <span className="text-xs text-text-faint">—</span>;
   const tone = pct < 25 ? 'bg-act-2' : pct < 50 ? 'bg-act-3' : pct < 75 ? 'bg-act-4' : 'bg-act-5';
   return (
-    <span className={cx('inline-flex items-center gap-2', className)} title={keyboardPct !== undefined ? `Keyboard ${keyboardPct}% · Mouse ${mousePct}%` : undefined}>
+    <span className={cx('inline-flex items-center gap-2', className)} title={keyboardPct !== undefined ? t('activity.split', { keyboard: keyboardPct, mouse: mousePct ?? '' }) : undefined}>
       <span className="relative h-1.5 w-14 overflow-hidden rounded-full bg-surface-sunken" aria-hidden>
         <span className={cx('absolute inset-y-0 left-0 rounded-full', tone)} style={{ width: `${Math.min(100, pct)}%` }} />
       </span>
@@ -149,9 +150,9 @@ export function ActivityBar({ pct, keyboardPct, mousePct, className, showLabel =
 export function BudgetProgress({ pct, state, projectedPct, className }: { pct: number; state: 'healthy' | 'warning' | 'exceeded'; projectedPct?: number | null; className?: string }) {
   const color = state === 'exceeded' ? 'bg-danger' : state === 'warning' ? 'bg-warning' : 'bg-success';
   return (
-    <span className={cx('relative block h-1.5 w-full overflow-visible rounded-full bg-surface-sunken', className)} role="meter" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
+    <span className={cx('relative block h-1.5 w-full overflow-visible rounded-full bg-surface-sunken', className)} role="meter" aria-label={t('budget.used', { pct: Math.round(pct) })} aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
       <span className={cx('absolute inset-y-0 left-0 rounded-full', color)} style={{ width: `${Math.min(100, pct)}%` }} />
-      {projectedPct != null && projectedPct > 0 && <span className="absolute -top-0.5 h-2.5 w-px bg-text-muted" style={{ left: `${Math.min(100, projectedPct)}%` }} title={`Projected ${Math.round(projectedPct)}%`} />}
+      {projectedPct != null && projectedPct > 0 && <span className="absolute -top-0.5 h-2.5 w-px bg-text-muted" style={{ left: `${Math.min(100, projectedPct)}%` }} title={t('budget.projected', { pct: Math.round(projectedPct) })} />}
     </span>
   );
 }
@@ -220,24 +221,24 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
       <span className="flex size-10 items-center justify-center rounded-full bg-danger-soft text-danger">
         <AlertTriangle className="size-5" />
       </span>
-      <p className="text-sm font-semibold">{e?.title ?? e?.message ?? 'Something went wrong'}</p>
-      {e?.request_id && <p className="font-mono text-2xs text-text-faint">Request {e.request_id}</p>}
+      <p className="text-sm font-semibold">{e?.title ?? e?.message ?? t('state.error')}</p>
+      {e?.request_id && <p className="font-mono text-2xs text-text-faint">{t('state.requestId', { id: e.request_id })}</p>}
       {onRetry && (
         <button onClick={onRetry} className="mt-1 text-sm font-medium text-interactive hover:underline">
-          Try again
+          {t('common.retry')}
         </button>
       )}
     </div>
   );
 }
 
-export function PermissionState({ message = 'You don’t have access to this area.' }: { message?: string }) {
+export function PermissionState({ message = t('state.noAccessArea') }: { message?: string }) {
   return (
     <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
       <span className="flex size-10 items-center justify-center rounded-full bg-surface-muted text-text-faint">
         <Lock className="size-5" />
       </span>
-      <p className="text-sm font-semibold">Restricted</p>
+      <p className="text-sm font-semibold">{t('state.restricted')}</p>
       <p className="text-sm text-text-muted">{message}</p>
     </div>
   );
@@ -245,7 +246,7 @@ export function PermissionState({ message = 'You don’t have access to this are
 
 export function SkeletonRows({ rows = 6, cols = 5 }: { rows?: number; cols?: number }) {
   return (
-    <div className="divide-y divide-border" aria-busy="true" aria-label="Loading">
+    <div className="divide-y divide-border" aria-busy="true" aria-label={t('common.loading')}>
       {Array.from({ length: rows }, (_, r) => (
         <div key={r} className="flex h-10 items-center gap-4 px-4">
           {Array.from({ length: cols }, (_, c) => (

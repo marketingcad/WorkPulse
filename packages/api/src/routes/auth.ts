@@ -11,7 +11,7 @@ import {
   resetPasswordInput,
   signupInput,
 } from '@tallywork/contracts';
-import { DomainError, businessRule } from '@tallywork/domain';
+import { DomainError, businessRule, validation } from '@tallywork/domain';
 import { z } from 'zod';
 import { confirmTotpSetup, disableTotp, hasMfa, recoveryCodesLeft, regenerateRecoveryCodes, startTotpSetup, verifyLoginCode } from '../services/mfa';
 import type { AppEnv } from '../context';
@@ -142,6 +142,24 @@ export const authRoutes = new Hono<AppEnv>()
 export const meRoutes = new Hono<AppEnv>()
   .use(requireUser)
   .get('/', async (c) => c.json(await getMe(c.var.deps.db, userId(c), await hasMfa(c.var.deps, userId(c)))))
+  /** The person's own settings: display name and locale (languages and formats). */
+  .patch('/', async (c) => {
+    const i = await body(c, z.object({ name: z.string().trim().min(1).max(100).optional(), locale: z.string().max(35).optional() }));
+    const patch: { name?: string; locale?: string; updatedAt: Date } = { updatedAt: new Date() };
+    if (i.name !== undefined) patch.name = i.name;
+    if (i.locale !== undefined) {
+      let canonical: string | undefined;
+      try {
+        canonical = Intl.getCanonicalLocales(i.locale)[0];
+      } catch {
+        canonical = undefined;
+      }
+      if (!canonical) throw validation('Not a valid language tag', { errors: [{ field: 'locale', message: 'Use a tag like en-US, fr-CA or de' }] });
+      patch.locale = canonical;
+    }
+    await c.var.deps.db.update(users).set(patch).where(eq(users.id, userId(c)));
+    return c.json(await getMe(c.var.deps.db, userId(c), await hasMfa(c.var.deps, userId(c))));
+  })
   .get('/mfa', async (c) => {
     const p = c.var.principal as { mfaVerified?: boolean };
     return c.json({ enabled: await hasMfa(c.var.deps, userId(c)), session_verified: !!p.mfaVerified, recovery_codes_left: await recoveryCodesLeft(c.var.deps, userId(c)) });

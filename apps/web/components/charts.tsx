@@ -115,7 +115,7 @@ export function DayRibbon({ segments, dayStart, dayEnd, onSelect }: { segments: 
   const span = dayEnd - dayStart;
   return (
     <div>
-      <div className="relative h-7 overflow-hidden rounded-sm bg-surface-sunken" role="img" aria-label="Timeline of the day">
+      <div className="relative h-7 overflow-hidden rounded-sm bg-surface-sunken" role="group" aria-label="Timeline of the day">
         {segments.map((s, i) => {
           const a = Math.max(0, (Date.parse(s.start) - dayStart) / span);
           const b = Math.min(1, (Date.parse(s.end) - dayStart) / span);

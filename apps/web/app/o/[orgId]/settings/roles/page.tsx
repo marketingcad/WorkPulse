@@ -68,7 +68,7 @@ export default function RolesPage() {
         ) : !roles.length ? (
           <EmptyState title="No roles" />
         ) : (
-          <div className="max-h-[70vh] overflow-auto">
+          <div className="max-h-[70vh] overflow-auto" tabIndex={0} role="region" aria-label="Permissions by role">
             <table className="w-full border-collapse text-sm">
               <caption className="sr-only">Permissions by role. {SCOPE_HELP}</caption>
               <thead className="sticky top-0 z-10 bg-surface">

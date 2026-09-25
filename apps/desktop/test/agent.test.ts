@@ -165,3 +165,21 @@ describe('shift reminders and limit warnings', () => {
     expect(limitAction({ dailySeconds: null, weeklySeconds: null }, 99999, 99999, '2026-09-28', null)).toBeNull();
   });
 });
+
+describe('managed configuration (MDM / Group Policy)', async () => {
+  const { parseDefaultsRead, parseJsonConfig, parseRegQuery } = await import('../src/main/services/managed-config');
+  it('reads the Windows registry policy', () => {
+    const out = '\r\nHKEY_LOCAL_MACHINE\SOFTWARE\Policies\Tallywork\r\n    ServerUrl    REG_SZ    https://time.acme.com/\r\n    UpdateChannel    REG_SZ    beta\r\n    LaunchAtLogin    REG_DWORD    0x1\r\n';
+    expect(parseRegQuery(out)).toEqual({ serverUrl: 'https://time.acme.com', updateChannel: 'beta', launchAtLogin: true });
+    expect(parseRegQuery('')).toEqual({});
+  });
+  it('reads a macOS configuration profile', () => {
+    const out = '{\n    LaunchAtLogin = 0;\n    ServerUrl = "https://time.acme.com";\n    UpdateChannel = latest;\n}\n';
+    expect(parseDefaultsRead(out)).toEqual({ serverUrl: 'https://time.acme.com', updateChannel: 'latest', launchAtLogin: false });
+  });
+  it('reads /etc/tallywork/config.json and ignores unsafe or invalid values', () => {
+    expect(parseJsonConfig('{"serverUrl":"https://time.acme.com/x","launchAtLogin":true}')).toEqual({ serverUrl: 'https://time.acme.com', launchAtLogin: true });
+    expect(parseJsonConfig('{"serverUrl":"http://evil.example","updateChannel":"nightly"}')).toEqual({});
+    expect(parseJsonConfig('not json')).toEqual({});
+  });
+});

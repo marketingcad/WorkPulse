@@ -20,6 +20,8 @@
   --color-nav: var(--tw-nav);
   --color-nav-fg: var(--tw-nav-fg);
   --color-nav-muted: var(--tw-nav-muted);
+  /* text on solid accent backgrounds (primary/danger buttons, badges): white in light, navy in dark */
+  --color-on-accent: var(--tw-on-accent);
   --color-nav-active: var(--tw-nav-active);
   --color-interactive: var(--tw-interactive);
   --color-interactive-hover: var(--tw-interactive-hover);
@@ -72,7 +74,7 @@
   --tw-border-strong: #c3cad4;
   --tw-text: #141a23;
   --tw-text-muted: #5a6472;
-  --tw-text-faint: #8a93a0;
+  --tw-text-faint: #606976;
   --tw-brand: #0f2240;
   --tw-brand-fg: #ffffff;
   --tw-nav: #0f2240;
@@ -93,6 +95,7 @@
   --tw-info: #0e7490;
   --tw-info-soft: #e0f2f7;
   --tw-focus: #1f5fd1;
+  --tw-on-accent: #ffffff;
   /* Activity: single-hue indigo ramp (signal, not verdict) */
   --tw-act-1: #e4e5f8;
   --tw-act-2: #bfc1ef;
@@ -112,7 +115,7 @@
     --tw-border-strong: #3a4452;
     --tw-text: #e6eaf0;
     --tw-text-muted: #9aa4b2;
-    --tw-text-faint: #6b7584;
+    --tw-text-faint: #8792a2;
     --tw-brand: #e6ecf5;
     --tw-brand-fg: #0f2240;
     --tw-nav: #0b1628;
@@ -133,6 +136,7 @@
     --tw-info: #38b2cc;
     --tw-info-soft: #0f2a31;
     --tw-focus: #7aa3f2;
+    --tw-on-accent: #0b1628;
     --tw-act-1: #25284a;
     --tw-act-2: #363a73;
     --tw-act-3: #4f54a6;
@@ -151,7 +155,7 @@
   --tw-border-strong: #3a4452;
   --tw-text: #e6eaf0;
   --tw-text-muted: #9aa4b2;
-  --tw-text-faint: #6b7584;
+  --tw-text-faint: #8792a2;
   --tw-brand: #e6ecf5;
   --tw-brand-fg: #0f2240;
   --tw-nav: #0b1628;
@@ -172,6 +176,7 @@
   --tw-info: #38b2cc;
   --tw-info-soft: #0f2a31;
   --tw-focus: #7aa3f2;
+  --tw-on-accent: #0b1628;
   --tw-act-1: #25284a;
   --tw-act-2: #363a73;
   --tw-act-3: #4f54a6;

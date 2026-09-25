@@ -6,6 +6,7 @@ import { Button, Field, Input } from '@tallywork/ui';
 import type { MeDto } from '@tallywork/contracts';
 import { AuthShell } from '@/components/auth-shell';
 import { api, ApiError } from '@/lib/api';
+import { t } from '@/lib/i18n';
 
 function LoginForm() {
   const router = useRouter();
@@ -36,7 +37,7 @@ function LoginForm() {
       }
       finish(r);
     } catch (err) {
-      setError(err instanceof ApiError ? err.title : 'Could not sign in');
+      setError(err instanceof ApiError ? err.title : t('auth.login.failed'));
       setLoading(false);
     }
   }
@@ -55,10 +56,10 @@ function LoginForm() {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-      <Field label="Work email" htmlFor="email">
+      <Field label={t('auth.workEmail')} htmlFor="email">
         <Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
       </Field>
-      <Field label="Password" htmlFor="password">
+      <Field label={t('auth.password')} htmlFor="password">
         <Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
       </Field>
       {error && (
@@ -67,15 +68,15 @@ function LoginForm() {
         </p>
       )}
       <Button type="submit" variant="primary" size="md" loading={loading} className="w-full">
-        Sign in
+        {t('auth.signIn')}
       </Button>
       <div className="flex justify-between text-sm">
         <Link href="/forgot-password" className="text-interactive hover:underline">
-          Forgot password?
+          {t('auth.login.forgot')}
         </Link>
       </div>
       <div className="rounded-sm border border-dashed border-border px-3 py-2 text-xs text-text-muted">
-        Demo workspace: <span className="font-mono">admin@demo.tallywork.app</span> / <span className="font-mono">demo-password-123</span>
+        {t('auth.login.demo')} <span className="font-mono">admin@demo.tallywork.app</span> / <span className="font-mono">demo-password-123</span>
       </div>
     </form>
   );
@@ -100,22 +101,22 @@ function CodeStep({ email, onVerified, onRestart }: { email: string; onVerified:
       setLoading(false);
       // The short pending session expired or was signed out: start again with the password.
       if (err instanceof ApiError && err.status === 401 && err.code !== 'invalid_mfa_code') return onRestart(err.title);
-      setError(err instanceof ApiError ? err.title : 'Could not verify the code');
+      setError(err instanceof ApiError ? err.title : t('auth.mfa.failed'));
     }
   }
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
       <p className="text-sm text-text-muted">
-        {recovery ? 'Enter one of the recovery codes you saved when you set up two-factor authentication. Each code works once.' : 'Open your authenticator app and enter the 6-digit code for Tallywork.'}
-        <span className="mt-1 block text-xs text-text-faint">Signing in as {email}</span>
+        {recovery ? t('auth.mfa.recoveryIntro') : t('auth.mfa.appIntro')}
+        <span className="mt-1 block text-xs text-text-faint">{t('auth.mfa.signingInAs', { email })}</span>
       </p>
       {recovery ? (
-        <Field label="Recovery code" htmlFor="mfa-code">
+        <Field label={t('auth.mfa.recoveryCode')} htmlFor="mfa-code">
           <Input id="mfa-code" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="xxxx-xxxx" className="font-mono" value={code} maxLength={20} onChange={(e) => setCode(e.target.value)} autoFocus />
         </Field>
       ) : (
-        <Field label="Authentication code" htmlFor="mfa-code">
+        <Field label={t('auth.mfa.code')} htmlFor="mfa-code">
           <Input id="mfa-code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" placeholder="123456" className="tabular text-lg tracking-[0.3em]" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} autoFocus />
         </Field>
       )}
@@ -125,7 +126,7 @@ function CodeStep({ email, onVerified, onRestart }: { email: string; onVerified:
         </p>
       )}
       <Button type="submit" variant="primary" size="md" loading={loading} disabled={!ready} className="w-full">
-        Verify
+        {t('auth.mfa.verify')}
       </Button>
       <div className="flex flex-wrap justify-between gap-2 text-sm">
         <button
@@ -137,7 +138,7 @@ function CodeStep({ email, onVerified, onRestart }: { email: string; onVerified:
             setError(null);
           }}
         >
-          {recovery ? 'Use the authenticator app' : 'Use a recovery code'}
+          {recovery ? t('auth.mfa.useApp') : t('auth.mfa.useRecovery')}
         </button>
         <button
           type="button"
@@ -147,7 +148,7 @@ function CodeStep({ email, onVerified, onRestart }: { email: string; onVerified:
             onRestart();
           }}
         >
-          Back
+          {t('auth.mfa.back')}
         </button>
       </div>
     </form>
@@ -157,13 +158,13 @@ function CodeStep({ email, onVerified, onRestart }: { email: string; onVerified:
 export default function LoginPage() {
   return (
     <AuthShell
-      title="Sign in"
-      subtitle="Welcome back. Pick up where you left off."
+      title={t('auth.login.title')}
+      subtitle={t('auth.login.subtitle')}
       footer={
         <>
-          New to Tallywork?{' '}
+          {t('auth.login.newTo')}{' '}
           <Link href="/signup" className="font-medium text-interactive hover:underline">
-            Create an organization
+            {t('auth.login.createOrg')}
           </Link>
         </>
       }

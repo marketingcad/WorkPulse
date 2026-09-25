@@ -197,7 +197,7 @@ export async function getMe(db: Db, userIdValue: string, mfaEnabled = false): Pr
       .orderBy(organizations.name),
   );
   return {
-    user: { id: u.id, name: u.name, email: u.email, email_verified: !!u.emailVerifiedAt, mfa_enabled: mfaEnabled },
+    user: { id: u.id, name: u.name, email: u.email, email_verified: !!u.emailVerifiedAt, mfa_enabled: mfaEnabled, locale: u.locale },
     organizations: orgs.map((o) => ({ id: o.id, slug: o.slug, name: o.name, role_key: o.roleKey, role_name: o.roleName, membership_id: o.membershipId, is_owner: o.isOwner })),
   };
 }

@@ -23,6 +23,11 @@ await api(`/orgs/${org.organization.id}/…`, { method: 'POST', body }); // ad-h
 - Errors: `ApiError` has `.status`, `.code`, `.title`, `.field(name)`. Show `.title` in toasts (`useToast()`), and field errors in `Field error=…`.
 - Date ranges: the API caps ranges at 400 days. Use `todayIn(tz)`, `addDays`, and `weekStartOf` from `@/lib/org`.
 
+## Text and locale
+- User-visible text goes through `t(key, vars)` from `@/lib/i18n` (in `packages/ui`, from `./i18n`), with English in `apps/web/messages/en.ts` (or `packages/ui/src/messages/en.ts` for shared components). Use `{name}` placeholders and `{count, plural, one {# item} other {# items}}`; never build sentences by concatenation. aria-labels are text too.
+- New screens use the catalog from the start. Older screens still have English literals and are moved over as they are touched.
+- Dates, numbers, money and durations use the `fmt*` helpers from `@tallywork/ui`, which follow the person’s locale (Profile → Language & region). Don’t call `toLocaleString()` or `Intl.*Format` with a hard-coded locale.
+
 ## Permissions
 `const org = useOrg();` exposes `org.can('invoices:manage')`, `org.grants`, `org.isManagerView`, `org.isAdmin`, `org.membership`, `org.organization` (timezone, currency, week_start), and `org.fmtDuration(seconds)` (respects the org duration format). Hide actions the user cannot perform. The server still enforces every rule. When a whole page is not allowed, render `<PermissionState />`.
 
@@ -41,6 +46,11 @@ await api(`/orgs/${org.organization.id}/…`, { method: 'POST', body }); // ad-h
 - Status is never shown by colour alone; use `StatusBadge`.
 - Mobile: `DataTable` switches to stacked rows automatically, so give each table a sensible `priority`. Keep toolbars wrapping (`flex-wrap`).
 - Accessibility: every icon-only button needs `aria-label` (`IconButton label=…`), inputs need labels (`Field`), charts need text alternatives (built into `ColumnChart`).
+  - Text on a solid accent background (`bg-interactive`, `bg-danger`, `bg-secondary` badges, …) uses `text-on-accent`, never `text-white`: in dark mode the accents are light, and white text on them fails contrast.
+  - Every text token (`text-text`, `text-text-muted`, `text-text-faint`, `text-nav-muted`) meets 4.5:1 on every surface. Don't lower it with opacity classes (`/80`, `opacity-70`). To show something is unavailable, say so in text or use a dashed border.
+  - `Tabs` with children renders a real tab panel. Without children it renders toggle buttons for a filter. Don't hand-roll either.
+  - A scrollable region needs `tabIndex={0}`, `role="region"` and an `aria-label` so keyboard users can scroll it.
+  - Check with `apps/web/scripts/a11y-audit.cjs` (axe-core, WCAG 2.1 AA, light and dark) against a seeded local server. It must report no violations.
 - Empty states say what to do next ("Invite your first member").
 - Destructive actions use `ConfirmDialog`.
 

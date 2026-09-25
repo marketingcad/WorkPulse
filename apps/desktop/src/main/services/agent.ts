@@ -10,6 +10,7 @@ import { limitAction, shiftReminder } from './reminders';
 import { ActivityMonitor, AppTracker, captureScreens, msUntilNextShotSlot, nextShotDelays } from './monitors';
 import { OfflineQueue, type QueuedEvent } from './queue';
 import { SecureStore } from './secure-store';
+import { BROWSER_NAMES, UrlResolver } from './urls';
 
 const SYNC_INTERVAL_MS = 10_000;
 const HEARTBEAT_MS = 60_000;
@@ -63,7 +64,13 @@ export class Agent extends EventEmitter {
   readonly api = new AgentApi(this.store);
   readonly queue = new OfflineQueue(this.store);
   readonly activity = new ActivityMonitor();
-  readonly apps = new AppTracker(() => this.boot?.policy ?? null);
+  /** Active-tab URLs on Windows: browser extension bridge, falling back to the address bar. */
+  readonly urls = new UrlResolver(() => ({
+    tracking: this.session?.state === 'active',
+    urlsEnabled: !!this.boot?.policy.urls.enabled,
+    mode: this.boot?.policy.urls.mode ?? 'domain',
+  }));
+  readonly apps = new AppTracker(() => this.boot?.policy ?? null, this.urls);
   private boot: Bootstrap | null = null;
   private session: LocalSession | null;
   private idle: { idleId: string; startedAt: number; endedAt: number | null } | null = null;
@@ -85,6 +92,8 @@ export class Agent extends EventEmitter {
   constructor(
     private serverUrl: string,
     private readonly version: string,
+    /** set by device management: the only server this app may use */
+    private readonly managedServer: string | null = null,
   ) {
     super();
     this.session = this.store.readJson<LocalSession>('session');
@@ -92,6 +101,8 @@ export class Agent extends EventEmitter {
     this.manualRequests = this.store.readJson<ManualRequest[]>('manual-requests') ?? [];
     this.phase = this.api.signedIn ? 'ready' : 'signed_out';
     if (this.api.serverUrl) this.serverUrl = this.api.serverUrl;
+    if (this.managedServer) this.serverUrl = this.managedServer;
+    if (this.managedServer) this.serverUrl = this.managedServer;
     this.api.onSignedOut = (reason) => {
       this.stopMonitors();
       this.phase = 'signed_out';
@@ -104,6 +115,7 @@ export class Agent extends EventEmitter {
   async init(): Promise<void> {
     await this.activity.init();
     await this.apps.init();
+    await this.urls.start();
     powerMonitor.on('suspend', () => this.onSuspend());
     powerMonitor.on('resume', () => this.emitState());
     powerMonitor.on('shutdown', () => this.onSuspend());
@@ -129,7 +141,7 @@ export class Agent extends EventEmitter {
 
   // ─── Auth ──────────────────────────────────────────────────────────────────
   async login(serverUrl?: string): Promise<void> {
-    if (serverUrl) this.serverUrl = serverUrl.replace(/\/$/, '');
+    if (serverUrl && !this.managedServer) this.serverUrl = serverUrl.replace(/\/$/, '');
     this.phase = 'signing_in';
     this.error = null;
     this.emitState();
@@ -621,6 +633,7 @@ export class Agent extends EventEmitter {
       phase: this.phase,
       error: this.error,
       serverUrl: this.serverUrl,
+      serverManaged: !!this.managedServer,
       version: this.version,
       account: this.boot
         ? { name: this.boot.worker.name, email: this.boot.worker.email, organization: this.boot.organization.name, organizationId: this.boot.organization.id, membershipId: this.boot.worker.membership_id, timezone: this.boot.worker.timezone }
@@ -647,6 +660,7 @@ export class Agent extends EventEmitter {
       recoveryPrompt: this.recovery,
       sync: { queued: this.queue.size, lastSyncAt: this.lastSyncAt, online: this.online, error: this.syncError },
       capabilities: this.capabilities,
+      browserExtension: this.urls.bridge.connectedBrowsers().map((b) => BROWSER_NAMES[b]),
       lastProject: this.lastProject,
       timesheetDue: this.boot?.timesheet_due
         ? { periodStart: this.boot.timesheet_due.period_start, periodEnd: this.boot.timesheet_due.period_end, status: this.boot.timesheet_due.status, totalSeconds: this.boot.timesheet_due.total_seconds, overdue: this.boot.timesheet_due.overdue }
@@ -665,5 +679,6 @@ export class Agent extends EventEmitter {
   dispose(): void {
     for (const t of this.timers) clearInterval(t);
     this.stopMonitors();
+    this.urls.stop();
   }
 }

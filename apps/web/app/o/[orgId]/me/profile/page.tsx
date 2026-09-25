@@ -1,12 +1,13 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Laptop } from 'lucide-react';
 import type { DeviceDto, MeDto } from '@tallywork/contracts';
 import { Avatar, Badge, Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, PageHeader, Panel, Select, SkeletonRows, StatusBadge, Stat, fmtRelative, useToast } from '@tallywork/ui';
 import { ApiError, api, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { applyAccountLocale, t } from '@/lib/i18n';
 import { browserTimeZone, timeZones } from '@/components/settings/options';
 import { DataExportAction } from '@/components/security/data-export';
 import { TwoFactorPanel } from '@/components/security/two-factor-panel';
@@ -62,6 +63,7 @@ export default function ProfilePage() {
             </div>
           )}
         </Panel>
+        <LocalePanel />
         <PasswordPanel />
         <TwoFactorPanel requiredByOrg={mfaRequired} />
         <DevicesPanel />
@@ -111,6 +113,95 @@ function TimezoneForm() {
         Save
       </Button>
     </form>
+  );
+}
+
+/** Languages offered for display formats; each name is written in its own language. */
+const LOCALES: Array<{ tag: string; label: string }> = [
+  { tag: 'en-US', label: 'English (United States)' },
+  { tag: 'en-GB', label: 'English (United Kingdom)' },
+  { tag: 'de-DE', label: 'Deutsch' },
+  { tag: 'es-ES', label: 'Español' },
+  { tag: 'fr-FR', label: 'Français' },
+  { tag: 'nl-NL', label: 'Nederlands' },
+  { tag: 'pt-BR', label: 'Português (Brasil)' },
+  { tag: 'ja-JP', label: '日本語' },
+];
+
+function LocalePanel() {
+  const org = useOrg();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const me = useQuery<MeDto, ApiError>({ queryKey: ['me'], queryFn: () => api<MeDto>('/me') }).data;
+  const saved = me?.user.locale ?? 'en-US';
+  const [tag, setTag] = useState(saved);
+  useEffect(() => setTag(saved), [saved]);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [loading, setLoading] = useState(false);
+  // A tag saved elsewhere (e.g. fr-CA) that is not in the list still shows as the current choice.
+  const options = LOCALES.some((l) => l.tag === saved) ? LOCALES : [...LOCALES, { tag: saved, label: saved }];
+  const sample = useMemo(() => new Date(), []);
+  const preview = useMemo(
+    () => ({
+      date: new Intl.DateTimeFormat(tag, { month: 'short', day: 'numeric', year: 'numeric' }).format(sample),
+      time: new Intl.DateTimeFormat(tag, { hour: 'numeric', minute: '2-digit', timeZone: org.membership.timezone }).format(sample),
+      number: new Intl.NumberFormat(tag).format(1234567.89),
+      money: new Intl.NumberFormat(tag, { style: 'currency', currency: org.organization.currency }).format(1234.5),
+    }),
+    [tag, sample, org.membership.timezone, org.organization.currency],
+  );
+  const save = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await api<MeDto>('/me', { method: 'PATCH', body: { locale: tag } });
+      qc.setQueryData(['me'], r);
+      toast.success(t('profile.locale.saved'));
+      applyAccountLocale(r.user.locale);
+    } catch (e) {
+      if (e instanceof ApiError && e.field('locale')) setError(e);
+      else toast.error(errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <Panel title={t('profile.locale.title')}>
+      <form
+        className="flex flex-col gap-4 p-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label={t('profile.locale.label')} htmlFor="me-locale" className="min-w-56 flex-1" error={error?.field('locale')}>
+            <Select id="me-locale" value={tag} onChange={(e) => setTag(e.target.value)} disabled={!me}>
+              {options.map((l) => (
+                <option key={l.tag} value={l.tag} lang={l.tag}>
+                  {l.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Button type="submit" variant="primary" disabled={!me || tag === saved} loading={loading}>
+            {t('common.save')}
+          </Button>
+        </div>
+        <p className="text-sm text-text-muted">{t('profile.locale.note')}</p>
+        <div>
+          <p id="me-locale-preview" className="text-xs font-medium text-text-muted">
+            {t('profile.locale.previewLabel')}
+          </p>
+          <dl aria-describedby="me-locale-preview" className="mt-2 grid grid-cols-2 gap-3 rounded-sm border border-border bg-surface-muted px-3 py-2.5">
+            <Stat label={t('profile.locale.date')} value={preview.date} />
+            <Stat label={t('profile.locale.time')} value={preview.time} />
+            <Stat label={t('profile.locale.number')} value={preview.number} />
+            <Stat label={t('profile.locale.money')} value={preview.money} />
+          </dl>
+        </div>
+      </form>
+    </Panel>
   );
 }
 

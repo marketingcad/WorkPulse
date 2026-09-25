@@ -13,6 +13,7 @@ import { getLayout, resetLayout, saveLayout, widgetData } from '../services/dash
 import { eventReader } from '../services/stream';
 import { getRetention, previewRetention, setRetention } from '../services/retention';
 import { anonymizeMember, permissionReview, queueDataExport } from '../services/privacy';
+import { getSupportAccess, grantSupportAccess, revokeSupportAccess } from '../services/support';
 import { connectionInput, createConnection, deleteConnection, listConnections, listProviders, requestSync } from '../services/integrations';
 import { streamSSE } from 'hono/streaming';
 import { reportCatalog, runReport } from '../services/reports';
@@ -150,6 +151,9 @@ export const platformRoutes = new Hono<AppEnv>()
   .post('/workers/:id/data-export', async (c) => c.json(await queueDataExport(ctx(c), c.req.param('id')), 202))
   .post('/workers/:id/anonymize', async (c) => c.json(await anonymizeMember(ctx(c), c.req.param('id'))))
   .get('/permissions/review', async (c) => c.json(await permissionReview(ctx(c))))
+  .get('/support-access', async (c) => c.json(await getSupportAccess(ctx(c))))
+  .post('/support-access', async (c) => c.json(await grantSupportAccess(ctx(c), await body(c, z.object({ hours: z.number().int().min(1).max(72), reason: z.string().trim().min(3).max(300) })))))
+  .delete('/support-access', async (c) => c.json(await revokeSupportAccess(ctx(c))))
   .post('/files/receipts', async (c) => {
     const form = await c.req.formData();
     const file = form.get('file');

@@ -157,7 +157,7 @@ export default function PoliciesPage() {
                   {(sec.description || sec.disabled) && <p className="text-xs text-text-muted">{sec.disabled ?? sec.description}</p>}
                 </div>
               }
-              className={cx(sec.disabled && 'opacity-70')}
+              className={cx(sec.disabled && 'border-dashed')}
             >
               <ul className="divide-y divide-border">
                 {sec.fields.map((field) => (

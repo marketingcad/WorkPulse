@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Field, Input } from '@tallywork/ui';
 import { AuthShell } from '@/components/auth-shell';
 import { api, ApiError } from '@/lib/api';
+import { t } from '@/lib/i18n';
 
 function Form() {
   const router = useRouter();
@@ -23,7 +24,7 @@ function Form() {
           const r = await api<{ organization_id: string }>('/auth/invitations/accept', { body: { token, name: name || undefined, password: password || undefined } });
           router.replace(`/o/${r.organization_id}?welcome=1`);
         } catch (err) {
-          const e2 = err instanceof ApiError ? err : new ApiError(500, 'error', 'Could not accept the invitation');
+          const e2 = err instanceof ApiError ? err : new ApiError(500, 'error', t('auth.invite.failed'));
           if (e2.code === 'login_required') {
             router.replace(`/login?next=${encodeURIComponent(`/invite?token=${token}`)}`);
             return;
@@ -33,10 +34,10 @@ function Form() {
         }
       }}
     >
-      <Field label="Your name" htmlFor="name">
+      <Field label={t('auth.yourName')} htmlFor="name">
         <Input id="name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" autoFocus />
       </Field>
-      <Field label="Choose a password" htmlFor="pw" hint="At least 10 characters. Already have an account? Sign in first, then open this link again.">
+      <Field label={t('auth.invite.choosePassword')} htmlFor="pw" hint={t('auth.invite.passwordHint')}>
         <Input id="pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
       </Field>
       {error && (
@@ -45,7 +46,7 @@ function Form() {
         </p>
       )}
       <Button type="submit" variant="primary" size="md" loading={loading}>
-        Join organization
+        {t('auth.invite.submit')}
       </Button>
     </form>
   );
@@ -53,7 +54,7 @@ function Form() {
 
 export default function InvitePage() {
   return (
-    <AuthShell title="You have been invited" subtitle="Set up your account to join your team on Tallywork.">
+    <AuthShell title={t('auth.invite.title')} subtitle={t('auth.invite.subtitle')}>
       <Suspense>
         <Form />
       </Suspense>

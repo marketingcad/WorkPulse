@@ -22,7 +22,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r --filter "./packages/*" --filter @tallywork/web typecheck
-      - run: pnpm --filter @tallywork/domain --filter @tallywork/db --filter @tallywork/api test
+      - run: pnpm --filter @tallywork/domain --filter @tallywork/ui --filter @tallywork/db --filter @tallywork/api test
       # Load smoke on its own (no competing test files): 20 agents, ingest p95 under 500 ms.
       - run: pnpm --filter @tallywork/api exec vitest run test/ops.test.ts -t "load smoke"
         env:

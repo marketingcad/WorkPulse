@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Button, Field, Input } from '@tallywork/ui';
 import { AuthShell } from '@/components/auth-shell';
 import { api } from '@/lib/api';
+import { t } from '@/lib/i18n';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -11,16 +12,16 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   return (
     <AuthShell
-      title="Reset your password"
-      subtitle="We will email you a link to choose a new one."
+      title={t('auth.forgot.title')}
+      subtitle={t('auth.forgot.subtitle')}
       footer={
         <Link href="/login" className="text-interactive hover:underline">
-          Back to sign in
+          {t('auth.forgot.back')}
         </Link>
       }
     >
       {sent ? (
-        <p className="rounded-sm bg-success-soft px-3 py-2 text-sm text-success">If an account exists for {email}, a reset link is on its way.</p>
+        <p className="rounded-sm bg-success-soft px-3 py-2 text-sm text-success">{t('auth.forgot.sent', { email })}</p>
       ) : (
         <form
           className="flex flex-col gap-4"
@@ -31,11 +32,11 @@ export default function ForgotPasswordPage() {
             setSent(true);
           }}
         >
-          <Field label="Work email" htmlFor="email">
+          <Field label={t('auth.workEmail')} htmlFor="email">
             <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
           </Field>
           <Button type="submit" variant="primary" size="md" loading={loading}>
-            Send reset link
+            {t('auth.forgot.submit')}
           </Button>
         </form>
       )}

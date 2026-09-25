@@ -17,15 +17,22 @@ electronFuses:
   enableEmbeddedAsarIntegrityValidation: true
   onlyLoadAppFromAsar: true
 win:
-  target: [nsis]
+  # nsis: interactive installer for people; msi: silent, per-machine install for Intune / Group Policy / SCCM.
+  target: [nsis, msi]
   artifactName: Tallywork-Setup-${version}.${ext}
   # Authenticode signing: set CSC_LINK / CSC_KEY_PASSWORD (EV certificate recommended).
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+msi:
+  perMachine: true
+  oneClick: true
+  runAfterFinish: false
+  artifactName: Tallywork-${version}-x64.${ext}
 mac:
-  target: [dmg, zip]
+  # dmg/zip for people and auto-update; pkg for Jamf / Kandji / Intune (installs to /Applications for all users).
+  target: [dmg, zip, pkg]
   category: public.app-category.productivity
   hardenedRuntime: true
   gatekeeperAssess: false
@@ -35,6 +42,12 @@ mac:
     NSAppleEventsUsageDescription: Tallywork reads the active browser tab domain while you track time, when your organization enables URL tracking.
     NSScreenCaptureUsageDescription: Tallywork captures screenshots while you track time, when your organization enables screenshots.
   notarize: true
+pkg:
+  installLocation: /Applications
+  allowAnywhere: false
+  allowCurrentUserHome: false
+  isRelocatable: false
+  artifactName: Tallywork-${version}.${ext}
 linux:
   target: [AppImage, deb]
   category: Office

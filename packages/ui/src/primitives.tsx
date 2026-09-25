@@ -2,6 +2,7 @@
 import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { clsx } from 'clsx';
 import { Loader2 } from 'lucide-react';
+import { t } from './i18n';
 
 export const cx = clsx;
 
@@ -9,10 +10,10 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subtle';
 type Size = 'xs' | 'sm' | 'md';
 
 const VARIANT: Record<Variant, string> = {
-  primary: 'bg-interactive text-white hover:bg-interactive-hover border border-transparent shadow-[inset_0_-1px_0_rgb(0_0_0/0.12)]',
+  primary: 'bg-interactive text-on-accent hover:bg-interactive-hover border border-transparent shadow-[inset_0_-1px_0_rgb(0_0_0/0.12)]',
   secondary: 'bg-surface text-text border border-border hover:bg-surface-muted hover:border-border-strong',
   ghost: 'bg-transparent text-text-muted hover:bg-surface-muted hover:text-text border border-transparent',
-  danger: 'bg-danger text-white hover:opacity-90 border border-transparent',
+  danger: 'bg-danger text-on-accent hover:opacity-90 border border-transparent',
   subtle: 'bg-interactive-soft text-interactive hover:brightness-95 border border-transparent',
 };
 const SIZE: Record<Size, string> = {
@@ -109,5 +110,5 @@ export function Kbd({ children }: { children: ReactNode }) {
 }
 
 export function Spinner({ className }: { className?: string }) {
-  return <Loader2 className={cx('size-4 animate-spin text-text-faint', className)} aria-label="Loading" />;
+  return <Loader2 className={cx('size-4 animate-spin text-text-faint', className)} aria-label={t('common.loading')} />;
 }

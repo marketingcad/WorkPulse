@@ -36,17 +36,19 @@ import {
 } from 'lucide-react';
 
 export interface NavItem {
+  /** message key (webEn nav.item.*); translated at render */
   label: string;
   href: string; // relative to /o/:orgId
   icon: LucideIcon;
   /** shown when the actor holds any of these (optionally at a minimum scope) */
   perms?: Permission[];
   minScope?: Scope | 'team_or_org';
-  /** worker-facing label override */
+  /** worker-facing label override (message key) */
   workerLabel?: string;
 }
 
 export interface NavGroup {
+  /** message key (webEn nav.group.*) */
   label: string | null;
   items: NavItem[];
 }
@@ -56,76 +58,76 @@ export const NAV: NavGroup[] = [
   {
     label: null,
     items: [
-      { label: 'Overview', workerLabel: 'Today', href: '', icon: LayoutDashboard },
-      { label: 'My timesheet', href: '/timesheets', icon: Clock, perms: ['timesheets:submit'], minScope: 'own' },
+      { label: 'nav.item.overview', workerLabel: 'nav.item.today', href: '', icon: LayoutDashboard },
+      { label: 'nav.item.myTimesheet', href: '/timesheets', icon: Clock, perms: ['timesheets:submit'], minScope: 'own' },
     ],
   },
   {
-    label: 'Workspace',
+    label: 'nav.group.workspace',
     items: [
-      { label: 'Members', href: '/workers', icon: Users, perms: ['members:read'], minScope: 'team_or_org' },
-      { label: 'Teams', href: '/teams', icon: UsersRound, perms: ['teams:manage'] },
-      { label: 'Clients', href: '/clients', icon: Building2, perms: ['clients:manage'] },
-      { label: 'Projects', href: '/projects', icon: FolderKanban, perms: ['projects:read'] },
-      { label: 'Tasks', href: '/tasks', icon: CheckSquare, perms: ['tasks:read'] },
+      { label: 'nav.item.members', href: '/workers', icon: Users, perms: ['members:read'], minScope: 'team_or_org' },
+      { label: 'nav.item.teams', href: '/teams', icon: UsersRound, perms: ['teams:manage'] },
+      { label: 'nav.item.clients', href: '/clients', icon: Building2, perms: ['clients:manage'] },
+      { label: 'nav.item.projects', href: '/projects', icon: FolderKanban, perms: ['projects:read'] },
+      { label: 'nav.item.tasks', href: '/tasks', icon: CheckSquare, perms: ['tasks:read'] },
     ],
   },
   {
-    label: 'Tracking',
+    label: 'nav.group.tracking',
     items: [
-      { label: 'Live', href: '/tracking/live', icon: Radio, perms: ['tracking:read'], minScope: 'team_or_org' },
-      { label: 'Activity', workerLabel: 'My activity', href: '/activity', icon: Activity, perms: ['activity:read'] },
-      { label: 'Sessions', href: '/sessions', icon: Timer, perms: ['tracking:read'] },
-      { label: 'Devices', href: '/devices', icon: Laptop, perms: ['devices:read'] },
+      { label: 'nav.item.live', href: '/tracking/live', icon: Radio, perms: ['tracking:read'], minScope: 'team_or_org' },
+      { label: 'nav.item.activity', workerLabel: 'nav.item.myActivity', href: '/activity', icon: Activity, perms: ['activity:read'] },
+      { label: 'nav.item.sessions', href: '/sessions', icon: Timer, perms: ['tracking:read'] },
+      { label: 'nav.item.devices', href: '/devices', icon: Laptop, perms: ['devices:read'] },
     ],
   },
   {
-    label: 'Timesheets',
+    label: 'nav.group.timesheets',
     items: [
-      { label: 'View & edit', href: '/timesheets/team', icon: CalendarDays, perms: ['timesheets:read'], minScope: 'team_or_org' },
-      { label: 'Approvals', href: '/timesheets/approvals', icon: ClipboardCheck, perms: ['timesheets:approve'] },
-      { label: 'Manual time', href: '/timesheets/manual', icon: ListChecks, perms: ['manual_time:request', 'manual_time:approve'] },
+      { label: 'nav.item.viewEdit', href: '/timesheets/team', icon: CalendarDays, perms: ['timesheets:read'], minScope: 'team_or_org' },
+      { label: 'nav.item.approvals', href: '/timesheets/approvals', icon: ClipboardCheck, perms: ['timesheets:approve'] },
+      { label: 'nav.item.manualTime', href: '/timesheets/manual', icon: ListChecks, perms: ['manual_time:request', 'manual_time:approve'] },
     ],
   },
   {
-    label: 'People',
+    label: 'nav.group.people',
     items: [
-      { label: 'Attendance', href: '/attendance', icon: UserCheck, perms: ['attendance:read'], minScope: 'team_or_org' },
-      { label: 'Schedules', workerLabel: 'My schedule', href: '/schedules', icon: CalendarClock, perms: ['schedules:read'] },
-      { label: 'Time off', href: '/time-off', icon: CalendarOff, perms: ['time_off:read'] },
+      { label: 'nav.item.attendance', href: '/attendance', icon: UserCheck, perms: ['attendance:read'], minScope: 'team_or_org' },
+      { label: 'nav.item.schedules', workerLabel: 'nav.item.mySchedule', href: '/schedules', icon: CalendarClock, perms: ['schedules:read'] },
+      { label: 'nav.item.timeOff', href: '/time-off', icon: CalendarOff, perms: ['time_off:read'] },
     ],
   },
   {
-    label: 'Finance',
+    label: 'nav.group.finance',
     items: [
-      { label: 'Billing & rates', href: '/finance/billing', icon: BadgeDollarSign, perms: ['rates:read', 'billing:read'] },
-      { label: 'Budgets', href: '/finance/budgets', icon: PiggyBank, perms: ['budgets:read'] },
-      { label: 'Expenses', href: '/finance/expenses', icon: Receipt, perms: ['expenses:read'] },
-      { label: 'Invoices', href: '/finance/invoices', icon: FileText, perms: ['invoices:read'] },
-      { label: 'Payments', href: '/finance/payments', icon: CreditCard, perms: ['payments:read'] },
+      { label: 'nav.item.billingRates', href: '/finance/billing', icon: BadgeDollarSign, perms: ['rates:read', 'billing:read'] },
+      { label: 'nav.item.budgets', href: '/finance/budgets', icon: PiggyBank, perms: ['budgets:read'] },
+      { label: 'nav.item.expenses', href: '/finance/expenses', icon: Receipt, perms: ['expenses:read'] },
+      { label: 'nav.item.invoices', href: '/finance/invoices', icon: FileText, perms: ['invoices:read'] },
+      { label: 'nav.item.payments', href: '/finance/payments', icon: CreditCard, perms: ['payments:read'] },
     ],
   },
   {
-    label: 'Insights',
-    items: [{ label: 'Reports', href: '/reports', icon: BarChart3, perms: ['reports:read'] }],
+    label: 'nav.group.insights',
+    items: [{ label: 'nav.item.reports', href: '/reports', icon: BarChart3, perms: ['reports:read'] }],
   },
   {
-    label: 'Developer',
+    label: 'nav.group.developer',
     items: [
-      { label: 'API keys', href: '/developer/api-keys', icon: KeyRound, perms: ['api_keys:manage'] },
-      { label: 'Webhooks', href: '/developer/webhooks', icon: Webhook, perms: ['webhooks:manage'] },
+      { label: 'nav.item.apiKeys', href: '/developer/api-keys', icon: KeyRound, perms: ['api_keys:manage'] },
+      { label: 'nav.item.webhooks', href: '/developer/webhooks', icon: Webhook, perms: ['webhooks:manage'] },
     ],
   },
   {
-    label: 'Settings',
+    label: 'nav.group.settings',
     items: [
-      { label: 'Organization', href: '/settings', icon: Settings, perms: ['org:update'] },
-      { label: 'Tracking policies', href: '/settings/policies', icon: SlidersHorizontal, perms: ['policies:manage'] },
-      { label: 'Roles & permissions', href: '/settings/roles', icon: Shield, perms: ['roles:manage'] },
-      { label: 'Security & retention', href: '/settings/security', icon: Gauge, perms: ['retention:manage', 'settings:security'] },
-      { label: 'Access review', href: '/settings/access-review', icon: ShieldCheck, perms: ['members:manage', 'settings:security'] },
-      { label: 'Audit log', href: '/settings/audit', icon: ScrollText, perms: ['audit:read'] },
-      { label: 'What is monitored', href: '/me/monitoring', icon: Eye },
+      { label: 'nav.item.organization', href: '/settings', icon: Settings, perms: ['org:update'] },
+      { label: 'nav.item.trackingPolicies', href: '/settings/policies', icon: SlidersHorizontal, perms: ['policies:manage'] },
+      { label: 'nav.item.roles', href: '/settings/roles', icon: Shield, perms: ['roles:manage'] },
+      { label: 'nav.item.security', href: '/settings/security', icon: Gauge, perms: ['retention:manage', 'settings:security'] },
+      { label: 'nav.item.accessReview', href: '/settings/access-review', icon: ShieldCheck, perms: ['members:manage', 'settings:security'] },
+      { label: 'nav.item.auditLog', href: '/settings/audit', icon: ScrollText, perms: ['audit:read'] },
+      { label: 'nav.item.whatIsMonitored', href: '/me/monitoring', icon: Eye },
     ],
   },
 ];

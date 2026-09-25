@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tallywork</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --text: #141a23;
+        --muted: #5a6472;
+        --border: #dce1e8;
+        --ok: #16794a;
+        --warn: #b26a00;
+        --off: #5a6472;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #161b22;
+          --text: #e6eaf0;
+          --muted: #9aa4b2;
+          --border: #2a323d;
+          --ok: #3fb27f;
+          --warn: #e3a33b;
+          --off: #9aa4b2;
+        }
+      }
+      body {
+        margin: 0;
+        width: 300px;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      header {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border);
+        font-weight: 600;
+      }
+      section {
+        padding: 12px 14px;
+        display: grid;
+        gap: 10px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+      }
+      .dot {
+        flex: none;
+        width: 8px;
+        height: 8px;
+        margin-top: 5px;
+        border-radius: 50%;
+        background: var(--off);
+      }
+      .ok .dot { background: var(--ok); }
+      .warn .dot { background: var(--warn); }
+      .muted {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      footer {
+        padding: 10px 14px;
+        border-top: 1px solid var(--border);
+      }
+    </style>
+  </head>
+  <body>
+    <header>Tallywork</header>
+    <section>
+      <div class="row" id="app"><span class="dot"></span><span id="app-text">Checking the desktop app…</span></div>
+      <div class="row" id="rec"><span class="dot"></span><span id="rec-text"></span></div>
+    </section>
+    <footer class="muted">
+      Only the website of your active tab is shared, only with the Tallywork app on this computer, and only recorded while your timer runs.
+      Private/incognito windows are never visible to this extension.
+    </footer>
+    <script src="popup.js"></script>
+  </body>
+</html>

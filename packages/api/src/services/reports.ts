@@ -344,34 +344,80 @@ async function timeOffReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
   };
 }
 
+/**
+ * Billable time per client and project. Approved and invoiced amounts come from billing entries
+ * (priced at approval and never repriced), so they reconcile exactly with invoices; time not yet
+ * approved is estimated at current rates. The same member scope and filters apply to both.
+ */
 async function billingReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
   const rows = await rollupRows(x, { ...p, billable: 'billable' }, 'time:read');
-  const rates = await loadRates(x.tx);
-  const agg = new Map<string, { client: string; project: string; seconds: number; amount: number; approved: number }>();
-  const approved = await x.tx
-    .select({ projectId: billingEntries.projectId, amount: sql<number>`sum(${billingEntries.billAmountMinor})::bigint` })
-    .from(billingEntries)
-    .where(and(isNull(billingEntries.voidedAt), gte(billingEntries.localDate, p.from), lte(billingEntries.localDate, p.to), eq(billingEntries.billable, true)))
-    .groupBy(billingEntries.projectId);
-  for (const r of rows) {
-    const k = r.r.projectId;
-    const a = agg.get(k) ?? { client: r.clientName ?? '(no client)', project: r.projectName, seconds: 0, amount: 0, approved: 0 };
-    const secs = r.r.trackedSeconds + r.r.manualSeconds;
-    const rate = resolveRate(rates, 'BILL', { date: r.r.localDate, membershipId: r.r.membershipId, projectId: r.r.projectId, clientId: r.clientId });
-    a.seconds += secs;
-    a.amount += rate ? amountForSeconds(secs, rate.amountMinor) : 0;
-    agg.set(k, a);
+  const members = await scopedMembers(x, 'time:read', p);
+  let projectIds = p.project_ids;
+  if (p.client_ids?.length) {
+    const ids = (await x.tx.select({ id: projects.id }).from(projects).where(inArray(projects.clientId, p.client_ids))).map((r) => r.id);
+    projectIds = projectIds?.length ? projectIds.filter((id) => ids.includes(id)) : ids;
   }
-  for (const ap of approved) {
-    const a = agg.get(ap.projectId);
-    if (a) a.approved = Number(ap.amount);
+  const entries = await x.tx
+    .select({ b: billingEntries, projectName: projects.name, clientName: clients.name })
+    .from(billingEntries)
+    .innerJoin(projects, eq(projects.id, billingEntries.projectId))
+    .leftJoin(clients, eq(clients.id, billingEntries.clientId))
+    .where(
+      and(
+        isNull(billingEntries.voidedAt),
+        eq(billingEntries.billable, true),
+        gte(billingEntries.localDate, p.from),
+        lte(billingEntries.localDate, p.to),
+        inOrAll(billingEntries.membershipId, members),
+        projectIds ? inArray(billingEntries.projectId, projectIds.length ? projectIds : ['00000000-0000-7000-8000-000000000000']) : undefined,
+      ),
+    );
+  const rates = await loadRates(x.tx);
+  type Row = { client: string; project: string; seconds: number; approved_seconds: number; approved: number; invoiced: number; unapproved_estimate: number };
+  const agg = new Map<string, Row>();
+  const row = (projectId: string, client: string | null, project: string) => {
+    let a = agg.get(projectId);
+    if (!a) agg.set(projectId, (a = { client: client ?? '(no client)', project, seconds: 0, approved_seconds: 0, approved: 0, invoiced: 0, unapproved_estimate: 0 }));
+    return a;
+  };
+  const approvedSecs = new Map<string, number>();
+  for (const { b, projectName, clientName } of entries) {
+    const a = row(b.projectId, clientName, projectName);
+    a.approved_seconds += b.seconds;
+    a.approved += b.billAmountMinor;
+    if (b.invoiceLineId) a.invoiced += b.billAmountMinor;
+    const k = `${b.membershipId}|${b.projectId}|${b.localDate}`;
+    approvedSecs.set(k, (approvedSecs.get(k) ?? 0) + b.seconds);
+  }
+  for (const r of rows) {
+    const a = row(r.r.projectId, r.clientName, r.projectName);
+    const secs = r.r.trackedSeconds + r.r.manualSeconds;
+    a.seconds += secs;
+    const k = `${r.r.membershipId}|${r.r.projectId}|${r.r.localDate}`;
+    const covered = Math.min(secs, approvedSecs.get(k) ?? 0);
+    approvedSecs.set(k, (approvedSecs.get(k) ?? 0) - covered);
+    const rate = secs - covered > 0 ? resolveRate(rates, 'BILL', { date: r.r.localDate, membershipId: r.r.membershipId, projectId: r.r.projectId, clientId: r.clientId }) : null;
+    a.unapproved_estimate += rate ? amountForSeconds(secs - covered, rate.amountMinor) : 0;
   }
   const out = [...agg.values()].sort((a, b) => a.client.localeCompare(b.client) || a.project.localeCompare(b.project));
+  const sum = (k: keyof Row) => out.reduce((s, r) => s + (r[k] as number), 0);
   return {
-    columns: [{ key: 'client', label: 'Client', type: 'text' }, { key: 'project', label: 'Project', type: 'text' }, { key: 'seconds', label: 'Billable time', type: 'duration' }, { key: 'amount', label: 'Billable amount', type: 'money' }, { key: 'approved', label: 'Approved amount', type: 'money' }],
+    columns: [
+      { key: 'client', label: 'Client', type: 'text' },
+      { key: 'project', label: 'Project', type: 'text' },
+      { key: 'seconds', label: 'Billable time', type: 'duration' },
+      { key: 'approved_seconds', label: 'Approved time', type: 'duration' },
+      { key: 'approved', label: 'Approved amount', type: 'money' },
+      { key: 'invoiced', label: 'Invoiced', type: 'money' },
+      { key: 'unapproved_estimate', label: 'Not yet approved (est.)', type: 'money' },
+    ],
     rows: out,
-    totals: { seconds: out.reduce((s, r) => s + r.seconds, 0), amount: out.reduce((s, r) => s + r.amount, 0), approved: out.reduce((s, r) => s + r.approved, 0) },
-    summary: [{ label: 'Billable time', value: out.reduce((s, r) => s + r.seconds, 0), type: 'duration' }, { label: 'Billable amount', value: out.reduce((s, r) => s + r.amount, 0), type: 'money' }],
+    totals: { seconds: sum('seconds'), approved_seconds: sum('approved_seconds'), approved: sum('approved'), invoiced: sum('invoiced'), unapproved_estimate: sum('unapproved_estimate') },
+    summary: [
+      { label: 'Approved amount', value: sum('approved'), type: 'money' },
+      { label: 'Invoiced', value: sum('invoiced'), type: 'money' },
+      { label: 'Ready to invoice', value: sum('approved') - sum('invoiced'), type: 'money' },
+    ],
     currency: x.org.currency,
   };
 }

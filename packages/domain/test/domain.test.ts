@@ -296,3 +296,52 @@ describe('workforce (Phase 8 gate)', () => {
     expect(nearestLimit({ dailySeconds: 8 * 3600, weeklySeconds: null }, 8.5 * 3600, 0)).toMatchObject({ kind: 'daily', remainingSeconds: -1800 });
   });
 });
+
+describe('money (Phase 9 gate)', () => {
+  it('rounds per entry, half-up to the minor unit (documented rule)', () => {
+    expect(amountForSeconds(1800, 12345)).toBe(6173); // 6172.5 → 6173
+    expect(amountForSeconds(1, 12345)).toBe(3); // 3.43 → 3
+    expect(amountForSeconds(0, 12345)).toBe(0);
+    expect(amountForSeconds(24 * 3600, 100_000_000)).toBe(2_400_000_000); // large values stay exact
+  });
+
+  it('computes tax per line, then sums (which can differ from tax on the total)', () => {
+    const lines = [{ quantity: 1, unitPriceMinor: 5, taxRateBps: 1000 }, { quantity: 1, unitPriceMinor: 5, taxRateBps: 1000 }];
+    const t = invoiceTotals(lines);
+    expect(t.lines.map((l) => l.taxMinor)).toEqual([1, 1]); // 0.5 → 1 each
+    expect(t).toMatchObject({ subtotalMinor: 10, taxMinor: 2, totalMinor: 12 });
+    expect(Math.round((10 * 1000) / 10000)).toBe(1); // on the total it would be 1
+  });
+
+  it('resolves rates by precedence and effective dates (end exclusive)', () => {
+    const r = (id: string, kind: 'BILL' | 'PAY', scope: 'ORG' | 'CLIENT' | 'PROJECT' | 'WORKER' | 'PROJECT_WORKER', scopeId: string | null, from = '2026-01-01', to: string | null = null) => ({ id, kind, scope, scopeId, amountMinor: 1, currency: 'USD', effectiveFrom: from, effectiveTo: to });
+    const rates = [r('org', 'BILL', 'ORG', null), r('client', 'BILL', 'CLIENT', 'c'), r('worker', 'BILL', 'WORKER', 'm'), r('project', 'BILL', 'PROJECT', 'p', '2026-01-01', '2026-06-01'), r('pw', 'BILL', 'PROJECT_WORKER', 'p:m', '2026-09-01'), r('pay-project', 'PAY', 'PROJECT', 'p'), r('pay-worker', 'PAY', 'WORKER', 'm')];
+    const ctx = (date: string) => ({ date, membershipId: 'm', projectId: 'p', clientId: 'c' });
+    expect(resolveRate(rates, 'BILL', ctx('2026-03-01'))!.id).toBe('project');
+    expect(resolveRate(rates, 'BILL', ctx('2026-06-01'))!.id).toBe('worker'); // project rate ended (exclusive)
+    expect(resolveRate(rates, 'BILL', ctx('2026-09-01'))!.id).toBe('pw');
+    expect(resolveRate(rates, 'BILL', { date: '2026-03-01', membershipId: 'x', projectId: 'q', clientId: 'c' })!.id).toBe('client');
+    expect(resolveRate(rates, 'BILL', { date: '2026-03-01', membershipId: 'x', projectId: 'q', clientId: null })!.id).toBe('org');
+    expect(resolveRate(rates, 'PAY', ctx('2026-03-01'))!.id).toBe('pay-worker'); // pay: worker before project
+    expect(resolveRate(rates, 'BILL', ctx('2025-12-31'))).toBeNull();
+  });
+
+  it.each([
+    [{ explicit: 'DRAFT', totalMinor: 100, paidMinor: 0, dueDate: '2026-09-01', today: '2026-09-25' }, 'DRAFT'],
+    [{ explicit: 'VOID', totalMinor: 100, paidMinor: 0, dueDate: '2026-09-01', today: '2026-09-25' }, 'VOID'],
+    [{ explicit: 'SENT', totalMinor: 100, paidMinor: 0, dueDate: '2026-09-30', today: '2026-09-25' }, 'SENT'],
+    [{ explicit: 'SENT', totalMinor: 100, paidMinor: 40, dueDate: '2026-09-30', today: '2026-09-25' }, 'PARTIALLY_PAID'],
+    [{ explicit: 'SENT', totalMinor: 100, paidMinor: 40, dueDate: '2026-09-24', today: '2026-09-25' }, 'OVERDUE'],
+    [{ explicit: 'SENT', totalMinor: 100, paidMinor: 0, dueDate: '2026-09-25', today: '2026-09-25' }, 'SENT'],
+    [{ explicit: 'SENT', totalMinor: 100, paidMinor: 100, dueDate: '2026-09-01', today: '2026-09-25' }, 'PAID'],
+  ] as const)('invoice status %#', (input, expected) => {
+    expect(deriveInvoiceStatus(input)).toBe(expected);
+  });
+
+  it('budget thresholds: each level crossed once', () => {
+    expect(crossedThresholds(0, 85, [80, 100])).toEqual([80]);
+    expect(crossedThresholds(80, 95, [80, 100])).toEqual([]);
+    expect(crossedThresholds(80, 120, [80, 100])).toEqual([100]);
+    expect(crossedThresholds(0, 120, [80, 100])).toEqual([80, 100]);
+  });
+});

@@ -233,6 +233,11 @@ function Composer() {
                     }
                   />
                 )}
+                {preview.other_currency_entries > 0 && (
+                  <p role="status" className="mx-4 mt-3 rounded-sm bg-warning-soft px-3 py-2 text-sm text-warning">
+                    {preview.other_currency_entries} approved {preview.other_currency_entries === 1 ? 'entry is' : 'entries are'} billed in another currency and left out. An invoice has one currency ({currency}); check the rates for this client.
+                  </p>
+                )}
                 <LinesTable lines={preview.lines} currency={currency} />
                 <Totals subtotal={preview.subtotal_minor} tax={preview.tax_minor} total={preview.total_minor} currency={currency} />
               </>

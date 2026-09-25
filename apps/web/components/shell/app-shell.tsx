@@ -1,14 +1,14 @@
 'use client';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Check, ChevronsUpDown, LogOut, Menu as MenuIcon, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Plus, Sun, UserRound, X } from 'lucide-react';
+import { Bell, Check, ChevronRight, ChevronsUpDown, LogOut, Menu as MenuIcon, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Plus, Sun, UserRound, X } from 'lucide-react';
 import type { MeDto, NotificationDto } from '@tallywork/contracts';
 import { Avatar, IconButton, Logo, Menu, MenuItem, MenuLabel, MenuSeparator, Popover, cx, fmtRelative } from '@tallywork/ui';
 import { api, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
-import { filterNav } from './nav';
+import { filterNav, type NavItem } from './nav';
 import { TimerBar } from './timer-bar';
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -68,16 +68,75 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
+const NAV_GROUPS_KEY = 'tw.nav.groups';
+
 function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggle?: () => void; onClose?: () => void }) {
   const org = useOrg();
   const pathname = usePathname();
   const groups = filterNav(org.can, org.grants, org.isManagerView);
+  const hrefs = groups.flatMap((g) => g.items.map((i) => i.href));
   const isActive = (href: string) => {
     const full = `${org.base}${href}`;
     if (href === '') return pathname === org.base;
-    if (href === '/timesheets') return pathname === full;
+    // A parent of other nav items (e.g. /timesheets, /settings) is only active on its own page.
+    if (hrefs.some((h) => h.startsWith(`${href}/`))) return pathname === full;
     return pathname === full || pathname.startsWith(`${full}/`);
   };
+
+  // Labelled groups are collapsible sections. The group holding the current page is always
+  // opened; the rest remember what the user chose (per browser).
+  const idPrefix = useId();
+  const activeGroup = groups.find((g) => g.label && g.items.some((i) => isActive(i.href)))?.label ?? null;
+  const [open, setOpen] = useState<Record<string, boolean>>(() => (activeGroup ? { [activeGroup]: true } : {}));
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(NAV_GROUPS_KEY) ?? '{}') as Record<string, boolean>;
+      setOpen((o) => ({ ...stored, ...o }));
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
+  useEffect(() => {
+    if (activeGroup) setOpen((o) => (o[activeGroup] ? o : { ...o, [activeGroup]: true }));
+  }, [activeGroup]);
+  const toggleGroup = (label: string) =>
+    setOpen((o) => {
+      const next = { ...o, [label]: !o[label] };
+      try {
+        localStorage.setItem(NAV_GROUPS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+
+  const renderItems = (items: NavItem[]) => (
+    <ul className="flex flex-col gap-0.5">
+      {items.map((i) => {
+        const active = isActive(i.href);
+        const Icon = i.icon;
+        return (
+          <li key={i.href + i.label}>
+            <Link
+              href={`${org.base}${i.href}`}
+              title={collapsed ? i.label : undefined}
+              aria-current={active ? 'page' : undefined}
+              className={cx(
+                'relative flex h-8 items-center gap-2.5 rounded-sm text-sm transition-colors',
+                collapsed ? 'justify-center px-0' : 'px-2.5',
+                active ? 'bg-nav-active font-semibold text-white' : 'text-nav-muted hover:bg-white/5 hover:text-nav-fg',
+              )}
+            >
+              {active && <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-[#8a8df0]" aria-hidden />}
+              <Icon className="size-4 shrink-0" aria-hidden />
+              {!collapsed && <span className="truncate">{i.label}</span>}
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+
   return (
     <>
       <div className={cx('flex h-14 shrink-0 items-center border-b border-white/10', collapsed ? 'justify-center px-2' : 'gap-2 px-3')}>
@@ -89,36 +148,50 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
         )}
       </div>
       <nav className="scrollbar-thin flex-1 overflow-y-auto px-2 py-3">
-        {groups.map((g, gi) => (
-          <div key={g.label ?? gi} className="mb-3">
-            {g.label && !collapsed && <div className="mb-1 px-2.5 text-2xs font-semibold uppercase tracking-wider text-nav-muted/80">{g.label}</div>}
-            {g.label && collapsed && gi > 0 && <div className="mx-3 mb-2 h-px bg-white/10" />}
-            <ul className="flex flex-col gap-0.5">
-              {g.items.map((i) => {
-                const active = isActive(i.href);
-                const Icon = i.icon;
-                return (
-                  <li key={i.href + i.label}>
-                    <Link
-                      href={`${org.base}${i.href}`}
-                      title={collapsed ? i.label : undefined}
-                      aria-current={active ? 'page' : undefined}
-                      className={cx(
-                        'relative flex h-8 items-center gap-2.5 rounded-sm text-sm transition-colors',
-                        collapsed ? 'justify-center px-0' : 'px-2.5',
-                        active ? 'bg-nav-active font-semibold text-white' : 'text-nav-muted hover:bg-white/5 hover:text-nav-fg',
-                      )}
-                    >
-                      {active && <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-[#8a8df0]" aria-hidden />}
-                      <Icon className="size-4 shrink-0" aria-hidden />
-                      {!collapsed && <span className="truncate">{i.label}</span>}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
+        {groups.map((g, gi) => {
+          // Unlabelled group (Overview) and the icon-only rail: plain list, no dropdown.
+          if (!g.label || collapsed) {
+            return (
+              <div key={g.label ?? gi} className="mb-3">
+                {g.label && gi > 0 && <div className="mx-3 mb-2 h-px bg-white/10" />}
+                {renderItems(g.items)}
+              </div>
+            );
+          }
+          const isOpen = !!open[g.label];
+          const panelId = `${idPrefix}-nav-${gi}`;
+          return (
+            <div key={g.label} className="mb-1">
+              <button
+                type="button"
+                onClick={() => toggleGroup(g.label!)}
+                aria-expanded={isOpen}
+                aria-controls={panelId}
+                className={cx(
+                  'flex h-7 w-full items-center gap-1 rounded-sm px-2.5 text-2xs font-semibold uppercase tracking-wider transition-colors',
+                  isOpen ? 'text-nav-fg/90' : 'text-nav-muted/80',
+                  'hover:bg-white/5 hover:text-nav-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#8a8df0]',
+                )}
+              >
+                <span className="flex-1 truncate text-left">{g.label}</span>
+                <ChevronRight className={cx('size-3.5 shrink-0 transition-transform duration-200 ease-out motion-reduce:transition-none', isOpen && 'rotate-90')} aria-hidden />
+              </button>
+              {/* grid-rows 0fr ↔ 1fr animates to the content's natural height */}
+              <div
+                id={panelId}
+                inert={!isOpen}
+                className={cx(
+                  'grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none',
+                  isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+                )}
+              >
+                <div className="min-h-0 overflow-hidden">
+                  <div className={cx('pb-2 pt-0.5 transition-transform duration-200 ease-out motion-reduce:transition-none', isOpen ? 'translate-y-0' : '-translate-y-1')}>{renderItems(g.items)}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </nav>
       {onToggle && (
         <button onClick={onToggle} className={cx('flex h-10 shrink-0 items-center gap-2 border-t border-white/10 text-xs text-nav-muted hover:text-nav-fg', collapsed ? 'justify-center' : 'px-4')} aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}>

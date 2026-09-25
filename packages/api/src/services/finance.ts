@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   billingEntries,
@@ -24,6 +24,7 @@ import {
   budgetStatus,
   businessRule,
   can,
+  conflict,
   crossedThresholds,
   deriveInvoiceStatus,
   forbidden,
@@ -58,6 +59,12 @@ export async function listRates(x: Ctx) {
     .map((r) => ({ id: r.id, kind: r.kind, scope: r.scope, scope_id: r.scopeId, amount_minor: r.amountMinor, currency: r.currency, effective_from: r.effectiveFrom, effective_to: r.effectiveTo }));
 }
 
+/** Whether an active billing entry was priced with this rate (it is then part of history). */
+async function rateInUse(tx: Tx, rateId: string): Promise<boolean> {
+  const [u] = await tx.select({ id: billingEntries.id }).from(billingEntries).where(and(isNull(billingEntries.voidedAt), or(eq(billingEntries.billRateId, rateId), eq(billingEntries.payRateId, rateId)))).limit(1);
+  return !!u;
+}
+
 /** New rate version: closes the previous open-ended rate for the same scope (history kept). */
 export async function setRate(x: Ctx, input: z.infer<typeof rateInput>) {
   if (!x.actor.grants['rates:manage']) throw forbidden();
@@ -69,7 +76,10 @@ export async function setRate(x: Ctx, input: z.infer<typeof rateInput>) {
     .where(and(eq(billingRates.kind, input.kind), eq(billingRates.scope, input.scope), scopeId ? eq(billingRates.scopeId, scopeId) : isNull(billingRates.scopeId), isNull(billingRates.effectiveTo)));
   for (const p of prev) {
     if (p.effectiveFrom >= input.effective_from) {
-      await x.tx.delete(billingRates).where(eq(billingRates.id, p.id));
+      // Superseded before it started. A rate that already priced approved time is kept (as an
+      // empty window) so billing history still points at it; approved amounts never change.
+      if (await rateInUse(x.tx, p.id)) await x.tx.update(billingRates).set({ effectiveTo: p.effectiveFrom, updatedAt: new Date() }).where(eq(billingRates.id, p.id));
+      else await x.tx.delete(billingRates).where(eq(billingRates.id, p.id));
     } else {
       await x.tx.update(billingRates).set({ effectiveTo: input.effective_from, updatedAt: new Date() }).where(eq(billingRates.id, p.id));
     }
@@ -84,6 +94,7 @@ export async function deleteRate(x: Ctx, id: string) {
   if (!x.actor.grants['rates:manage']) throw forbidden();
   const [r] = await x.tx.select().from(billingRates).where(eq(billingRates.id, id));
   if (!r) throw notFound('rate');
+  if (await rateInUse(x.tx, id)) throw businessRule('rate_in_use', 'This rate priced approved time. Set a new rate from a date instead of deleting it.');
   await x.tx.delete(billingRates).where(eq(billingRates.id, id));
   await audit(x, { action: 'rate.deleted', targetType: 'rate', targetId: id, before: r });
 }
@@ -124,11 +135,23 @@ async function budgetSpent(tx: Tx, b: typeof budgets.$inferSelect, rates: Rate[]
   let spent = 0;
   if (b.kind === 'HOURS') spent = rows.reduce((s, r) => s + r.trackedSeconds + r.manualSeconds, 0);
   else {
+    // Approved time counts at the amount it was billed at (a later rate change does not reprice it);
+    // time not yet approved is estimated at the current rate.
+    const approved = await tx
+      .select({ m: billingEntries.membershipId, p: billingEntries.projectId, d: billingEntries.localDate, billable: billingEntries.billable, secs: sql<number>`sum(${billingEntries.seconds})::int`, amount: sql<number>`sum(${billingEntries.billAmountMinor})::bigint` })
+      .from(billingEntries)
+      .where(and(isNull(billingEntries.voidedAt), inArray(billingEntries.projectId, projectIds), from ? gte(billingEntries.localDate, from) : undefined, to ? lte(billingEntries.localDate, to) : undefined, b.includeNonBillable ? undefined : eq(billingEntries.billable, true)))
+      .groupBy(billingEntries.membershipId, billingEntries.projectId, billingEntries.localDate, billingEntries.billable);
+    const byKey = new Map(approved.map((a) => [`${a.m}|${a.p}|${a.d}|${a.billable}`, a]));
     const clientOf = new Map((await tx.select({ id: projects.id, c: projects.clientId }).from(projects).where(inArray(projects.id, projectIds))).map((p) => [p.id, p.c]));
     for (const r of rows) {
-      const rate = resolveRate(rates, 'BILL', { date: r.localDate, membershipId: r.membershipId, projectId: r.projectId, clientId: clientOf.get(r.projectId) ?? null });
-      if (rate) spent += amountForSeconds(r.trackedSeconds + r.manualSeconds, rate.amountMinor);
+      const a = byKey.get(`${r.membershipId}|${r.projectId}|${r.localDate}|${r.billable}`);
+      const rest = Math.max(0, r.trackedSeconds + r.manualSeconds - (a?.secs ?? 0));
+      const rate = rest > 0 ? resolveRate(rates, 'BILL', { date: r.localDate, membershipId: r.membershipId, projectId: r.projectId, clientId: clientOf.get(r.projectId) ?? null }) : null;
+      spent += (rate ? amountForSeconds(rest, rate.amountMinor) : 0) + Number(a?.amount ?? 0);
+      byKey.delete(`${r.membershipId}|${r.projectId}|${r.localDate}|${r.billable}`);
     }
+    for (const a of byKey.values()) spent += Number(a.amount);
   }
   return { spent, from, to, daysElapsed, daysTotal };
 }
@@ -195,7 +218,7 @@ export async function upsertBudget(x: Ctx, input: z.infer<typeof budgetInput>) {
   await x.tx
     .insert(budgets)
     .values({ id: newId(), ...values })
-    .onConflictDoUpdate({ target: [budgets.organizationId, budgets.subjectType, budgets.subjectId], set: { ...values, lastNotifiedLevel: 0, updatedAt: new Date() } });
+    .onConflictDoUpdate({ target: [budgets.organizationId, budgets.subjectType, budgets.subjectId], set: { ...values, lastNotifiedLevel: 0, notifiedPeriod: null, updatedAt: new Date() } });
   await audit(x, { action: 'budget.set', targetType: input.subject_type.toLowerCase(), targetId: input.subject_id, after: input });
   return listBudgets(x);
 }
@@ -215,10 +238,13 @@ export async function checkBudgets(tx: Tx, deps: Deps, organizationId: string, o
   for (const s of statuses) {
     const [b] = await tx.select().from(budgets).where(eq(budgets.id, s.id));
     if (!b) continue;
-    const levels = crossedThresholds(b.lastNotifiedLevel, s.pct_used, [b.warnPct, 100]);
+    // Monthly budgets start over each month; total budgets notify once per level, ever.
+    const period = b.period === 'MONTHLY' ? monthBounds(today).start : 'TOTAL';
+    const notifiedLevel = b.notifiedPeriod === period ? b.lastNotifiedLevel : 0;
+    const levels = crossedThresholds(notifiedLevel, s.pct_used, [b.warnPct, 100]);
     if (!levels.length) continue;
     const top = Math.max(...levels);
-    await tx.update(budgets).set({ lastNotifiedLevel: top }).where(eq(budgets.id, b.id));
+    await tx.update(budgets).set({ lastNotifiedLevel: top, notifiedPeriod: period }).where(eq(budgets.id, b.id));
     const exceeded = top >= 100;
     await emit(tx, organizationId, 'budget.threshold_crossed', { budget_id: b.id, subject_type: b.subjectType, subject_id: b.subjectId, level: top, pct_used: s.pct_used, state: s.state });
     await notify(tx, deps, organizationId, await membersWith(tx, organizationId, 'budgets:manage'), {
@@ -369,9 +395,11 @@ async function buildInvoiceDraft(x: Ctx, input: z.infer<typeof invoiceCreateInpu
   const [client] = await x.tx.select().from(clients).where(eq(clients.id, input.client_id));
   if (!client) throw notFound('client');
   if (input.period_end < input.period_start) throw validation('Period end must be after period start');
+  const currency = client.currency ?? x.org.currency;
   const entries = await x.tx
-    .select({ b: billingEntries, projectName: projects.name, taskTitle: tasks.title, workerName: users.name })
+    .select({ b: billingEntries, projectName: projects.name, taskTitle: tasks.title, workerName: users.name, rateAmount: billingRates.amountMinor })
     .from(billingEntries)
+    .leftJoin(billingRates, eq(billingRates.id, billingEntries.billRateId))
     .innerJoin(projects, eq(projects.id, billingEntries.projectId))
     .leftJoin(tasks, eq(tasks.id, billingEntries.taskId))
     .innerJoin(memberships, eq(memberships.id, billingEntries.membershipId))
@@ -379,6 +407,7 @@ async function buildInvoiceDraft(x: Ctx, input: z.infer<typeof invoiceCreateInpu
     .where(
       and(
         eq(billingEntries.clientId, input.client_id),
+        eq(billingEntries.currency, currency),
         eq(billingEntries.billable, true),
         isNull(billingEntries.voidedAt),
         isNull(billingEntries.invoiceLineId),
@@ -388,10 +417,12 @@ async function buildInvoiceDraft(x: Ctx, input: z.infer<typeof invoiceCreateInpu
       ),
     );
   const groups = new Map<string, DraftLine & { seconds: number }>();
-  for (const { b, projectName, taskTitle, workerName } of entries) {
+  for (const { b, projectName, taskTitle, workerName, rateAmount } of entries) {
     const label = input.group_by === 'task' ? `${projectName} — ${taskTitle ?? 'No task'}` : input.group_by === 'worker' ? `${projectName} — ${workerName}` : projectName;
-    const hourly = b.seconds > 0 ? Math.round((b.billAmountMinor * 3600) / b.seconds) : 0;
-    const key = `${label}|${hourly}`;
+    // One line per label and rate. The line amount is the exact sum of the billed amounts, so the
+    // invoice reconciles with approved billing; the unit price is the rate itself.
+    const hourly = rateAmount ?? (b.seconds > 0 ? Math.round((b.billAmountMinor * 3600) / b.seconds) : 0);
+    const key = `${label}|${b.billRateId ?? hourly}`;
     let g = groups.get(key);
     if (!g) {
       g = { kind: 'TIME', description: label, quantity: 0, unitPriceMinor: hourly, amountMinor: 0, taxRateBps: input.tax_rate_bps, projectId: b.projectId, billingEntryIds: [], expenseIds: [], seconds: 0 };
@@ -406,7 +437,7 @@ async function buildInvoiceDraft(x: Ctx, input: z.infer<typeof invoiceCreateInpu
     const ex = await x.tx
       .select()
       .from(expenses)
-      .where(and(eq(expenses.clientId, input.client_id), eq(expenses.billable, true), inArray(expenses.status, ['APPROVED', 'REIMBURSED']), isNull(expenses.invoiceLineId), gte(expenses.spentOn, input.period_start), lte(expenses.spentOn, input.period_end)));
+      .where(and(eq(expenses.clientId, input.client_id), eq(expenses.currency, currency), eq(expenses.billable, true), inArray(expenses.status, ['APPROVED', 'REIMBURSED']), isNull(expenses.invoiceLineId), gte(expenses.spentOn, input.period_start), lte(expenses.spentOn, input.period_end)));
     for (const e of ex) {
       lines.push({ kind: 'EXPENSE', description: `Expense: ${e.category}${e.description ? ` — ${e.description}` : ''} (${e.spentOn})`, quantity: 1, unitPriceMinor: e.amountMinor, amountMinor: e.amountMinor, taxRateBps: input.tax_rate_bps, projectId: e.projectId, billingEntryIds: [], expenseIds: [e.id] });
     }
@@ -418,7 +449,12 @@ async function buildInvoiceDraft(x: Ctx, input: z.infer<typeof invoiceCreateInpu
   const withTax = lines.map((l) => ({ ...l, taxMinor: Math.round((l.amountMinor * l.taxRateBps) / 10000) }));
   const subtotal = withTax.reduce((s, l) => s + l.amountMinor, 0);
   const tax = withTax.reduce((s, l) => s + l.taxMinor, 0);
-  return { client, lines: withTax, subtotal, tax, total: subtotal + tax, currency: client.currency ?? x.org.currency };
+  // Approved time or expenses in another currency are left for a separate invoice.
+  const [other] = await x.tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(billingEntries)
+    .where(and(eq(billingEntries.clientId, input.client_id), sql`${billingEntries.currency} <> ${currency}`, eq(billingEntries.billable, true), isNull(billingEntries.voidedAt), isNull(billingEntries.invoiceLineId), gte(billingEntries.localDate, input.period_start), lte(billingEntries.localDate, input.period_end)));
+  return { client, lines: withTax, subtotal, tax, total: subtotal + tax, currency, otherCurrencyEntries: other?.n ?? 0 };
 }
 
 export async function previewInvoice(x: Ctx, input: z.infer<typeof invoiceCreateInput>) {
@@ -431,6 +467,7 @@ export async function previewInvoice(x: Ctx, input: z.infer<typeof invoiceCreate
     subtotal_minor: d.subtotal,
     tax_minor: d.tax,
     total_minor: d.total,
+    other_currency_entries: d.otherCurrencyEntries,
     lines: d.lines.map((l) => ({ kind: l.kind, description: l.description, quantity: l.quantity, unit_price_minor: l.unitPriceMinor, amount_minor: l.amountMinor, tax_minor: l.taxMinor, entries: l.billingEntryIds.length })),
   };
 }
@@ -462,8 +499,16 @@ export async function createInvoice(x: Ctx, input: z.infer<typeof invoiceCreateI
   for (const l of d.lines) {
     const lineId = newId();
     await x.tx.insert(invoiceLines).values({ id: lineId, organizationId: x.org.id, invoiceId: id, kind: l.kind, description: l.description, quantity: l.quantity, unitPriceMinor: l.unitPriceMinor, taxRateBps: l.taxRateBps, amountMinor: l.amountMinor, taxMinor: l.taxMinor, projectId: l.projectId, position: pos++ });
-    if (l.billingEntryIds.length) await x.tx.update(billingEntries).set({ invoiceLineId: lineId }).where(inArray(billingEntries.id, l.billingEntryIds));
-    if (l.expenseIds.length) await x.tx.update(expenses).set({ invoiceLineId: lineId }).where(inArray(expenses.id, l.expenseIds));
+    // Claim only entries that are still uninvoiced: a concurrent invoice for the same time fails
+    // here instead of billing it twice.
+    if (l.billingEntryIds.length) {
+      const claimed = await x.tx.update(billingEntries).set({ invoiceLineId: lineId }).where(and(inArray(billingEntries.id, l.billingEntryIds), isNull(billingEntries.invoiceLineId), isNull(billingEntries.voidedAt))).returning({ id: billingEntries.id });
+      if (claimed.length !== l.billingEntryIds.length) throw conflict('invoice_conflict', 'Some of this time was invoiced at the same moment; reload and try again');
+    }
+    if (l.expenseIds.length) {
+      const claimed = await x.tx.update(expenses).set({ invoiceLineId: lineId }).where(and(inArray(expenses.id, l.expenseIds), isNull(expenses.invoiceLineId))).returning({ id: expenses.id });
+      if (claimed.length !== l.expenseIds.length) throw conflict('invoice_conflict', 'Some of these expenses were invoiced at the same moment; reload and try again');
+    }
   }
   await emitFrom(x, 'invoice.created', { invoice_id: id, number, client_id: d.client.id, total_minor: d.total, currency: d.currency });
   await audit(x, { action: 'invoice.created', targetType: 'invoice', targetId: id, after: { number, total: d.total } });
@@ -586,10 +631,16 @@ export async function recordPayment(x: Ctx, input: z.infer<typeof paymentInput>)
     if (!inv) throw notFound('invoice');
     if (inv.status === 'VOID' || inv.status === 'DRAFT') throw businessRule('invoice_not_payable', `Invoice ${inv.number} is not open`);
     if (inv.currency !== input.currency) throw businessRule('currency_mismatch', `Invoice ${inv.number} is in ${inv.currency}`);
-    if (inv.paidMinor + a.amount_minor > inv.totalMinor) throw businessRule('overpayment', `Payment exceeds the balance of ${inv.number}`);
+    if (input.client_id && inv.clientId !== input.client_id) throw businessRule('client_mismatch', `Invoice ${inv.number} belongs to another client`);
+    // Conditional increment: two payments recorded at once cannot push an invoice past its total.
+    const [paid] = await x.tx
+      .update(invoices)
+      .set({ paidMinor: sql`${invoices.paidMinor} + ${a.amount_minor}`, updatedAt: new Date() })
+      .where(and(eq(invoices.id, a.invoice_id), sql`${invoices.paidMinor} + ${a.amount_minor} <= ${invoices.totalMinor}`))
+      .returning({ paidMinor: invoices.paidMinor, totalMinor: invoices.totalMinor });
+    if (!paid) throw businessRule('overpayment', `Payment exceeds the balance of ${inv.number}`);
     await x.tx.insert(paymentAllocations).values({ id: newId(), organizationId: x.org.id, paymentId: id, invoiceId: a.invoice_id, amountMinor: a.amount_minor });
-    await x.tx.update(invoices).set({ paidMinor: inv.paidMinor + a.amount_minor, updatedAt: new Date() }).where(eq(invoices.id, a.invoice_id));
-    if (inv.paidMinor + a.amount_minor >= inv.totalMinor) await emitFrom(x, 'invoice.paid', { invoice_id: inv.id, number: inv.number });
+    if (paid.paidMinor >= paid.totalMinor) await emitFrom(x, 'invoice.paid', { invoice_id: inv.id, number: inv.number });
   }
   await emitFrom(x, 'payment.received', { payment_id: id, amount_minor: input.amount_minor, currency: input.currency });
   await audit(x, { action: 'payment.recorded', targetType: 'payment', targetId: id, after: input });

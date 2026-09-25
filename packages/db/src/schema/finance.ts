@@ -69,6 +69,8 @@ export const budgets = pgTable(
     startDate: text(),
     endDate: text(),
     lastNotifiedLevel: integer().notNull().default(0),
+    /** period the notified level belongs to (month start for MONTHLY budgets), so each month alerts again */
+    notifiedPeriod: text(),
     ...timestamps,
   },
   (t) => [unique().on(t.organizationId, t.subjectType, t.subjectId)],
@@ -135,6 +137,8 @@ export const invoices = pgTable(
     taxMinor: bigint({ mode: 'number' }).notNull().default(0),
     totalMinor: bigint({ mode: 'number' }).notNull().default(0),
     paidMinor: bigint({ mode: 'number' }).notNull().default(0),
+    /** set once invoice.overdue has been emitted */
+    overdueNotifiedAt: tstz(),
     notes: text(),
     sentAt: tstz(),
     voidedAt: tstz(),

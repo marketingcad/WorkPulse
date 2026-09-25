@@ -22,6 +22,13 @@
       "when": 1790347844091,
       "tag": "0002_workforce_operations",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790350362391,
+      "tag": "0003_finance_notifications",
+      "breakpoints": true
     }
   ]
 }

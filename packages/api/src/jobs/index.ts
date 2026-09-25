@@ -308,8 +308,11 @@ export async function runDaily(deps: Deps) {
 
       const accrued = await runAccruals(tx, deps, o.id, today, o.timezone);
 
-      const overdue = await tx.select().from(invoices).where(and(eq(invoices.status, 'SENT'), lt(invoices.dueDate, today), sql`${invoices.paidMinor} < ${invoices.totalMinor}`, sql`${invoices.dueDate} = ${new Date(Date.parse(today) - 86400_000).toISOString().slice(0, 10)}`));
-      for (const i of overdue) await emit(tx, o.id, 'invoice.overdue', { invoice_id: i.id, number: i.number });
+      const overdue = await tx.select().from(invoices).where(and(eq(invoices.status, 'SENT'), lt(invoices.dueDate, today), sql`${invoices.paidMinor} < ${invoices.totalMinor}`, isNull(invoices.overdueNotifiedAt)));
+      for (const i of overdue) {
+        await tx.update(invoices).set({ overdueNotifiedAt: deps.now() }).where(eq(invoices.id, i.id));
+        await emit(tx, o.id, 'invoice.overdue', { invoice_id: i.id, number: i.number });
+      }
       summary[o.id] = { deleted, accrued, overdue: overdue.length };
     });
   }

@@ -1,0 +1,857 @@
+# Tallywork
+
+Workforce time tracking, activity monitoring, timesheets and billing — a web app for admins, managers and workers, plus a desktop agent that tracks time on the worker's machine.
+
+The main flow the product covers is **Organization → People → Work structure → Tracking → Time → Approval → Money → Insight**:
+
+- **Identity & orgs:** sign-up, login, email verification, password reset, invitations, multi-org membership, built-in and custom roles.
+- **Workforce:** workers, teams, clients, projects, tasks, devices.
+- **Time tracking:** a server-side session state machine; a web timer and a desktop timer; idle detection; pause/resume; daily and weekly limits.
+- **Activity monitoring (desktop, set by policy):** keyboard and mouse *counts* (keystrokes are never recorded), 10-minute activity blocks, screenshots (optionally blurred), app and URL usage.
+- **Timesheets:** manual time requests, time edits with full revision history, periods, and submit → approve / reject / request changes.
+- **Operations:** schedules, shifts, attendance, holidays, time-off policies with accruals, a balance ledger, and requests.
+- **Finance:** effective-dated pay and bill rates, billing entries, budgets, expenses with receipts, invoices (PDF), payments.
+- **Insight & platform:** dashboards, reports with CSV/XLSX/PDF export, notifications, API keys, signed webhooks, audit log, retention policies.
+
+> The original product and architecture plan is in [docs/plan/](docs/plan/README.md). Parts of it are superseded by **Revision 1 — Vercel-only hosting** in [08-decisions.md](docs/plan/08-decisions.md). This README describes the system **as it is built**.
+
+---
+
+## Contents
+
+1. [Tech stack](#tech-stack)
+2. [Repository layout](#repository-layout)
+3. [System architecture](#system-architecture)
+4. [How it works](#how-it-works)
+5. [Data model (ERD)](#data-model-erd)
+6. [Security model](#security-model)
+7. [API overview](#api-overview)
+8. [Getting started](#getting-started)
+9. [Commands](#commands)
+10. [Environment variables](#environment-variables)
+11. [Testing & CI](#testing--ci)
+12. [Deployment](#deployment)
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Monorepo | **pnpm 10** workspaces + **Turborepo 2**, TypeScript 5.9, Node.js **≥ 24** |
+| Web app | **Next.js 16** (App Router), **React 19**, **Tailwind CSS 4**, Radix UI primitives, TanStack Query 5, lucide icons |
+| API | **Hono 4**, mounted inside Next.js at `/api/v1/*` (one deployment, one origin), **Zod 4** validation, RFC 7807 `problem+json` errors |
+| Database | **PostgreSQL** via **Drizzle ORM** (`pg` pool, Neon in production); **PGlite** (Postgres compiled to WASM) for zero-setup local dev and tests |
+| Tenant isolation | PostgreSQL **row-level security** on every tenant table, plus composite `(organization_id, id)` foreign keys |
+| File storage | **Vercel Blob** (private) in production; local filesystem / in-memory in dev and tests |
+| Email | **Resend** HTTP API when configured, otherwise an in-memory / console mailer |
+| Background work | Transactional **outbox** + Next.js `after()` dispatch + **Vercel Cron** (every minute and daily) |
+| Password hashing | **Argon2** (`@node-rs/argon2`) |
+| Documents | `pdf-lib` (invoices / PDF exports), `exceljs` (XLSX exports) |
+| Desktop agent | **Electron 44**, electron-vite, React 19, `uiohook-napi` (input counts), `get-windows` (active app), `desktopCapturer` (screenshots), `safeStorage` + AES-256-GCM (encrypted storage), `electron-updater` |
+| Testing | **Vitest 5** (domain, db/RLS, API flows and security, desktop agent) |
+| Hosting | **Vercel** (Fluid Compute, Node 24) |
+| CI | GitHub Actions (typecheck, test, build; desktop builds on Windows / macOS / Linux) |
+
+---
+
+## Repository layout
+
+```text
+tallywork/
+├── apps/
+│   ├── web/                    Next.js app: UI + the API route that hosts Hono
+│   │   ├── app/(auth)/         login, signup, invite, verify-email, forgot/reset password
+│   │   ├── app/o/[orgId]/      the org workspace (activity, timesheets, finance, reports, settings…)
+│   │   ├── app/device/authorize  desktop-agent sign-in consent page (PKCE)
+│   │   ├── app/api/v1/[[...route]]/route.ts   → forwards every /api/v1 request to the Hono app
+│   │   ├── components/         feature components (tracking, timesheets, finance, people, reports…)
+│   │   ├── lib/server/deps.ts  builds DB / storage / mailer once per server instance
+│   │   ├── scripts/seed.ts     demo data seeder
+│   │   └── vercel.json         cron schedule + function duration
+│   └── desktop/                Electron desktop agent
+│       └── src/
+│           ├── main/           privileged process: Agent core + services
+│           │   └── services/   agent, api, auth (PKCE), monitors, queue (offline), secure-store
+│           ├── preload/        typed, minimal contextBridge API
+│           ├── renderer/       sandboxed React UI (timer, project/task picker, status)
+│           └── shared/ipc.ts   IPC contract shared by main + renderer
+├── packages/
+│   ├── domain/                 pure business logic: session state machine, time math, policies,
+│   │                           permissions, billing, workforce rules, IDs (UUIDv7), errors
+│   ├── contracts/              Zod schemas for API inputs/DTOs and the agent ingest protocol
+│   ├── db/                     Drizzle schema, migrations, RLS setup, pg/PGlite client
+│   ├── api/                    Hono app: middleware, routes, services, jobs, seed
+│   └── ui/                     shared React components + design tokens (tokens.css)
+├── docs/plan/                  product & architecture plan, ADRs
+├── .github/workflows/ci.yml    CI pipeline
+├── turbo.json                  task graph
+└── pnpm-workspace.yaml
+```
+
+### Package dependencies
+
+```mermaid
+flowchart LR
+  domain["@tallywork/domain<br/>(pure logic)"]
+  contracts["@tallywork/contracts<br/>(Zod schemas)"]
+  db["@tallywork/db<br/>(Drizzle + RLS)"]
+  api["@tallywork/api<br/>(Hono app)"]
+  ui["@tallywork/ui<br/>(components, tokens)"]
+  web["apps/web<br/>(Next.js)"]
+  desktop["apps/desktop<br/>(Electron)"]
+
+  contracts --> domain
+  db --> domain
+  api --> db
+  api --> contracts
+  api --> domain
+  web --> api
+  web --> db
+  web --> ui
+  web --> contracts
+  desktop --> contracts
+  desktop --> domain
+  desktop --> ui
+```
+
+The rule is that **domain has no dependencies on I/O**. The session state machine, time maths, permission evaluation and billing calculations are pure functions. They are unit-tested in isolation and reused by the API and the desktop agent.
+
+---
+
+## System architecture
+
+```mermaid
+flowchart TB
+  subgraph Clients
+    browser["Browser<br/>Next.js UI"]
+    agent["Desktop agent<br/>Electron"]
+    third["3rd-party integrations<br/>API key"]
+  end
+
+  subgraph Vercel["Vercel (Fluid Compute, Node 24)"]
+    next["Next.js 16 app<br/>pages + server components"]
+    route["/api/v1/[[...route]]<br/>route handler"]
+    hono["Hono app (@tallywork/api)<br/>auth → tenant → routes → services"]
+    after["after() — outbox dispatch<br/>post-response"]
+    cron["Vercel Cron<br/>/cron/tick (1 min)<br/>/cron/daily (03:15)"]
+  end
+
+  subgraph Data
+    pg[("PostgreSQL (Neon)<br/>RLS on tenant tables<br/>outbox, rollups")]
+    blob[("Vercel Blob (private)<br/>screenshots, receipts,<br/>invoice PDFs, exports")]
+    mail["Resend<br/>transactional email"]
+    hooks["Customer webhook<br/>endpoints (HMAC-signed)"]
+  end
+
+  browser -- "HTTPS + session cookie" --> next
+  browser -- "fetch /api/v1" --> route
+  agent -- "HTTPS + device bearer token" --> route
+  agent -- "direct upload (scoped client token)" --> blob
+  third -- "Bearer tw_live_…" --> route
+  next --> route
+  route --> hono
+  hono -- "SQL (app role, RLS)" --> pg
+  hono -- "signed media URLs" --> blob
+  hono --> after
+  cron --> hono
+  after --> pg
+  hono --> mail
+  hono --> hooks
+```
+
+**Key design decisions** (full ADRs are in [docs/plan/08-decisions.md](docs/plan/08-decisions.md)):
+
+1. **A modular monolith in one deployment.** The Hono API runs inside the Next.js app, so there is no CORS and cookies stay simple. Hono is framework-agnostic, so the API can be moved into its own project later without code changes.
+2. **The server owns time.** Web and desktop clients send *commands* (start/stop/pause) and *observations* (activity, idle, screenshots). The server decides session state, corrects for device clock skew, and derives time entries. Clients never write time entries directly.
+3. **History is append-only.** Every edit to tracked time creates a new `time_entry_revisions` row. Idle discards, manual edits, splits, and screenshot-driven removals are all recorded with the actor and the reason.
+4. **Tenant isolation is enforced twice.** Services always scope by `organization_id`, and PostgreSQL RLS acts as a backstop. The app connects as a restricted `tallywork_app` role that cannot bypass RLS.
+5. **Privacy is decided at the source.** The agent only collects what the effective policy allows. Keystrokes are *counted*, never recorded. Screenshots are blurred on the device when policy says so. URLs are cut down to the domain on the device in domain-only mode.
+6. **No always-on worker.** Side effects go through an outbox. They are dispatched right after the response via `after()`, with a per-minute cron as a backstop. An opportunistic, DB-lease-guarded tick also runs if cron is unavailable.
+
+### Request pipeline (Hono)
+
+```mermaid
+flowchart LR
+  req["Request /api/v1/..."] --> rid["request-id +<br/>secure headers"]
+  rid --> authn["authenticate<br/>device token → API key → session cookie"]
+  authn --> tenant["tenant middleware<br/>/orgs/:orgId/*<br/>membership + permissions"]
+  tenant --> tx["withTenant(tx)<br/>SET app.org_id"]
+  tx --> svc["route → service<br/>(domain logic, Zod input)"]
+  svc --> outbox["write outbox event<br/>(same transaction)"]
+  outbox --> res["JSON response<br/>or problem+json"]
+  res -.-> disp["after(): dispatchOutbox()"]
+```
+
+---
+
+## How it works
+
+### 1. Onboarding
+
+```mermaid
+sequenceDiagram
+  actor Admin
+  actor Worker
+  participant Web as Web app
+  participant API as API
+  participant DB as Postgres
+
+  Admin->>Web: Sign up (name, email, password, org name, timezone)
+  Web->>API: POST /auth/signup
+  API->>DB: create user, organization, built-in roles, owner membership
+  API-->>Web: session cookie (tw_session)
+  Admin->>Web: Create teams, clients, projects, tasks; set tracking policy
+  Admin->>API: POST /orgs/:id/invitations (email, role, teams)
+  API-->>Worker: invitation email (Resend)
+  Worker->>Web: Open invite link → set name + password
+  Web->>API: POST /auth/invitations/accept
+  API->>DB: membership (WORKER) + worker_profile + team membership
+```
+
+### 2. Desktop agent sign-in (PKCE, no password in the app)
+
+```mermaid
+sequenceDiagram
+  participant App as Desktop agent
+  participant Browser as System browser
+  participant Web as /device/authorize
+  participant API as API
+
+  App->>App: generate verifier + challenge, start loopback server 127.0.0.1:random
+  App->>Browser: open /device/authorize?code_challenge&redirect_uri&state
+  Browser->>Web: user is signed in (or signs in), picks organization
+  Web->>API: POST /agent/authorize (code_challenge, organization_id)
+  API-->>Web: one-time code
+  Web->>App: redirect → 127.0.0.1/callback?code&state
+  App->>API: POST /agent/register (code, verifier, device info, capabilities)
+  API-->>App: device id + access token + refresh token
+  App->>App: store refresh token encrypted (OS keychain via safeStorage)
+  App->>API: GET /agent/bootstrap → policy, assignments, current session
+```
+
+### 3. Time tracking session lifecycle
+
+The session state machine lives in [packages/domain/src/session-machine.ts](packages/domain/src/session-machine.ts). It is pure: a `(state, trigger)` pair returns the next state plus the operation to apply to the session's time segments (open / close a WORK, IDLE or BREAK segment). Only one live session is allowed per worker. Starting a new one elsewhere supersedes the old one.
+
+```mermaid
+stateDiagram-v2
+  [*] --> CREATED: start (web or agent)
+  CREATED --> ACTIVE: CONFIRM (first heartbeat) / opens WORK segment
+  CREATED --> STOPPED: CONFIRM_TIMEOUT (120s)
+
+  ACTIVE --> PAUSED: PAUSE (user, idle, break) / opens IDLE or BREAK
+  PAUSED --> ACTIVE: RESUME / opens WORK
+  PAUSED --> STOPPED: PAUSE_TIMEOUT (max pause 4h)
+
+  ACTIVE --> INTERRUPTED: INTERRUPT (heartbeat lost, sleep, lock, crash)
+  PAUSED --> INTERRUPTED: INTERRUPT
+  INTERRUPTED --> ACTIVE: RECOVER (reconnect within 15 min)
+  INTERRUPTED --> STOPPED: RECOVERY_TIMEOUT
+
+  ACTIVE --> STOPPED: STOP / LIMIT_REACHED / SUPERSEDE / FORCE_STOP
+  PAUSED --> STOPPED: STOP / LIMIT_REACHED / SUPERSEDE / FORCE_STOP
+  STOPPED --> [*]
+```
+
+Default timings (these can be overridden per org through the tracking policy): confirm timeout 120s, heartbeat grace 180s, recovery window 15 min, max pause 4 h, max offline tracking 24 h.
+
+### 4. Desktop tracking & offline sync
+
+```mermaid
+sequenceDiagram
+  participant Mon as Monitors<br/>(input counts, active app, idle, screenshots)
+  participant Q as Offline queue<br/>(encrypted, fsync'd)
+  participant Agent as Agent core
+  participant API as API
+  participant Blob as Vercel Blob
+
+  Agent->>Agent: start session locally (mirror of server state)
+  loop every second / minute
+    Mon->>Agent: kb+mouse counts, active app span, idle time
+    Agent->>Q: append event (written to disk BEFORE sending)
+  end
+  loop every 10s (sync)
+    Agent->>API: POST /agent/ingest/batch (events with client ids + seq)
+    API->>API: dedupe via ingest_receipts, apply transitions,<br/>store activity minutes / app & URL spans / idle events
+    API-->>Agent: per-event accepted/rejected + server session state
+    Agent->>Q: compact acknowledged events
+  end
+  loop every 60s
+    Agent->>API: POST /agent/heartbeat (keeps session live, updates presence)
+  end
+  Agent->>API: POST /agent/screenshots/upload-intent
+  API-->>Agent: storage key + scoped, short-lived upload token
+  Agent->>Blob: upload image + thumbnail directly
+```
+
+If the network drops, events keep accumulating in the encrypted queue and are replayed once connectivity returns. The server reconciles them against its own state, so no tracked time is lost. After every sync the agent adopts the server's version of the session state.
+
+### 5. From tracked time to money
+
+```mermaid
+flowchart LR
+  seg["time_segments<br/>(WORK intervals)"] --> te["time_entries<br/>(+ revisions)"]
+  manual["manual_time_requests<br/>(approved)"] --> te
+  te --> roll["rollup_worker_day<br/>(projector)"]
+  te --> ts["timesheets<br/>DRAFT → SUBMITTED"]
+  ts -->|approve| tsa["APPROVED<br/>(snapshot in timesheet_entries)"]
+  ts -->|reject / request changes| te
+  tsa --> be["billing_entries<br/>(bill + pay amounts from<br/>effective-dated rates)"]
+  exp["expenses (approved,<br/>billable)"] --> inv
+  be --> inv["invoices + invoice_lines<br/>DRAFT → SENT (PDF)"]
+  inv --> pay["payments +<br/>payment_allocations"]
+  be --> owed["amounts owed to workers<br/>(payroll-ready)"]
+  roll --> budgets["budget checks<br/>(warn / exceeded notifications)"]
+  roll --> reports["dashboards & reports<br/>CSV / XLSX / PDF"]
+```
+
+### 6. Events & background jobs
+
+Every state-changing service writes a domain event to `outbox_events` **in the same transaction** as the change. Events are dispatched after the response, or by cron. Handlers update rollups, check budgets, send notifications and email, and queue webhook deliveries.
+
+| Event | What the handler does |
+|---|---|
+| `time.changed` | Recompute `rollup_worker_day` for the affected dates; check project budgets |
+| `usage.recorded` | Recompute `rollup_app_day` (app / URL usage) |
+| `timesheet.submitted` / `approved` / `rejected` / `changes_requested` / `reopened` | Notify approvers or the worker |
+| `manual_time.requested` / `approved` / `rejected` | Notify approvers or the worker |
+| `time_off.requested` / `approved` / `rejected` | Notify approvers or the worker |
+| `expense.submitted` | Notify approvers |
+| `policy.changed` | Notify affected workers and devices |
+| `device.offline` | Notify managers |
+| `payment.received`, `invoice.overdue` | Notify finance users |
+
+All events can also be delivered to customer **webhooks**. Deliveries are HMAC-signed, retried with backoff, and endpoints are auto-disabled after repeated failures.
+
+| Job | Schedule | Work |
+|---|---|---|
+| `runTick` | `/api/v1/cron/tick` — every minute | Sweep sessions (confirm / pause / recovery timeouts, limits), mark silent devices offline, dispatch outbox, deliver webhooks |
+| `runDaily` | `/api/v1/cron/daily` — 03:15 UTC | Retention cleanup (screenshots, activity, app / URL data, audit, …), time-off accruals, overdue invoices, housekeeping |
+
+Both cron endpoints require `Authorization: Bearer $CRON_SECRET`.
+
+---
+
+## Data model (ERD)
+
+Conventions (see [packages/db/src/schema/](packages/db/src/schema/)):
+
+- Primary keys are **UUIDv7** (`id uuid`), which are time-sortable.
+- Every tenant table has `organization_id uuid NOT NULL`. Relations use **composite foreign keys** `(organization_id, x_id)`, so a row can never point at another tenant's row.
+- Money is `amount_minor bigint` + `currency`. Durations are **seconds** (`integer`). Timestamps are `timestamptz` in UTC. Calendar dates are ISO strings (`local_date`) in the worker's timezone.
+- Business entities are soft-archived (`archived_at`). Hard deletes happen only through retention jobs.
+- Column names are snake_case (Drizzle `casing: 'snake_case'`).
+
+The diagrams below are split by domain for readability. `organizations` is the root of every tenant table (not all of those edges are drawn).
+
+### Identity, organization & workforce
+
+```mermaid
+erDiagram
+  USERS ||--o{ USER_SESSIONS : has
+  USERS ||--o{ MFA_FACTORS : has
+  USERS ||--o{ EMAIL_TOKENS : has
+  USERS ||--o{ MEMBERSHIPS : "belongs via"
+  ORGANIZATIONS ||--o{ MEMBERSHIPS : has
+  ORGANIZATIONS ||--o{ ROLES : defines
+  ROLES ||--o{ ROLE_PERMISSIONS : grants
+  ROLES ||--o{ MEMBERSHIPS : "assigned to"
+  MEMBERSHIPS ||--o| WORKER_PROFILES : "tracks as"
+  ORGANIZATIONS ||--o{ INVITATIONS : sends
+  ROLES ||--o{ INVITATIONS : "offered in"
+
+  ORGANIZATIONS ||--o{ TEAMS : has
+  TEAMS ||--o{ TEAM_MEMBERS : has
+  MEMBERSHIPS ||--o{ TEAM_MEMBERS : "is in"
+  ORGANIZATIONS ||--o{ CLIENTS : has
+  CLIENTS ||--o{ CLIENT_CONTACTS : has
+  CLIENTS ||--o{ PROJECTS : owns
+  PROJECTS ||--o{ PROJECT_MEMBERS : has
+  MEMBERSHIPS ||--o{ PROJECT_MEMBERS : "member of"
+  PROJECTS ||--o{ PROJECT_TEAMS : "assigned to"
+  TEAMS ||--o{ PROJECT_TEAMS : works
+  PROJECTS ||--o{ TASKS : has
+  TASKS ||--o{ TASK_ASSIGNEES : has
+  MEMBERSHIPS ||--o{ TASK_ASSIGNEES : "assigned"
+
+  ORGANIZATIONS ||--o{ TRACKING_POLICIES : "ORG / TEAM / WORKER scope"
+  MEMBERSHIPS ||--o{ POLICY_ACKS : acknowledges
+  MEMBERSHIPS ||--o{ DEVICES : registers
+  DEVICES ||--o{ DEVICE_CREDENTIALS : "refresh-token family"
+
+  USERS {
+    uuid id PK
+    text email
+    text name
+    text password_hash "argon2"
+    int failed_login_count
+  }
+  ORGANIZATIONS {
+    uuid id PK
+    text slug UK
+    text name
+    text timezone
+    int week_start
+    text currency
+    jsonb pay_period
+    jsonb settings
+  }
+  MEMBERSHIPS {
+    uuid id PK
+    uuid organization_id FK
+    uuid user_id FK
+    uuid role_id FK
+    text status "INVITED|ACTIVE|SUSPENDED|REMOVED"
+    bool is_owner
+  }
+  ROLES {
+    uuid id PK
+    uuid organization_id FK
+    text key "SYSTEM_ADMIN|TEAM_MANAGER|WORKER|AGENT|custom"
+    bool builtin
+  }
+  ROLE_PERMISSIONS {
+    uuid role_id FK
+    text permission "resource:action"
+    text scope "own|assigned|team|org"
+  }
+  WORKER_PROFILES {
+    uuid membership_id PK
+    bool tracking_enabled
+    text timezone
+    text employment_type
+    int weekly_expected_seconds
+  }
+  PROJECTS {
+    uuid id PK
+    uuid organization_id FK
+    uuid client_id FK
+    text name
+    text status "ACTIVE|ON_HOLD|COMPLETED"
+    bool billable_default
+  }
+  TASKS {
+    uuid id PK
+    uuid project_id FK
+    text title
+    text status "TODO|IN_PROGRESS|DONE"
+    text priority
+    int estimate_seconds
+  }
+  TRACKING_POLICIES {
+    uuid id PK
+    text scope_type "ORG|TEAM|WORKER"
+    uuid scope_id
+    int version
+    jsonb doc
+  }
+  DEVICES {
+    uuid id PK
+    uuid membership_id FK
+    text platform "windows|macos|linux"
+    text status "PENDING|ACTIVE|OFFLINE|REVOKED"
+    jsonb capabilities
+    int clock_skew_ms
+  }
+```
+
+### Tracking, activity & timesheets
+
+```mermaid
+erDiagram
+  MEMBERSHIPS ||--o{ TRACKING_SESSIONS : tracks
+  DEVICES ||--o{ TRACKING_SESSIONS : "source of"
+  PROJECTS ||--o{ TRACKING_SESSIONS : "tracked on"
+  TASKS ||--o{ TRACKING_SESSIONS : "tracked on"
+  TRACKING_SESSIONS ||--o{ SESSION_TRANSITIONS : logs
+  TRACKING_SESSIONS ||--o{ TIME_SEGMENTS : "WORK / IDLE / BREAK"
+  TRACKING_SESSIONS ||--o{ ACTIVITY_MINUTES : "per-minute counts"
+  TRACKING_SESSIONS ||--o{ ACTIVITY_WINDOWS : "10-min blocks"
+  TRACKING_SESSIONS ||--o{ IDLE_EVENTS : has
+  TRACKING_SESSIONS ||--o{ SCREENSHOTS : has
+  TRACKING_SESSIONS ||--o{ APP_SPANS : has
+  TRACKING_SESSIONS ||--o{ URL_SPANS : has
+  DEVICES ||--o{ INGEST_RECEIPTS : "dedupes events"
+
+  TIME_SEGMENTS ||--o{ TIME_ENTRIES : derives
+  TIME_ENTRIES ||--o{ TIME_ENTRY_REVISIONS : history
+  MANUAL_TIME_REQUESTS ||--o| TIME_ENTRIES : "creates on approval"
+  MEMBERSHIPS ||--o{ TIMESHEETS : has
+  TIMESHEETS ||--o{ TIMESHEET_ENTRIES : "snapshot lines"
+  TIME_ENTRIES ||--o{ TIMESHEET_ENTRIES : "snapshotted as"
+  TIMESHEETS ||--o{ APPROVAL_ACTIONS : "decision log"
+
+  MEMBERSHIPS ||--o{ ROLLUP_WORKER_DAY : "daily totals"
+  MEMBERSHIPS ||--o{ ROLLUP_APP_DAY : "daily app / URL"
+  MEMBERSHIPS ||--o| PRESENCE : "live status"
+
+  TRACKING_SESSIONS {
+    uuid id PK
+    uuid membership_id FK
+    uuid device_id FK
+    uuid project_id FK
+    uuid task_id FK
+    text source "DESKTOP|WEB|MOBILE|API"
+    text state "CREATED|ACTIVE|PAUSED|INTERRUPTED|STOPPED"
+    text end_reason
+    int last_seq
+    text timezone
+  }
+  SESSION_TRANSITIONS {
+    uuid session_id FK
+    text from_state
+    text to_state
+    text trigger
+    text actor_type "user|agent|system|api_key"
+  }
+  TIME_SEGMENTS {
+    uuid id PK
+    uuid session_id FK
+    text kind "WORK|IDLE|BREAK"
+    timestamptz started_at
+    timestamptz ended_at
+  }
+  TIME_ENTRIES {
+    uuid id PK
+    uuid membership_id FK
+    uuid project_id FK
+    uuid task_id FK
+    text source "TRACKED|MANUAL"
+    int duration_seconds
+    text local_date
+    bool billable
+    int revision
+  }
+  TIME_ENTRY_REVISIONS {
+    uuid time_entry_id FK
+    int revision
+    text action "CREATE|UPDATE|SPLIT|DELETE|IDLE_DISCARD|SCREENSHOT_DELETE"
+    jsonb before
+    jsonb after
+    text reason
+  }
+  ACTIVITY_WINDOWS {
+    uuid session_id FK
+    int active_seconds
+    int tracked_seconds
+    smallint activity_pct
+    smallint keyboard_pct
+    smallint mouse_pct
+  }
+  SCREENSHOTS {
+    uuid id PK
+    uuid session_id FK
+    text storage_key
+    text thumb_key
+    bool blurred
+    text status "PENDING_UPLOAD|READY|FAILED"
+  }
+  IDLE_EVENTS {
+    uuid id PK
+    uuid session_id FK
+    text resolution "PENDING|KEPT|DISCARDED|REASSIGNED"
+  }
+  TIMESHEETS {
+    uuid id PK
+    uuid membership_id FK
+    text period_start
+    text period_end
+    text status "DRAFT|SUBMITTED|APPROVED|REJECTED"
+    int total_seconds
+    int billable_seconds
+  }
+  MANUAL_TIME_REQUESTS {
+    uuid id PK
+    uuid membership_id FK
+    uuid project_id FK
+    text status "PENDING|APPROVED|REJECTED|CANCELLED"
+    text reason
+  }
+```
+
+### Operations, finance & platform
+
+```mermaid
+erDiagram
+  MEMBERSHIPS ||--o{ WORK_SCHEDULES : has
+  WORK_SCHEDULES ||--o{ SHIFTS : generates
+  MEMBERSHIPS ||--o{ ATTENDANCE_DAYS : "derived daily"
+  ORGANIZATIONS ||--o{ HOLIDAYS : has
+  TIME_OFF_POLICIES ||--o{ TIME_OFF_POLICY_MEMBERS : "applies to"
+  TIME_OFF_POLICIES ||--o{ TIME_OFF_REQUESTS : governs
+  TIME_OFF_POLICIES ||--o{ TIME_OFF_LEDGER : "balance movements"
+  TIME_OFF_REQUESTS ||--o{ TIME_OFF_LEDGER : "debits / reversals"
+  ORGANIZATIONS ||--o| OVERTIME_RULE_SETS : has
+
+  ORGANIZATIONS ||--o{ BILLING_RATES : "pay / bill, effective-dated"
+  TIME_ENTRIES ||--o{ BILLING_ENTRIES : "priced as"
+  BILLING_RATES ||--o{ BILLING_ENTRIES : "applied"
+  PROJECTS ||--o{ BUDGETS : "subject"
+  CLIENTS ||--o{ BUDGETS : "subject"
+  MEMBERSHIPS ||--o{ EXPENSES : submits
+  FILE_OBJECTS ||--o| EXPENSES : receipt
+  CLIENTS ||--o{ INVOICES : billed
+  INVOICES ||--o{ INVOICE_LINES : has
+  INVOICE_LINES ||--o{ BILLING_ENTRIES : invoices
+  INVOICE_LINES ||--o{ EXPENSES : "passes through"
+  PAYMENTS ||--o{ PAYMENT_ALLOCATIONS : "split into"
+  INVOICES ||--o{ PAYMENT_ALLOCATIONS : "paid by"
+  ORGANIZATIONS ||--o| INVOICE_SEQUENCES : numbering
+
+  MEMBERSHIPS ||--o{ NOTIFICATIONS : receives
+  MEMBERSHIPS ||--o{ NOTIFICATION_PREFERENCES : sets
+  MEMBERSHIPS ||--o{ DASHBOARD_LAYOUTS : owns
+  MEMBERSHIPS ||--o{ SAVED_REPORTS : owns
+  MEMBERSHIPS ||--o{ REPORT_RUNS : runs
+  FILE_OBJECTS ||--o| REPORT_RUNS : output
+  ORGANIZATIONS ||--o{ API_KEYS : issues
+  ORGANIZATIONS ||--o{ WEBHOOK_ENDPOINTS : configures
+  WEBHOOK_ENDPOINTS ||--o{ WEBHOOK_DELIVERIES : attempts
+  ORGANIZATIONS ||--o{ AUDIT_LOGS : records
+  ORGANIZATIONS ||--o{ OUTBOX_EVENTS : emits
+  ORGANIZATIONS ||--o{ RETENTION_POLICIES : sets
+
+  BILLING_RATES {
+    uuid id PK
+    text kind "PAY|BILL"
+    text scope "ORG|CLIENT|PROJECT|WORKER|PROJECT_WORKER"
+    bigint amount_minor
+    text currency
+    text effective_from
+    text effective_to
+  }
+  BILLING_ENTRIES {
+    uuid id PK
+    uuid time_entry_id FK
+    int revision
+    int seconds
+    bigint bill_amount_minor
+    bigint pay_amount_minor
+    uuid invoice_line_id FK
+  }
+  INVOICES {
+    uuid id PK
+    uuid client_id FK
+    text number
+    text status "DRAFT|SENT|VOID"
+    bigint total_minor
+    bigint paid_minor
+  }
+  EXPENSES {
+    uuid id PK
+    text category
+    bigint amount_minor
+    bool billable
+    bool reimbursable
+    text status "SUBMITTED|APPROVED|REJECTED|REIMBURSED"
+  }
+  BUDGETS {
+    uuid id PK
+    text subject_type "PROJECT|CLIENT"
+    text kind "HOURS|MONEY"
+    bigint amount
+    int warn_pct
+  }
+  TIME_OFF_REQUESTS {
+    uuid id PK
+    text start_date
+    text end_date
+    numeric hours
+    text status "PENDING|APPROVED|REJECTED|CANCELLED"
+  }
+  OUTBOX_EVENTS {
+    uuid id PK
+    text event_type
+    jsonb envelope
+    int attempts
+  }
+  AUDIT_LOGS {
+    uuid id PK
+    text actor_type
+    text action
+    jsonb before
+    jsonb after
+    text request_id
+  }
+```
+
+**Tables without RLS** (they have no `organization_id`, or must be readable before a tenant is known): `organizations`, `users`, `user_sessions`, `mfa_factors`, `email_tokens`, `device_auth_codes`, `idempotency_keys`, `rate_limit_buckets`.
+
+---
+
+## Security model
+
+- **Principals:** each request resolves to exactly one principal, checked in this order:
+  1. device bearer token (desktop **agent**)
+  2. API key (`Bearer tw_live_<prefix>_<secret>`)
+  3. session cookie (`tw_session`, **user**)
+- **Authorization:** a permission is `resource:action` plus a **scope** (`own`, `assigned`, `team`, `org`). Roles are data (`roles`, `role_permissions`). The built-in presets are `SYSTEM_ADMIN`, `TEAM_MANAGER`, `WORKER` and `AGENT`. For list endpoints the evaluator returns a query filter, so single reads, lists, reports and exports all follow the same rule. See [packages/domain/src/permissions.ts](packages/domain/src/permissions.ts) and the full matrix in [docs/plan/05-security-api.md](docs/plan/05-security-api.md).
+- **Checks in layers:** route guard (`requirePermission`) → service-level scope check → PostgreSQL RLS (`app.org_id` set per transaction via `withTenant`). Cross-tenant system jobs must explicitly use `withSystem`.
+- **Agent constraints:** a device credential is bound to `(organization, membership, device)`. It can only read that worker's effective policy and assignments, and only write that worker's tracking data. Revoking the device kills its tokens. Refresh tokens rotate within a family.
+- **Secrets:** passwords are hashed with Argon2. Session tokens, API keys and refresh tokens are stored only as hashes. MFA and webhook secrets are encrypted with a key derived from `APP_SECRET`.
+- **Media:** screenshots are private blobs. They are served only through `/api/v1/media/:token`, a short-lived HMAC-signed URL issued after authorization.
+- **Hardening:** secure headers (HSTS, frame-deny, nosniff, strict referrer, permissions policy), `Cache-Control: no-store` by default, rate limits (login, agent register/token, ingest, heartbeat; stored in Postgres), SSRF protection on webhook URLs, and an audit log with request ids.
+- **Desktop:** context isolation plus a sandboxed renderer with a minimal typed preload API (no generic `invoke`). Electron fuses are hardened (no `runAsNode`, ASAR integrity, only loads from ASAR). The refresh token and offline queue are AES-256-GCM encrypted with a data key wrapped by the OS keychain. The agent refuses to store credentials if no keychain is available.
+
+---
+
+## API overview
+
+Base path: **`/api/v1`**. JSON in and out. Errors use `application/problem+json` with `code` and `request_id`.
+
+| Area | Endpoints (prefix `/orgs/:orgId` unless shown) |
+|---|---|
+| Health & infra | `GET /health`, `GET /media/:token`, `GET /cron/tick`, `GET /cron/daily` |
+| Auth (`/auth`) | `signup`, `login`, `logout`, `password/forgot`, `password/reset`, `password/change`, `verify-email`, `invitations/accept` |
+| Me (`/me`) | `GET /me`, `POST /me/organizations` |
+| Agent (`/agent`) | `authorize`, `register`, `token`, `bootstrap`, `policy/ack`, `ingest/batch`, `heartbeat`, `screenshots/upload-intent`, `screenshots/upload` |
+| Organization | org settings, `roles`, `workers`, `invitations`, `teams`, `clients`, `projects`, `tasks`, `me/assignments`, `policies/:scope`, `devices` |
+| Tracking & time | `tracking/{current,start,stop,pause,resume,switch,note,live}`, `sessions`, `time-entries`, `manual-time`, `timesheets` (+ `submit`, `approvals`, `bulk-approve`), `activity/day`, `screenshots`, `idle-events` |
+| Operations | `schedules`, `shifts`, `attendance`, `holidays`, `time-off/{policies,balances,requests}` |
+| Finance | `rates`, `billing/amounts-owed`, `budgets`, `expenses`, `invoices` (+ `preview`, `pdf`, `send`, `void`), `payments` |
+| Insight | `dashboard/{layout,widgets}`, `reports` (+ `:key/query`, `:key/export`), `saved-reports`, `notifications`, `notification-preferences` |
+| Platform | `api-keys`, `webhooks` (+ deliveries, replay, test), `audit-logs`, `retention-policies`, `files` |
+
+Route definitions: [packages/api/src/routes/](packages/api/src/routes/). Input schemas: [packages/contracts/src/](packages/contracts/src/).
+
+---
+
+## Getting started
+
+### Prerequisites
+
+- **Node.js 24+**
+- **pnpm 10** (`corepack enable` picks up the version pinned in `package.json`)
+- For the desktop agent on macOS: grant *Accessibility / Input Monitoring* and *Screen Recording* permissions when prompted.
+
+### Run locally (no external services needed)
+
+```bash
+pnpm install
+
+# Optional: fill the local database with a demo org (30 workers, 14 days of data).
+# Run this BEFORE starting the dev server (PGlite is single-process).
+pnpm --filter @tallywork/web seed
+
+# Start the web app + API on http://localhost:3000
+pnpm dev
+```
+
+With no `DATABASE_URL`, the app uses a **file-backed PGlite** database at `apps/web/.data/pglite`, migrated automatically on boot. Files go to `apps/web/.data/blobs`, and email is logged to the console. Delete `apps/web/.data/` to start fresh.
+
+**Demo login** (after seeding): `admin@demo.tallywork.app` / `demo-password-123`
+
+### Run the desktop agent
+
+```bash
+# in a second terminal, with the web app running on :3000
+pnpm --filter @tallywork/desktop dev
+```
+
+In development the agent talks to `http://localhost:3000`. Set `TALLYWORK_SERVER` to point it somewhere else. Click **Sign in**: your browser opens the device-authorization page, and once you approve, the agent is registered.
+
+### Use a real Postgres database
+
+```bash
+# apps/web/.env.local (and packages/db/.env for db scripts)
+DATABASE_URL=postgres://user:pass@host/db
+
+pnpm db:migrate   # apply migrations + RLS policies + app role
+pnpm dev
+```
+
+---
+
+## Commands
+
+Run from the repo root unless noted.
+
+| Command | What it does |
+|---|---|
+| `pnpm install` | Install all workspace dependencies |
+| `pnpm dev` | Start the web app + API (`next dev` on port 3000) |
+| `pnpm build` | Build every package / app via Turborepo |
+| `pnpm typecheck` | Type-check every workspace |
+| `pnpm test` | Run all Vitest suites |
+| `pnpm lint` | Run lint tasks |
+| `pnpm db:generate` | Generate a new SQL migration from schema changes (`drizzle-kit generate`) |
+| `pnpm db:migrate` | Apply migrations, RLS policies and app-role grants to `DATABASE_URL` |
+| `pnpm db:seed` | Run the db package seed script |
+| `pnpm --filter @tallywork/web seed` | Seed the demo organization (`SEED_DAYS`, `SEED_WORKERS`, `SEED_SCREENSHOT_DAYS` tune the size) |
+| `pnpm --filter @tallywork/web start` | Serve a production build |
+| `pnpm --filter @tallywork/desktop dev` | Run the Electron agent with hot reload |
+| `pnpm --filter @tallywork/desktop build` | Build the agent (`out/`) |
+| `pnpm --filter @tallywork/desktop dist` | Build installers for the current OS (`release/<version>/`) |
+| `pnpm --filter @tallywork/desktop dist:win` \| `dist:mac` \| `dist:linux` | Build installers for a specific OS (NSIS / DMG+ZIP / Linux targets) |
+| `pnpm --filter <pkg> test` | Run one package's tests, e.g. `@tallywork/api` |
+
+### Changing the database schema
+
+1. Edit tables in [packages/db/src/schema/](packages/db/src/schema/). Remember `organization_id` and composite FKs for tenant data.
+2. `pnpm db:generate` creates a migration in `packages/db/migrations/`.
+3. `pnpm db:migrate` (or restart `pnpm dev` with PGlite) applies it. RLS is re-applied automatically to every table that has `organization_id`.
+4. Add or update tests; [packages/db/test/rls.test.ts](packages/db/test/rls.test.ts) checks tenant isolation.
+
+---
+
+## Environment variables
+
+### Web / API (`apps/web`)
+
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` (or `POSTGRES_URL`) | Production | `postgres://…` (Neon), `pglite://memory`, or `pglite://<path>`. Defaults to file PGlite in dev |
+| `APP_SECRET` | Production | ≥ 32 chars; HMAC signing (tokens, media URLs) and field encryption. Dev uses an insecure default |
+| `APP_URL` | No | Public base URL. Defaults to the Vercel URL, or `http://localhost:3000` |
+| `CRON_SECRET` | Production | Bearer secret that Vercel Cron sends to `/api/v1/cron/*` |
+| `BLOB_READ_WRITE_TOKEN` | Production | Vercel Blob token. Without it, files go to `LOCAL_STORAGE_DIR` |
+| `LOCAL_STORAGE_DIR` | No | Local file storage directory (default `apps/web/.data/blobs`) |
+| `RESEND_API_KEY` | No | Enables real email through Resend |
+| `MAIL_FROM` | No | Sender address (default `Tallywork <no-reply@tallywork.app>`) |
+| `REQUIRE_EMAIL_VERIFICATION` | No | `true` to block unverified sign-ins |
+| `SESSION_TTL_HOURS` | No | Web session lifetime (default 336 = 14 days) |
+| `MIN_AGENT_VERSION` | No | Oldest desktop agent version the API accepts (default `0.1.0`) |
+
+### Desktop agent (`apps/desktop`)
+
+| Variable | Description |
+|---|---|
+| `TALLYWORK_SERVER` | API server URL (default `http://localhost:3000` in dev, the production URL when packaged) |
+| `TALLYWORK_UPDATE_URL` | Auto-update feed URL (packaged builds only) |
+| `CSC_LINK`, `CSC_KEY_PASSWORD` | Code-signing certificate for Windows / macOS installers |
+| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | macOS notarization |
+
+---
+
+## Testing & CI
+
+Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgres, including RLS, with no Docker needed.
+
+| Suite | Covers |
+|---|---|
+| [packages/domain/test](packages/domain/test/) | State machine transitions, time maths, policies, permissions, billing |
+| [packages/db/test/rls.test.ts](packages/db/test/rls.test.ts) | Row-level security: org A can never read or write org B |
+| [packages/api/test/flow.test.ts](packages/api/test/flow.test.ts) | End-to-end API flows: signup → track → timesheet → approve → invoice |
+| [packages/api/test/tracking.test.ts](packages/api/test/tracking.test.ts) | Session engine, idle handling, agent ingest, offline replay |
+| [packages/api/test/security.test.ts](packages/api/test/security.test.ts) | Authorization by role and scope, tenant isolation, token handling |
+| [packages/api/test/seed.test.ts](packages/api/test/seed.test.ts) | Demo seeder runs cleanly |
+| [apps/desktop/test](apps/desktop/test/) | Agent core logic (queue, sync, local state) |
+
+**CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every push to `main` and on every PR:
+
+- `verify` — install → typecheck packages + web → test domain / db / api → build web.
+- `desktop` — typecheck, test and build the agent on **Windows, macOS and Linux**.
+
+---
+
+## Deployment
+
+The web app and API deploy together to **Vercel** as one project (root directory `apps/web`).
+
+1. Connect a **Neon Postgres** database from the Vercel Marketplace (this sets `DATABASE_URL`) and a **Vercel Blob** store (this sets `BLOB_READ_WRITE_TOKEN`).
+2. Set `APP_SECRET` (32+ random characters) and `CRON_SECRET`. Optionally set `RESEND_API_KEY` / `MAIL_FROM` and `APP_URL`.
+3. Deploy. The `vercel-build` script runs `pnpm --filter @tallywork/db migrate` **before** `next build`, so every deploy applies migrations and RLS.
+4. [apps/web/vercel.json](apps/web/vercel.json) registers the cron jobs (`/api/v1/cron/tick` every minute, `/api/v1/cron/daily` at 03:15 UTC) and gives the API function a 300s max duration.
+
+**Desktop releases:** run `pnpm --filter @tallywork/desktop dist` on a tagged release with the signing and notarization variables set. Installers are written to `apps/desktop/release/<version>/`. Point `TALLYWORK_UPDATE_URL` at the published feed to enable auto-update.

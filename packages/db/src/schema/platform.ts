@@ -66,6 +66,8 @@ export const reportRuns = pgTable(
     membershipId: uuid().notNull(),
     reportKey: text().notNull(),
     format: text().$type<'CSV' | 'XLSX' | 'PDF'>().notNull(),
+    /** set for runs started by a schedule; the saved report holds the recipients */
+    savedReportId: uuid(),
     params: jsonb().$type<Record<string, unknown>>().notNull(),
     status: text().$type<'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED'>().notNull().default('QUEUED'),
     fileId: uuid(),

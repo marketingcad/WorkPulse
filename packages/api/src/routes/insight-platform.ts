@@ -13,6 +13,7 @@ import { getLayout, resetLayout, saveLayout, widgetData } from '../services/dash
 import { eventReader } from '../services/stream';
 import { streamSSE } from 'hono/streaming';
 import { reportCatalog, runReport } from '../services/reports';
+import { createSavedReport, listRuns, listSavedReports, queueExport, updateSavedReport } from '../services/report-runs';
 import {
   WEBHOOK_EVENTS,
   createApiKey,
@@ -85,18 +86,15 @@ export const insightRoutes = new Hono<AppEnv>()
     if (format === 'XLSX') return new Response(new Uint8Array(await toXlsx(result)), { headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"` } });
     return new Response(new Uint8Array(await toPdf(result, `${x.org.name} · ${params.from} – ${params.to}`)), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"` } });
   })
-  .get('/saved-reports', async (c) => {
-    const x = ctx(c);
-    const rows = await x.tx.select().from(savedReports);
-    return c.json(rows.filter((r) => r.membershipId === x.actor.membershipId || r.shared).map((r) => ({ id: r.id, report_key: r.reportKey, name: r.name, params: r.params, shared: r.shared, schedule_cron: r.scheduleCron, owner: r.membershipId === x.actor.membershipId })));
+  /** Background export: returns the queued run; the file is delivered by signed link when done. */
+  .post('/reports/:key/export-runs', async (c) => {
+    const { format, ...params } = await body(c, exportInput);
+    return c.json(await queueExport(ctx(c), c.req.param('key'), params, format), 202);
   })
-  .post('/saved-reports', async (c) => {
-    const x = ctx(c);
-    const i = await body(c, savedReportInput);
-    const id = newId();
-    await x.tx.insert(savedReports).values({ id, organizationId: x.org.id, membershipId: x.actor.membershipId, reportKey: i.report_key, name: i.name, params: i.params, shared: i.shared, scheduleCron: i.schedule_cron ?? null, scheduleTimezone: i.schedule_timezone ?? null, recipients: i.recipients });
-    return c.json({ id }, 201);
-  })
+  .get('/report-runs', async (c) => c.json(await listRuns(ctx(c))))
+  .get('/saved-reports', async (c) => c.json(await listSavedReports(ctx(c))))
+  .post('/saved-reports', async (c) => c.json(await createSavedReport(ctx(c), await body(c, savedReportInput)), 201))
+  .put('/saved-reports/:id', async (c) => c.json(await updateSavedReport(ctx(c), c.req.param('id'), await body(c, savedReportInput))))
   .delete('/saved-reports/:id', async (c) => {
     const x = ctx(c);
     const [r] = await x.tx.select().from(savedReports).where(eq(savedReports.id, c.req.param('id')));

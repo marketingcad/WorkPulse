@@ -37,7 +37,24 @@ export interface SavedReport {
   params: Record<string, unknown>;
   shared: boolean;
   schedule_cron: string | null;
+  schedule_timezone: string | null;
+  recipients: string[];
+  last_run_at: string | null;
   owner: boolean;
+}
+
+/** Mirrors runDto in packages/api/src/services/report-runs.ts */
+export interface ReportRun {
+  id: string;
+  report_key: string;
+  format: 'CSV' | 'XLSX' | 'PDF';
+  status: 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED';
+  row_count: number | null;
+  error: string | null;
+  scheduled: boolean;
+  created_at: string;
+  finished_at: string | null;
+  download_url: string | null;
 }
 
 export interface FormatCtx {

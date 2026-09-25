@@ -4,19 +4,21 @@ import {
   auditLogs,
   billingEntries,
   clients,
+  holidays,
   memberships,
   overtimeRuleSets,
   projects,
   rollupWorkerDay,
   tasks,
   teamMembers,
+  timeOffPolicies,
   timeOffRequests,
   timeSegments,
   timesheets,
   trackingSessions,
   users,
 } from '@tallywork/db';
-import { DEFAULT_OVERTIME, addDaysToDate, eachDate, forbidden, notFound, splitOvertime, startOfLocalDay, startOfWeek, type Permission } from '@tallywork/domain';
+import { DEFAULT_OVERTIME, addDaysToDate, dayOfWeek, eachDate, forbidden, notFound, splitOvertime, startOfLocalDay, startOfWeek, type Permission } from '@tallywork/domain';
 import type { reportQueryInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { narrowMemberships } from './scope';
@@ -446,6 +448,17 @@ async function auditReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
   };
 }
 
+/**
+ * Hours of an approved time-off request that fall inside [from, to]: the whole request when it
+ * lies inside, otherwise its working days in the range (weekends and holidays excluded) at the
+ * policy's hours per day, never more than the request itself.
+ */
+function timeOffHoursInRange(t: { startDate: string; endDate: string; hours: number; halfDay: boolean }, from: string, to: string, hols: Set<string>, hoursPerDay: number): number {
+  if (t.startDate >= from && t.endDate <= to) return t.hours;
+  const days = eachDate(t.startDate > from ? t.startDate : from, t.endDate < to ? t.endDate : to).filter((d) => !hols.has(d) && ![0, 6].includes(dayOfWeek(d))).length;
+  return Math.min(t.hours, days * hoursPerDay);
+}
+
 /** Payroll-ready export: regular/overtime, billable split, time off, earnings, approval status. */
 async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
   const rows = await rollupRows(x, p, 'billing:read');
@@ -455,6 +468,8 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
   const rules = ot?.rules ?? DEFAULT_OVERTIME;
   const rates = await loadRates(x.tx);
   const timeOff = members.length ? await x.tx.select().from(timeOffRequests).where(and(inArray(timeOffRequests.membershipId, members), eq(timeOffRequests.status, 'APPROVED'), lte(timeOffRequests.startDate, p.to), gte(timeOffRequests.endDate, p.from))) : [];
+  const hols = new Set((await x.tx.select({ d: holidays.date }).from(holidays).where(and(gte(holidays.date, p.from), lte(holidays.date, p.to)))).map((h) => h.d));
+  const hoursPerDay = new Map((await x.tx.select({ id: timeOffPolicies.id, h: timeOffPolicies.hoursPerDay }).from(timeOffPolicies)).map((r) => [r.id, r.h]));
   const ts = members.length ? await x.tx.select().from(timesheets).where(and(inArray(timesheets.membershipId, members), gte(timesheets.periodEnd, p.from), lte(timesheets.periodStart, p.to))) : [];
   const out = members.map((m) => {
     const mine = rows.filter((r) => r.r.membershipId === m);
@@ -486,7 +501,7 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
       overtime,
       billable,
       non_billable: total - billable,
-      time_off_hours: timeOff.filter((t) => t.membershipId === m).reduce((s, t) => s + t.hours, 0),
+      time_off_hours: Math.round(timeOff.filter((t) => t.membershipId === m).reduce((s, t) => s + timeOffHoursInRange(t, p.from, p.to, hols, hoursPerDay.get(t.policyId) ?? 8), 0) * 100) / 100,
       earnings,
       approval: statuses.length === 0 ? 'NOT_SUBMITTED' : statuses.every((s) => s === 'APPROVED') ? 'APPROVED' : statuses.some((s) => s === 'SUBMITTED') ? 'PENDING' : 'PARTIAL',
     };

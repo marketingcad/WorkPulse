@@ -37,6 +37,35 @@ export function toCsv(r: ReportResult): string {
   return `﻿${[header, ...lines].join('\r\n')}\r\n`;
 }
 
+/**
+ * The same CSV as a stream, encoded a chunk of rows at a time, so large exports never build the
+ * whole file in memory.
+ */
+export function csvStream(r: ReportResult, chunkRows = 2000): ReadableStream<Uint8Array> {
+  const enc = new TextEncoder();
+  let i = 0;
+  let stage: 'header' | 'rows' | 'done' = 'header';
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (stage === 'header') {
+        controller.enqueue(enc.encode(`\uFEFF${r.columns.map((c) => csvEscape(c.label)).join(',')}\r\n`));
+        stage = 'rows';
+        return;
+      }
+      if (stage === 'rows' && i < r.rows.length) {
+        const end = Math.min(i + chunkRows, r.rows.length);
+        let out = '';
+        for (; i < end; i++) out += `${r.columns.map((c) => csvEscape(formatCell(r.rows[i]![c.key], c, r.currency))).join(',')}\r\n`;
+        controller.enqueue(enc.encode(out));
+        return;
+      }
+      if (r.totals) controller.enqueue(enc.encode(`${r.columns.map((c, k) => csvEscape(k === 0 ? 'Total' : r.totals![c.key] !== undefined ? formatCell(r.totals![c.key], c, r.currency) : '')).join(',')}\r\n`));
+      stage = 'done';
+      controller.close();
+    },
+  });
+}
+
 export async function toXlsx(r: ReportResult & { title: string }): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Tallywork';

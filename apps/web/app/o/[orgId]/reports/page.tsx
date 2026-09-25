@@ -1,11 +1,15 @@
 'use client';
-import { useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Activity, BadgeDollarSign, BarChart3, ChevronRight, Clock, ShieldCheck, Trash2, Users, type LucideIcon } from 'lucide-react';
-import { Badge, ConfirmDialog, EmptyState, ErrorState, IconButton, PageHeader, Panel, PermissionState, SkeletonRows, useToast } from '@tallywork/ui';
+import { useSearchParams } from 'next/navigation';
+import { Activity, BadgeDollarSign, BarChart3, CalendarClock, ChevronRight, Clock, Pencil, ShieldCheck, Trash2, Users, type LucideIcon } from 'lucide-react';
+import { Badge, ConfirmDialog, EmptyState, ErrorState, IconButton, PageHeader, Panel, PermissionState, SkeletonRows, Spinner, fmtDateTime, useToast } from '@tallywork/ui';
 import { errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import type { CatalogItem, SavedReport } from '@/components/reports/format';
+import { RecentExports } from '@/components/reports/recent-exports';
+import { SaveReportDialog } from '@/components/reports/save-dialog';
+import { describeCron } from '@/components/reports/schedule';
 
 const CATEGORIES: Array<{ key: CatalogItem['category']; label: string; icon: LucideIcon }> = [
   { key: 'Time', label: 'Time', icon: Clock },
@@ -16,8 +20,29 @@ const CATEGORIES: Array<{ key: CatalogItem['category']; label: string; icon: Luc
 ];
 
 export default function ReportsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-40 items-center justify-center">
+          <Spinner />
+        </div>
+      }
+    >
+      <ReportsCatalog />
+    </Suspense>
+  );
+}
+
+function ReportsCatalog() {
   const org = useOrg();
   const toast = useToast();
+  // ?runs=1 is the link in the "export is ready" notification.
+  const showRuns = useSearchParams().get('runs') === '1';
+  const runsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (showRuns) runsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [showRuns]);
+  const [editing, setEditing] = useState<SavedReport | null>(null);
   const catalogQ = useOrgQuery<CatalogItem[]>('/reports');
   const savedQ = useOrgQuery<SavedReport[]>('/saved-reports');
   const [deleting, setDeleting] = useState<SavedReport | null>(null);
@@ -83,7 +108,7 @@ export default function ReportsPage() {
           )}
         </div>
 
-        <div className="min-w-0 lg:col-span-4">
+        <div className="flex min-w-0 flex-col gap-4 lg:col-span-4">
           <Panel title="Saved reports">
             {savedQ.isLoading ? (
               <SkeletonRows rows={3} cols={2} />
@@ -102,19 +127,38 @@ export default function ReportsPage() {
                         {s.shared && ' · Shared'}
                         {!s.owner && ' · by a teammate'}
                       </span>
+                      {s.schedule_cron && (
+                        <span className="flex items-center gap-1 truncate text-xs text-text-muted">
+                          <CalendarClock className="size-3 shrink-0 text-text-faint" aria-hidden />
+                          <span className="truncate">
+                            {describeCron(s.schedule_cron)}
+                            {s.schedule_timezone && s.schedule_timezone !== org.organization.timezone && ` (${s.schedule_timezone})`}
+                            {` · ${s.recipients.length} ${s.recipients.length === 1 ? 'recipient' : 'recipients'}`}
+                          </span>
+                        </span>
+                      )}
+                      {s.last_run_at && <span className="block truncate text-xs text-text-faint">Last run {fmtDateTime(s.last_run_at, org.membership.timezone)}</span>}
                     </Link>
                     {s.owner && (
-                      <IconButton label={`Delete ${s.name}`} size="xs" onClick={() => setDeleting(s)}>
-                        <Trash2 className="size-3.5" />
-                      </IconButton>
+                      <>
+                        <IconButton label={`Edit ${s.name}`} size="xs" onClick={() => setEditing(s)}>
+                          <Pencil className="size-3.5" />
+                        </IconButton>
+                        <IconButton label={`Delete ${s.name}`} size="xs" onClick={() => setDeleting(s)}>
+                          <Trash2 className="size-3.5" />
+                        </IconButton>
+                      </>
                     )}
                   </li>
                 ))}
               </ul>
             )}
           </Panel>
+          <RecentExports ref={runsRef} titleOf={titleOf} highlight={showRuns} />
         </div>
       </div>
+
+      <SaveReportDialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)} reportKey={editing?.report_key ?? ''} defaultName={editing?.name ?? ''} params={editing?.params ?? {}} existing={editing} />
 
       <ConfirmDialog
         open={!!deleting}

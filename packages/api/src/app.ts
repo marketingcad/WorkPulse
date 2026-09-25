@@ -48,12 +48,14 @@ export function createApp(deps: Deps) {
 
   // Signed, short-lived media URLs (screenshots). Authorization happened when the URL was minted.
   app.get('/media/:token', async (c) => {
-    const data = verifyToken<{ k: string; o: string; v: string }>(deps.config.appSecret, 'media', c.req.param('token'));
+    const data = verifyToken<{ k: string; o: string; v: string; n?: string }>(deps.config.appSecret, 'media', c.req.param('token'));
     if (!data || !data.k.startsWith(`org/${data.o}/`)) return c.json({ title: 'Link expired', status: 404, code: 'media_expired' }, 404);
     let obj = data.v === 'thumb' ? await deps.storage.get(`${data.k}.thumb`) : null;
     obj ??= await deps.storage.get(data.k);
     if (!obj) return c.json({ title: 'Not found', status: 404, code: 'media_not_found' }, 404);
-    return new Response(obj.body, { headers: { 'Content-Type': obj.contentType, 'Cache-Control': 'private, max-age=600', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'" } });
+    // Export files carry a file name and are always downloaded, never rendered inline.
+    const disposition: Record<string, string> = data.n ? { 'Content-Disposition': `attachment; filename="${data.n.replace(/[^\w.-]/g, '_')}"` } : {};
+    return new Response(obj.body, { headers: { 'Content-Type': obj.contentType, 'Cache-Control': 'private, max-age=600', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'", ...disposition } });
   });
 
   // Vercel Cron (Authorization: Bearer CRON_SECRET).

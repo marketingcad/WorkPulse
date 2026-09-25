@@ -1,20 +1,17 @@
 'use client';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { Download, FileSpreadsheet, FileText, Save, Sheet, X } from 'lucide-react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Download, FileSpreadsheet, FileText, History, Hourglass, Save, Sheet, X } from 'lucide-react';
 import type { ClientDto, ProjectDto, TeamDto, WorkerDto } from '@tallywork/contracts';
+import { resolveRange } from '@tallywork/domain';
 import {
   Button,
-  Checkbox,
   DataTable,
-  Dialog,
   EmptyState,
   ErrorState,
-  Field,
   FilterBar,
-  Input,
   KpiStrip,
   Menu,
   MenuItem,
@@ -30,12 +27,14 @@ import {
   type Column,
 } from '@tallywork/ui';
 import { ApiError, api, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
-import { useOrg } from '@/lib/org';
+import { todayIn, useOrg } from '@/lib/org';
 import { ColumnChart } from '@/components/charts';
 import { DateRangeFilter, isPreset, rangeFor, type Preset } from '@/components/reports/date-range';
 import { MultiSelect } from '@/components/reports/multi-select';
-import { NUMERIC_TYPES, formatCell, formatValue, type CatalogItem, type ColumnType, type FormatCtx, type ReportResult, type SavedReport } from '@/components/reports/format';
+import { NUMERIC_TYPES, formatCell, formatValue, type CatalogItem, type ColumnType, type FormatCtx, type ReportResult, type ReportRun, type SavedReport } from '@/components/reports/format';
 import { downloadExport } from '@/components/reports/download';
+import { SaveReportDialog } from '@/components/reports/save-dialog';
+import { isRange } from '@/components/reports/schedule';
 
 type Billable = 'all' | 'billable' | 'non_billable';
 interface Params {
@@ -72,6 +71,8 @@ function ReportRunner() {
   const toast = useToast();
   const { key, orgId } = useParams<{ key: string; orgId: string }>();
   const search = useSearchParams();
+  const router = useRouter();
+  const qc = useQueryClient();
   const savedId = search.get('saved');
   const tz = org.organization.timezone;
   const ws = org.organization.week_start;
@@ -104,8 +105,10 @@ function ReportRunner() {
     const s = savedQ.data.find((x) => x.id === savedId);
     if (s) {
       const p = s.params;
-      const pr = isPreset(p.preset) ? p.preset : 'custom';
-      const range = pr !== 'custom' ? rangeFor(pr, tz, ws) : { from: typeof p.from === 'string' ? p.from : params.from, to: typeof p.to === 'string' ? p.to : params.to };
+      // A relative `range` shows as the matching preset when there is one, otherwise as its dates today.
+      const rel = isRange(p.range) ? p.range : null;
+      const pr: Preset = rel ? (isPreset(rel) ? rel : 'custom') : isPreset(p.preset) ? p.preset : 'custom';
+      const range = pr !== 'custom' ? rangeFor(pr, tz, ws) : rel ? resolveRange(rel, todayIn(tz), ws) : { from: typeof p.from === 'string' ? p.from : params.from, to: typeof p.to === 'string' ? p.to : params.to };
       setPreset(pr);
       setParams({
         ...range,
@@ -157,6 +160,16 @@ function ReportRunner() {
       setExporting(null);
     }
   };
+
+  // Large exports run on the server; the file shows up under Recent exports (and as a notification).
+  const bg = useOrgMutation<Record<string, unknown>, ReportRun>('POST', `/reports/${key}/export-runs`, {
+    invalidate: false,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['org', orgId, '/report-runs'] });
+      toast.success('Export started — you’ll be notified when it’s ready', { label: 'Recent exports', onClick: () => router.push(`${org.base}/reports?runs=1`) });
+    },
+  });
+  const exportInBackground = (format: 'CSV' | 'XLSX' | 'PDF') => bg.mutate({ format, ...body }, { onError: (e) => toast.error(errorMessage(e)) });
 
   const [saveOpen, setSaveOpen] = useState(false);
 
@@ -229,6 +242,26 @@ function ReportRunner() {
               </MenuItem>
               <MenuItem icon={<FileText className="size-3.5" />} onSelect={() => doExport('PDF')}>
                 PDF
+              </MenuItem>
+            </Menu>
+            <Menu
+              trigger={
+                <Button icon={<Hourglass className="size-3.5" />} loading={bg.isPending} disabled={!validRange}>
+                  Export in background
+                </Button>
+              }
+            >
+              <MenuItem icon={<Sheet className="size-3.5" />} onSelect={() => exportInBackground('CSV')}>
+                CSV
+              </MenuItem>
+              <MenuItem icon={<FileSpreadsheet className="size-3.5" />} onSelect={() => exportInBackground('XLSX')}>
+                Excel (XLSX)
+              </MenuItem>
+              <MenuItem icon={<FileText className="size-3.5" />} onSelect={() => exportInBackground('PDF')}>
+                PDF
+              </MenuItem>
+              <MenuItem icon={<History className="size-3.5" />} onSelect={() => router.push(`${org.base}/reports?runs=1`)}>
+                Recent exports
               </MenuItem>
             </Menu>
           </>
@@ -341,53 +374,7 @@ function ReportRunner() {
         </div>
       )}
 
-      <SaveDialog open={saveOpen} onOpenChange={setSaveOpen} reportKey={key} defaultName={savedName ?? item.title} params={{ ...body, preset, group_by: params.group_by }} />
+      <SaveReportDialog open={saveOpen} onOpenChange={setSaveOpen} reportKey={key} defaultName={savedName ?? item.title} params={{ ...body, preset, group_by: params.group_by }} />
     </>
-  );
-}
-
-function SaveDialog({ open, onOpenChange, reportKey, defaultName, params }: { open: boolean; onOpenChange: (o: boolean) => void; reportKey: string; defaultName: string; params: Record<string, unknown> }) {
-  const toast = useToast();
-  const [name, setName] = useState(defaultName);
-  const [shared, setShared] = useState(false);
-  useEffect(() => {
-    if (open) setName(defaultName);
-  }, [open, defaultName]);
-  const m = useOrgMutation<{ report_key: string; name: string; params: Record<string, unknown>; shared: boolean }, { id: string }>('POST', '/saved-reports', {
-    onSuccess: () => {
-      toast.success('Report saved');
-      onOpenChange(false);
-    },
-  });
-  const err = m.error instanceof ApiError ? m.error : null;
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Save report"
-      description="Saves the current filters. Relative ranges like “This week” stay relative."
-      footer={
-        <>
-          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" loading={m.isPending} disabled={!name.trim()} onClick={() => m.mutate({ report_key: reportKey, name: name.trim(), params, shared })}>
-            Save
-          </Button>
-        </>
-      }
-    >
-      <form
-        className="flex flex-col gap-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (name.trim()) m.mutate({ report_key: reportKey, name: name.trim(), params, shared });
-        }}
-      >
-        <Field label="Name" htmlFor="saved-name" error={err?.field('name') ?? (err && !err.errors?.length ? err.title : undefined)} required>
-          <Input id="saved-name" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} autoFocus />
-        </Field>
-        <Checkbox label="Share with everyone who can run this report" checked={shared} onChange={(e) => setShared(e.target.checked)} />
-        <p className="text-xs text-text-muted">Shared reports only show data each viewer is allowed to see.</p>
-      </form>
-    </Dialog>
   );
 }

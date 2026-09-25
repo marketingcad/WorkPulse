@@ -12,6 +12,9 @@ import {
   accrualCredit,
   carryOverExpiry,
   classifyAttendance,
+  cronMatches,
+  parseCron,
+  resolveRange,
   nearestLimit,
   proRataFactor,
   crossedThresholds,
@@ -343,5 +346,45 @@ describe('money (Phase 9 gate)', () => {
     expect(crossedThresholds(80, 95, [80, 100])).toEqual([]);
     expect(crossedThresholds(80, 120, [80, 100])).toEqual([100]);
     expect(crossedThresholds(0, 120, [80, 100])).toEqual([80, 100]);
+  });
+});
+
+describe('report schedules (Phase 11 gate)', () => {
+  const at = (iso: string) => new Date(iso);
+  it('parses 5-field cron and rejects invalid expressions', () => {
+    expect(parseCron('0 8 * * 1')).not.toBeNull();
+    expect(parseCron('*/15 9-17 * * 1-5')).not.toBeNull();
+    expect(parseCron('30 7 1,15 * *')).not.toBeNull();
+    for (const bad of ['', '* * * *', '60 * * * *', '* 24 * * *', '* * 0 * *', '* * * 13 *', '* * * * 8', 'a * * * *', '*/0 * * * *', '5-1 * * * *']) expect(parseCron(bad), bad).toBeNull();
+  });
+
+  it('matches in the schedule time zone, including DST and Sunday as 0 or 7', () => {
+    const mon8 = parseCron('0 8 * * 1')!;
+    expect(cronMatches(mon8, at('2026-09-28T12:00:00Z'), 'America/New_York')).toBe(true); // EDT
+    expect(cronMatches(mon8, at('2026-11-02T13:00:00Z'), 'America/New_York')).toBe(true); // EST after the change
+    expect(cronMatches(mon8, at('2026-11-02T12:00:00Z'), 'America/New_York')).toBe(false);
+    expect(cronMatches(mon8, at('2026-09-28T12:00:00Z'), 'Asia/Kolkata')).toBe(false);
+    expect(cronMatches(parseCron('30 17 * * *')!, at('2026-09-28T12:00:00Z'), 'Asia/Kolkata')).toBe(true); // UTC+5:30
+    expect(cronMatches(parseCron('0 9 * * 7')!, at('2026-09-27T13:00:00Z'), 'America/New_York')).toBe(true);
+    expect(cronMatches(parseCron('0 9 * * 0')!, at('2026-09-27T13:00:00Z'), 'America/New_York')).toBe(true);
+  });
+
+  it('uses the cron day rule: day-of-month OR day-of-week when both are set', () => {
+    const c = parseCron('0 9 1 * 1')!; // the 1st, or any Monday
+    expect(cronMatches(c, at('2026-10-01T13:00:00Z'), 'America/New_York')).toBe(true); // Thursday the 1st
+    expect(cronMatches(c, at('2026-10-05T13:00:00Z'), 'America/New_York')).toBe(true); // Monday the 5th
+    expect(cronMatches(c, at('2026-10-06T13:00:00Z'), 'America/New_York')).toBe(false);
+  });
+
+  it('resolves relative ranges on the run day', () => {
+    const d = '2026-09-28'; // Monday; weeks start Monday
+    expect(resolveRange('yesterday', d, 1)).toEqual({ from: '2026-09-27', to: '2026-09-27' });
+    expect(resolveRange('last_week', d, 1)).toEqual({ from: '2026-09-21', to: '2026-09-27' });
+    expect(resolveRange('this_week', d, 1)).toEqual({ from: '2026-09-28', to: '2026-09-28' });
+    expect(resolveRange('last_week', d, 0)).toEqual({ from: '2026-09-20', to: '2026-09-26' });
+    expect(resolveRange('last_month', d, 1)).toEqual({ from: '2026-08-01', to: '2026-08-31' });
+    expect(resolveRange('last_month', '2026-03-10', 1)).toEqual({ from: '2026-02-01', to: '2026-02-28' });
+    expect(resolveRange('this_month', d, 1)).toEqual({ from: '2026-09-01', to: '2026-09-28' });
+    expect(resolveRange('last_7_days', d, 1)).toEqual({ from: '2026-09-21', to: '2026-09-27' });
   });
 });

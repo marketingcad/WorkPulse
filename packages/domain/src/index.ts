@@ -8,3 +8,4 @@ export * from './activity';
 export * from './timesheet';
 export * from './billing';
 export * from './workforce';
+export * from './schedule';

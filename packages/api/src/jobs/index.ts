@@ -23,6 +23,7 @@ import { addDaysToDate, localDate, type TrackingPolicy } from '@tallywork/domain
 import type { Deps } from '../context';
 import { auditSystem, emit } from '../services/events';
 import { sendDigests } from '../services/digest';
+import { processReportRuns, runSchedules } from '../services/report-runs';
 import { checkBudgets } from '../services/finance';
 import { alertLongBreaks, runAccruals, runShiftAlerts } from '../services/operations';
 import { approversFor, membersWith, notify } from '../services/notify';
@@ -269,10 +270,13 @@ export async function runWorkforceAlerts(deps: Deps): Promise<{ shifts: number; 
 export async function runTick(deps: Deps) {
   const sessions = await sweepSessions(deps);
   const workforce = await runWorkforceAlerts(deps);
+  const reports = await runSchedules(deps);
+  // Exports queued from the app are normally processed right after the request; this is the backstop.
+  reports.processed += await processReportRuns(deps, 3);
   const offline = await markDevicesOffline(deps);
   const dispatched = await dispatchOutbox(deps, 200);
   const webhooks = await withSystem(deps.db, (tx) => deliverWebhooks(tx, deps, 50));
-  return { sessions, workforce, offline, dispatched, webhooks };
+  return { sessions, workforce, reports, offline, dispatched, webhooks };
 }
 
 /** Daily: retention cleanup, accruals, overdue invoices, housekeeping. */

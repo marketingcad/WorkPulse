@@ -1,0 +1,1 @@
+ALTER TABLE "report_runs" ADD COLUMN "saved_report_id" uuid;

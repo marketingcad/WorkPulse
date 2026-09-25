@@ -255,3 +255,60 @@ describe('desktop agent', () => {
     ]);
   });
 });
+
+describe('late desktop time', () => {
+  it('is locked, flagged and must be reviewed before a submitted timesheet can be approved', async () => {
+    const { client: lars, membershipId: larsId } = await addMember(t, admin, orgId, 'Lars', 'lars@ts.test');
+    expect((await admin.patch(o(`/projects/${projectId}`), { member_ids: [...(await admin.get(o(`/projects/${projectId}`))).body.member_ids, larsId] })).status).toBe(200);
+    await admin.post(o('/manual-time'), { membership_id: larsId, project_id: projectId, started_at: '2026-09-14T14:00:00Z', ended_at: '2026-09-14T15:00:00Z', reason: 'setup' });
+    const ts = (await lars.post(o('/timesheets/submit'), { date: LAST_WEEK })).body.id as string;
+
+    const { verifier, challenge } = pkce();
+    const code = await lars.post('/agent/authorize', { code_challenge: challenge, organization_id: orgId });
+    const agent = new Client(t);
+    agent.bearer = (await agent.post('/agent/register', { code: code.body.code, code_verifier: verifier, device: { name: 'PC', platform: 'linux', agent_version: '0.1.0' } })).body.access_token;
+    const offlineSession = (start: string, end: string) => {
+      const sid = newId();
+      return agent.post('/agent/ingest/batch', {
+        sent_at: t.clock.now.toISOString(),
+        events: [
+          { event_id: newId(), type: 'session.start', session_id: sid, seq: 1, occurred_at: start, project_id: projectId },
+          { event_id: newId(), type: 'session.stop', session_id: sid, seq: 2, occurred_at: end },
+        ],
+      });
+    };
+
+    // Evidence is accepted, but locked and reported.
+    expect((await offlineSession('2026-09-16T13:00:00Z', '2026-09-16T15:00:00Z')).body.results.map((r: { status: string }) => r.status)).toEqual(['accepted', 'accepted']);
+    const late = (await lars.get(o('/time-entries?from=2026-09-16&to=2026-09-16'))).body;
+    expect(late.map((e: { duration_seconds: number; locked: boolean }) => [e.duration_seconds, e.locked])).toEqual([[7200, true]]);
+    expect((await lars.patch(o(`/time-entries/${late[0].id}`), { note: 'x', reason: 'x' })).status).toBe(422);
+    expect((await admin.get(o(`/timesheets?membership_id=${larsId}&date=${LAST_WEEK}`))).body).toMatchObject({ status: 'SUBMITTED', late_seconds: 7200 });
+    const queued = (await admin.get(o('/timesheets/approvals'))).body.find((q: { timesheet_id: string }) => q.timesheet_id === ts);
+    expect(queued).toMatchObject({ late_seconds: 7200, flags: expect.arrayContaining(['late_time']) });
+    await t.flush();
+    const note = (await admin.get(o('/notifications'))).body.data.find((n: { type: string }) => n.type === 'timesheet.late_time');
+    expect(note.title).toBe("120 min of time was added to Lars's submitted timesheet");
+
+    // The submitted snapshot no longer matches: approval is blocked until it is resubmitted.
+    const blocked = await admin.post(o(`/timesheets/${ts}/approve`), {});
+    expect([blocked.status, blocked.body.code]).toEqual([422, 'timesheet_changed_since_submit']);
+    expect((await admin.post(o('/timesheets/bulk-approve'), { ids: [ts] })).body[0].ok).toBe(false);
+    await admin.post(o(`/timesheets/${ts}/request-changes`), { comment: 'Desktop time came in late; please check it' });
+    const resub = await lars.post(o('/timesheets/submit'), { date: LAST_WEEK });
+    expect(resub.body).toMatchObject({ status: 'SUBMITTED', total_seconds: 3 * 3600, late_seconds: 0 });
+    expect((await admin.post(o(`/timesheets/${ts}/approve`), {})).body.status).toBe('APPROVED');
+
+    // After approval: still locked and flagged; the approval (and pay) is unchanged until a reopen.
+    await offlineSession('2026-09-17T13:00:00Z', '2026-09-17T13:30:00Z');
+    expect((await admin.get(o(`/timesheets?membership_id=${larsId}&date=${LAST_WEEK}`))).body).toMatchObject({ status: 'APPROVED', late_seconds: 1800 });
+    const snap = await asOwner<{ n: number }>(sql`select coalesce(sum(duration_seconds),0)::int as n from timesheet_entries where timesheet_id = ${ts} and superseded_at is null`);
+    expect(snap[0]!.n).toBe(3 * 3600);
+    expect((await admin.post(o(`/timesheets/${ts}/reopen`), { comment: 'include late time' })).body.status).toBe('DRAFT');
+    expect((await lars.get(o('/time-entries?from=2026-09-17&to=2026-09-17'))).body[0].locked).toBe(false);
+  });
+
+  it('draft periods are unaffected', async () => {
+    expect((await worker.get(o(`/timesheets?date=2026-09-28`))).body.late_seconds).toBe(0);
+  });
+});

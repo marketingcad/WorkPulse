@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
 import {
   idleEvents,
   memberships,
@@ -8,6 +8,7 @@ import {
   timeEntries,
   timeEntryRevisions,
   timeSegments,
+  timesheets,
   trackingSessions,
   workerProfiles,
   type TrackingSource,
@@ -80,6 +81,13 @@ async function deriveEntries(tx: Tx, s: Session, seg: { id: string | null; start
   for (const pc of pieces) {
     const id = newId();
     const duration = Math.round((pc.end.getTime() - pc.start.getTime()) / 1000);
+    // Tracked evidence is never dropped, but time arriving after a timesheet was submitted or
+    // approved (e.g. an offline device syncing late) is locked and flagged for the approver.
+    const [closed] = await tx
+      .select({ id: timesheets.id, status: timesheets.status, periodStart: timesheets.periodStart, periodEnd: timesheets.periodEnd })
+      .from(timesheets)
+      .where(and(eq(timesheets.membershipId, s.membershipId), inArray(timesheets.status, ['SUBMITTED', 'APPROVED']), lte(timesheets.periodStart, pc.localDate), gte(timesheets.periodEnd, pc.localDate)))
+      .limit(1);
     await tx.insert(timeEntries).values({
       id,
       organizationId: s.organizationId,
@@ -97,7 +105,11 @@ async function deriveEntries(tx: Tx, s: Session, seg: { id: string | null; start
       timezone: s.timezone,
       billable: p?.billable ?? true,
       note: s.note,
+      lockedAt: closed ? new Date() : null,
     });
+    if (closed) {
+      await emit(tx, s.organizationId, 'timesheet.late_time', { timesheet_id: closed.id, membership_id: s.membershipId, status: closed.status, period_start: closed.periodStart, period_end: closed.periodEnd, seconds: duration, time_entry_id: id }, { workerId: s.membershipId, sessionId: s.id });
+    }
     await tx.insert(timeEntryRevisions).values({
       id: newId(),
       organizationId: s.organizationId,

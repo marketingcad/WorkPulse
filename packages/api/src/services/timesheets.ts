@@ -387,6 +387,20 @@ function periodOf(x: Ctx, date: string) {
   return periodFor(date, x.org.payPeriod, x.org.weekStart);
 }
 
+/**
+ * Seconds of time in the period that are not in the current snapshot: time added (or changed)
+ * after the timesheet was submitted, e.g. a desktop app that synced late. 0 while DRAFT/REJECTED.
+ */
+async function lateSeconds(tx: Tx, ts: { id: string; membershipId: string; status: string; periodStart: string; periodEnd: string }): Promise<number> {
+  if (ts.status !== 'SUBMITTED' && ts.status !== 'APPROVED') return 0;
+  const [r] = await tx
+    .select({ s: sql<number>`coalesce(sum(${timeEntries.durationSeconds}),0)::int` })
+    .from(timeEntries)
+    .leftJoin(timesheetEntries, and(eq(timesheetEntries.timesheetId, ts.id), eq(timesheetEntries.timeEntryId, timeEntries.id), eq(timesheetEntries.revision, timeEntries.revision), isNull(timesheetEntries.supersededAt)))
+    .where(and(eq(timeEntries.membershipId, ts.membershipId), isNull(timeEntries.deletedAt), sql`${timeEntries.localDate} between ${ts.periodStart} and ${ts.periodEnd}`, isNull(timesheetEntries.id)));
+  return r?.s ?? 0;
+}
+
 export async function getTimesheet(x: Ctx, membershipId: string, date: string): Promise<TimesheetDto> {
   if (!can(x.actor, 'timesheets:read', { ownerMembershipId: membershipId })) throw notFound('timesheet');
   const period = periodOf(x, date);
@@ -433,6 +447,7 @@ export async function getTimesheet(x: Ctx, membershipId: string, date: string): 
     expected_seconds: prof?.weeklyExpectedSeconds != null ? Math.round((prof.weeklyExpectedSeconds * periodDays) / 7) : null,
     avg_activity_pct: withAct.length ? Math.round(withAct.reduce((s, e) => s + (e.activity_pct ?? 0) * e.duration_seconds, 0) / Math.max(1, withAct.reduce((s, e) => s + e.duration_seconds, 0))) : null,
     version: row?.version ?? 0,
+    late_seconds: row ? await lateSeconds(x.tx, row) : 0,
   };
 }
 
@@ -545,6 +560,9 @@ export async function decideTimesheet(x: Ctx, timesheetId: string, action: 'APPR
   const ts = await loadTimesheetForDecision(x, timesheetId);
   const to = timesheetTransition(ts.status, action);
   if ((action === 'REJECT' || action === 'REQUEST_CHANGES') && !comment) throw validation('Please add a comment for the worker');
+  if (action === 'APPROVE' && (await lateSeconds(x.tx, ts)) > 0) {
+    throw businessRule('timesheet_changed_since_submit', 'Time was added after this timesheet was submitted. Request changes so the worker can review and resubmit it.');
+  }
   if (action === 'REOPEN') {
     const [invoiced] = await x.tx.select({ id: billingEntries.id }).from(billingEntries).where(and(eq(billingEntries.timesheetId, ts.id), isNull(billingEntries.voidedAt), sql`${billingEntries.invoiceLineId} is not null`)).limit(1);
     if (invoiced) throw businessRule('timesheet_invoiced', 'This timesheet is on an invoice; void the invoice first');
@@ -607,6 +625,8 @@ export async function approvalQueue(x: Ctx, q: { status?: string }): Promise<App
     if (expected && r.totalSeconds < expected * 0.8) flags.push('under_expected');
     if (expected && r.totalSeconds > expected * 1.2) flags.push('over_expected');
     if (avg !== null && avg < 20) flags.push('low_activity');
+    const late = await lateSeconds(x.tx, r);
+    if (late > 0) flags.push('late_time');
     out.push({
       timesheet_id: r.id,
       membership_id: r.membershipId,
@@ -619,6 +639,7 @@ export async function approvalQueue(x: Ctx, q: { status?: string }): Promise<App
       manual_seconds: r.manualSeconds,
       expected_seconds: expected,
       avg_activity_pct: avg,
+      late_seconds: late,
       flags,
     });
   }

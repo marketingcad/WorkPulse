@@ -218,6 +218,8 @@ export interface TimesheetDto {
   expected_seconds: number | null;
   avg_activity_pct: number | null;
   version: number;
+  /** time in the period added or changed after submission (not in the snapshot) */
+  late_seconds: number;
 }
 
 export interface ApprovalQueueItemDto {
@@ -232,6 +234,7 @@ export interface ApprovalQueueItemDto {
   manual_seconds: number;
   expected_seconds: number | null;
   avg_activity_pct: number | null;
+  late_seconds: number;
   flags: string[];
 }
 

@@ -53,6 +53,7 @@ export const FLAG_META: Record<string, { label: string; tone: Tone }> = {
   under_expected: { label: 'Under expected', tone: 'warning' },
   over_expected: { label: 'Over expected', tone: 'info' },
   low_activity: { label: 'Low activity', tone: 'secondary' },
+  late_time: { label: 'Time added after submit', tone: 'danger' },
 };
 
 export function FlagBadges({ flags }: { flags: string[] }) {

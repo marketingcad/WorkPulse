@@ -70,6 +70,18 @@ async function handleEvent(tx: Tx, deps: Deps, e: Envelope): Promise<void> {
       });
       break;
     }
+    case 'timesheet.late_time': {
+      const worker = p.membership_id as string;
+      const names = await memberNames({ tx }, [worker]);
+      const mins = Math.max(1, Math.round((p.seconds as number) / 60));
+      await notify(tx, deps, org, await approversFor(tx, org, worker, 'timesheets:approve'), {
+        type: 'timesheet.late_time',
+        title: `${mins} min of time was added to ${names.get(worker) ?? 'a member'}'s ${String(p.status).toLowerCase()} timesheet`,
+        body: p.status === 'APPROVED' ? `${p.period_start} – ${p.period_end}. It is locked and not included in the approval; reopen the timesheet to include it.` : `${p.period_start} – ${p.period_end}. Request changes so it can be reviewed and resubmitted.`,
+        link: `/timesheets/approvals`,
+      });
+      break;
+    }
     case 'timesheet.approved':
     case 'timesheet.rejected':
     case 'timesheet.changes_requested':

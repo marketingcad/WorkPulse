@@ -157,7 +157,7 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
               <Button variant="danger" onClick={() => setDecision('reject')}>
                 Reject
               </Button>
-              <Button variant="primary" onClick={approveNow} loading={approving}>
+              <Button variant="primary" onClick={approveNow} loading={approving} disabled={ts.late_seconds > 0} title={ts.late_seconds > 0 ? 'Time was added after submission; request changes first' : undefined}>
                 Approve
               </Button>
             </>
@@ -165,6 +165,17 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
           {canDecide && ts.status === 'APPROVED' && <Button onClick={() => setDecision('reopen')}>Reopen</Button>}
         </div>
       </div>
+
+      {ts.late_seconds > 0 && (
+        <div role="status" className="rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-sm">
+          <div className="font-medium text-danger">{org.fmtDuration(ts.late_seconds)} added after this timesheet was submitted</div>
+          <p className="mt-0.5 text-text">
+            {ts.status === 'APPROVED'
+              ? 'This time is locked and not part of the approval. Reopen the timesheet to include it.'
+              : 'Usually a desktop app that synced late. Request changes so it can be reviewed and resubmitted.'}
+          </p>
+        </div>
+      )}
 
       {showComment && (
         <div role="status" className={cx('rounded-md border px-4 py-3 text-sm', ts.status === 'REJECTED' ? 'border-danger/30 bg-danger-soft' : 'border-warning/30 bg-warning-soft')}>

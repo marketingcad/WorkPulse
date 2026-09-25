@@ -1,61 +1,72 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Camera, Check, ChevronLeft, ClipboardCheck, ClockPlus, CloudOff, ExternalLink, Eye, Globe, Keyboard, LogOut, MapPin, Pause, Play, RefreshCw, Search, Settings, Square, TimerOff, AppWindow } from 'lucide-react';
+import { useState } from 'react';
+import { AppWindow, Camera, Check, ChevronLeft, ClockPlus, ExternalLink, Eye, Globe, Keyboard, LogOut, MapPin, RefreshCw, TimerOff } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
-
-const bridge = window.tallywork;
-
-function fmtClock(sec: number): string {
-  const s = Math.max(0, Math.floor(sec));
-  return `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-}
-function fmtHm(sec: number): string {
-  const s = Math.max(0, Math.round(sec));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
-}
-
-function fmtRange(fromIso: string, toIso: string): string {
-  const d = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' });
-  return `${d(fromIso)} – ${d(toIso)}`;
-}
-
-function localDateInput(d = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function useAgentState(): AgentState | null {
-  const [s, setS] = useState<AgentState | null>(null);
-  useEffect(() => {
-    void bridge.getState().then(setS);
-    return bridge.onState(setS);
-  }, []);
-  return s;
-}
-
-function useTick(active: boolean): number {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!active) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [active]);
-  return now;
-}
+import { Dashboard } from './Dashboard';
+import { ActivityPage, ProjectsPage, ReportsPage, SchedulePage, TasksPage, TimeOffPage, TimesheetPage, TrackingPage } from './Pages';
+import { Shell } from './Shell';
+import { bridge, errorText, fmtHm, localDateInput, useAgentState, type View } from './lib';
 
 export function App() {
   const s = useAgentState();
-  const [view, setView] = useState<'timer' | 'monitoring' | 'settings' | 'manual'>('timer');
+  const [view, setView] = useState<View>('home');
   if (!s) return <div className="h-full bg-nav" />;
-  if (s.phase === 'signed_out' || s.phase === 'signing_in') return <SignIn s={s} />;
+  if (s.phase === 'signed_out' || s.phase === 'signing_in')
+    return (
+      <div className="h-full bg-nav">
+        <SignIn s={s} />
+      </div>
+    );
   if (!s.account) return <Loading />;
-  if (s.recoveryPrompt) return <Recovery s={s} />;
-  if (!s.policyAcknowledged || view === 'monitoring') return <Monitoring s={s} onBack={s.policyAcknowledged ? () => setView('timer') : undefined} />;
-  if (view === 'settings') return <SettingsView s={s} onBack={() => setView('timer')} />;
-  if (view === 'manual') return <ManualTime s={s} onBack={() => setView('timer')} />;
+  if (s.recoveryPrompt)
+    return (
+      <div className="h-full bg-surface">
+        <Recovery s={s} />
+      </div>
+    );
+  // First run and every policy change: the worker must see what is monitored before tracking.
+  if (!s.policyAcknowledged)
+    return (
+      <div className="h-full bg-bg md:p-6">
+        <div className="mx-auto h-full max-w-2xl">
+          <Monitoring s={s} />
+        </div>
+      </div>
+    );
+  // Settings-style screens read best at a comfortable width inside a wide window.
+  const narrow = (el: React.ReactNode) => <div className="mx-auto h-full w-full max-w-2xl md:py-4">{el}</div>;
+  const page = (() => {
+    switch (view) {
+      case 'tracking':
+        return <TrackingPage s={s} go={setView} />;
+      case 'projects':
+        return <ProjectsPage s={s} />;
+      case 'tasks':
+        return <TasksPage s={s} />;
+      case 'timesheet':
+        return <TimesheetPage s={s} />;
+      case 'activity':
+        return <ActivityPage s={s} />;
+      case 'reports':
+        return <ReportsPage />;
+      case 'timeoff':
+        return <TimeOffPage />;
+      case 'schedule':
+        return <SchedulePage />;
+      case 'settings':
+        return narrow(<SettingsView s={s} onBack={() => setView('home')} onMonitoring={() => setView('monitoring')} />);
+      case 'monitoring':
+        return narrow(<Monitoring s={s} onBack={() => setView('home')} />);
+      case 'manual':
+        return narrow(<ManualTime s={s} onBack={() => setView('tracking')} />);
+      default:
+        return <Dashboard s={s} go={setView} />;
+    }
+  })();
   return (
     <>
-      <Timer s={s} onSettings={() => setView('settings')} onMonitoring={() => setView('monitoring')} onManual={s.policy?.manualTime.allowed ? () => setView('manual') : undefined} />
+      <Shell s={s} view={view} go={setView}>
+        {page}
+      </Shell>
       {s.idlePrompt && <IdleSheet s={s} />}
     </>
   );
@@ -88,7 +99,7 @@ function SignIn({ s }: { s: AgentState }) {
   const [advanced, setAdvanced] = useState(false);
   const busy = s.phase === 'signing_in';
   return (
-    <div className="instrument flex h-full flex-col justify-between bg-nav p-6 text-nav-fg">
+    <div className="instrument mx-auto flex h-full w-full max-w-md flex-col justify-between bg-nav p-6 text-nav-fg">
       <div className="flex items-center gap-2">
         <Mark size={28} />
         <span className="text-base font-bold tracking-tight">Tallywork</span>
@@ -151,7 +162,7 @@ function Monitoring({ s, onBack }: { s: AgentState; onBack?: () => void }) {
   const p = s.policy!;
   const [busy, setBusy] = useState(false);
   return (
-    <div className="flex h-full flex-col bg-surface">
+    <div className="flex h-full flex-col bg-surface md:overflow-hidden md:rounded-md md:border md:border-border">
       <header className="flex items-center gap-2 border-b border-border px-4 py-3">
         {onBack && (
           <button onClick={onBack} aria-label="Back" className="rounded-sm p-1 text-text-muted hover:bg-surface-muted">
@@ -200,230 +211,13 @@ function Monitoring({ s, onBack }: { s: AgentState; onBack?: () => void }) {
   );
 }
 
-function Timer({ s, onSettings, onMonitoring, onManual }: { s: AgentState; onSettings: () => void; onMonitoring: () => void; onManual?: () => void }) {
-  const t = s.tracking;
-  const now = useTick(t.state === 'active');
-  const elapsed = t.baseSeconds + (t.segmentStartedAt ? (now - Date.parse(t.segmentStartedAt)) / 1000 : 0);
-  const [q, setQ] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [note, setNote] = useState(t.note);
-  const [breakMenu, setBreakMenu] = useState(false);
-  const currentBreak = s.breakTypes.find((b) => b.id === s.breakTypeId);
-  const shiftToday = s.nextShift && new Date(s.nextShift.startsAt).toDateString() === new Date(now).toDateString() ? s.nextShift : null;
-  const hm = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  const selectedProject = s.assignments.find((a) => a.project_id === t.projectId);
-  const selectedTask = selectedProject?.tasks.find((x) => x.id === t.taskId);
-
-  const options = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return s.assignments
-      .map((a) => ({ ...a, tasks: a.tasks.filter((x) => !needle || x.title.toLowerCase().includes(needle) || a.project_name.toLowerCase().includes(needle)) }))
-      .filter((a) => !needle || a.project_name.toLowerCase().includes(needle) || a.tasks.length > 0);
-  }, [s.assignments, q]);
-
-  const run = async (fn: () => Promise<unknown>) => {
-    setError(null);
-    try {
-      await fn();
-    } catch (e) {
-      setError(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': Error: /, '') : 'Action failed');
-    }
-  };
-  const tracking = t.state !== 'stopped';
-
-  return (
-    <div className="flex h-full flex-col bg-bg">
-      <header className="flex items-center justify-between bg-nav px-4 py-2.5 text-nav-fg">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{s.account!.organization}</div>
-          <div className="truncate text-2xs text-nav-muted">{s.account!.name}</div>
-        </div>
-        <div className="flex items-center gap-1">
-          {onManual && (
-            <button onClick={onManual} aria-label="Add manual time" title="Add manual time" className="rounded-sm p-1.5 text-nav-muted hover:bg-white/10 hover:text-nav-fg">
-              <ClockPlus className="size-4" />
-            </button>
-          )}
-          <button onClick={onMonitoring} aria-label="What is monitored" title="What is monitored" className="rounded-sm p-1.5 text-nav-muted hover:bg-white/10 hover:text-nav-fg">
-            <Eye className="size-4" />
-          </button>
-          <button onClick={onSettings} aria-label="Settings" title="Settings" className="rounded-sm p-1.5 text-nav-muted hover:bg-white/10 hover:text-nav-fg">
-            <Settings className="size-4" />
-          </button>
-        </div>
-      </header>
-
-      {/* Timer */}
-      <section className="border-b border-border bg-surface px-4 pb-4 pt-3">
-        <div className="flex items-center justify-between text-xs">
-          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-semibold ${t.state === 'active' ? 'bg-success-soft text-success' : t.state === 'paused' ? 'bg-warning-soft text-warning' : 'bg-surface-muted text-text-muted'}`}>
-            <span className={`size-1.5 rounded-full ${t.state === 'active' ? 'animate-pulse bg-success' : t.state === 'paused' ? 'bg-warning' : 'bg-text-faint'}`} />
-            {t.state === 'active' ? 'Tracking' : t.state === 'paused' ? (currentBreak ? `On break · ${currentBreak.name}` : 'Paused') : 'Not tracking'}
-          </span>
-          {shiftToday && t.state === 'stopped' && (
-            <span className="text-text-muted" title="Your scheduled shift">
-              Shift {hm(shiftToday.startsAt)}–{hm(shiftToday.endsAt)}
-            </span>
-          )}
-          {!s.sync.online ? (
-            <span className="inline-flex items-center gap-1 text-warning" title="Your time is saved on this computer and will sync when you are back online.">
-              <CloudOff className="size-3.5" /> Offline · {s.sync.queued} saved
-            </span>
-          ) : s.sync.queued > 0 ? (
-            <span className="text-text-faint">Syncing…</span>
-          ) : null}
-        </div>
-        <div className="tabular mt-3 text-center font-mono text-[44px] font-medium leading-none tracking-tight">{fmtClock(tracking ? elapsed : 0)}</div>
-        <div className="mt-2 truncate text-center text-sm text-text-muted">
-          {selectedProject ? (
-            <>
-              <span className="font-medium text-text">{selectedProject.project_name}</span>
-              {selectedTask && <> · {selectedTask.title}</>}
-            </>
-          ) : (
-            'Choose a project below'
-          )}
-        </div>
-        <div className="mt-4 flex gap-2">
-          {tracking ? (
-            <>
-              {t.state === 'active' ? (
-                <div className="relative flex flex-1">
-                  <button
-                    onClick={() => (s.breakTypes.length ? setBreakMenu((m) => !m) : run(bridge.pause))}
-                    aria-haspopup={s.breakTypes.length ? 'menu' : undefined}
-                    aria-expanded={s.breakTypes.length ? breakMenu : undefined}
-                    className="flex h-10 flex-1 items-center justify-center gap-2 rounded-sm border border-border bg-surface text-sm font-medium hover:bg-surface-muted"
-                  >
-                    <Pause className="size-4" /> {s.breakTypes.length ? 'Break' : 'Pause'}
-                  </button>
-                  {breakMenu && (
-                    <ul role="menu" className="absolute left-0 top-11 z-10 w-52 rounded-sm border border-border bg-surface py-1 shadow-overlay">
-                      {s.breakTypes.map((b) => (
-                        <li key={b.id}>
-                          <button role="menuitem" onClick={() => (setBreakMenu(false), void run(() => bridge.takeBreak(b.id)))} className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-muted">
-                            <span className="truncate">{b.name}</span>
-                            <span className="shrink-0 text-2xs text-text-faint">
-                              {b.paid ? 'paid' : 'unpaid'}
-                              {b.maxMinutes ? ` · ${b.maxMinutes}m` : ''}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                      <li>
-                        <button role="menuitem" onClick={() => (setBreakMenu(false), void run(bridge.pause))} className="w-full px-3 py-1.5 text-left text-sm text-text-muted hover:bg-surface-muted">
-                          Just pause
-                        </button>
-                      </li>
-                    </ul>
-                  )}
-                </div>
-              ) : (
-                <button onClick={() => run(bridge.resume)} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-sm bg-interactive-soft text-sm font-medium text-interactive">
-                  <Play className="size-4" /> Resume
-                </button>
-              )}
-              <button onClick={() => run(bridge.stop)} className="flex h-10 flex-[1.4] items-center justify-center gap-2 rounded-sm bg-danger text-sm font-semibold text-on-accent hover:opacity-90">
-                <Square className="size-3.5 fill-current" /> Stop tracking
-              </button>
-            </>
-          ) : (
-            <button
-              disabled={!s.lastProject && !selectedProject}
-              onClick={() => run(() => bridge.start(s.lastProject!.projectId, s.lastProject!.taskId))}
-              className="flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-50"
-            >
-              <Play className="size-4 fill-current" /> {s.lastProject ? 'Start tracking' : 'Pick a project to start'}
-            </button>
-          )}
-        </div>
-        {error && <p className="mt-2 rounded-sm bg-danger-soft px-2.5 py-1.5 text-xs text-danger">{error}</p>}
-        {tracking && (
-          <input
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            onBlur={() => note !== t.note && void bridge.setNote(note)}
-            placeholder="What are you working on? (note)"
-            className="mt-3 h-8 w-full rounded-sm border border-border bg-surface px-2.5 text-sm placeholder:text-text-faint focus:border-interactive focus:outline-none"
-          />
-        )}
-      </section>
-
-      {/* Project / task search */}
-      <section className="flex min-h-0 flex-1 flex-col">
-        <div className="relative px-3 py-2">
-          <Search className="pointer-events-none absolute left-5 top-1/2 size-3.5 -translate-y-1/2 text-text-faint" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search projects and tasks" aria-label="Search projects and tasks" className="h-8 w-full rounded-sm border border-border bg-surface pl-7 pr-2 text-sm focus:border-interactive focus:outline-none" />
-        </div>
-        <ul className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
-          {options.length === 0 && <li className="px-3 py-6 text-center text-sm text-text-muted">{s.assignments.length ? 'No matches' : 'You are not assigned to any project yet.'}</li>}
-          {options.map((a) => (
-            <li key={a.project_id}>
-              <button
-                onClick={() => run(() => bridge.start(a.project_id, null))}
-                className={`flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm hover:bg-surface-muted ${t.projectId === a.project_id && !t.taskId ? 'bg-interactive-soft' : ''}`}
-              >
-                <span className="size-2.5 shrink-0 rounded-full" style={{ background: a.color }} />
-                <span className="min-w-0 flex-1 truncate font-medium">{a.project_name}</span>
-                {a.client_name && <span className="truncate text-2xs text-text-faint">{a.client_name}</span>}
-              </button>
-              {a.tasks.map((x) => (
-                <button
-                  key={x.id}
-                  onClick={() => run(() => bridge.start(a.project_id, x.id))}
-                  className={`flex w-full items-center gap-2 rounded-sm py-1.5 pl-7 pr-2.5 text-left text-sm text-text-muted hover:bg-surface-muted hover:text-text ${t.taskId === x.id ? 'bg-interactive-soft text-text' : ''}`}
-                >
-                  {t.taskId === x.id && tracking ? <span className="size-1.5 rounded-full bg-success" /> : <Play className="size-3 opacity-40" />}
-                  <span className="min-w-0 flex-1 truncate">{x.title}</span>
-                </button>
-              ))}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {s.timesheetDue && (
-        <button
-          onClick={() => void bridge.openWeb(`/o/${s.account!.organizationId}/timesheets?date=${s.timesheetDue!.periodStart}`)}
-          className={`flex items-center gap-2 border-t border-border px-4 py-2 text-left text-xs ${s.timesheetDue.overdue ? 'bg-warning-soft text-warning' : 'bg-interactive-soft text-interactive'}`}
-        >
-          <ClipboardCheck className="size-4 shrink-0" />
-          <span className="min-w-0 flex-1">
-            <span className="font-semibold">{s.timesheetDue.overdue ? 'Timesheet not submitted' : 'Timesheet due today'}</span>
-            <span className="block truncate">
-              {fmtRange(s.timesheetDue.periodStart, s.timesheetDue.periodEnd)} · {fmtHm(s.timesheetDue.totalSeconds)}
-              {s.timesheetDue.status === 'REJECTED' ? ' · changes requested' : ''}
-            </span>
-          </span>
-          <ExternalLink className="size-3.5 shrink-0" />
-        </button>
-      )}
-
-      <footer className="grid grid-cols-3 border-t border-border bg-surface text-center">
-        <div className="px-2 py-2">
-          <div className="text-2xs text-text-muted">Today</div>
-          <div className="tabular text-sm font-semibold">{fmtHm(s.todaySeconds)}</div>
-        </div>
-        <div className="border-x border-border px-2 py-2">
-          <div className="text-2xs text-text-muted">This week</div>
-          <div className="tabular text-sm font-semibold">{fmtHm(s.weekSeconds)}</div>
-        </div>
-        <div className="px-2 py-2">
-          <div className="text-2xs text-text-muted">Activity</div>
-          <div className="tabular text-sm font-semibold">{tracking && s.activityPct !== null ? `${s.activityPct}%` : '—'}</div>
-        </div>
-      </footer>
-    </div>
-  );
-}
-
 function IdleSheet({ s }: { s: AgentState }) {
   const i = s.idlePrompt!;
   const minutes = Math.max(1, Math.round((Date.parse(i.endedAt ?? new Date().toISOString()) - Date.parse(i.startedAt)) / 60000));
   const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   return (
-    <div className="fixed inset-0 flex items-end bg-black/40" role="dialog" aria-modal="true" aria-label="Idle time">
-      <div className="w-full rounded-t-lg bg-surface p-5 shadow-overlay">
+    <div className="fixed inset-0 z-50 flex items-end bg-black/40 sm:items-center sm:justify-center sm:p-6" role="dialog" aria-modal="true" aria-label="Idle time">
+      <div className="w-full rounded-t-lg bg-surface p-5 shadow-overlay sm:max-w-md sm:rounded-lg">
         <h2 className="text-base font-semibold">You were idle for {minutes} minutes</h2>
         <p className="mt-1 text-sm text-text-muted">
           {time(i.startedAt)} – {i.endedAt ? time(i.endedAt) : 'now'} with no keyboard or mouse activity. Keep that time?
@@ -444,7 +238,7 @@ function IdleSheet({ s }: { s: AgentState }) {
 function Recovery({ s }: { s: AgentState }) {
   const r = s.recoveryPrompt!;
   return (
-    <div className="flex h-full flex-col justify-center gap-4 bg-surface p-6">
+    <div className="mx-auto flex h-full max-w-md flex-col justify-center gap-4 bg-surface p-6">
       <h1 className="text-lg font-semibold">Tallywork closed unexpectedly</h1>
       <p className="text-sm text-text-muted">
         Your timer{r.projectName ? ` on ${r.projectName}` : ''} was running. Time until {new Date(r.lastEvidenceAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} is saved; the gap since then is not counted.
@@ -487,12 +281,12 @@ function ManualTime({ s, onBack }: { s: AgentState; onBack: () => void }) {
       setReason('');
       setSaved(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': Error: /, '') : 'Could not save');
+      setError(errorText(e, 'Could not save'));
     }
   };
 
   return (
-    <div className="flex h-full flex-col bg-surface">
+    <div className="flex h-full flex-col bg-surface md:overflow-hidden md:rounded-md md:border md:border-border">
       <header className="flex items-center gap-2 border-b border-border px-4 py-3">
         <button onClick={onBack} aria-label="Back" className="rounded-sm p-1 text-text-muted hover:bg-surface-muted">
           <ChevronLeft className="size-4" />
@@ -577,9 +371,9 @@ function ManualTime({ s, onBack }: { s: AgentState; onBack: () => void }) {
   );
 }
 
-function SettingsView({ s, onBack }: { s: AgentState; onBack: () => void }) {
+function SettingsView({ s, onBack, onMonitoring }: { s: AgentState; onBack: () => void; onMonitoring: () => void }) {
   return (
-    <div className="flex h-full flex-col bg-surface">
+    <div className="flex h-full flex-col bg-surface md:overflow-hidden md:rounded-md md:border md:border-border">
       <header className="flex items-center gap-2 border-b border-border px-4 py-3">
         <button onClick={onBack} aria-label="Back" className="rounded-sm p-1 text-text-muted hover:bg-surface-muted">
           <ChevronLeft className="size-4" />
@@ -598,12 +392,15 @@ function SettingsView({ s, onBack }: { s: AgentState; onBack: () => void }) {
         ].map(([k, v]) => (
           <div key={k} className="py-2.5">
             <dt className="text-xs text-text-muted">{k}</dt>
-            <dd className="break-words">{v}</dd>
+            <dd className="wrap-break-word">{v}</dd>
           </div>
         ))}
       </dl>
       {s.sync.error && <p className="mx-4 mt-2 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">{s.sync.error}</p>}
       <div className="mt-auto flex flex-col gap-2 border-t border-border p-4">
+        <button onClick={onMonitoring} className="flex h-9 items-center justify-center gap-2 rounded-sm border border-border text-sm hover:bg-surface-muted">
+          <Eye className="size-4" /> What is monitored
+        </button>
         <button onClick={() => void bridge.openWeb('/')} className="flex h-9 items-center justify-center gap-2 rounded-sm border border-border text-sm hover:bg-surface-muted">
           <ExternalLink className="size-4" /> Open web dashboard
         </button>

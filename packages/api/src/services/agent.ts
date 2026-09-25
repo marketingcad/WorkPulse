@@ -173,7 +173,7 @@ export async function loadAgentCtx(tx: Tx, deps: Deps, p: { deviceId: string; me
 }
 
 /** The device's worker as a regular tenant actor, for reusing member-facing services with the same rules. */
-async function memberCtx(a: AgentCtx): Promise<Ctx> {
+export async function memberCtx(a: AgentCtx): Promise<Ctx> {
   const principal = { type: 'agent' as const, deviceId: a.deviceId, membershipId: a.membershipId, organizationId: a.organizationId, userId: a.userId };
   return {
     tx: a.tx,

@@ -23,9 +23,10 @@ function rendererUrl(): string {
 
 function createWindow(): BrowserWindow {
   const w = new BrowserWindow({
-    width: 380,
-    height: 640,
-    minWidth: 340,
+    // Opens as a dashboard; the layout collapses to a compact timer when the window is made narrow.
+    width: 1120,
+    height: 760,
+    minWidth: 360,
     minHeight: 560,
     show: false,
     title: 'Tallywork',
@@ -136,6 +137,14 @@ function registerIpc(): void {
     'policy:ack': () => agent.acknowledgePolicy(),
     'recovery:resolve': (p: { resume: boolean }) => agent.resolveRecovery(p.resume),
     'manualTime:request': (p: IpcPayload<'manualTime:request'>) => agent.requestManualTime(p),
+    'me:get': (p: IpcPayload<'me:get'>) => {
+      const q = new URLSearchParams();
+      for (const k of ['from', 'to', 'date'] as const) if (p[k]) q.set(k, p[k]!);
+      return agent.api.request('GET', `/agent/me/${p.resource}${q.size ? `?${q}` : ''}`);
+    },
+    'me:submitTimesheet': (p: IpcPayload<'me:submitTimesheet'>) => agent.api.request('POST', '/agent/me/timesheet/submit', p).then(async (r) => (await agent.refreshBootstrap(), r)),
+    'me:requestTimeOff': (p: IpcPayload<'me:requestTimeOff'>) => agent.api.request('POST', '/agent/me/time-off', p),
+    'me:readNotifications': (p: IpcPayload<'me:readNotifications'>) => agent.api.request('POST', '/agent/me/notifications/read', p),
     'app:openWeb': (p: { path: string }) => shell.openExternal(`${agent.state().serverUrl}${p.path}`),
     'app:quit': () => quit(),
   };

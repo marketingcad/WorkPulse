@@ -1,5 +1,7 @@
 # 9. Electron Desktop Agent Architecture
 
+> **As built (Revision 3, [08-decisions.md](08-decisions.md)):** websites on Windows come from the Tallywork browser extension over a local `127.0.0.1` bridge, falling back to the address bar via UI Automation. There is no Native Messaging host (ADR-120). Screenshots use the current 10-minute block and capture every display (ADR-122). The renderer is the full worker workspace with 10 pages, fed by the device own-data API (ADR-121, ADR-124). The offline queue is an AES-256-GCM encrypted append-only file, not SQLCipher.
+
 ## Process model
 
 ```text

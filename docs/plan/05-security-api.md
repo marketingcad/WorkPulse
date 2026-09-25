@@ -54,6 +54,8 @@ Actions: R read, C create, U update, D delete/archive, X special action (named).
 | Audit log | R O | R T (actions on their team) **P** | R S (access log of own screenshots) | — |
 | Retention / security settings | R U | — | — | — |
 
+> **Amended by ADR-121 ([08-decisions.md](08-decisions.md)):** a device may also read back its bound worker's *own* data through `/api/v1/agent/me/*`, with grants narrowed to `own` scope, never screenshots and never other people. The only writes allowed are submitting a timesheet and requesting time off.
+
 **AGENT constraints (non-negotiable):** the credential is bound to `(organization_id, membership_id, device_id)`. It can read only the bound worker's effective policy and assignments, and it can write only tracking commands and observations for that worker. It has no list endpoints for other workers and cannot read activity back. Revoking the device kills all of its tokens immediately (per-request `devices.status` check, cached 30s in Redis).
 
 ## 12. API Architecture

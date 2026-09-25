@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import type { TrackingPolicy } from '@tallywork/domain';
 
+/** Own-data resources the renderer may read (GET /api/v1/agent/me/<resource>). */
+export const ME_RESOURCES = ['summary', 'sessions', 'timesheet', 'activity', 'tasks', 'schedule', 'time-off', 'notifications'] as const;
+export type MeResource = (typeof ME_RESOURCES)[number];
+
 /**
  * The ONLY messages the renderer may send to the main process.
  * Every payload is validated in main before use (see main/ipc.ts).
@@ -27,6 +31,16 @@ export const IPC = {
     reason: z.string().trim().max(500),
     note: z.string().max(1000).optional(),
   }),
+  /** Own-data reads (the signed-in worker only). The path is built in main from this allowlist. */
+  'me:get': z.object({
+    resource: z.enum(ME_RESOURCES),
+    from: z.iso.date().optional(),
+    to: z.iso.date().optional(),
+    date: z.iso.date().optional(),
+  }),
+  'me:submitTimesheet': z.object({ date: z.iso.date(), version: z.number().int().positive().optional() }),
+  'me:requestTimeOff': z.object({ policy_id: z.uuid(), start_date: z.iso.date(), end_date: z.iso.date(), half_day: z.boolean().optional(), reason: z.string().trim().max(1000).optional() }),
+  'me:readNotifications': z.object({ ids: z.union([z.literal('all'), z.array(z.uuid()).max(200)]) }),
   'app:openWeb': z.object({ path: z.string().max(200).regex(/^\/[\w\-/?=&.]*$/) }),
   'app:quit': z.void(),
 } as const;
@@ -72,6 +86,10 @@ export interface AgentState {
   todaySeconds: number;
   weekSeconds: number;
   activityPct: number | null;
+  /** Per-minute activity % for the last hour of tracking (this computer only), oldest first. */
+  activityRecent: Array<{ minute: string; pct: number }>;
+  /** What is being recorded right now while tracking (app name / website domain, as policy allows). */
+  recordingNow: { app: string | null; domain: string | null } | null;
   idlePrompt: { idleId: string; startedAt: string; endedAt: string | null } | null;
   recoveryPrompt: { sessionId: string; lastEvidenceAt: string; projectName: string } | null;
   sync: { queued: number; lastSyncAt: string | null; online: boolean; error: string | null };

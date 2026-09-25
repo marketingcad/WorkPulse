@@ -656,6 +656,8 @@ export class Agent extends EventEmitter {
       todaySeconds: Math.max(0, Math.round(this.todayBase.seconds + running)),
       weekSeconds: Math.max(0, Math.round(this.weekBase.seconds + running)),
       activityPct: this.activity.lastPct(),
+      activityRecent: this.activity.recent(),
+      recordingNow: s?.state === 'active' ? this.apps.now() : null,
       idlePrompt: this.idle && this.idle.endedAt !== null && this.boot?.policy.idle.behavior !== 'keep' ? { idleId: this.idle.idleId, startedAt: new Date(this.idle.startedAt).toISOString(), endedAt: new Date(this.idle.endedAt).toISOString() } : null,
       recoveryPrompt: this.recovery,
       sync: { queued: this.queue.size, lastSyncAt: this.lastSyncAt, online: this.online, error: this.syncError },

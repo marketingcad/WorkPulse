@@ -1,15 +1,22 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { agentRefreshInput, agentRegisterInput, deviceAuthorizeInput, heartbeatInput, ingestBatchInput, screenshotUploadInput } from '@tallywork/contracts';
+import { agentRefreshInput, agentRegisterInput, deviceAuthorizeInput, heartbeatInput, ingestBatchInput, isoDate, screenshotUploadInput, timeOffRequestInput } from '@tallywork/contracts';
 import { DomainError, forbidden } from '@tallywork/domain';
 import type { AppEnv } from '../context';
-import { body } from '../lib/http';
+import { body, query } from '../lib/http';
 import { rateLimit } from '../middleware/rate-limit';
 import { requireUser, userId } from '../middleware/auth';
 import { runInTenantTx } from '../middleware/tenant';
+import { myActivity, myNotifications, mySchedule, mySessions, mySummary, myTasks, myTimeOff, myTimesheet, readMyNotifications, requestMyTimeOff, submitMyTimesheet } from '../services/agent-me';
 import { acknowledgePolicy, bootstrap, createDeviceAuthCode, heartbeat, ingestBatch, loadAgentCtx, refreshDeviceToken, registerDevice, screenshotKeyPrefix, type AgentCtx } from '../services/agent';
 
 type AgentEnv = AppEnv & { Variables: AppEnv['Variables'] & { agent: AgentCtx } };
+
+const dateQuery = z.object({ date: isoDate.optional() });
+/** A date range of at most ~3 months (the own-data API is for personal views, not exports). */
+const rangeQuery = z
+  .object({ from: isoDate.optional(), to: isoDate.optional() })
+  .refine((q) => !q.from || !q.to || (q.from <= q.to && Date.parse(q.to) - Date.parse(q.from) <= 93 * 86_400_000), { message: 'Use a range of up to 93 days' });
 
 const MAX_SCREENSHOT_BYTES = 8 * 1024 * 1024;
 
@@ -47,6 +54,22 @@ agentOnly
     const thumb = await a.deps.storage.createUploadToken(`${key}.thumb`, i.content_type, 512 * 1024);
     const apiUrl = (k: string) => `/api/v1/agent/screenshots/upload?key=${encodeURIComponent(k)}`;
     return c.json({ storage_key: key, thumb_key: `${key}.thumb`, method: up.method, token: up.token, thumb_token: thumb.token, upload_url: up.method === 'api' ? apiUrl(key) : (up.url ?? null), thumb_upload_url: thumb.method === 'api' ? apiUrl(`${key}.thumb`) : (thumb.url ?? null) });
+  })
+  // ── Own data (the device's bound worker only; see services/agent-me.ts) ──
+  .get('/me/summary', rateLimit('agent-me', 240, 60), async (c) => c.json(await mySummary(c.var.agent, query(c, rangeQuery))))
+  .get('/me/sessions', rateLimit('agent-me', 240, 60), async (c) => c.json(await mySessions(c.var.agent, query(c, rangeQuery))))
+  .get('/me/timesheet', rateLimit('agent-me', 240, 60), async (c) => c.json(await myTimesheet(c.var.agent, query(c, dateQuery).date)))
+  .post('/me/timesheet/submit', rateLimit('agent-me-write', 30, 60), async (c) => c.json(await submitMyTimesheet(c.var.agent, await body(c, z.object({ date: isoDate, version: z.number().int().positive().optional() })))))
+  .get('/me/activity', rateLimit('agent-me', 240, 60), async (c) => c.json(await myActivity(c.var.agent, query(c, dateQuery).date)))
+  .get('/me/tasks', rateLimit('agent-me', 240, 60), async (c) => c.json(await myTasks(c.var.agent)))
+  .get('/me/schedule', rateLimit('agent-me', 240, 60), async (c) => c.json(await mySchedule(c.var.agent, query(c, rangeQuery))))
+  .get('/me/time-off', rateLimit('agent-me', 240, 60), async (c) => c.json(await myTimeOff(c.var.agent)))
+  .post('/me/time-off', rateLimit('agent-me-write', 30, 60), async (c) => c.json(await requestMyTimeOff(c.var.agent, await body(c, timeOffRequestInput)), 201))
+  .get('/me/notifications', rateLimit('agent-me', 240, 60), async (c) => c.json(await myNotifications(c.var.agent)))
+  .post('/me/notifications/read', rateLimit('agent-me-write', 60, 60), async (c) => {
+    const { ids } = await body(c, z.object({ ids: z.union([z.literal('all'), z.array(z.uuid()).max(200)]) }));
+    await readMyNotifications(c.var.agent, ids);
+    return c.body(null, 204);
   })
   /** Fallback upload path (local dev without Blob). */
   .put('/screenshots/upload', async (c) => {

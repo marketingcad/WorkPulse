@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AgentState, IpcChannel } from '../shared/ipc';
+import type { AgentState, IpcChannel, MeResource } from '../shared/ipc';
 
 /**
  * Minimal, typed bridge. No generic invoke, no ipcRenderer, no Node APIs are
@@ -27,6 +27,11 @@ const api = {
   acknowledgePolicy: () => call('policy:ack'),
   resolveRecovery: (resume: boolean) => call('recovery:resolve', { resume }),
   requestManualTime: (r: { projectId: string; taskId: string | null; startedAt: string; endedAt: string; reason: string; note?: string }) => call('manualTime:request', r),
+  /** The signed-in worker's own data (read-only). */
+  me: <T>(resource: MeResource, params: { from?: string; to?: string; date?: string } = {}): Promise<T> => call('me:get', { resource, ...params }),
+  submitTimesheet: (date: string, version?: number) => call('me:submitTimesheet', { date, version }),
+  requestTimeOff: (r: { policy_id: string; start_date: string; end_date: string; half_day?: boolean; reason?: string }) => call('me:requestTimeOff', r),
+  readNotifications: (ids: string[] | 'all') => call('me:readNotifications', { ids }),
   openWeb: (path: string) => call('app:openWeb', { path }),
   quit: () => call('app:quit'),
 };

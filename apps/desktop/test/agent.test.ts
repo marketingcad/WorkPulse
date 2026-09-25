@@ -41,6 +41,35 @@ describe('activity minutes', () => {
     vi.useRealTimers();
   });
 
+  it('keeps the last hour of activity % for the worker even after the sync queue drains the buckets', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-25T09:00:00Z'));
+    const m = new ActivityMonitor();
+    m.start();
+    const mark = (m as unknown as { mark(): void }).mark.bind(m);
+    // 70 minutes; input in the first 30 seconds of each minute → 50% activity.
+    for (let min = 0; min < 70; min++) {
+      for (let sec = 0; sec < 30; sec++) {
+        mark();
+        vi.advanceTimersByTime(1000);
+      }
+      vi.advanceTimersByTime(30_000);
+    }
+    m.drain(); // what a sync does
+    expect(m.lastPct()).toBe(50);
+    const recent = m.recent();
+    expect(recent).toHaveLength(60);
+    expect(recent[0]!.minute).toBe('2026-09-25T09:10:00.000Z');
+    expect(new Set(recent.map((r) => r.minute)).size).toBe(60);
+    // A pause/resume inside a minute closes it twice: still one entry for that minute.
+    m.stop();
+    m.start();
+    m.stop();
+    const after = m.recent();
+    expect(new Set(after.map((r) => r.minute)).size).toBe(after.length);
+    vi.useRealTimers();
+  });
+
   it('closes every skipped minute when the roll timer fires late, with no gaps or overlaps', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-25T09:00:10Z'));
@@ -100,6 +129,13 @@ describe('IPC contract', () => {
     expect(IPC['app:openWeb'].safeParse({ path: 'https://evil.test' }).success).toBe(false);
     expect(IPC['app:openWeb'].safeParse({ path: '/o/123/activity' }).success).toBe(true);
     expect(IPC['auth:login'].safeParse({ serverUrl: 'javascript:alert(1)' }).success).toBe(false);
+    // Own-data reads: only allowlisted resources, only real dates (the path is built in main).
+    expect(IPC['me:get'].safeParse({ resource: 'timesheet', date: '2026-09-25' }).success).toBe(true);
+    expect(IPC['me:get'].safeParse({ resource: '../orgs/x/workers' }).success).toBe(false);
+    expect(IPC['me:get'].safeParse({ resource: 'screenshots' }).success).toBe(false);
+    expect(IPC['me:get'].safeParse({ resource: 'sessions', from: '2026-09-25&membership_id=x' }).success).toBe(false);
+    expect(IPC['me:readNotifications'].safeParse({ ids: ['nope'] }).success).toBe(false);
+    expect(IPC['me:requestTimeOff'].safeParse({ policy_id: 'x', start_date: '2026-10-01', end_date: '2026-10-01' }).success).toBe(false);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { AgentState } from '../shared/ipc';
+import type { AgentState, MeResource } from '../shared/ipc';
 
 declare global {
   interface Window {
@@ -18,6 +18,10 @@ declare global {
       resolveRecovery(resume: boolean): Promise<void>;
       takeBreak(breakTypeId: string | null): Promise<void>;
       requestManualTime(r: { projectId: string; taskId: string | null; startedAt: string; endedAt: string; reason: string; note?: string }): Promise<void>;
+      me<T>(resource: MeResource, params?: { from?: string; to?: string; date?: string }): Promise<T>;
+      submitTimesheet(date: string, version?: number): Promise<unknown>;
+      requestTimeOff(r: { policy_id: string; start_date: string; end_date: string; half_day?: boolean; reason?: string }): Promise<unknown>;
+      readNotifications(ids: string[] | 'all'): Promise<void>;
       openWeb(path: string): Promise<void>;
       quit(): Promise<void>;
     };

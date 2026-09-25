@@ -26,6 +26,8 @@ export class ActivityMonitor {
   private minuteStart = 0;
   private trackedFrom = 0;
   private readonly minutes: MinuteBucket[] = [];
+  /** Activity % of recent closed minutes, kept for the worker's own chart (never synced; the queue has the buckets). */
+  private readonly history: Array<{ minute: string; pct: number }> = [];
   private timer: NodeJS.Timeout | null = null;
   lastInputAt = Date.now();
   available = false;
@@ -93,13 +95,20 @@ export class ActivityMonitor {
     if (tracked > 0) {
       const lo = Math.floor(this.minuteStart / 1000);
       const active = [...this.activeSecs].filter((s) => s >= lo && s < lo + 60).length;
-      this.minutes.push({
+      const bucket = {
         minute_start: new Date(this.minuteStart).toISOString(),
         keyboard: this.kb,
         mouse: this.mouse,
         active_seconds: Math.min(active, tracked),
         tracked_seconds: tracked,
-      });
+      };
+      this.minutes.push(bucket);
+      const last = this.history[this.history.length - 1];
+      const entry = { minute: bucket.minute_start, pct: Math.round((bucket.active_seconds / tracked) * 100) };
+      // A minute split by pause/resume closes twice; keep one (the latest) entry per minute.
+      if (last?.minute === entry.minute) this.history[this.history.length - 1] = entry;
+      else this.history.push(entry);
+      if (this.history.length > HISTORY_MINUTES) this.history.splice(0, this.history.length - HISTORY_MINUTES);
     }
     this.kb = 0;
     this.mouse = 0;
@@ -130,11 +139,18 @@ export class ActivityMonitor {
     return this.minutes.splice(0, this.minutes.length);
   }
 
+  /** Activity % of the most recent closed minute (survives the sync queue draining the buckets). */
   lastPct(): number | null {
-    const m = this.minutes[this.minutes.length - 1];
-    return m && m.tracked_seconds ? Math.round((m.active_seconds / m.tracked_seconds) * 100) : null;
+    return this.history[this.history.length - 1]?.pct ?? null;
+  }
+
+  /** The last hour of per-minute activity %, oldest first. */
+  recent(): Array<{ minute: string; pct: number }> {
+    return this.history.slice();
   }
 }
+
+const HISTORY_MINUTES = 60;
 
 // ─── Apps & URLs ─────────────────────────────────────────────────────────────
 export interface AppSpan {
@@ -248,6 +264,14 @@ export class AppTracker {
       this.close(now);
       this.current = { app, appId, domain: trimmed?.domain ?? null, url: trimmed?.url ?? null, since: now };
     }
+  }
+
+  /** What is being recorded right now (already reduced by policy): shown to the worker for transparency. */
+  now(): { app: string | null; domain: string | null } | null {
+    const c = this.current;
+    const p = this.policy();
+    if (!this.timer || !c || !p) return null;
+    return { app: p.apps.enabled ? c.app : null, domain: p.urls.enabled ? c.domain : null };
   }
 
   drain(): { apps: AppSpan[]; urls: UrlSpan[] } {

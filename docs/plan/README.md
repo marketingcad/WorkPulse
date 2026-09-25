@@ -3,7 +3,7 @@
 > **Status:** Phase 0/1 planning. No application code exists yet.
 > **Working name:** "Tallywork" is a placeholder product name. Replace it globally before any branding work.
 > **Date:** 2026-09-25
-> **Superseded infrastructure:** the app is built and hosted differently from what this plan first proposed. **Revision 1** (Vercel, with Hono inside Next.js) and **Revision 2** (Supabase Postgres + Supabase Storage) in [08-decisions.md](08-decisions.md) replace the NestJS / Redis / BullMQ / S3 / RDS choices below. The root [README](../../README.md) describes the system as built.
+> **Superseded infrastructure:** the app is built and hosted differently from what this plan first proposed. **Revision 1** (Vercel, with Hono inside Next.js) and **Revision 2** (Supabase Postgres + Supabase Storage) in [08-decisions.md](08-decisions.md) replace the NestJS / Redis / BullMQ / S3 / RDS choices below. **Revision 3** covers the worker desktop app, website capture on Windows (browser extension), the device own-data API and the screenshot schedule. The root [README](../../README.md) describes the system as built.
 
 This plan answers the 20 required sections of the master brief. It is split by concern so each part can later become the living `/docs/*.md` file the brief asks for.
 

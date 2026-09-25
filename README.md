@@ -7,13 +7,14 @@ The main flow the product covers is **Organization → People → Work structure
 - **Identity & orgs:** sign-up, login, email verification, password reset, invitations, multi-org membership, built-in and custom roles.
 - **Workforce:** workers, teams, clients, projects, tasks, devices.
 - **Time tracking:** a server-side session state machine; a web timer and a desktop timer; idle detection; pause/resume; daily and weekly limits.
-- **Activity monitoring (desktop, set by policy):** keyboard and mouse *counts* (keystrokes are never recorded), 10-minute activity blocks, screenshots (optionally blurred), app and URL usage.
+- **Activity monitoring (desktop, set by policy):** keyboard and mouse *counts* (keystrokes are never recorded), 10-minute activity blocks, screenshots of every display (optionally blurred), app usage, and website usage (macOS natively; Windows through the Tallywork browser extension or the address bar).
+- **Worker desktop app:** Home dashboard (timer, current session, recent sessions, today's summary with idle time, live activity), plus Time Tracking, Projects, Tasks, Timesheet (with submit), Activity, personal Reports, Time Off (with requests), Schedule and Settings. It reads only the signed-in worker's own data.
 - **Timesheets:** manual time requests, time edits with full revision history, periods, and submit → approve / reject / request changes.
 - **Operations:** schedules, shifts, attendance, holidays, time-off policies with accruals, a balance ledger, and requests.
 - **Finance:** effective-dated pay and bill rates, billing entries, budgets, expenses with receipts, invoices (PDF), payments.
 - **Insight & platform:** dashboards, reports with CSV/XLSX/PDF export, notifications, API keys, signed webhooks, audit log, retention policies.
 
-> The original product and architecture plan is in [docs/plan/](docs/plan/README.md). Parts of it are superseded by **Revision 1 — Vercel-only hosting** and **Revision 2 — Supabase for database and file storage** in [08-decisions.md](docs/plan/08-decisions.md). This README describes the system **as it is built**.
+> The original product and architecture plan is in [docs/plan/](docs/plan/README.md). Parts of it are superseded by **Revision 1 — Vercel-only hosting**, **Revision 2 — Supabase for database and file storage** and **Revision 3 — worker desktop app, website capture, screenshots** in [08-decisions.md](docs/plan/08-decisions.md). This README describes the system **as it is built**.
 
 ---
 
@@ -48,7 +49,8 @@ The main flow the product covers is **Organization → People → Work structure
 | Background work | Transactional **outbox** + Next.js `after()` dispatch + **Vercel Cron** (every minute and daily) |
 | Password hashing | **Argon2** (`@node-rs/argon2`) |
 | Documents | `pdf-lib` (invoices / PDF exports), `exceljs` (XLSX exports) |
-| Desktop agent | **Electron 44**, electron-vite, React 19, `uiohook-napi` (input counts), `get-windows` (active app), `desktopCapturer` (screenshots), `safeStorage` + AES-256-GCM (encrypted storage), `electron-updater` |
+| Desktop agent | **Electron 44**, electron-vite, React 19, `uiohook-napi` (input counts), `get-windows` (active app; Windows needs its native binary, see `onlyBuiltDependencies`), `desktopCapturer` (screenshots), Windows UI Automation via PowerShell (address-bar fallback), `safeStorage` + AES-256-GCM (encrypted storage), `electron-updater` |
+| Browser extension | Chrome / Edge / Brave **Manifest V3** extension (`apps/extension`, plain JavaScript, no build) that reports the active tab to the desktop agent over a local `127.0.0.1` bridge |
 | Testing | **Vitest 5** (domain, db/RLS, API flows and security, desktop agent) |
 | Hosting | **Vercel** (Fluid Compute, Node 24) |
 | CI | GitHub Actions (typecheck, test, build; desktop builds on Windows / macOS / Linux) |
@@ -72,10 +74,13 @@ tallywork/
 │   └── desktop/                Electron desktop agent
 │       └── src/
 │           ├── main/           privileged process: Agent core + services
-│           │   └── services/   agent, api, auth (PKCE), monitors, queue (offline), secure-store
+│           │   └── services/   agent, api, auth (PKCE), monitors, queue (offline), secure-store,
+│           │                   urls (browser-extension bridge + address-bar fallback)
 │           ├── preload/        typed, minimal contextBridge API
-│           ├── renderer/       sandboxed React UI (timer, project/task picker, status)
-│           └── shared/ipc.ts   IPC contract shared by main + renderer
+│           ├── renderer/       sandboxed React UI: Shell (top bar + navigation), Dashboard (Home),
+│           │                   HomeCards, Pages (Time Tracking … Schedule), lib (hooks, formatting)
+│           └── shared/ipc.ts   IPC contract shared by main + renderer (zod-validated in main)
+│   └── extension/              browser extension (Manifest V3): active tab → desktop agent
 ├── packages/
 │   ├── domain/                 pure business logic: session state machine, time math, policies,
 │   │                           permissions, billing, workforce rules, IDs (UUIDv7), errors
@@ -287,6 +292,15 @@ sequenceDiagram
 
 If the network drops, events keep accumulating in the encrypted queue and are replayed once connectivity returns. The server reconciles them against its own state, so no tracked time is lost. After every sync the agent adopts the server's version of the session state.
 
+**Screenshot schedule.** Captures follow the clock's 10-minute blocks (:00–:10, :10–:20, …), the same blocks shown on the Activity page. With *N per 10 minutes*, each block is split into N equal parts and one capture lands at a random moment in each part. A session that starts mid-block still gets captures in the rest of that block. Every capture photographs **all displays** at the same moment, and the Activity page shows them side by side (Screen 1, Screen 2, …). A block with only a minute or two of tracking can miss its capture if the timer stops before the random moment. Failures are logged by the agent as `[screenshots] capture skipped: <reason>`.
+
+**Website (URL) capture.** macOS exposes the active tab's URL to the agent directly. On Windows the agent asks, in order:
+
+1. **The Tallywork browser extension** ([apps/extension](apps/extension/README.md)) for the foreground browser. It reports the active tab to the agent over `http://127.0.0.1:47816–47818`. The agent only accepts requests whose `Origin` is the extension's fixed ID and whose `Host` is loopback. When the extension says the focused window is one it cannot see (incognito, DevTools), **nothing is recorded** and there is no fallback.
+2. **The address bar**, read through Windows UI Automation by a small PowerShell helper, when the extension is not installed. It skips while the address bar has keyboard focus, so typed text is never recorded as a visit.
+
+Either way, *Domain only*, excluded domains and http/https-only are applied on the device before anything is stored, and nothing is recorded unless a timer is running.
+
 ### 5. From tracked time to money
 
 ```mermaid
@@ -330,6 +344,18 @@ All events can also be delivered to customer **webhooks**. Deliveries are HMAC-s
 | `runDaily` | `/api/v1/cron/daily` — 03:15 UTC | Retention cleanup (screenshots, activity, app / URL data, audit, …), time-off accruals, overdue invoices, housekeeping |
 
 Both cron endpoints require `Authorization: Bearer $CRON_SECRET`.
+
+### 7. The worker desktop app
+
+The desktop app is the worker's whole workspace, not only a timer. It opens as a dashboard (1120×760) and collapses to a compact single column when the window is narrow. There is a side rail from 1024px wide, and a slide-in menu below that.
+
+| Area | Contents |
+|---|---|
+| **Top bar** | online/offline, sync status, screenshots on/off, notifications (unread count, mark read), profile menu |
+| **Home** | current project and task, large timer, Pause / Break / Stop, activity ring, today and week totals · current session · recent sessions · today's summary (tracked, active, **idle**, activity %, limits, shift) · live activity for the last hour and what is being recorded right now |
+| **Pages** | Time Tracking (sessions by day, manual time) · Projects · Tasks · Timesheet (period grid, **submit**) · Activity (own 10-minute blocks, apps, websites; screenshots stay on the web) · Reports (personal only) · Time Off (balances, requests, **request**) · Schedule · Settings |
+
+The data comes from the **device own-data API** (`/api/v1/agent/me/*`, see [Security model](#security-model)). The window asks the main process through one IPC channel with a fixed list of resources. Main builds the API path itself, so the token never reaches the window.
 
 ---
 
@@ -688,7 +714,9 @@ erDiagram
   3. session cookie (`tw_session`, **user**)
 - **Authorization:** a permission is `resource:action` plus a **scope** (`own`, `assigned`, `team`, `org`). Roles are data (`roles`, `role_permissions`). The built-in presets are `SYSTEM_ADMIN`, `TEAM_MANAGER`, `WORKER` and `AGENT`. For list endpoints the evaluator returns a query filter, so single reads, lists, reports and exports all follow the same rule. See [packages/domain/src/permissions.ts](packages/domain/src/permissions.ts) and the full matrix in [docs/plan/05-security-api.md](docs/plan/05-security-api.md).
 - **Checks in layers:** route guard (`requirePermission`) → service-level scope check → PostgreSQL RLS (`app.org_id` set per transaction via `withTenant`). Cross-tenant system jobs must explicitly use `withSystem`.
-- **Agent constraints:** a device credential is bound to `(organization, membership, device)`. It can only read that worker's effective policy and assignments, and only write that worker's tracking data. Revoking the device kills its tokens. Refresh tokens rotate within a family.
+- **Agent constraints:** a device credential is bound to `(organization, membership, device)`. It writes only that worker's tracking data. Revoking the device kills its tokens and access immediately (checked on every request). Refresh tokens rotate within a family.
+- **Device own-data API (`/agent/me/*`):** the desktop app may read back **only its bound worker's own data** (sessions, timesheet, activity summary, tasks, schedule, time off, notifications, personal totals). It goes through the web app's own services, with the worker's grants narrowed to an allowlist at `own` scope (`projects:read` / `tasks:read`: `assigned`). **Screenshots are never returned to a device**; a team manager's or admin's device is just as narrow as a worker's. The only writes are submitting a timesheet, requesting time off and marking notifications read. Ranges are capped at 93 days, and reads and writes are rate-limited. See [agent-me.ts](packages/api/src/services/agent-me.ts) and ADR-121 in [08-decisions.md](docs/plan/08-decisions.md).
+- **Browser extension bridge:** local-only (`127.0.0.1`), accepts only the extension's fixed ID as `Origin` and a loopback `Host` (defeats web pages and DNS rebinding), and never sees incognito windows.
 - **Secrets:** passwords are hashed with Argon2. Session tokens, API keys and refresh tokens are stored only as hashes. MFA and webhook secrets are encrypted with a key derived from `APP_SECRET`.
 - **Media:** screenshots are private blobs. They are served only through `/api/v1/media/:token`, a short-lived HMAC-signed URL issued after authorization.
 - **Hardening:** secure headers (HSTS, frame-deny, nosniff, strict referrer, permissions policy), `Cache-Control: no-store` by default, rate limits (login, agent register/token, ingest, heartbeat; stored in Postgres), SSRF protection on webhook URLs, and an audit log with request ids.
@@ -706,6 +734,7 @@ Base path: **`/api/v1`**. JSON in and out. Errors use `application/problem+json`
 | Auth (`/auth`) | `signup`, `login`, `logout`, `password/forgot`, `password/reset`, `password/change`, `verify-email`, `invitations/accept` |
 | Me (`/me`) | `GET /me`, `POST /me/organizations` |
 | Agent (`/agent`) | `authorize`, `register`, `token`, `bootstrap`, `policy/ack`, `ingest/batch`, `heartbeat`, `screenshots/upload-intent`, `screenshots/upload` |
+| Agent own data (`/agent/me`) | `summary`, `sessions`, `timesheet` (+ `submit`), `activity`, `tasks`, `schedule`, `time-off` (+ request), `notifications` (+ `read`). Device token only; bound worker only |
 | Organization | org settings, `roles`, `workers`, `invitations`, `teams`, `clients`, `projects`, `tasks`, `me/assignments`, `policies/:scope`, `devices` |
 | Tracking & time | `tracking/{current,start,stop,pause,resume,switch,note,live}`, `sessions`, `time-entries`, `manual-time`, `timesheets` (+ `submit`, `approvals`, `bulk-approve`), `activity/day`, `screenshots`, `idle-events` |
 | Operations | `schedules`, `shifts`, `attendance`, `holidays`, `time-off/{policies,balances,requests}` |
@@ -750,6 +779,13 @@ pnpm --filter @tallywork/desktop dev
 ```
 
 In development the agent talks to `http://localhost:3000`. Set `TALLYWORK_SERVER` to point it somewhere else. Click **Sign in**: your browser opens the device-authorization page, and once you approve, the agent is registered.
+
+> **`The requested module 'electron' does not provide an export named 'BrowserWindow'`** means `ELECTRON_RUN_AS_NODE=1` is set in your terminal. VS Code and tools inside it set this, and it makes Electron run as plain Node. Start the app without it:
+> `env -u ELECTRON_RUN_AS_NODE pnpm --filter @tallywork/desktop dev` (bash) or `Remove-Item Env:ELECTRON_RUN_AS_NODE; pnpm --filter @tallywork/desktop dev` (PowerShell).
+
+The app is single-instance: if an older copy is still running in the system tray, a new launch just focuses it. Quit the tray copy first when you want new main-process code.
+
+**Browser extension (Windows website tracking):** open `chrome://extensions` (or `edge://extensions`) → turn on **Developer mode** → **Load unpacked** → choose `apps/extension`. Its popup shows whether the desktop app is connected and whether websites are being recorded. Without it, the agent falls back to reading the address bar.
 
 ### Use Supabase (database + file storage)
 
@@ -835,6 +871,7 @@ Run from the repo root unless noted.
 |---|---|
 | `TALLYWORK_SERVER` | API server URL (default `http://localhost:3000` in dev, the production URL when packaged) |
 | `TALLYWORK_UPDATE_URL` | Auto-update feed URL (packaged builds only) |
+| `TALLYWORK_EXTENSION_IDS` | Extra browser-extension IDs the local bridge accepts (comma-separated), e.g. the Chrome Web Store ID once published. The unpacked extension's ID is built in |
 | `CSC_LINK`, `CSC_KEY_PASSWORD` | Code-signing certificate for Windows / macOS installers |
 | `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | macOS notarization |
 
@@ -852,7 +889,10 @@ Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgre
 | [packages/api/test/tracking.test.ts](packages/api/test/tracking.test.ts) | Session engine, idle handling, agent ingest, offline replay |
 | [packages/api/test/security.test.ts](packages/api/test/security.test.ts) | Authorization by role and scope, tenant isolation, token handling |
 | [packages/api/test/seed.test.ts](packages/api/test/seed.test.ts) | Demo seeder runs cleanly |
-| [apps/desktop/test](apps/desktop/test/) | Agent core logic (queue, sync, local state) |
+| [packages/api/test/agent-me.test.ts](packages/api/test/agent-me.test.ts) | Device own-data API: only the bound worker, never screenshots, managers narrowed to own, revoked devices refused |
+| [packages/api/test/storage.test.ts](packages/api/test/storage.test.ts) | Supabase Storage adapter: bucket setup, upload, signed upload URLs, delete batching, error handling |
+| [apps/desktop/test/agent.test.ts](apps/desktop/test/agent.test.ts) | Agent core: privacy contract, activity minutes and history, screenshot schedule, IPC contract, manual time |
+| [apps/desktop/test/urls.test.ts](apps/desktop/test/urls.test.ts) | URL capture: browser detection, address-bar parsing, extension bridge access control (live HTTP), source selection, domain-only trimming |
 
 **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every push to `main` and on every PR:
 

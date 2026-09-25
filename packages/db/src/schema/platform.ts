@@ -65,7 +65,7 @@ export const reportRuns = pgTable(
     organizationId: orgId(),
     membershipId: uuid().notNull(),
     reportKey: text().notNull(),
-    format: text().$type<'CSV' | 'XLSX' | 'PDF'>().notNull(),
+    format: text().$type<'CSV' | 'XLSX' | 'PDF' | 'JSON'>().notNull(),
     /** set for runs started by a schedule; the saved report holds the recipients */
     savedReportId: uuid(),
     params: jsonb().$type<Record<string, unknown>>().notNull(),
@@ -173,6 +173,9 @@ export const retentionPolicies = pgTable(
       .$type<'SCREENSHOTS' | 'ACTIVITY' | 'APPS' | 'URLS' | 'SESSIONS' | 'TIMESHEETS' | 'INVOICES' | 'AUDIT' | 'LOCATION'>()
       .notNull(),
     keepDays: integer().notNull(),
+    /** a shorter keep period waits 7 days before it takes effect, so an accidental change can be undone */
+    pendingKeepDays: integer(),
+    pendingFrom: tstz(),
     updatedAt: tstz().notNull().default(sql`now()`),
   },
   (t) => [primaryKey({ columns: [t.organizationId, t.dataClass] })],

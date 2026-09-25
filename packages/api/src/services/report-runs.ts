@@ -11,9 +11,11 @@ import type { Ctx } from './ctx';
 import { audit } from './events';
 import { notify } from './notify';
 import { REPORTS, runReport, type ReportParams } from './reports';
+import { DATA_EXPORT_KEY, collectMemberData } from './privacy';
 
 export type ExportFormat = 'CSV' | 'XLSX' | 'PDF';
-const EXT: Record<ExportFormat, { ext: string; type: string }> = {
+const EXT: Record<ExportFormat | 'JSON', { ext: string; type: string }> = {
+  JSON: { ext: 'json', type: 'application/json' },
   CSV: { ext: 'csv', type: 'text/csv; charset=utf-8' },
   XLSX: { ext: 'xlsx', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
   PDF: { ext: 'pdf', type: 'application/pdf' },
@@ -56,7 +58,7 @@ function assertReport(x: Pick<Ctx, 'actor'>, key: string) {
 
 type RunRow = typeof reportRuns.$inferSelect;
 function runDto(deps: Deps, r: RunRow, file: { storageKey: string } | null) {
-  const name = `${r.reportKey}_${(r.params as { from?: string }).from ?? ''}_${(r.params as { to?: string }).to ?? ''}.${EXT[r.format].ext}`;
+  const name = r.reportKey === DATA_EXPORT_KEY ? `personal-data_${r.createdAt.toISOString().slice(0, 10)}.json` : `${r.reportKey}_${(r.params as { from?: string }).from ?? ''}_${(r.params as { to?: string }).to ?? ''}.${EXT[r.format].ext}`;
   return {
     id: r.id,
     report_key: r.reportKey,
@@ -118,6 +120,7 @@ async function memberCtx(tx: Tx, deps: Deps, organizationId: string, membershipI
 
 async function executeRun(tx: Tx, deps: Deps, run: RunRow) {
   const x = await memberCtx(tx, deps, run.organizationId, run.membershipId);
+  if (run.reportKey === DATA_EXPORT_KEY) return executeDataExport(x, run);
   const params = run.params as ReportParams;
   const result = await runReport(x, run.reportKey, params);
   const fmt = EXT[run.format];
@@ -138,6 +141,21 @@ async function executeRun(tx: Tx, deps: Deps, run: RunRow) {
     }
   }
   await notify(tx, deps, run.organizationId, [run.membershipId], { type: 'report.ready', title: `${result.title} export is ready`, body: `${params.from} – ${params.to}, ${result.rows.length} rows`, link: `/reports?runs=1`, payload: { run_id: run.id } });
+}
+
+/** A personal data export (access request), checked again at run time against the requester's rights. */
+async function executeDataExport(x: Ctx, run: RunRow) {
+  const subject = (run.params as { membership_id: string }).membership_id;
+  if (subject !== x.actor.membershipId && !x.actor.grants['members:manage']) throw forbidden();
+  const data = await collectMemberData(x.tx, subject);
+  const storageKey = `org/${run.organizationId}/exports/${run.id}.json`;
+  const body = Buffer.from(JSON.stringify(data, null, 2));
+  await x.deps.storage.put(storageKey, body, 'application/json');
+  const fileId = newId();
+  await x.tx.insert(fileObjects).values({ id: fileId, organizationId: run.organizationId, purpose: 'EXPORT', storageKey, contentType: 'application/json', bytes: body.length, uploadedBy: run.membershipId });
+  await x.tx.update(reportRuns).set({ status: 'DONE', fileId, rowCount: data.time_entries.length, finishedAt: x.deps.now() }).where(eq(reportRuns.id, run.id));
+  await audit(x, { action: 'privacy.export_completed', targetType: 'membership', targetId: subject, metadata: { run_id: run.id, bytes: body.length } });
+  await notify(x.tx, x.deps, run.organizationId, [run.membershipId], { type: 'report.ready', title: 'Personal data export is ready', body: data.account?.name ?? '', link: '/reports?runs=1', payload: { run_id: run.id } });
 }
 
 /** Only active members of the organization receive scheduled reports (no external addresses). */

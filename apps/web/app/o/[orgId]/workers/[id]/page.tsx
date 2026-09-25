@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { Activity, ArrowRight, Check, Clock, Lock, Pencil, UserX, X } from 'lucide-react';
+import { Activity, ArrowRight, Check, Clock, Eraser, Lock, Pencil, UserX, X } from 'lucide-react';
 import type { DeviceDto, EffectivePolicyDto, ProjectDto, TeamDto, TimeEntryDto, WorkerDto } from '@tallywork/contracts';
 import {
   Avatar,
@@ -33,6 +33,8 @@ import {
 import { ApiError, errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
 import { ColorDot, ProjectStatusBadge, hoursToSeconds, secondsToHours, useOrgAction, type RoleDto } from '@/components/workspace/shared';
+import { AnonymizeDialog } from '@/components/security/anonymize-dialog';
+import { DataExportAction } from '@/components/security/data-export';
 
 export default function WorkerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -109,6 +111,7 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
   const rolesQ = useOrgQuery<RoleDto[]>(admin ? '/roles' : null);
   const [editing, setEditing] = useState(false);
   const [confirm, setConfirm] = useState<'suspend' | 'remove' | null>(null);
+  const [erasing, setErasing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const act = async (kind: 'suspend' | 'restore' | 'remove') => {
@@ -216,7 +219,44 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
             )}
           </Panel>
         )}
+
+        {(admin || isSelf) && (
+          <Panel title="Personal data">
+            <div className="flex flex-col gap-3 p-4">
+              <p className="text-sm text-text-muted">{isSelf ? 'Download everything this organization holds about you as a JSON file.' : 'Answer an access request: a JSON file with everything held about this member.'}</p>
+              <DataExportAction membershipId={w.id} label={isSelf ? 'Export my data' : 'Export their data'} />
+              {admin && !isSelf && (
+                <div className="flex flex-col gap-2 border-t border-border pt-3">
+                  {w.is_owner ? (
+                    <p className="flex items-start gap-2 text-sm text-text-muted">
+                      <Lock className="mt-0.5 size-3.5 shrink-0" />
+                      The owner’s data cannot be erased. Transfer ownership first.
+                    </p>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-text-muted">Erasure request: remove them and delete their monitoring data. Time and billing records are kept.</p>
+                      <Button size="sm" variant="danger" icon={<Eraser className="size-3.5" />} onClick={() => setErasing(true)}>
+                        Erase
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </Panel>
+        )}
       </div>
+
+      <AnonymizeDialog
+        open={erasing}
+        onOpenChange={setErasing}
+        member={w}
+        onDone={(r) => {
+          setErasing(false);
+          toast.success(r.account_anonymized ? `${w.name}’s data was erased and their account anonymized` : `${w.name}’s data in this organization was erased`);
+          router.push(`${org.base}/workers`);
+        }}
+      />
 
       <ConfirmDialog
         open={confirm !== null}

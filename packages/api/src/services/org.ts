@@ -10,9 +10,10 @@ import {
   users,
   workerProfiles,
 } from '@tallywork/db';
-import { businessRule, can, conflict, forbidden, newId, notFound, type Grants } from '@tallywork/domain';
+import { businessRule, can, conflict, forbidden, newId, notFound, validation, type Grants } from '@tallywork/domain';
 import type { OrgContextDto, WorkerDto, inviteInput, roleInput, updateOrgInput, updateWorkerInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
+import { ipAllowed, parseCidr } from '../lib/cidr';
 import { audit } from './events';
 import { membershipFilter } from './scope';
 import { randomToken, sha256 } from '../lib/crypto';
@@ -56,7 +57,21 @@ export async function updateOrg(x: Ctx, input: z.infer<typeof updateOrgInput>) {
   if (input.week_start !== undefined) patch.weekStart = input.week_start;
   if (input.currency !== undefined) patch.currency = input.currency;
   if (input.pay_period !== undefined) patch.payPeriod = input.pay_period;
-  if (input.settings !== undefined) patch.settings = { ...before!.settings, ...input.settings };
+  if (input.settings !== undefined) {
+    const security = (['enforceMfa', 'sessionTtlHours', 'requireDeviceApproval', 'ipAllowlist'] as const).filter((k) => k in input.settings!);
+    if (security.length && !x.actor.grants['settings:security']) throw forbidden('Changing security settings needs the security settings permission');
+    const list = input.settings.ipAllowlist;
+    if (list) {
+      const bad = list.filter((c) => !parseCidr(c));
+      if (bad.length) throw validation(`Not a valid IP address or range: ${bad.join(', ')}`, { errors: [{ field: 'settings.ipAllowlist', message: 'Invalid range' }] });
+      // Never let an admin lock themselves out: the address they are saving from must stay allowed.
+      if (list.length && !ipAllowed(x.ip, list)) throw businessRule('ip_allowlist_lockout', `Your current address (${x.ip ?? 'unknown'}) is not in the list. Add it first so you do not lock yourself out.`);
+    }
+    if (input.settings.enforceMfa && input.settings.enforceMfa !== 'none' && x.actor.principal.type === 'user' && !x.actor.principal.mfaVerified) {
+      throw businessRule('mfa_required_first', 'Turn on two-factor authentication for your own account before requiring it for others');
+    }
+    patch.settings = { ...before!.settings, ...input.settings };
+  }
   await x.tx.update(organizations).set(patch).where(eq(organizations.id, x.org.id));
   await audit(x, { action: 'organization.updated', targetType: 'organization', targetId: x.org.id, before, after: patch });
   return orgContext(x);

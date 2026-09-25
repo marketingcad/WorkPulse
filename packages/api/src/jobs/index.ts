@@ -23,6 +23,7 @@ import { addDaysToDate, localDate, type TrackingPolicy } from '@tallywork/domain
 import type { Deps } from '../context';
 import { auditSystem, emit } from '../services/events';
 import { sendDigests } from '../services/digest';
+import { applyRetention } from '../services/retention';
 import { processReportRuns, runSchedules } from '../services/report-runs';
 import { runSyncs } from '../services/integrations';
 import { checkBudgets } from '../services/finance';
@@ -288,27 +289,7 @@ export async function runDaily(deps: Deps) {
   for (const o of orgs) {
     const today = localDate(deps.now(), o.timezone);
     await withTenant(deps.db, o.id, async (tx) => {
-      const pols = await tx.select().from(retentionPolicies);
-      const keep = (cls: string) => pols.find((p) => p.dataClass === cls)?.keepDays;
-      const cutoff = (days: number | undefined) => (days ? new Date(deps.now().getTime() - days * 86400_000) : null);
-      const deleted: Record<string, number> = {};
-      const shotCut = cutoff(keep('SCREENSHOTS'));
-      if (shotCut) {
-        const old = await tx.select({ id: screenshots.id, key: screenshots.storageKey }).from(screenshots).where(lt(screenshots.capturedAt, shotCut)).limit(5000);
-        if (old.length) {
-          await deps.storage.delete(old.flatMap((s) => [s.key, `${s.key}.thumb`])).catch(() => undefined);
-          await tx.delete(screenshots).where(inArray(screenshots.id, old.map((s) => s.id)));
-        }
-        deleted.screenshots = old.length;
-      }
-      const actCut = cutoff(keep('ACTIVITY'));
-      if (actCut) deleted.activity_minutes = (await tx.delete(activityMinutes).where(lt(activityMinutes.minuteStart, actCut)).returning({ s: activityMinutes.sessionId })).length;
-      const appCut = cutoff(keep('APPS'));
-      if (appCut) deleted.app_spans = (await tx.delete(appSpans).where(lt(appSpans.startedAt, appCut)).returning({ id: appSpans.id })).length;
-      const urlCut = cutoff(keep('URLS'));
-      if (urlCut) deleted.url_spans = (await tx.delete(urlSpans).where(lt(urlSpans.startedAt, urlCut)).returning({ id: urlSpans.id })).length;
-      const auditCut = cutoff(keep('AUDIT'));
-      if (auditCut) deleted.audit = (await tx.delete(auditLogs).where(lt(auditLogs.createdAt, auditCut)).returning({ id: auditLogs.id })).length;
+      const deleted = await applyRetention(tx, deps);
       await tx.delete(ingestReceipts).where(lt(ingestReceipts.receivedAt, new Date(deps.now().getTime() - 30 * 86400_000)));
       await tx.delete(outboxEvents).where(and(sql`${outboxEvents.processedAt} is not null`, lt(outboxEvents.processedAt, new Date(deps.now().getTime() - 14 * 86400_000))));
       if (Object.values(deleted).some((n) => n > 0)) await auditSystem(tx, o.id, { action: 'retention.cleanup', metadata: deleted });

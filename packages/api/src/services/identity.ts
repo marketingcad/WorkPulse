@@ -125,8 +125,18 @@ export async function createUser(db: Db, input: { name: string; email: string; p
   return id;
 }
 
-export async function createSession(deps: Deps, userIdValue: string, meta: { ip: string | null; userAgent: string | null }, ttlHours = deps.config.sessionTtlHours) {
+/** The shortest session lifetime set by any organization the user belongs to (never longer than the platform default). */
+export async function sessionTtlFor(deps: Deps, userIdValue: string): Promise<number> {
+  const rows = await withSystem(deps.db, (tx) =>
+    tx.select({ settings: organizations.settings }).from(memberships).innerJoin(organizations, eq(organizations.id, memberships.organizationId)).where(and(eq(memberships.userId, userIdValue), eq(memberships.status, 'ACTIVE'))),
+  );
+  return Math.min(deps.config.sessionTtlHours, ...rows.map((r) => r.settings.sessionTtlHours ?? deps.config.sessionTtlHours));
+}
+
+export async function createSession(deps: Deps, userIdValue: string, meta: { ip: string | null; userAgent: string | null }, opts: { ttlHours?: number; mfaPending?: boolean } = {}) {
   const token = randomToken(32);
+  // A pending second step gets 10 minutes; a full session the strictest organization lifetime.
+  const ttlHours = opts.mfaPending ? 1 / 6 : (opts.ttlHours ?? (await sessionTtlFor(deps, userIdValue)));
   const expiresAt = new Date(deps.now().getTime() + ttlHours * 3600_000);
   await deps.db.insert(userSessions).values({
     id: newId(),
@@ -135,6 +145,7 @@ export async function createSession(deps: Deps, userIdValue: string, meta: { ip:
     ipAddress: meta.ip,
     userAgent: meta.userAgent?.slice(0, 300) ?? null,
     expiresAt,
+    mfaPending: !!opts.mfaPending,
   });
   return { token, expiresAt };
 }
@@ -165,7 +176,7 @@ export async function revokeSession(db: Db, sessionId: string): Promise<void> {
   await db.update(userSessions).set({ revokedAt: new Date() }).where(eq(userSessions.id, sessionId));
 }
 
-export async function getMe(db: Db, userIdValue: string): Promise<MeDto> {
+export async function getMe(db: Db, userIdValue: string, mfaEnabled = false): Promise<MeDto> {
   const [u] = await db.select().from(users).where(eq(users.id, userIdValue)).limit(1);
   if (!u) throw notFound('user');
   const orgs = await withSystem(db, (tx) =>
@@ -186,7 +197,7 @@ export async function getMe(db: Db, userIdValue: string): Promise<MeDto> {
       .orderBy(organizations.name),
   );
   return {
-    user: { id: u.id, name: u.name, email: u.email, email_verified: !!u.emailVerifiedAt, mfa_enabled: false },
+    user: { id: u.id, name: u.name, email: u.email, email_verified: !!u.emailVerifiedAt, mfa_enabled: mfaEnabled },
     organizations: orgs.map((o) => ({ id: o.id, slug: o.slug, name: o.name, role_key: o.roleKey, role_name: o.roleName, membership_id: o.membershipId, is_owner: o.isOwner })),
   };
 }

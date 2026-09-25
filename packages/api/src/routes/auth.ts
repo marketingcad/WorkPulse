@@ -11,12 +11,14 @@ import {
   resetPasswordInput,
   signupInput,
 } from '@tallywork/contracts';
-import { businessRule } from '@tallywork/domain';
+import { DomainError, businessRule } from '@tallywork/domain';
+import { z } from 'zod';
+import { confirmTotpSetup, disableTotp, hasMfa, recoveryCodesLeft, regenerateRecoveryCodes, startTotpSetup, verifyLoginCode } from '../services/mfa';
 import type { AppEnv } from '../context';
 import { body } from '../lib/http';
 import { hashPassword, verifyPassword } from '../lib/crypto';
 import { rateLimit } from '../middleware/rate-limit';
-import { SESSION_COOKIE, requireUser, userId } from '../middleware/auth';
+import { SESSION_COOKIE, requireUser, sessionId, userId } from '../middleware/auth';
 import {
   acceptInvitation,
   consumeEmailToken,
@@ -36,8 +38,8 @@ function meta(c: Context<AppEnv>) {
   return { ip: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null, userAgent: c.req.header('user-agent') ?? null };
 }
 
-async function startSession(c: Context<AppEnv>, uid: string) {
-  const { token, expiresAt } = await createSession(c.var.deps, uid, meta(c));
+async function startSession(c: Context<AppEnv>, uid: string, mfaPending = false) {
+  const { token, expiresAt } = await createSession(c.var.deps, uid, meta(c), { mfaPending });
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     secure: c.var.deps.config.env === 'production',
@@ -71,8 +73,20 @@ export const authRoutes = new Hono<AppEnv>()
   .post('/login', rateLimit('login', 20, 900), async (c) => {
     const input = await body(c, loginInput);
     const { userId: uid } = await login(c.var.deps, input.email, input.password);
+    // With two-factor on, the password only opens a short session that can do nothing but the second step.
+    if (await hasMfa(c.var.deps, uid)) {
+      await startSession(c, uid, true);
+      return c.json({ mfa_required: true });
+    }
     await startSession(c, uid);
     return c.json(await getMe(c.var.deps.db, uid));
+  })
+  .post('/mfa/verify', rateLimit('mfa-verify', 10, 900), async (c) => {
+    const p = c.var.principal;
+    if (!p || p.type !== 'user') throw new DomainError('unauthenticated', 'unauthenticated', 'Sign in with your password first');
+    const { code } = await body(c, z.object({ code: z.string().trim().min(6).max(20) }));
+    await verifyLoginCode(c.var.deps, p.userId, p.sessionId, code);
+    return c.json(await getMe(c.var.deps.db, p.userId, true));
   })
 
   .post('/logout', async (c) => {
@@ -127,7 +141,25 @@ export const authRoutes = new Hono<AppEnv>()
 
 export const meRoutes = new Hono<AppEnv>()
   .use(requireUser)
-  .get('/', async (c) => c.json(await getMe(c.var.deps.db, userId(c))))
+  .get('/', async (c) => c.json(await getMe(c.var.deps.db, userId(c), await hasMfa(c.var.deps, userId(c)))))
+  .get('/mfa', async (c) => {
+    const p = c.var.principal as { mfaVerified?: boolean };
+    return c.json({ enabled: await hasMfa(c.var.deps, userId(c)), session_verified: !!p.mfaVerified, recovery_codes_left: await recoveryCodesLeft(c.var.deps, userId(c)) });
+  })
+  .post('/mfa/recovery-codes', rateLimit('mfa-recovery', 10, 900), async (c) => {
+    const { code } = await body(c, z.object({ code: z.string().trim().min(6).max(20) }));
+    return c.json(await regenerateRecoveryCodes(c.var.deps, userId(c), code));
+  })
+  .post('/mfa/totp/setup', async (c) => c.json(await startTotpSetup(c.var.deps, userId(c))))
+  .post('/mfa/totp/confirm', rateLimit('mfa-confirm', 10, 900), async (c) => {
+    const { code } = await body(c, z.object({ code: z.string().trim().min(6).max(10) }));
+    return c.json(await confirmTotpSetup(c.var.deps, userId(c), sessionId(c), code));
+  })
+  .post('/mfa/totp/disable', rateLimit('mfa-disable', 10, 900), async (c) => {
+    const { code } = await body(c, z.object({ code: z.string().trim().min(6).max(20) }));
+    await disableTotp(c.var.deps, userId(c), sessionId(c), code);
+    return c.body(null, 204);
+  })
   .post('/organizations', async (c) => {
     const input = await body(c, createOrgInput);
     const r = await createOrganization(c.var.deps.db, { name: input.name, timezone: input.timezone, currency: input.currency, ownerUserId: userId(c) });

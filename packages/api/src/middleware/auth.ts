@@ -9,6 +9,9 @@ import { safeEqual, sha256, hmac, verifyToken } from '../lib/crypto';
 export const SESSION_COOKIE = 'tw_session';
 export const API_KEY_PREFIX = 'tw_live_';
 
+/** The only endpoints a session waiting for its two-factor code may call. */
+const MFA_PENDING_PATHS = ['/auth/mfa/verify', '/auth/logout'];
+
 export const unauthenticated = () => new DomainError('unauthenticated', 'unauthenticated', 'Please sign in to continue');
 
 interface DeviceTokenPayload extends Record<string, unknown> {
@@ -60,6 +63,9 @@ export const authenticate: MiddlewareHandler<AppEnv> = async (c, next) => {
         .where(and(eq(userSessions.tokenHash, sha256(token)), isNull(userSessions.revokedAt), gt(userSessions.expiresAt, now())))
         .limit(1);
       if (s) {
+        if (s.mfaPending && !s.mfaVerified && !MFA_PENDING_PATHS.some((p) => c.req.path.endsWith(p))) {
+          throw new DomainError('unauthenticated', 'mfa_required', 'Enter the code from your authenticator app to finish signing in');
+        }
         principal = { type: 'user', userId: s.userId, sessionId: s.id, mfaVerified: s.mfaVerified };
         // Touch at most every 5 minutes to limit writes.
         if (now().getTime() - s.lastSeenAt.getTime() > 5 * 60_000) {
@@ -91,6 +97,12 @@ export const requireUser: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!p || p.type !== 'user') throw unauthenticated();
   await next();
 };
+
+export function sessionId(c: { var: { principal: Principal | null } }): string {
+  const p = c.var.principal;
+  if (!p || p.type !== 'user') throw unauthenticated();
+  return p.sessionId;
+}
 
 export function userId(c: { var: { principal: Principal | null } }): string {
   const p = c.var.principal;

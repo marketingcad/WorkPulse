@@ -11,6 +11,8 @@ import { ctx } from '../services/ctx';
 import { audit } from '../services/events';
 import { getLayout, resetLayout, saveLayout, widgetData } from '../services/dashboard';
 import { eventReader } from '../services/stream';
+import { getRetention, previewRetention, setRetention } from '../services/retention';
+import { anonymizeMember, permissionReview, queueDataExport } from '../services/privacy';
 import { connectionInput, createConnection, deleteConnection, listConnections, listProviders, requestSync } from '../services/integrations';
 import { streamSSE } from 'hono/streaming';
 import { reportCatalog, runReport } from '../services/reports';
@@ -21,7 +23,6 @@ import {
   deleteWebhook,
   fileForDownload,
   getNotificationPrefs,
-  getRetention,
   listApiKeys,
   listAudit,
   listDeliveries,
@@ -31,7 +32,6 @@ import {
   replayDelivery,
   revokeApiKey,
   setNotificationPrefs,
-  setRetention,
   testWebhook,
   rotateWebhookSecret,
   uploadReceipt,
@@ -146,6 +146,10 @@ export const platformRoutes = new Hono<AppEnv>()
   })
   .get('/retention-policies', async (c) => c.json(await getRetention(ctx(c))))
   .put('/retention-policies', async (c) => c.json(await setRetention(ctx(c), await body(c, retentionInput))))
+  .get('/retention-policies/preview', async (c) => c.json(await previewRetention(ctx(c))))
+  .post('/workers/:id/data-export', async (c) => c.json(await queueDataExport(ctx(c), c.req.param('id')), 202))
+  .post('/workers/:id/anonymize', async (c) => c.json(await anonymizeMember(ctx(c), c.req.param('id'))))
+  .get('/permissions/review', async (c) => c.json(await permissionReview(ctx(c))))
   .post('/files/receipts', async (c) => {
     const form = await c.req.formData();
     const file = form.get('file');

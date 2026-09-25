@@ -321,29 +321,6 @@ export async function listAudit(x: Ctx, q: { from?: string; to?: string; action?
   return rows.map((r) => ({ id: r.id, actor_type: r.actorType, actor_id: r.actorId, actor_name: r.actorType === 'user' && r.actorId ? (names.get(r.actorId) ?? null) : null, action: r.action, target_type: r.targetType, target_id: r.targetId, before: r.before, after: r.after, ip_address: r.ipAddress, created_at: r.createdAt.toISOString() }));
 }
 
-// ─── Retention ───────────────────────────────────────────────────────────────
-/** Legal lower bounds: financial records are kept at least 7 years. */
-const MIN_KEEP_DAYS: Record<string, number> = { INVOICES: 2555, TIMESHEETS: 2555, AUDIT: 365 };
-
-export async function getRetention(x: Ctx) {
-  if (!x.actor.grants['retention:manage'] && !x.actor.grants['settings:security']) throw forbidden();
-  const rows = await x.tx.select().from(retentionPolicies).orderBy(asc(retentionPolicies.dataClass));
-  return rows.map((r) => ({ data_class: r.dataClass, keep_days: r.keepDays, min_days: MIN_KEEP_DAYS[r.dataClass] ?? 1 }));
-}
-
-export async function setRetention(x: Ctx, input: z.infer<typeof retentionInput>) {
-  if (!x.actor.grants['retention:manage']) throw forbidden();
-  for (const p of input.policies) {
-    const keep = Math.max(p.keep_days, MIN_KEEP_DAYS[p.data_class] ?? 1);
-    await x.tx
-      .insert(retentionPolicies)
-      .values({ organizationId: x.org.id, dataClass: p.data_class, keepDays: keep })
-      .onConflictDoUpdate({ target: [retentionPolicies.organizationId, retentionPolicies.dataClass], set: { keepDays: keep, updatedAt: new Date() } });
-  }
-  await audit(x, { action: 'retention.updated', targetType: 'organization', targetId: x.org.id, after: input });
-  return getRetention(x);
-}
-
 // ─── Notifications ───────────────────────────────────────────────────────────
 export async function listNotifications(x: Ctx, unreadOnly: boolean): Promise<{ data: NotificationDto[]; unread: number }> {
   const rows = await x.tx

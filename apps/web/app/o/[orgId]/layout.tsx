@@ -1,15 +1,42 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import type { OrgContextDto } from '@tallywork/contracts';
 import { ErrorState, Logo, Spinner } from '@tallywork/ui';
 import { api } from '@/lib/api';
 import { OrgProvider } from '@/lib/org';
 import { AppShell } from '@/components/shell/app-shell';
+import { MfaEnrollmentRequired, isMfaEnrollmentError } from '@/components/security/mfa-required';
 
 export default function OrgLayout({ children }: { children: React.ReactNode }) {
   const { orgId } = useParams<{ orgId: string }>();
+  const qc = useQueryClient();
   const { data, error, refetch } = useQuery({ queryKey: ['org', orgId, 'context'], queryFn: () => api<OrgContextDto>(`/orgs/${orgId}`), staleTime: 60_000 });
+  // Any org request refused because two-factor is now required (e.g. an admin just turned it on) switches to the enrollment screen.
+  const [mfaBlocked, setMfaBlocked] = useState(false);
+  useEffect(() => {
+    const onEvent = (ev: { type: string; action?: { type: string; error?: unknown } }) => {
+      if (ev.type === 'updated' && ev.action?.type === 'error' && isMfaEnrollmentError(ev.action.error)) setMfaBlocked(true);
+    };
+    const offQueries = qc.getQueryCache().subscribe(onEvent);
+    const offMutations = qc.getMutationCache().subscribe(onEvent);
+    return () => {
+      offQueries();
+      offMutations();
+    };
+  }, [qc]);
+
+  if (mfaBlocked || isMfaEnrollmentError(error))
+    return (
+      <MfaEnrollmentRequired
+        orgId={orgId}
+        onEnrolled={() => {
+          setMfaBlocked(false);
+          void qc.invalidateQueries({ queryKey: ['org', orgId] });
+        }}
+      />
+    );
   if (error)
     return (
       <div className="flex min-h-dvh items-center justify-center">

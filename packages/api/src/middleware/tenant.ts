@@ -14,6 +14,7 @@ import {
 import { API_KEY_SCOPES, DomainError, forbidden, intersectGrants, isUuid, notFound, type Grants, type Permission, type Scope } from '@tallywork/domain';
 import type { Actor, AppEnv, OrgInfo, Principal } from '../context';
 import { unauthenticated } from './auth';
+import { clientIp, ipAllowed } from '../lib/cidr';
 
 class Rollback extends Error {}
 
@@ -122,6 +123,12 @@ function assertApiKeyRoute(scopes: string[], method: string, path: string) {
   if (!apiKeyAllows(scopes, method, path)) throw forbidden('This API key does not have a scope for this endpoint');
 }
 
+/** Admins are members who can change the organization or its members. */
+function mfaRequiredFor(setting: string | undefined, actor: Actor): boolean {
+  if (setting === 'all') return true;
+  return setting === 'admins' && (actor.isOwner || !!actor.grants['org:update'] || !!actor.grants['members:manage']);
+}
+
 /** `/orgs/:orgId/*` — user or API key acting inside one organization. */
 export const tenant: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (c.get('actor')) return next(); // already inside a tenant transaction
@@ -154,8 +161,15 @@ export const tenant: MiddlewareHandler<AppEnv> = async (c, next) => {
       membershipId = m.id;
     }
     if (principal.type === 'api_key') assertApiKeyRoute(principal.scopes, c.req.method, c.req.path.split(`/orgs/${organizationId}`)[1] ?? '');
-    c.set('org', await loadOrg(tx, organizationId));
-    c.set('actor', await loadActor(tx, principal, organizationId, membershipId));
+    const org = await loadOrg(tx, organizationId);
+    // Organization security settings apply to people and API keys (desktop agents use their own routes).
+    if (!ipAllowed(clientIp((h) => c.req.header(h)), org.settings.ipAllowlist)) throw forbidden('Access to this organization is not allowed from your network');
+    c.set('org', org);
+    const actor = await loadActor(tx, principal, organizationId, membershipId);
+    if (principal.type === 'user' && !principal.mfaVerified && mfaRequiredFor(org.settings.enforceMfa, actor)) {
+      throw new DomainError('forbidden', 'mfa_enrollment_required', 'Your organization requires two-factor authentication. Turn it on in your profile to continue.');
+    }
+    c.set('actor', actor);
     await next();
   });
 };

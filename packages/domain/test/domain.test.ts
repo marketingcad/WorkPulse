@@ -11,6 +11,7 @@ import {
   can,
   accrualCredit,
   carryOverExpiry,
+  authorizationMatrixMarkdown,
   classifyAttendance,
   cronMatches,
   parseCron,
@@ -386,5 +387,15 @@ describe('report schedules (Phase 11 gate)', () => {
     expect(resolveRange('last_month', '2026-03-10', 1)).toEqual({ from: '2026-02-01', to: '2026-02-28' });
     expect(resolveRange('this_month', d, 1)).toEqual({ from: '2026-09-01', to: '2026-09-28' });
     expect(resolveRange('last_7_days', d, 1)).toEqual({ from: '2026-09-21', to: '2026-09-27' });
+  });
+});
+
+describe('authorization matrix document', () => {
+  it('docs/security/authorization-matrix.md is up to date (pnpm --filter @tallywork/domain gen:matrix)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../docs/security/authorization-matrix.md');
+    expect(readFileSync(file, 'utf8')).toBe(authorizationMatrixMarkdown());
   });
 });

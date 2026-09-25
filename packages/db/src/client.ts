@@ -23,6 +23,38 @@ const ENSURE_APP_ROLE_SQL = `
   grant ${APP_ROLE} to current_user;
   grant usage on schema public to ${APP_ROLE};
   grant select, insert, update, delete on all tables in schema public to ${APP_ROLE};
+
+  -- The audit log is append-only for the application. Old entries are purged only through
+  -- this function, which uses the database clock and never removes anything under a year old.
+  revoke update, delete, truncate on audit_logs from ${APP_ROLE};
+  create or replace function tallywork_purge_audit(keep_days integer) returns integer
+    language plpgsql security definer set search_path = public as $fn$
+  declare
+    org uuid := nullif(current_setting('app.org_id', true), '')::uuid;
+    n integer;
+  begin
+    if org is null then raise exception 'tallywork_purge_audit needs a tenant context'; end if;
+    if keep_days < 365 then raise exception 'Audit logs are kept for at least 365 days'; end if;
+    delete from audit_logs where organization_id = org and created_at < now() - make_interval(days => keep_days);
+    get diagnostics n = row_count;
+    return n;
+  end $fn$;
+  -- Erasure requests remove network identifiers from a person's audit entries; the entries stay.
+  create or replace function tallywork_scrub_audit_actor(actor uuid) returns integer
+    language plpgsql security definer set search_path = public as $fn$
+  declare
+    org uuid := nullif(current_setting('app.org_id', true), '')::uuid;
+    n integer;
+  begin
+    if org is null then raise exception 'tallywork_scrub_audit_actor needs a tenant context'; end if;
+    update audit_logs set ip_address = null, user_agent = null where organization_id = org and actor_id = actor;
+    get diagnostics n = row_count;
+    return n;
+  end $fn$;
+  revoke all on function tallywork_purge_audit(integer) from public;
+  revoke all on function tallywork_scrub_audit_actor(uuid) from public;
+  grant execute on function tallywork_purge_audit(integer) to ${APP_ROLE};
+  grant execute on function tallywork_scrub_audit_actor(uuid) to ${APP_ROLE};
 `;
 
 export interface DbHandle {

@@ -16,6 +16,8 @@ export const users = pgTable(
     locale: text().notNull().default('en-US'),
     failedLoginCount: integer().notNull().default(0),
     lockedUntil: tstz(),
+    /** set when personal data was erased on request; the row stays so history keeps its references */
+    anonymizedAt: tstz(),
     ...timestamps,
   },
   (t) => [uniqueIndex('users_email_uq').on(sql`lower(${t.email})`)],
@@ -31,6 +33,8 @@ export const userSessions = pgTable(
     ipAddress: text(),
     userAgent: text(),
     mfaVerified: boolean().notNull().default(false),
+    /** signed in with a password but the two-factor step is not done yet: the session can only finish it */
+    mfaPending: boolean().notNull().default(false),
     lastSeenAt: tstz().notNull().default(sql`now()`),
     expiresAt: tstz().notNull(),
     revokedAt: tstz(),
@@ -47,6 +51,8 @@ export const mfaFactors = pgTable('mfa_factors', {
   secretEnc: text().notNull(),
   verifiedAt: tstz(),
   recoveryCodeHashes: jsonb().$type<string[]>().notNull().default([]),
+  /** last TOTP time step accepted, so a code cannot be used twice */
+  lastUsedStep: integer(),
   createdAt: tstz().notNull().default(sql`now()`),
 });
 
@@ -67,6 +73,8 @@ export interface OrgSettings {
   requireDeviceApproval: boolean;
   enforceMfa: 'none' | 'admins' | 'all';
   sessionTtlHours: number;
+  /** CIDR ranges people and API keys may use this organization from (empty = anywhere) */
+  ipAllowlist?: string[];
 }
 
 export const organizations = pgTable('organizations', {

@@ -54,7 +54,7 @@ function ReportsCatalog() {
   });
 
   if (!org.can('reports:read')) return <PermissionState />;
-  const titleOf = (key: string) => catalogQ.data?.find((c) => c.key === key)?.title ?? key;
+  const titleOf = (key: string) => catalogQ.data?.find((c) => c.key === key)?.title ?? (key === 'data-export' ? 'Personal data export' : key);
 
   return (
     <>

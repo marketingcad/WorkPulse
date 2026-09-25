@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { OrgContextDto } from '@tallywork/contracts';
-import { Button, Field, Input, PageHeader, Panel, PermissionState, Select, Switch, fmtDuration, useToast } from '@tallywork/ui';
+import Link from 'next/link';
+import { Button, Field, Input, PageHeader, Panel, PermissionState, Select, fmtDuration, useToast } from '@tallywork/ui';
 import { ApiError, useOrgMutation } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { CURRENCIES, WEEKDAYS, timeZones } from '@/components/settings/options';
@@ -20,13 +21,10 @@ interface Form {
   durationFormat: DurationFormat;
   lateGraceMinutes: number;
   budgetWarnPct: number;
-  requireDeviceApproval: boolean;
-  enforceMfa: 'none' | 'admins' | 'all';
-  sessionTtlHours: number;
 }
 
 function fromOrg(o: OrgContextDto['organization']): Form {
-  const s = o.settings as Partial<{ lateGraceMinutes: number; durationFormat: DurationFormat; budgetWarnPct: number; requireDeviceApproval: boolean; enforceMfa: 'none' | 'admins' | 'all'; sessionTtlHours: number }>;
+  const s = o.settings as Partial<{ lateGraceMinutes: number; durationFormat: DurationFormat; budgetWarnPct: number }>;
   const pp = (o.pay_period ?? { type: 'weekly' }) as { type?: PayType; anchorDate?: string };
   return {
     name: o.name,
@@ -38,9 +36,6 @@ function fromOrg(o: OrgContextDto['organization']): Form {
     durationFormat: s.durationFormat ?? 'hm',
     lateGraceMinutes: s.lateGraceMinutes ?? 5,
     budgetWarnPct: s.budgetWarnPct ?? 80,
-    requireDeviceApproval: s.requireDeviceApproval ?? false,
-    enforceMfa: s.enforceMfa ?? 'none',
-    sessionTtlHours: s.sessionTtlHours ?? 336,
   };
 }
 
@@ -71,13 +66,10 @@ export default function OrgSettingsPage() {
         durationFormat: f.durationFormat,
         lateGraceMinutes: f.lateGraceMinutes,
         budgetWarnPct: f.budgetWarnPct,
-        requireDeviceApproval: f.requireDeviceApproval,
-        enforceMfa: f.enforceMfa,
-        sessionTtlHours: f.sessionTtlHours,
       },
     });
   };
-  const invalid = !f.name.trim() || (f.payType === 'biweekly' && !f.anchorDate) || f.lateGraceMinutes < 0 || f.lateGraceMinutes > 240 || f.budgetWarnPct < 1 || f.budgetWarnPct > 100 || f.sessionTtlHours < 1 || f.sessionTtlHours > 2160;
+  const invalid = !f.name.trim() || (f.payType === 'biweekly' && !f.anchorDate) || f.lateGraceMinutes < 0 || f.lateGraceMinutes > 240 || f.budgetWarnPct < 1 || f.budgetWarnPct > 100;
   const num = (v: string) => (v === '' ? 0 : Math.round(Number(v)));
 
   const onSubmit = (e: FormEvent) => {
@@ -183,25 +175,17 @@ export default function OrgSettingsPage() {
         <OvertimePanel />
         <BreakTypesPanel />
 
-        <form onSubmit={onSubmit}>
+        {/* Two-factor, session lifetime, device approval and the IP allowlist are edited on the Security page (they need settings:security). */}
+        {(org.can('settings:security') || org.can('retention:manage')) && (
           <Panel title="Security">
-            <div className="flex flex-col gap-4 p-4">
-              <Switch checked={f.requireDeviceApproval} onCheckedChange={(v) => set('requireDeviceApproval', v)} label="Require device approval" description="New desktop app installs stay pending until an admin approves them on the Devices page." />
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Require two-factor authentication" htmlFor="org-mfa" hint="Coming soon: the preference is saved, but sign-in does not enforce it yet.">
-                  <Select id="org-mfa" value={f.enforceMfa} onChange={(e) => set('enforceMfa', e.target.value as Form['enforceMfa'])}>
-                    <option value="none">Not required</option>
-                    <option value="admins">Admins only</option>
-                    <option value="all">Everyone</option>
-                  </Select>
-                </Field>
-                <Field label="Session lifetime (hours)" htmlFor="org-ttl" hint={`People are signed out after ${f.sessionTtlHours >= 48 ? `${Math.round(f.sessionTtlHours / 24)} days` : `${f.sessionTtlHours} hours`}. Max 2160 (90 days).`} error={err?.field('settings.sessionTtlHours')}>
-                  <Input id="org-ttl" type="number" min={1} max={2160} className="tabular" value={f.sessionTtlHours} onChange={(e) => set('sessionTtlHours', num(e.target.value))} />
-                </Field>
-              </div>
-            </div>
+            <p className="flex flex-wrap items-center justify-between gap-2 p-4 text-sm text-text-muted">
+              Two-factor requirements, session lifetime, device approval and allowed networks.
+              <Link href={`${org.base}/settings/security`} className="font-medium text-interactive hover:underline">
+                Security & retention →
+              </Link>
+            </p>
           </Panel>
-        </form>
+        )}
       </div>
     </>
   );

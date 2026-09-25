@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('electron', () => ({ desktopCapturer: {}, nativeImage: {}, screen: {} }));
-const { ActivityMonitor, nextShotDelays } = await import('../src/main/services/monitors');
+const { ActivityMonitor, msUntilNextShotSlot, nextShotDelays } = await import('../src/main/services/monitors');
 const { IPC } = await import('../src/shared/ipc');
 const { manualRequestError, reminderKey } = await import('../src/main/services/manual');
 const { DEFAULT_POLICY } = await import('@tallywork/domain');
@@ -64,16 +64,33 @@ describe('activity minutes', () => {
 });
 
 describe('screenshot scheduling', () => {
-  it('spreads captures randomly inside each future 10-minute slot', () => {
-    const now = Date.parse('2026-09-25T09:03:00Z');
-    const delays = nextShotDelays(3, now);
-    expect(delays).toHaveLength(3);
-    for (const d of delays) {
-      const t = now + d;
-      expect(t).toBeGreaterThanOrEqual(Date.parse('2026-09-25T09:10:00Z'));
-      expect(t).toBeLessThan(Date.parse('2026-09-25T09:20:00Z'));
+  it('captures in the rest of the current 10-minute slot, one per remaining part', () => {
+    const at = (iso: string) => Date.parse(`2026-09-25T${iso}Z`);
+    const now = at('09:03:00');
+    for (let run = 0; run < 50; run++) {
+      // 1 per 10 min, started at :03 → one capture between :03 and :10 (not deferred to the next slot).
+      const [d, ...rest] = nextShotDelays(1, now);
+      expect(rest).toEqual([]);
+      expect(now + d!).toBeGreaterThan(now);
+      expect(now + d!).toBeLessThan(at('09:10:00'));
+      // 3 per 10 min → parts :00–:03:20 (ends soon), :03:20–:06:40, :06:40–:10.
+      const three = nextShotDelays(3, now).map((x) => now + x);
+      expect(three).toHaveLength(3);
+      expect(three[0]!).toBeLessThan(at('09:03:20'));
+      expect(three[1]!).toBeGreaterThanOrEqual(at('09:03:20'));
+      expect(three[1]!).toBeLessThan(at('09:06:40'));
+      expect(three[2]!).toBeGreaterThanOrEqual(at('09:06:40'));
+      expect(three[2]!).toBeLessThan(at('09:10:00'));
     }
+    // Parts that already ended are skipped; less than the minimum delay left → no capture.
+    expect(nextShotDelays(3, at('09:07:00'))).toHaveLength(1);
+    expect(nextShotDelays(1, at('09:09:59.500'))).toEqual([]);
     expect(nextShotDelays(0, now)).toEqual([]);
+  });
+
+  it('re-plans exactly at the next slot boundary', () => {
+    expect(msUntilNextShotSlot(Date.parse('2026-09-25T09:03:00Z'))).toBe(7 * 60_000);
+    expect(msUntilNextShotSlot(Date.parse('2026-09-25T09:10:00Z'))).toBe(10 * 60_000);
   });
 });
 

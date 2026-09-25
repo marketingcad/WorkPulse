@@ -47,7 +47,7 @@ export interface SavedReport {
 export interface ReportRun {
   id: string;
   report_key: string;
-  format: 'CSV' | 'XLSX' | 'PDF';
+  format: 'CSV' | 'XLSX' | 'PDF' | 'JSON';
   status: 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED';
   row_count: number | null;
   error: string | null;

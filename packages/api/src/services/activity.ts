@@ -155,6 +155,11 @@ export async function listScreenshots(x: Ctx, q: { from: string; to: string; mem
     .orderBy(desc(screenshots.capturedAt))
     .limit(Math.min(q.limit ?? 60, 200));
   const names = await memberNames(x, [...new Set(rows.map((r) => r.s.membershipId))]);
+  // Access log: viewing other people's screenshots is recorded (one entry per list, with whose and how many).
+  const others = rows.filter((r) => r.s.membershipId !== x.actor.membershipId);
+  if (others.length) {
+    await audit(x, { action: 'screenshot.list_viewed', targetType: 'screenshot', metadata: { count: others.length, members: [...new Set(others.map((r) => r.s.membershipId))], from: q.from, to: q.to } });
+  }
   return rows.map(({ s, pct, projectId }) => ({
     id: s.id,
     membership_id: s.membershipId,

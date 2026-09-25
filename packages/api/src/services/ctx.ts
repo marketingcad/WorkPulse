@@ -2,6 +2,7 @@ import type { Context } from 'hono';
 import type { Tx } from '@tallywork/db';
 import type { TrackingPolicy } from '@tallywork/domain';
 import type { Actor, AppEnv, Deps, OrgInfo } from '../context';
+import { clientIp } from '../lib/cidr';
 
 /** Everything a tenant-scoped service needs, detached from HTTP. */
 export interface Ctx {
@@ -22,7 +23,7 @@ export function ctx(c: Context<AppEnv>): Ctx {
     org: c.var.org,
     deps: c.var.deps,
     requestId: c.var.requestId,
-    ip: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? c.req.header('x-real-ip') ?? null,
+    ip: clientIp((h) => c.req.header(h)),
     userAgent: c.req.header('user-agent') ?? null,
     policyCache: c.var.policyCache,
   };

@@ -8,6 +8,8 @@ import { Avatar, Badge, Button, ConfirmDialog, EmptyState, ErrorState, Field, In
 import { ApiError, api, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { browserTimeZone, timeZones } from '@/components/settings/options';
+import { DataExportAction } from '@/components/security/data-export';
+import { TwoFactorPanel } from '@/components/security/two-factor-panel';
 
 interface Pref {
   type: string;
@@ -31,6 +33,9 @@ export default function ProfilePage() {
   const org = useOrg();
   const meQ = useQuery<MeDto, ApiError>({ queryKey: ['me'], queryFn: () => api<MeDto>('/me') });
   const me = meQ.data;
+  // Only for the warning shown before turning two-factor off; the server decides who must use it.
+  const enforce = (org.organization.settings as { enforceMfa?: string }).enforceMfa;
+  const mfaRequired = enforce === 'all' || (enforce === 'admins' && (org.membership.is_owner || org.can('org:update') || org.can('members:manage')));
   return (
     <>
       <PageHeader title="Profile" description="Your account, sign-in, devices and notifications." />
@@ -58,8 +63,15 @@ export default function ProfilePage() {
           )}
         </Panel>
         <PasswordPanel />
+        <TwoFactorPanel requiredByOrg={mfaRequired} />
         <DevicesPanel />
         <NotificationsPanel />
+        <Panel title="My data">
+          <div className="flex flex-col gap-3 p-4">
+            <p className="text-sm text-text-muted">Download everything {org.organization.name} holds about you: your profile, time entries, timesheets, tracking sessions, activity, app and website usage, screenshot records, time off, expenses, devices and notifications, as one JSON file.</p>
+            <DataExportAction membershipId={org.membership.id} label="Export my data" />
+          </div>
+        </Panel>
       </div>
     </>
   );

@@ -41,6 +41,8 @@ export const updateOrgInput = z.object({
       requireDeviceApproval: z.boolean(),
       enforceMfa: z.enum(['none', 'admins', 'all']),
       sessionTtlHours: z.number().int().min(1).max(24 * 90),
+      /** CIDR ranges allowed to use this organization; empty = anywhere */
+      ipAllowlist: z.array(z.string().trim().max(50)).max(50),
     })
     .partial()
     .optional(),

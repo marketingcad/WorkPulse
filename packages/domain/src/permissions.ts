@@ -252,3 +252,36 @@ export const API_KEY_SCOPES = {
   'write:clients': 'clients:manage',
 } as const satisfies Record<string, Permission>;
 export type ApiKeyScope = keyof typeof API_KEY_SCOPES;
+
+/**
+ * The built-in role × permission matrix as Markdown (docs/security/authorization-matrix.md is
+ * generated from this; a test fails when the two differ). Cells show the scope a role holds.
+ */
+export function authorizationMatrixMarkdown(): string {
+  const roles = BUILTIN_ROLES;
+  const head = `| Permission | ${roles.join(' | ')} |\n|---|${roles.map(() => '---').join('|')}|`;
+  const rows = PERMISSIONS.map((p) => `| \`${p}\` | ${roles.map((r) => ROLE_PRESETS[r][p] ?? '—').join(' | ')} |`);
+  const keys = Object.entries(API_KEY_SCOPES).map(([k, p]) => `| \`${k}\` | \`${p}\` |`);
+  return [
+    '# Authorization matrix',
+    '',
+    '<!-- Generated from packages/domain/src/permissions.ts by `pnpm --filter @tallywork/domain gen:matrix`. Do not edit by hand. -->',
+    '',
+    'Scopes: `own` = the member themselves, `assigned` = projects they are assigned to, `team` = members of teams they manage, `org` = the whole organization. `—` = not granted.',
+    'Custom roles can grant any subset, but never more than the admin who creates them holds.',
+    '',
+    '## Built-in roles',
+    '',
+    head,
+    ...rows,
+    '',
+    '## API key scopes',
+    '',
+    'A key acts as its creator, limited to the permissions below (and to the endpoints listed in docs/api/README.md).',
+    '',
+    '| Scope | Permission |',
+    '|---|---|',
+    ...keys,
+    '',
+  ].join('\n');
+}

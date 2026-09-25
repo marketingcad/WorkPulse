@@ -7,7 +7,7 @@ import { AgentApi, ApiError } from './api';
 import { signIn } from './auth';
 import { manualRequestError, reminderKey } from './manual';
 import { limitAction, shiftReminder } from './reminders';
-import { ActivityMonitor, AppTracker, captureScreens, nextShotDelays } from './monitors';
+import { ActivityMonitor, AppTracker, captureScreens, msUntilNextShotSlot, nextShotDelays } from './monitors';
 import { OfflineQueue, type QueuedEvent } from './queue';
 import { SecureStore } from './secure-store';
 
@@ -377,11 +377,10 @@ export class Agent extends EventEmitter {
     this.shotTimers = [];
     const p = this.boot?.policy.screenshots;
     if (!p?.enabled || !this.capabilities.screenshots) return;
-    const delays = nextShotDelays(p.perTenMinutes);
-    for (const d of delays) this.shotTimers.push(setTimeout(() => void this.takeScreenshots(), d));
-    // Re-plan at the start of the next slot.
-    const nextSlot = Math.max(...delays, 60_000);
-    this.shotTimers.push(setTimeout(() => this.session?.state === 'active' && this.scheduleScreenshots(), nextSlot + 1000));
+    const now = Date.now();
+    for (const d of nextShotDelays(p.perTenMinutes, now)) this.shotTimers.push(setTimeout(() => void this.takeScreenshots(), d));
+    // Plan the next slot right after its boundary (the small margin keeps us inside it).
+    this.shotTimers.push(setTimeout(() => this.session?.state === 'active' && this.scheduleScreenshots(), msUntilNextShotSlot(now) + 50));
   }
 
   private async takeScreenshots(): Promise<void> {
@@ -411,8 +410,10 @@ export class Agent extends EventEmitter {
         this.enqueue({ type: 'screenshot.captured', session_id: s.id, occurred_at: shot.capturedAt, screenshot_id: shot.id, captured_at: shot.capturedAt, display_index: shot.displayIndex, blurred: shot.blurred, width: shot.width, height: shot.height, bytes: shot.data.length, sha256: shot.sha256, storage_key: intent.storage_key });
       }
       if (p.notify && shots.length) new Notification({ title: 'Screenshot taken', body: p.blur ? 'Blurred before upload.' : 'You can review it on the web.', silent: true }).show();
-    } catch {
+    } catch (e) {
       // Offline or capture denied: skip this capture (screenshots are best-effort, time is not).
+      // Logged so a persistent failure (permissions, storage) is diagnosable.
+      console.warn(`[screenshots] capture skipped: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

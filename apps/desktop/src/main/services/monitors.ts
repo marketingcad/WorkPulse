@@ -270,15 +270,30 @@ export async function captureScreens(blur: boolean): Promise<Shot[]> {
 }
 
 /** Random capture times within each 10-minute slot (n per slot). */
+const SHOT_SLOT_MS = 10 * 60_000;
+const MIN_SHOT_DELAY_MS = 1000;
+
+/**
+ * Capture delays for the rest of the CURRENT 10-minute slot: the slot is split into
+ * `perTenMinutes` equal parts and one capture lands at a random moment in each part
+ * that has not ended yet (a partial part only uses its remaining time). A session
+ * started mid-slot therefore still gets screenshots for that slot.
+ */
 export function nextShotDelays(perTenMinutes: number, fromMs = Date.now()): number[] {
   if (perTenMinutes <= 0) return [];
-  const slot = 10 * 60_000;
-  const slotStart = Math.floor(fromMs / slot) * slot;
+  const slotStart = Math.floor(fromMs / SHOT_SLOT_MS) * SHOT_SLOT_MS;
+  const sub = SHOT_SLOT_MS / perTenMinutes;
   const out: number[] = [];
   for (let i = 0; i < perTenMinutes; i++) {
-    const sub = slot / perTenMinutes;
-    const t = slotStart + slot + i * sub + Math.random() * sub;
-    out.push(Math.max(1000, t - fromMs));
+    const start = Math.max(slotStart + i * sub, fromMs + MIN_SHOT_DELAY_MS);
+    const end = slotStart + (i + 1) * sub;
+    if (end <= start) continue;
+    out.push(start + Math.random() * (end - start) - fromMs);
   }
   return out;
+}
+
+/** Milliseconds until the next 10-minute slot boundary (when the next plan is made). */
+export function msUntilNextShotSlot(fromMs = Date.now()): number {
+  return Math.floor(fromMs / SHOT_SLOT_MS) * SHOT_SLOT_MS + SHOT_SLOT_MS - fromMs;
 }

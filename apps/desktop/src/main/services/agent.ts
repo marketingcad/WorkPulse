@@ -1,4 +1,4 @@
-import { Notification, powerMonitor, shell } from 'electron';
+import { Notification, net, powerMonitor, shell } from 'electron';
 import { EventEmitter } from 'node:events';
 import { put } from '@vercel/blob/client';
 import { newId, type TrackingPolicy } from '@tallywork/domain';
@@ -15,6 +15,12 @@ const HEARTBEAT_MS = 60_000;
 const BOOTSTRAP_MS = 5 * 60_000;
 const IDLE_POLL_MS = 5_000;
 const FLUSH_MS = 60_000;
+
+/** PUT one object to a Supabase Storage signed upload URL (the URL itself is the credential). */
+async function uploadToSignedUrl(url: string, data: Buffer, contentType: string): Promise<void> {
+  const res = await net.fetch(url, { method: 'PUT', headers: { 'Content-Type': contentType, 'x-upsert': 'true' }, body: new Uint8Array(data) });
+  if (!res.ok) throw new ApiError(res.status, 'upload_failed', `Screenshot upload failed (${res.status})`);
+}
 
 interface LocalSession {
   id: string;
@@ -338,7 +344,7 @@ export class Agent extends EventEmitter {
     try {
       const shots = await captureScreens(p.blur);
       for (const shot of shots) {
-        const intent = await this.api.request<{ storage_key: string; thumb_key: string; method: 'vercel-blob' | 'api'; token: string; thumb_token: string; upload_url: string | null; thumb_upload_url: string | null }>('POST', '/agent/screenshots/upload-intent', {
+        const intent = await this.api.request<{ storage_key: string; thumb_key: string; method: 'vercel-blob' | 'supabase' | 'api'; token: string; thumb_token: string; upload_url: string | null; thumb_upload_url: string | null }>('POST', '/agent/screenshots/upload-intent', {
           screenshot_id: shot.id,
           session_id: s.id,
           captured_at: shot.capturedAt,
@@ -348,6 +354,9 @@ export class Agent extends EventEmitter {
         if (intent.method === 'vercel-blob') {
           await put(intent.storage_key, shot.data, { access: 'private', token: intent.token, contentType: 'image/jpeg', addRandomSuffix: false, allowOverwrite: true } as never);
           await put(intent.thumb_key, shot.thumb, { access: 'private', token: intent.thumb_token, contentType: 'image/jpeg', addRandomSuffix: false, allowOverwrite: true } as never);
+        } else if (intent.method === 'supabase') {
+          await uploadToSignedUrl(intent.upload_url!, shot.data, 'image/jpeg');
+          await uploadToSignedUrl(intent.thumb_upload_url!, shot.thumb, 'image/jpeg');
         } else {
           await this.api.request('PUT', intent.upload_url!.replace('/api/v1', ''), undefined, { data: shot.data, contentType: 'image/jpeg' });
           await this.api.request('PUT', intent.thumb_upload_url!.replace('/api/v1', ''), undefined, { data: shot.thumb, contentType: 'image/jpeg' });

@@ -1,4 +1,10 @@
-import 'dotenv/config';
+import { config } from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Real env vars win; then packages/db/.env; then the web app's env files (single source of truth).
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+config({ path: [path.join(root, 'packages/db/.env'), path.join(root, 'apps/web/.env.local'), path.join(root, 'apps/web/.env')], quiet: true });
 import { createDb } from '../src/client';
 
 const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;

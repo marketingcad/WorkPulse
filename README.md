@@ -13,7 +13,7 @@ The main flow the product covers is **Organization → People → Work structure
 - **Finance:** effective-dated pay and bill rates, billing entries, budgets, expenses with receipts, invoices (PDF), payments.
 - **Insight & platform:** dashboards, reports with CSV/XLSX/PDF export, notifications, API keys, signed webhooks, audit log, retention policies.
 
-> The original product and architecture plan is in [docs/plan/](docs/plan/README.md). Parts of it are superseded by **Revision 1 — Vercel-only hosting** in [08-decisions.md](docs/plan/08-decisions.md). This README describes the system **as it is built**.
+> The original product and architecture plan is in [docs/plan/](docs/plan/README.md). Parts of it are superseded by **Revision 1 — Vercel-only hosting** and **Revision 2 — Supabase for database and file storage** in [08-decisions.md](docs/plan/08-decisions.md). This README describes the system **as it is built**.
 
 ---
 
@@ -41,9 +41,9 @@ The main flow the product covers is **Organization → People → Work structure
 | Monorepo | **pnpm 10** workspaces + **Turborepo 2**, TypeScript 5.9, Node.js **≥ 24** |
 | Web app | **Next.js 16** (App Router), **React 19**, **Tailwind CSS 4**, Radix UI primitives, TanStack Query 5, lucide icons |
 | API | **Hono 4**, mounted inside Next.js at `/api/v1/*` (one deployment, one origin), **Zod 4** validation, RFC 7807 `problem+json` errors |
-| Database | **PostgreSQL** via **Drizzle ORM** (`pg` pool, Neon in production); **PGlite** (Postgres compiled to WASM) for zero-setup local dev and tests |
+| Database | **PostgreSQL** via **Drizzle ORM** (`pg` pool; **Supabase** Postgres via the Session pooler in production, any Postgres works); **PGlite** (Postgres compiled to WASM) for zero-setup local dev and tests |
 | Tenant isolation | PostgreSQL **row-level security** on every tenant table, plus composite `(organization_id, id)` foreign keys |
-| File storage | **Vercel Blob** (private) in production; local filesystem / in-memory in dev and tests |
+| File storage | **Supabase Storage** (private bucket, signed upload URLs) in production; Vercel Blob also supported; local filesystem / in-memory in dev and tests |
 | Email | **Resend** HTTP API when configured, otherwise an in-memory / console mailer |
 | Background work | Transactional **outbox** + Next.js `after()` dispatch + **Vercel Cron** (every minute and daily) |
 | Password hashing | **Argon2** (`@node-rs/argon2`) |
@@ -138,8 +138,8 @@ flowchart TB
   end
 
   subgraph Data
-    pg[("PostgreSQL (Neon)<br/>RLS on tenant tables<br/>outbox, rollups")]
-    blob[("Vercel Blob (private)<br/>screenshots, receipts,<br/>invoice PDFs, exports")]
+    pg[("PostgreSQL (Supabase)<br/>RLS on tenant tables<br/>outbox, rollups")]
+    blob[("Supabase Storage (private)<br/>screenshots, receipts,<br/>invoice PDFs, exports")]
     mail["Resend<br/>transactional email"]
     hooks["Customer webhook<br/>endpoints (HMAC-signed)"]
   end
@@ -147,7 +147,7 @@ flowchart TB
   browser -- "HTTPS + session cookie" --> next
   browser -- "fetch /api/v1" --> route
   agent -- "HTTPS + device bearer token" --> route
-  agent -- "direct upload (scoped client token)" --> blob
+  agent -- "direct upload (signed upload URL)" --> blob
   third -- "Bearer tw_live_…" --> route
   next --> route
   route --> hono
@@ -264,7 +264,7 @@ sequenceDiagram
   participant Q as Offline queue<br/>(encrypted, fsync'd)
   participant Agent as Agent core
   participant API as API
-  participant Blob as Vercel Blob
+  participant Blob as Supabase Storage
 
   Agent->>Agent: start session locally (mirror of server state)
   loop every second / minute
@@ -281,7 +281,7 @@ sequenceDiagram
     Agent->>API: POST /agent/heartbeat (keeps session live, updates presence)
   end
   Agent->>API: POST /agent/screenshots/upload-intent
-  API-->>Agent: storage key + scoped, short-lived upload token
+  API-->>Agent: storage key + signed upload URL for that one object
   Agent->>Blob: upload image + thumbnail directly
 ```
 
@@ -751,15 +751,29 @@ pnpm --filter @tallywork/desktop dev
 
 In development the agent talks to `http://localhost:3000`. Set `TALLYWORK_SERVER` to point it somewhere else. Click **Sign in**: your browser opens the device-authorization page, and once you approve, the agent is registered.
 
-### Use a real Postgres database
+### Use Supabase (database + file storage)
+
+Put these in `apps/web/.env` (or `apps/web/.env.local`). Leave a key commented out until you have its value, because an empty `KEY=` counts as set and turns off the local fallbacks.
 
 ```bash
-# apps/web/.env.local (and packages/db/.env for db scripts)
-DATABASE_URL=postgres://user:pass@host/db
+# Supabase → Connect → Session pooler (port 5432). Not the direct host or port 6543.
+DATABASE_URL=postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+# Supabase → Project Settings → API Keys (service_role or a Secret key). Server only.
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+```
 
-pnpm db:migrate   # apply migrations + RLS policies + app role
+```bash
+pnpm db:migrate                      # apply migrations + RLS policies + tallywork_app role
+pnpm --filter @tallywork/web seed    # optional: demo org
 pnpm dev
 ```
+
+`pnpm db:migrate` reads `DATABASE_URL` from, in order: real environment variables, `packages/db/.env`, `apps/web/.env.local`, `apps/web/.env`. So one copy in the web app's env file is enough. The storage bucket (`tallywork`, private) is created automatically on the first upload.
+
+In Supabase, also disable the **Data API** (Project Settings → Data API). The app doesn't use it. See ADR-113 in [08-decisions.md](docs/plan/08-decisions.md).
+
+Any other Postgres works too: set `DATABASE_URL` and skip the `SUPABASE_*` keys, and files stay on local disk (or use `BLOB_READ_WRITE_TOKEN` for Vercel Blob).
 
 ---
 
@@ -777,7 +791,6 @@ Run from the repo root unless noted.
 | `pnpm lint` | Run lint tasks |
 | `pnpm db:generate` | Generate a new SQL migration from schema changes (`drizzle-kit generate`) |
 | `pnpm db:migrate` | Apply migrations, RLS policies and app-role grants to `DATABASE_URL` |
-| `pnpm db:seed` | Run the db package seed script |
 | `pnpm --filter @tallywork/web seed` | Seed the demo organization (`SEED_DAYS`, `SEED_WORKERS`, `SEED_SCREENSHOT_DAYS` tune the size) |
 | `pnpm --filter @tallywork/web start` | Serve a production build |
 | `pnpm --filter @tallywork/desktop dev` | Run the Electron agent with hot reload |
@@ -801,11 +814,14 @@ Run from the repo root unless noted.
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` (or `POSTGRES_URL`) | Production | `postgres://…` (Neon), `pglite://memory`, or `pglite://<path>`. Defaults to file PGlite in dev |
+| `DATABASE_URL` (or `POSTGRES_URL`) | Production | `postgres://…` (Supabase Session pooler, port 5432), `pglite://memory`, or `pglite://<path>`. Defaults to file PGlite in dev |
 | `APP_SECRET` | Production | ≥ 32 chars; HMAC signing (tokens, media URLs) and field encryption. Dev uses an insecure default |
 | `APP_URL` | No | Public base URL. Defaults to the Vercel URL, or `http://localhost:3000` |
 | `CRON_SECRET` | Production | Bearer secret that Vercel Cron sends to `/api/v1/cron/*` |
-| `BLOB_READ_WRITE_TOKEN` | Production | Vercel Blob token. Without it, files go to `LOCAL_STORAGE_DIR` |
+| `SUPABASE_URL` | Production | `https://<project-ref>.supabase.co`; enables Supabase Storage together with the key below |
+| `SUPABASE_SERVICE_ROLE_KEY` | Production | Service-role / secret key (server only). Used for Storage; never sent to clients |
+| `SUPABASE_STORAGE_BUCKET` | No | Private bucket name (default `tallywork`, created automatically) |
+| `BLOB_READ_WRITE_TOKEN` | No | Vercel Blob token, used only when Supabase Storage is not configured. With neither, files go to `LOCAL_STORAGE_DIR` |
 | `LOCAL_STORAGE_DIR` | No | Local file storage directory (default `apps/web/.data/blobs`) |
 | `RESEND_API_KEY` | No | Enables real email through Resend |
 | `MAIL_FROM` | No | Sender address (default `Tallywork <no-reply@tallywork.app>`) |
@@ -849,7 +865,7 @@ Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgre
 
 The web app and API deploy together to **Vercel** as one project (root directory `apps/web`).
 
-1. Connect a **Neon Postgres** database from the Vercel Marketplace (this sets `DATABASE_URL`) and a **Vercel Blob** store (this sets `BLOB_READ_WRITE_TOKEN`).
+1. In Supabase, copy the **Session pooler** connection string (Connect → Session pooler, port 5432) into `DATABASE_URL`, and set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` for file storage. Don't use the direct host (IPv6-only) or the transaction pooler (port 6543): the app sets a restricted database role per connection, which transaction pooling doesn't preserve. Disable Supabase's Data API (or stop exposing the `public` schema), since the app doesn't use it.
 2. Set `APP_SECRET` (32+ random characters) and `CRON_SECRET`. Optionally set `RESEND_API_KEY` / `MAIL_FROM` and `APP_URL`.
 3. Deploy. The `vercel-build` script runs `pnpm --filter @tallywork/db migrate` **before** `next build`, so every deploy applies migrations and RLS.
 4. [apps/web/vercel.json](apps/web/vercel.json) registers the cron jobs (`/api/v1/cron/tick` every minute, `/api/v1/cron/daily` at 03:15 UTC) and gives the API function a 300s max duration.

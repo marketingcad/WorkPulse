@@ -43,12 +43,23 @@ Hosting is **Vercel only**. The ADRs below supersede the ones listed. Everything
 | ADR-108 | Redis usage | **Upstash Redis (Marketplace)** is optional: rate limiting and presence cache. The in-memory/DB fallback keeps dev and tests dependency-free. | — | — |
 | ADR-109 | 022 | IDs are UUIDv7 generated in app code (`uuidv7` lib), so offline agent IDs and server IDs share one format | — | — |
 
+## Revision 2 — Supabase for database and file storage (2026-09-25, approved by product owner)
+
+The app still runs on Vercel (Revision 1). The database and object storage move to **Supabase**. The ADRs below supersede the ones listed. Everything else stands.
+
+| # | Supersedes | Decision | Reason | Trade-offs |
+|---|---|---|---|---|
+| ADR-110 | 103 | **Supabase Postgres** is the production database. It is reached through the **Session pooler** (Supavisor, port 5432) with the same `pg` Pool + `attachDatabasePool` code. No Supabase SDK is used for data access. PGlite is still used for tests and zero-setup local dev. | The product owner chose Supabase. The data layer is plain Postgres, so no code changed. | The direct host (`db.<ref>.supabase.co`) is IPv6-only unless the IPv4 add-on is bought, and Vercel can't reach IPv6. The transaction pooler (port 6543) is ruled out by ADR-111. Session pooling holds one server connection per client connection, so `max: 10` per function instance must stay within the Supabase plan's pooler limits. |
+| ADR-111 | 104 (clarifies) | The app never queries as the table owner. Migrations run as `postgres`, then create a `tallywork_app` role (`NOLOGIN NOSUPERUSER NOBYPASSRLS`) and grant it to the login user. **Every pooled connection runs `SET ROLE tallywork_app`** on connect. Per-request tenant scope stays transaction-local (`set_config('app.org_id', …, true)`). | On Supabase the `postgres` role has `BYPASSRLS`, so FORCE RLS alone would not protect data queried as that role. A dedicated non-bypass role makes RLS apply. | `SET ROLE` is session-level, so it needs a pooler that keeps one server connection per client (session mode). This is why the transaction pooler is not supported. |
+| ADR-112 | 106 | **Supabase Storage** (private bucket, default `tallywork`) replaces Vercel Blob. The API calls the Storage REST API with the service-role key (`SupabaseStorage` in `packages/api/src/lib/storage.ts`; no SDK). The bucket is created on first use (private, 50 MB file limit, image/PDF/CSV/XLSX only). The desktop agent uploads screenshots with **signed upload URLs** for one object path each (`method: 'supabase'`). Reads are still streamed through the authorized `/api/v1/media/:token` route. Vercel Blob and local file storage stay as fallbacks, picked by env vars. | Keeps database and files with one provider. The `Storage` interface meant only a new adapter and one desktop upload branch were needed. | Supabase signed upload URLs last a fixed 2 hours and can't set a per-object size limit (Vercel client tokens had 10 min and 8 MB). The bucket-wide 50 MB limit and MIME allowlist are the only upload guard. The service-role key bypasses Storage policies, so it must stay server-side. |
+| ADR-113 | — | Supabase's auto-generated **Data API (PostgREST) is not used** and should be disabled, or the `public` schema removed from the exposed schemas. Auth stays in-house (ADR-101 routes). Supabase Auth is not used. | The app has its own auth, RBAC and tenant model. An unused public API is needless attack surface. RLS already returns no rows to it, because `app.org_id` is never set. | None. Re-enabling it later would need explicit per-role policies. |
+
 ## Open questions
 
 These have sensible defaults, listed here, and I'll proceed with the defaults unless told otherwise.
 
 1. **Product name / brand.** Default: working name "Tallywork" until you choose one.
-2. **Hosting target.** ✅ Resolved: Vercel only (see Revision 1).
+2. **Hosting target.** ✅ Resolved: Vercel for the app (Revision 1); Supabase for Postgres and file storage (Revision 2).
 3. **Deployment model.** Default: multi-tenant SaaS only. Is self-hosting or on-prem ever required? (It would affect licensing, updater, and storage choices.)
 4. **Primary market / compliance.** Default: US + EU. GDPR controls are in scope; SOC 2 readiness is targeted for Phase 14. HIPAA is out of scope.
 5. **Worker payouts.** Default: Future (payroll-ready export only in v1).

@@ -52,7 +52,7 @@ export default function SupportPage() {
           icon={<Lock className="size-5" />}
           title={mfa ? 'Two-factor authentication required' : 'Page not found'}
           description={mfa ? 'The support console needs a session verified with two-factor authentication. Sign out and sign in again with your code.' : 'This page does not exist.'}
-          action={<Link href="/" className="text-sm font-medium text-interactive hover:underline">Back to Tallywork</Link>}
+          action={<Link href="/" className="text-sm font-medium text-interactive hover:underline">Back to WorkPulse</Link>}
         />
       </main>
     );

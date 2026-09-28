@@ -35,7 +35,7 @@ export async function signIn(api: AgentApi, serverUrl: string, capabilities: Rec
       const ok = url.searchParams.get('state') === state && !!url.searchParams.get('code');
       res.writeHead(ok ? 200 : 400, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'" });
       res.end(
-        `<!doctype html><meta charset="utf-8"><title>Tallywork</title><body style="font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f9;color:#141a23"><div style="text-align:center"><h2>${ok ? 'You are signed in' : 'Sign-in failed'}</h2><p>${ok ? 'You can close this tab and return to the Tallywork app.' : 'Please try again from the app.'}</p></div></body>`,
+        `<!doctype html><meta charset="utf-8"><title>WorkPulse</title><body style="font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f9;color:#141a23"><div style="text-align:center"><h2>${ok ? 'You are signed in' : 'Sign-in failed'}</h2><p>${ok ? 'You can close this tab and return to the WorkPulse app.' : 'Please try again from the app.'}</p></div></body>`,
       );
       clearTimeout(timer);
       if (ok) resolve(url.searchParams.get('code')!);

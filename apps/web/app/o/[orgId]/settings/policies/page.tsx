@@ -52,7 +52,7 @@ export default function PoliciesPage() {
   const err = save.error instanceof ApiError ? save.error : null;
 
   const scopeName = scopeType === 'ORG' ? 'Organization default' : scopeType === 'TEAM' ? (teamsQ.data?.find((t) => t.id === teamId)?.name ?? 'Team') : (workersQ.data?.find((w) => w.id === workerId)?.name ?? 'Member');
-  const inheritedFrom = scopeType === 'ORG' ? 'Tallywork default' : 'Organization default';
+  const inheritedFrom = scopeType === 'ORG' ? 'WorkPulse default' : 'Organization default';
 
   if (!canRead) return <PermissionState />;
 

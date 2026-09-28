@@ -283,7 +283,7 @@ function DevicesPanel() {
       ) : q.isLoading ? (
         <SkeletonRows rows={2} cols={3} />
       ) : !mine.length ? (
-        <EmptyState icon={<Laptop className="size-5" />} title="No desktop app connected" description="Install the Tallywork desktop app and sign in to track time with activity." />
+        <EmptyState icon={<Laptop className="size-5" />} title="No desktop app connected" description="Install the WorkPulse desktop app and sign in to track time with activity." />
       ) : (
         <ul className="divide-y divide-border">
           {mine.map((d) => (

@@ -1,6 +1,6 @@
 # Load tests
 
-This folder is for engineers checking that Tallywork meets its performance targets ([docs/ops/slo.md](../docs/ops/slo.md)) before a release. Run these tests against **staging**, never production. Provisioning creates real accounts.
+This folder is for engineers checking that WorkPulse meets its performance targets ([docs/ops/slo.md](../docs/ops/slo.md)) before a release. Run these tests against **staging**, never production. Provisioning creates real accounts, and it signs up through `/auth/signup`, so staging must not set `REQUIRE_EMAIL_VERIFICATION=true` (signup would not start a session).
 
 | Script | Simulates | Pass criteria |
 |---|---|---|

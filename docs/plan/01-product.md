@@ -5,9 +5,9 @@
 The map follows the core business flow: **Org → People → Work structure → Tracking → Time → Approval → Money → Insight**. Every node below is a capability the platform must own.
 
 ```text
-TALLYWORK
+WORKPULSE
 ├── A. Identity & Organization
-│   ├── Sign-up, login, password reset, email verification
+│   ├── Sign-up, login, password reset, email verification (optional per deployment)
 │   ├── MFA (TOTP now; WebAuthn later), session management, device sessions list
 │   ├── Organizations (multi-org users), org switching, ownership transfer
 │   ├── Invitations (email link, bulk CSV import), onboarding checklist
@@ -23,7 +23,7 @@ TALLYWORK
 │
 ├── C. Time Tracking
 │   ├── Session engine (state machine, one active session per worker)
-│   ├── Web timer (browser); Desktop timer (Electron agent)
+│   ├── Desktop timer (Electron agent; the only workspace for Workers); web timer for admins/managers who track
 │   ├── Work notes per session / time entry
 │   ├── Idle detection + idle prompt (keep / discard / reassign)
 │   ├── Work breaks (paid/unpaid break types, break policies)
@@ -96,7 +96,7 @@ Phase numbers refer to [07-roadmap.md](07-roadmap.md).
 | Tasks | Granular tracked work | All | Projects | P0 | 3 |
 | Tracking policies | Per-org/team/worker monitoring rules | Admin | Teams | P0 | 3 |
 | Session engine | Authoritative timer state | System | Projects, Tasks | P0 | 4 |
-| Web timer | Track without the desktop agent | Worker | Session engine | P0 | 4 |
+| Web timer | Track without the desktop agent | Admin, Manager (Workers are desktop-only, ADR-128) | Session engine | P0 | 4 |
 | Time entries + revisions | Canonical time record | System | Session engine | P0 | 4 |
 | Electron agent core | Desktop timer, offline queue | Worker | Session engine, Devices | P0 | 5 |
 | Device registration | Trusted agent principal | Worker, Admin | Auth | P0 | 5 |
@@ -152,7 +152,7 @@ For each area: the **workflow a Hubstaff user expects**, followed by **our origi
 
 ### Web timer
 - **Expected workflow:** from the dashboard, start a timer on a project/task.
-- **Ours:** a persistent *timer bar* in the top bar across all pages (project/task combobox, play/stop, elapsed time). It is visible on every page, so the worker never navigates away to stop. A "Web" source badge marks entries with no screenshots or activity. If the desktop agent is also running, the bar mirrors its state live over SSE.
+- **Ours:** (for admins and managers who track; Workers use the desktop app only, ADR-128) a persistent *timer bar* in the top bar across all pages (project/task combobox, play/stop, elapsed time). It is visible on every page, so the worker never navigates away to stop. A "Web" source badge marks entries with no screenshots or activity. If the desktop agent is also running, the bar mirrors its state live over SSE.
 
 ### Activity review
 - **Expected workflow:** Activity → Screenshots. Pick a date and member, see hourly rows of 10-minute blocks, each with a screenshot, activity %, project/task, and notes. Click to enlarge. Filter by activity level. Apps/URLs tabs.
@@ -206,7 +206,7 @@ These items are required, or very likely expected, for true parity with a mature
 | G3 | **Org owner** role distinct from admins | Ownership transfer, billing, and org deletion need one accountable person | Owner flag on one SYSTEM_ADMIN membership | 2 |
 | G4 | **Project Manager, Viewer, Client** roles | Common intermediate roles | The custom-role engine ships these as presets | 13 / Future |
 | G5 | **Browser extension** for URL tracking | Reading URLs from window titles is unreliable. OS APIs differ per platform, and on Linux they barely work. | A Chrome/Edge/Firefox extension talks to the agent via Native Messaging. It only reports while a session is ACTIVE. | 6 (Chrome/Edge), 12 (Firefox) |
-| G6 | **Linux Wayland limitations** | On Wayland, screenshots and active-window detection need portals or are unavailable | Capability detection: the agent reports `capabilities` to the server and the UI shows "not supported on this device". Fully supported on X11. | 5–6 |
+| G6 | **Linux Wayland limitations** | On Wayland, screenshots and active-window detection need portals or are unavailable | Capability detection: the agent reports `capabilities` to the server and the UI shows "not supported on this device". Fully supported on X11. Built: on Wayland the `wayland` capability marks activity, apps and screenshots unavailable instead of recording partial data (ADR-132). | 5–6 |
 | G7 | **Mobile apps** (timer + GPS) | Field teams; GPS depends on mobile | The API is designed mobile-ready now. React Native app later. The Location subsystem is designed now and ships with mobile. | Future |
 | G8 | **PM tool integrations** (Jira, Asana, Trello, GitHub, Linear) | Many teams track against external tasks | Integration framework: `integration_connections`, `external_refs` on tasks, sync jobs | Future (framework 12) |
 | G9 | **Accounting integrations** (QuickBooks, Xero) | Invoice/payment sync | Behind the payments/invoices abstraction | Future |
@@ -224,5 +224,5 @@ These items are required, or very likely expected, for true parity with a mature
 | G21 | **Screenshot self-service for workers** | Workers can see, and optionally delete, their own screenshots | Policy flag `worker_can_delete_screenshots` + `delete_removes_time` | 6 |
 | G22 | **Offline manual time on desktop** | Record time while offline | Queued `manual_time.requested` command | 7 |
 | G23 | **Invoice numbering, tax rates, multi-tax** | Real invoicing | Configurable sequences per org; tax rate catalog | 9 |
-| G24 | **Email deliverability & templates** | Notifications must arrive | Provider abstraction (SES/Postmark), per-org sender name, bounce handling | 4 / 10 |
-| G25 | **Agent distribution & MDM deployment** | Admins roll the agent out to fleets | MSI/PKG with org enrollment token for silent install | 14 |
+| G24 | **Email deliverability & templates** | Notifications must arrive | `Mailer` provider abstraction: Resend or SMTP today, console in dev (ADR-126); Postmark/SES can be added behind it. Per-org sender name, bounce handling and a custom sending domain are still to do. | 4 / 10 |
+| G25 | **Agent distribution & MDM deployment** | Admins roll the agent out to fleets | Built: GitHub Releases with stable installer names, a `/download` page, auto-update, and managed settings (registry / configuration profile) for silent installs (ADR-131, [desktop-deployment.md](../ops/desktop-deployment.md)). Still to do: code signing, published MSI/PKG, org enrollment token. | 14 |

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#101C3D"/><stop offset="1" stop-color="#070D1F"/></linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#1766FF" stop-opacity="0.45"/><stop offset="1" stop-color="#1766FF" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect x="72" y="72" width="880" height="880" rx="200" fill="url(#bg)"/>
+  <rect x="72.5" y="72.5" width="879" height="879" rx="199.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="3"/>
+  <circle cx="512" cy="512" r="360" fill="url(#glow)"/>
+  <g transform="translate(232 232) scale(8.75)">
+  <defs><clipPath id="wp-inner"><path d="M32 12.5 49 22.25v19.5L32 51.5 15 41.75v-19.5Z"/></clipPath></defs>
+  <path d="M32 5.5 55 18.75v26.5L32 58.5 9 45.25v-26.5Z" fill="#1766FF" stroke="#1766FF" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M32 12.5 49 22.25v19.5L32 51.5 15 41.75v-19.5Z" fill="#0B2A66" stroke="#0B2A66" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M9 41 22.5 26.5 32.5 41.5 41.5 28.5 56 37" fill="none" stroke="#FFFFFF" stroke-width="6.4" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#wp-inner)"/>
+  </g>
+</svg>

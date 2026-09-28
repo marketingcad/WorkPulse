@@ -5,8 +5,17 @@
 ### Brand direction
 **"Calm instrument."** The product should feel like a precision tool used all day: steady, legible, dense, and quiet until something needs attention. It takes its cues from well-made instruments (ledgers, flight decks), not from marketing sites. Colour is reserved for **state and priority**. Chrome stays neutral so status stands out.
 
-- **Logo (working concept):** a monogram built from a tally mark — four vertical strokes crossed by a diagonal that doubles as a clock hand. It is drawn as a simple geometric mark in the primary navy, and it is original.
 - **Voice:** direct and specific. "3 timesheets need approval", not "You've got things to do! 🎉".
+
+### Brand identity (as built, ADR-125)
+- **Name:** **WorkPulse**, tagline **"Track • Focus • Achieve"**. This is the name people read in the web app, the desktop app, emails and notifications. Technical identifiers (packages, env vars, webhook headers, installer files, the desktop app's system name) stay "Tallywork".
+- **Mark:** a hexagon "pulse": an outer hexagon in `#1766FF`, an inner hexagon in `#0B2A66`, and a white pulse line clipped to the inner hexagon. It replaces the earlier working concept (a tally-mark monogram).
+- **Components** (`packages/ui/src/logo.tsx`):
+  - `Logo`: the mark alone, at any size (`size`, accessible `title`, default "WorkPulse").
+  - `BrandLockup`: the mark plus the wordmark "Work" + "Pulse", with an optional tagline. "Work" uses the text colour (white on dark panels), "Pulse" is `#1766FF` (`#4D8DFF` on dark, `tone="onDark"`), and the tagline uses the muted text colour.
+- **Wordmark font:** Poppins Bold, loaded in `apps/web/app/layout.tsx` as `--font-brand` and used only for the wordmark. The rest of the UI stays Inter.
+- **Where it appears:** the favicon is `apps/web/app/icon.svg` (the same drawing as `Logo`). The desktop app icon is `apps/desktop/build/icon.svg`, rendered to `build/icon.png`: the mark on a dark rounded square with a soft blue glow. The public (signed-out) pages (login, signup, invitation, forgot/reset password, verify email, welcome, the desktop authorize page and the /download page) share `AuthShell` (`apps/web/components/auth-shell.tsx`), which shows the lockup with the tagline.
+- The brand colours are fixed values for the mark and wordmark only. UI components still use the semantic tokens below.
 
 ### Colour tokens
 
@@ -14,7 +23,7 @@ Semantic tokens are defined on `:root`. Components reference only semantic token
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--brand-900` (primary) | `#0F2240` deep navy | `#E6ECF5` | Sidebar background (light), logo, headings accent |
+| `--brand-900` (primary) | `#0F2240` deep navy | `#E6ECF5` | Sidebar background (light), headings accent, auth-page brand panel (the logo uses its own fixed colours, see Brand identity) |
 | `--interactive` | `#1F5FD1` | `#5B8DEF` | Links, primary buttons, focus ring base |
 | `--interactive-hover` | `#1A4FB0` | `#7AA3F2` | |
 | `--secondary` (indigo) | `#4B4FC4` | `#8A8DF0` | Secondary series, selected nav, chips |
@@ -36,6 +45,7 @@ Semantic tokens are defined on `:root`. Components reference only semantic token
 - **Project colours:** 12 distinguishable categorical hues (validated for colour-vision deficiency), assigned per project and used in timelines.
 
 ### Typography
+- **Wordmark only:** Poppins Bold via `--font-brand` (see Brand identity).
 - `Inter` (variable, self-hosted), falling back to `system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`.
 - **Tabular figures** (`font-variant-numeric: tabular-nums`) for all durations, money, and table numbers, so digits line up and the running timer doesn't jitter.
 
@@ -100,7 +110,7 @@ Developer:   API Keys · Webhooks · API Docs
 Settings:    Organization · Tracking Policies · Roles & Permissions · Notifications · Security · Retention · Integrations · Subscription
 ```
 **Team Manager:** Overview · Team [Workers · Live · Activity · Sessions] · Timesheets [Review · Approvals] · Projects [Projects · Tasks · Budgets] · People Ops [Attendance · Schedules · Time Off] · Reports.
-**Worker:** Today · Timesheet · Projects & Tasks · My Activity · Time Off · Schedule · Profile & Devices.
+**Worker:** Today · Timesheet · Projects & Tasks · My Activity · Time Off · Schedule · Profile & Devices. *As built (ADR-124, ADR-128): this is the desktop app's navigation. Workers are redirected from the web workspace to `/download`, which offers the installer for their OS.*
 
 ### Responsive behaviour
 

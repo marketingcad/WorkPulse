@@ -77,7 +77,7 @@ export function verifyTotp(secretB32: string, code: string, at: Date, lastUsedSt
   return null;
 }
 
-export function otpauthUrl(secretB32: string, account: string, issuer = 'Tallywork'): string {
+export function otpauthUrl(secretB32: string, account: string, issuer = 'WorkPulse'): string {
   const label = encodeURIComponent(`${issuer}:${account}`);
   return `otpauth://totp/${label}?secret=${secretB32}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=${DIGITS}&period=${STEP_SECONDS}`;
 }

@@ -36,7 +36,7 @@ export function SupportAccessPanel() {
     <Panel title="Support access">
       <div className="flex flex-col gap-4 p-4 text-sm">
         <p className="text-text-muted">
-          Tallywork support can always see counts and health for your organization, never your people’s data. To let them look at members, devices and the audit log while they help you, grant read-only access for a limited time. Everything they view is recorded in your audit log.
+          WorkPulse support can always see counts and health for your organization, never your people’s data. To let them look at members, devices and the audit log while they help you, grant read-only access for a limited time. Everything they view is recorded in your audit log.
         </p>
         {a?.active ? (
           <div role="status" className="flex flex-wrap items-center gap-3 rounded-md border border-warning/30 bg-warning-soft px-4 py-3">

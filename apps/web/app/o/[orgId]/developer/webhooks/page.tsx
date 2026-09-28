@@ -58,7 +58,7 @@ interface WebhookBody {
   enabled: boolean;
 }
 
-const VERIFY_SNIPPET = `// Node.js — verify a Tallywork webhook
+const VERIFY_SNIPPET = `// Node.js — verify a WorkPulse webhook
 import crypto from 'node:crypto';
 
 function verify(rawBody, header, secret) {
@@ -183,7 +183,7 @@ export default function WebhooksPage() {
     <>
       <PageHeader
         title="Webhooks"
-        description="Tallywork POSTs a signed JSON event to your endpoint when something happens. Failed deliveries are retried with backoff for about a day."
+        description="WorkPulse POSTs a signed JSON event to your endpoint when something happens. Failed deliveries are retried with backoff for about a day."
         actions={
           <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setEditing('new')}>
             Add endpoint
@@ -237,7 +237,7 @@ export default function WebhooksPage() {
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
         title="Delete endpoint?"
-        description={deleting ? `Tallywork will stop sending events to ${deleting.url}. Pending retries are discarded.` : undefined}
+        description={deleting ? `WorkPulse will stop sending events to ${deleting.url}. Pending retries are discarded.` : undefined}
         confirmLabel="Delete endpoint"
         danger
         loading={del.isPending}

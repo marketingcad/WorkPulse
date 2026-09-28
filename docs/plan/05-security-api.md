@@ -55,6 +55,8 @@ Actions: R read, C create, U update, D delete/archive, X special action (named).
 | Retention / security settings | R U | — | — | — |
 
 > **Amended by ADR-121 ([08-decisions.md](08-decisions.md)):** a device may also read back its bound worker's *own* data through `/api/v1/agent/me/*`, with grants narrowed to `own` scope, never screenshots and never other people. The only writes allowed are submitting a timesheet and requesting time off.
+>
+> **Amended by ADR-128:** Workers reach their "S" rows through the desktop app, not the web. A member whose grants are all own/assigned scope is redirected from the web workspace to `/download`. This is a UX rule; the server still enforces the matrix for every call.
 
 **AGENT constraints (non-negotiable):** the credential is bound to `(organization_id, membership_id, device_id)`. It can read only the bound worker's effective policy and assignments, and it can write only tracking commands and observations for that worker. It has no list endpoints for other workers and cannot read activity back. Revoking the device kills all of its tokens immediately (per-request `devices.status` check, cached 30s in Redis).
 
@@ -92,8 +94,10 @@ Actions: R read, C create, U update, D delete/archive, X special action (named).
 AUTH / IDENTITY
 POST   /auth/signup                     POST /auth/login          POST /auth/logout
 POST   /auth/refresh                    POST /auth/password/forgot POST /auth/password/reset
+POST   /auth/verify-email               POST /auth/verify-email/resend  (always 202; 5/hour)
 POST   /auth/mfa/totp/enroll|verify     GET  /me                  GET  /me/organizations
 POST   /auth/device/authorize (PKCE start)  POST /auth/device/token
+POST   /agent/login  {email, password, mfa_code?, organization_id?, device}  (desktop in-app sign-in)
 
 ORGANIZATIONS & PEOPLE
 POST   /orgs                            GET|PATCH {o}
@@ -191,11 +195,15 @@ OpenAPI 3.1 is generated from the zod DTOs, the docs are served at `/api/v1/docs
 - **Web sessions:** an opaque session ID (256-bit) in an httpOnly Secure cookie. The server-side session lives in PG with a Redis cache, with idle timeout and absolute lifetime set by org security settings. The session is rotated on login and on privilege change. The user can list and revoke sessions.
 - **MFA:** TOTP now (secret encrypted with an app-level KMS data key); recovery codes hashed. WebAuthn later. Orgs can *enforce* MFA for admins or everyone.
 - **Brute force:** progressive delay plus lockout per account and per IP. Login responses are generic.
-- **Email verification** is required before creating an org. Invitation tokens are single-use and hashed, with a 7-day expiry.
+- **Email verification** (as built, ADR-127) is switched on per deployment with `REQUIRE_EMAIL_VERIFICATION=true`. Signup then creates the account and its org but starts no session ("Check your email"). The emailed link (3-day expiry) verifies the address and signs the person in, unless 2FA needs its own step. Login refuses unverified accounts with 403 `email_not_verified`, checked only after a correct password so the response does not reveal which emails exist. `POST /auth/verify-email/resend` always returns 202 and is limited to 5 per hour. Accepting an invitation verifies the new account. Invitation tokens are single-use and hashed, with a 7-day expiry.
+- **Email delivery:** Resend or SMTP behind one `Mailer` interface, console in dev (ADR-126).
 - SSO (OIDC/SAML) is designed as a pluggable `IdentityProvider` interface (Future).
 
 ### Device authentication
-1. The agent opens the system browser to `/auth/device/authorize` (PKCE, loopback redirect `http://127.0.0.1:<random>/cb`).
+
+> **As built (ADR-129):** the primary sign-in is **email + password in the desktop app** (`POST /agent/login`). The server runs the same checks as web login (lockout, email verification), asks for the 2FA code when the account has one (`mfa_required`), returns the list of organizations when the person must choose (`organization_required`), and then creates the device and issues its tokens. The password is sent once over TLS and **never stored** on the device; the app keeps only the device tokens, with the refresh token encrypted by the OS keychain. The browser PKCE flow below remains as "Sign in with browser instead". This supersedes the original browser-only design, in which the password was only ever typed into the web page.
+
+1. *(Browser alternative)* The agent opens the system browser to `/auth/device/authorize` (PKCE, loopback redirect `http://127.0.0.1:<random>/cb`).
 2. The user logs in (MFA applies) and picks the org. The server issues a one-time code.
 3. The agent exchanges the code, generates an **Ed25519 keypair** (private key wrapped by safeStorage), and calls `/agent/register` with its public key, platform, and capabilities. The device becomes ACTIVE (or PENDING if the org requires admin approval of new devices).
 4. The server issues a short-lived **device access token** (JWT, 10 min, claims: org, membership, device, `aud=agent`, scopes) and a **rotating refresh token**. Refresh tokens belong to a family, and reuse of an old token revokes the whole family and flags the device.
@@ -221,7 +229,7 @@ See [04-desktop-agent.md](04-desktop-agent.md#electron-security-checklist).
 - Keys have optional expiry and IP allowlist, record `last_used_at`, get their own per-key rate limits, and can be revoked instantly.
 
 ### Webhooks
-- Each endpoint has a signing secret (encrypted at rest). Header `Tallywork-Signature: t=<ts>,v1=<HMAC-SHA256(ts.body)>`, with a documented 5-minute tolerance.
+- Each endpoint has a signing secret (encrypted at rest). Header names keep the technical name Tallywork (`Tallywork-Event`, `Tallywork-Delivery`, ADR-125). Header `Tallywork-Signature: t=<ts>,v1=<HMAC-SHA256(ts.body)>`, with a documented 5-minute tolerance.
 - Only HTTPS is allowed. **SSRF protection:** DNS is resolved and private, loopback, link-local, and metadata IP ranges are rejected, both at registration *and* at each delivery (re-resolve). No redirects are followed.
 - Retries use exponential backoff with jitter (e.g. 1m, 5m, 30m, 2h, 6h, 12h, 24h). The endpoint is auto-disabled after sustained failure, and the admin is notified. There are delivery logs (status, latency, truncated response), manual replay, and a test ping.
 - Payloads carry IDs plus a minimal snapshot, never sensitive media URLs.

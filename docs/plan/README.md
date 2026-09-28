@@ -1,9 +1,9 @@
-# Tallywork — Greenfield Architecture & Product Plan
+# WorkPulse — Greenfield Architecture & Product Plan
 
 > **Status:** Phase 0/1 planning. No application code exists yet.
-> **Working name:** "Tallywork" is a placeholder product name. Replace it globally before any branding work.
+> **Name:** the product is branded **WorkPulse** ("Track • Focus • Achieve"). "Tallywork" was the working name and stays as the technical name: package names (`@tallywork/*`), the repo, env vars (`TALLYWORK_*`), webhook headers, the registry policy path, the `tallywork.app` domain, installer file names and the desktop app's system name (ADR-125 in [08-decisions.md](08-decisions.md)). Where this plan says "Tallywork" in a technical identifier, that is still correct.
 > **Date:** 2026-09-25
-> **Superseded infrastructure:** the app is built and hosted differently from what this plan first proposed. **Revision 1** (Vercel, with Hono inside Next.js) and **Revision 2** (Supabase Postgres + Supabase Storage) in [08-decisions.md](08-decisions.md) replace the NestJS / Redis / BullMQ / S3 / RDS choices below. **Revision 3** covers the worker desktop app, website capture on Windows (browser extension), the device own-data API and the screenshot schedule. The root [README](../../README.md) describes the system as built.
+> **Superseded infrastructure:** the app is built and hosted differently from what this plan first proposed. **Revision 1** (Vercel, with Hono inside Next.js) and **Revision 2** (Supabase Postgres + Supabase Storage) in [08-decisions.md](08-decisions.md) replace the NestJS / Redis / BullMQ / S3 / RDS choices below. **Revision 3** covers the worker desktop app, website capture on Windows (browser extension), the device own-data API and the screenshot schedule. **Revision 4** covers the WorkPulse brand, email providers and verification, desktop-only workers, in-app desktop sign-in, tracking defaults, and desktop distribution and updates. The root [README](../../README.md) describes the system as built.
 
 This plan answers the 20 required sections of the master brief. It is split by concern so each part can later become the living `/docs/*.md` file the brief asks for.
 

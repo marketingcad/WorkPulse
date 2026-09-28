@@ -109,7 +109,7 @@ export function TwoFactorPanel({ requiredByOrg, onDone }: { requiredByOrg?: bool
             </div>
             <CodeBlock copy>{codes.list.join('\n')}</CodeBlock>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" icon={<Download className="size-3.5" />} onClick={() => downloadText('tallywork-recovery-codes.txt', `Tallywork recovery codes\nEach code works once.\n\n${codes.list.join('\n')}\n`)}>
+              <Button size="sm" icon={<Download className="size-3.5" />} onClick={() => downloadText('workpulse-recovery-codes.txt', `WorkPulse recovery codes\nEach code works once.\n\n${codes.list.join('\n')}\n`)}>
                 Download
               </Button>
               <Button
@@ -181,7 +181,7 @@ export function TwoFactorPanel({ requiredByOrg, onDone }: { requiredByOrg?: bool
           >
             <ol className="flex list-decimal flex-col gap-3 pl-5 text-sm">
               <li>
-                Add Tallywork to an authenticator app (1Password, Google Authenticator, Microsoft Authenticator…).{' '}
+                Add WorkPulse to an authenticator app (1Password, Google Authenticator, Microsoft Authenticator…).{' '}
                 <a href={setup.otpauth_url} className="inline-flex items-center gap-1 font-medium text-interactive hover:underline">
                   Open in authenticator app <ExternalLink className="size-3" aria-hidden />
                 </a>

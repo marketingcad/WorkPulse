@@ -36,7 +36,7 @@ export async function sendDigests(tx: Tx, deps: Deps, organizationId: string, to
     if (!claimed.length) continue;
     const actor = await loadActor(tx, { type: 'user', userId: m.userId, sessionId: 'digest', mfaVerified: true }, organizationId, m.id);
     const x = { tx, actor, org } as Pick<Ctx, 'tx' | 'actor' | 'org'>;
-    const lines = [`Your Tallywork summary for ${yesterday}`, ''];
+    const lines = [`Your WorkPulse summary for ${yesterday}`, ''];
 
     const secs = async (members: string[] | 'all', from: string, to: string) => {
       const [r] = await tx

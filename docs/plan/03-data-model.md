@@ -106,9 +106,9 @@ erDiagram
 | Table | Key columns | Constraints / indexes |
 |---|---|---|
 | `organizations` | slug, name, timezone, week_start, currency, locale, pay_period_config jsonb, owner_membership_id | unique(slug) |
-| `users` | email (citext), password_hash (argon2id), email_verified_at, mfa_enforced | unique(email) — global identity, **not** tenant-scoped |
+| `users` | email (citext), password_hash (argon2id), email_verified_at, mfa_enforced | unique(email) — global identity, **not** tenant-scoped. With `REQUIRE_EMAIL_VERIFICATION=true`, login needs `email_verified_at`; accounts created by accepting an invitation are verified at creation (ADR-127) |
 | `memberships` | organization_id, user_id, role_id, status(INVITED/ACTIVE/SUSPENDED/REMOVED), is_owner | unique(org,user); partial unique(org) where is_owner |
-| `worker_profiles` | membership_id, tracking_enabled, title, timezone, weekly_limit_s, daily_limit_s, employment_type | 1:1 membership |
+| `worker_profiles` | membership_id, tracking_enabled, title, timezone, weekly_limit_s, daily_limit_s, employment_type | 1:1 membership. Created for every membership: `tracking_enabled = false` for the org owner and invited admins/managers, `true` for invited Workers (ADR-130) |
 | `teams`, `team_members` | team_members.role(MANAGER/MEMBER) | unique(team, membership) |
 | `clients` | name, contact fields, currency, default_bill_rate, archived_at | idx(org, archived_at) |
 | `projects` | client_id?, name, status, billable_default, archived_at | idx(org, status), idx(org, client_id) |
@@ -155,7 +155,7 @@ erDiagram
 | Concept | Definition | Key invariants |
 |---|---|---|
 | **Organization** | The tenant. Owns every business record; sets timezone, currency, week start, pay period, and the default tracking policy. | Exactly one owner. Every tenant row carries its `organization_id`. |
-| **User vs Membership vs Worker** | A **User** is a global login identity. A **Membership** is the user *in* an org, with a role. A **Worker** is a membership with a `worker_profile` and `tracking_enabled = true`. Admins may or may not also be workers. | A user can belong to many orgs; data never crosses orgs. API resource `/workers` = memberships with profiles. |
+| **User vs Membership vs Worker** | A **User** is a global login identity. A **Membership** is the user *in* an org, with a role. A **Worker** is a membership with a `worker_profile` and `tracking_enabled = true`. Admins may or may not also be workers. Invited Workers start tracked; the owner and invited admins/managers start untracked, and admins switch it per person (ADR-130). Members whose grants are all own/assigned scope (the WORKER role) use the desktop app only (ADR-128). | A user can belong to many orgs; data never crosses orgs. API resource `/workers` = memberships with profiles. Only memberships with `tracking_enabled = true` can start tracking. |
 | **Team** | A group of workers with one or more managers. It is the **authorization boundary** for TEAM_MANAGER. | A manager's scope = union of workers in the teams they manage. |
 | **Client** | The external party that is billed. Holds default bill rate and currency. | Archiving a client blocks new projects but keeps history. |
 | **Project** | The unit of tracked work: optional client, members/teams, billable default, budget. | Only members (direct or via team) can track to it. Archived projects cannot be tracked to. |

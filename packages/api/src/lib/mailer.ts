@@ -69,12 +69,12 @@ export class SmtpMailer implements Mailer {
 }
 
 export function createMailer(env: Record<string, string | undefined> = process.env): Mailer {
-  if (env.RESEND_API_KEY) return new ResendMailer(env.RESEND_API_KEY, env.MAIL_FROM ?? 'Tallywork <no-reply@tallywork.app>');
+  if (env.RESEND_API_KEY) return new ResendMailer(env.RESEND_API_KEY, env.MAIL_FROM ?? 'WorkPulse <no-reply@tallywork.app>');
   if (env.SMTP_HOST) {
     const port = Number(env.SMTP_PORT ?? 465);
     const secure = env.SMTP_SECURE ? env.SMTP_SECURE === 'true' : port === 465;
     // Gmail rewrites any other From address to the signed-in account, so default to it.
-    const from = env.MAIL_FROM ?? (env.SMTP_USER ? `Tallywork <${env.SMTP_USER}>` : 'Tallywork <no-reply@tallywork.app>');
+    const from = env.MAIL_FROM ?? (env.SMTP_USER ? `WorkPulse <${env.SMTP_USER}>` : 'WorkPulse <no-reply@tallywork.app>');
     return new SmtpMailer({ host: env.SMTP_HOST, port, secure, user: env.SMTP_USER, pass: env.SMTP_PASS }, from);
   }
   return new MemoryMailer(env.NODE_ENV !== 'test');

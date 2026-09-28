@@ -5,10 +5,13 @@ Read this before adding pages. The canonical example is `apps/web/app/o/[orgId]/
 ## Stack
 - Next.js 16 App Router. Pages are **client components** (`'use client'`) that fetch from the Hono API at `/api/v1` with TanStack Query. Business logic stays in the API; pages only render and call endpoints.
 - Tailwind v4 with semantic tokens only (`bg-surface`, `text-text-muted`, `border-border`, `bg-interactive`, `text-success`, `bg-warning-soft`, …). See `packages/ui/src/tokens.css`. **Never** use raw hex colours or Tailwind palette colours (`bg-blue-500`) except for project colours coming from data.
-- Icons: `lucide-react`. Font: Inter (already global). Numbers/durations/money: add the `tabular` class.
+- Icons: `lucide-react`. Font: Inter (already global); Poppins Bold (`--font-brand`) is only for the WorkPulse wordmark inside `BrandLockup`. Numbers/durations/money: add the `tabular` class.
+- Brand: user-visible text calls the product **WorkPulse**. Technical names stay Tallywork (`@tallywork/*` imports, `TALLYWORK_*` env vars, webhook headers, installer file names); don't rename those (ADR-125 in `docs/plan/08-decisions.md`).
 
 ## Routing
 All org pages live under `apps/web/app/o/[orgId]/…`. Links use `org.base` from `useOrg()`, for example `` `${org.base}/projects/${id}` ``.
+- The org workspace is for admins and managers. Members who only see their own work (`isDesktopOnly(grants)` from `@tallywork/domain`, e.g. Workers) are redirected from `/o/*` to `/download` by the org layout, and invited Workers land on `/download` after accepting. Don't build worker-only pages under `/o/*`; they belong in the desktop app (ADR-128).
+- Public (signed-out) pages such as login, signup, invite, password reset, verify email and /download wrap their content in `AuthShell` (`@/components/auth-shell`), which shows the brand lockup.
 
 ## Data
 ```ts
@@ -37,6 +40,7 @@ await api(`/orgs/${org.organization.id}/…`, { method: 'POST', body }); // ad-h
 - Inputs: `Button` (variant primary/secondary/ghost/danger/subtle, size xs/sm/md, `icon`, `loading`), `IconButton`, `Input`, `Select` (native), `Textarea`, `Field` (label/hint/error), `Checkbox`, `Switch`.
 - Overlays: `Dialog` (title, footer), `Drawer` (right-hand detail panel), `ConfirmDialog`, `Menu`/`MenuItem`, `Popover`, `Tooltip`, `useToast()`.
 - Display: `StatusBadge status="APPROVED"` (colour + icon + text), `Badge`, `Avatar`, `PersonCell`, `WorkerStatus`, `ActivityBar pct`, `BudgetProgress`, `Stat`.
+- Brand: `Logo` (the hexagon pulse mark) and `BrandLockup` (mark + wordmark, optional `tagline`, `tone="onDark"` for dark panels). Don't redraw the logo or hard-code its colours elsewhere.
 - Format: `fmtDuration`, `fmtClock`, `fmtMoney(minor, currency)`, `fmtDate`, `fmtTime`, `fmtDateTime`, `fmtRelative`, `fmtPct`.
 - App components: `@/components/project-task-picker` (`ProjectTaskPicker`), `@/components/charts` (`ColumnChart`, `StackedBars`, `DayRibbon`).
 

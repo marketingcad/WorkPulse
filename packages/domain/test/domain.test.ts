@@ -14,6 +14,7 @@ import {
   authorizationMatrixMarkdown,
   classifyAttendance,
   cronMatches,
+  isDesktopOnly,
   parseCron,
   resolveRange,
   nearestLimit,
@@ -172,6 +173,14 @@ describe('permissions', () => {
     expect(can(worker, 'screenshots:read', { ownerMembershipId: 'w1' })).toBe(false);
     expect(ROLE_PRESETS.AGENT['members:read']).toBeUndefined();
     expect(ROLE_PRESETS.AGENT['activity:read']).toBeUndefined();
+  });
+  it('sends workers (and worker-like custom roles) to the desktop app, not the web workspace', () => {
+    expect(isDesktopOnly(ROLE_PRESETS.WORKER)).toBe(true);
+    expect(isDesktopOnly({ 'org:read': 'org', 'tracking:track': 'own', 'expenses:create': 'own' })).toBe(true);
+    expect(isDesktopOnly(ROLE_PRESETS.TEAM_MANAGER)).toBe(false);
+    expect(isDesktopOnly(ROLE_PRESETS.SYSTEM_ADMIN)).toBe(false);
+    // A custom finance role that oversees org-wide data keeps the web workspace.
+    expect(isDesktopOnly({ ...ROLE_PRESETS.WORKER, 'invoices:read': 'org' })).toBe(false);
   });
 });
 

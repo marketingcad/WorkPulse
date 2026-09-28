@@ -646,7 +646,7 @@ function PolicyTab({ w }: { w: WorkerDto }) {
                 ))}
               </ul>
             ) : (
-              'Tallywork defaults. No overrides are set.'
+              'WorkPulse defaults. No overrides are set.'
             )}
             {org.can('policies:manage') && (
               <Link href={`${org.base}/settings/policies`} className="mt-3 block font-medium text-interactive hover:underline">

@@ -1,1 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#0F2240"/><g stroke="#E6ECF5" stroke-width="2.6" stroke-linecap="round"><path d="M9 8.5v15"/><path d="M13.3 8.5v15"/><path d="M17.6 8.5v15"/><path d="M21.9 8.5v15"/></g><path d="M6.5 21 25.5 11" stroke="#5B8DEF" stroke-width="2.6" stroke-linecap="round"/><circle cx="25.5" cy="11" r="2.1" fill="#5B8DEF"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs><clipPath id="wp-inner"><path d="M32 12.5 49 22.25v19.5L32 51.5 15 41.75v-19.5Z"/></clipPath></defs>
+  <path d="M32 5.5 55 18.75v26.5L32 58.5 9 45.25v-26.5Z" fill="#1766FF" stroke="#1766FF" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M32 12.5 49 22.25v19.5L32 51.5 15 41.75v-19.5Z" fill="#0B2A66" stroke="#0B2A66" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M9 41 22.5 26.5 32.5 41.5 41.5 28.5 56 37" fill="none" stroke="#FFFFFF" stroke-width="6.4" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#wp-inner)"/>
+</svg>

@@ -29,7 +29,7 @@ function createWindow(): BrowserWindow {
     minWidth: 360,
     minHeight: 560,
     show: false,
-    title: 'Tallywork',
+    title: 'WorkPulse',
     backgroundColor: '#0f2240',
     autoHideMenuBar: true,
     webPreferences: {
@@ -72,7 +72,8 @@ function showWindow(): void {
 
 function trayIcon(state: 'stopped' | 'active' | 'paused'): Electron.NativeImage {
   const color = state === 'active' ? '#3fb27f' : state === 'paused' ? '#e3a33b' : '#93a3bd';
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" rx="7" fill="#0f2240"/><g stroke="#e6ecf5" stroke-width="2.6" stroke-linecap="round"><path d="M9 8.5v15M13.3 8.5v15M17.6 8.5v15M21.9 8.5v15"/></g><circle cx="25" cy="25" r="5.5" fill="${color}" stroke="#0f2240" stroke-width="2"/></svg>`;
+  // Brand mark (packages/ui/src/logo.tsx) with a status dot: green tracking, amber paused, grey stopped.
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><defs><clipPath id="i"><path d="M32 12.5 49 22.25v19.5L32 51.5 15 41.75v-19.5Z"/></clipPath></defs><path d="M32 5.5 55 18.75v26.5L32 58.5 9 45.25v-26.5Z" fill="#1766FF" stroke="#1766FF" stroke-width="7" stroke-linejoin="round"/><path d="M32 12.5 49 22.25v19.5L32 51.5 15 41.75v-19.5Z" fill="#0B2A66" stroke="#0B2A66" stroke-width="4" stroke-linejoin="round"/><path d="M9 41 22.5 26.5 32.5 41.5 41.5 28.5 56 37" fill="none" stroke="#fff" stroke-width="6.4" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#i)"/><circle cx="50" cy="50" r="11" fill="${color}" stroke="#0B2A66" stroke-width="4"/></svg>`;
   return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`).resize({ width: 18, height: 18 });
 }
 
@@ -91,7 +92,7 @@ function updateTray(): void {
   const label = st.tracking.state === 'stopped' ? 'Not tracking' : `${st.tracking.state === 'paused' ? 'Paused' : 'Tracking'} · ${fmt(elapsed)}${project ? ` · ${project}` : ''}`;
   const key = `${st.tracking.state}|${label}|${st.phase}`;
   if (process.platform === 'darwin') tray.setTitle(st.tracking.state === 'stopped' ? '' : fmt(elapsed));
-  tray.setToolTip(`Tallywork — ${label}`);
+  tray.setToolTip(`WorkPulse — ${label}`);
   if (key === lastTrayKey) return;
   lastTrayKey = key;
   tray.setImage(trayIcon(st.tracking.state));
@@ -103,8 +104,7 @@ function updateTray(): void {
       st.tracking.state === 'stopped'
         ? { label: last ? `Start “${last.project_name}”` : 'Start tracking…', enabled: st.phase === 'ready', click: () => (last ? void agent.start(last.project_id, st.lastProject!.taskId).catch(() => showWindow()) : showWindow()) }
         : { label: 'Stop tracking', click: () => void agent.stop() },
-      { label: 'Open Tallywork', click: () => showWindow() },
-      { label: 'Open dashboard in browser', click: () => void shell.openExternal(`${st.serverUrl}/`) },
+      { label: 'Open WorkPulse', click: () => showWindow() },
       { type: 'separator' },
       { label: 'Quit', click: () => quit() },
     ]),
@@ -146,7 +146,6 @@ function registerIpc(): void {
     'me:submitTimesheet': (p: IpcPayload<'me:submitTimesheet'>) => agent.api.request('POST', '/agent/me/timesheet/submit', p).then(async (r) => (await agent.refreshBootstrap(), r)),
     'me:requestTimeOff': (p: IpcPayload<'me:requestTimeOff'>) => agent.api.request('POST', '/agent/me/time-off', p),
     'me:readNotifications': (p: IpcPayload<'me:readNotifications'>) => agent.api.request('POST', '/agent/me/notifications/read', p),
-    'app:openWeb': (p: { path: string }) => shell.openExternal(`${agent.state().serverUrl}${p.path}`),
     'app:quit': () => quit(),
   };
   for (const channel of Object.keys(IPC) as IpcChannel[]) {
@@ -191,7 +190,7 @@ async function setupUpdater(managedChannel?: 'latest' | 'beta'): Promise<void> {
     autoUpdater.on('update-available', (info) => {
       if (offered === info.version || !Notification.isSupported()) return;
       offered = info.version;
-      const n = new Notification({ title: `Tallywork ${info.version} is available`, body: 'Click to download the new version. Your tracked time is kept.' });
+      const n = new Notification({ title: `WorkPulse ${info.version} is available`, body: 'Click to download the new version. Your tracked time is kept.' });
       n.on('click', () => void shell.openExternal(`${agent.state().serverUrl}/download`));
       n.show();
     });
@@ -209,11 +208,11 @@ if (process.env.TALLYWORK_CRASH_URL) crashReporter.start({ submitURL: process.en
 function explainMissingKeyring(): void {
   dialog.showMessageBoxSync({
     type: 'error',
-    title: 'Tallywork',
-    message: 'Tallywork needs your desktop keyring',
+    title: 'WorkPulse',
+    message: 'WorkPulse needs your desktop keyring',
     detail:
-      'Tallywork keeps your sign-in encrypted with the system keyring, and none is available.\n\n' +
-      'Install and start one, then open Tallywork again:\n' +
+      'WorkPulse keeps your sign-in encrypted with the system keyring, and none is available.\n\n' +
+      'Install and start one, then open WorkPulse again:\n' +
       '• GNOME, XFCE, Cinnamon, MATE and most others: sudo apt install gnome-keyring, then sign out and back in\n' +
       '• KDE Plasma: enable KDE Wallet in System Settings',
   });
@@ -239,11 +238,16 @@ app.whenReady().then(async () => {
     updateTray();
   });
   agent.on('show', () => showWindow());
+  // A desktop notification was clicked: bring the app forward on the page it is about.
+  agent.on('open', (view: string) => {
+    showWindow();
+    win?.webContents.send('app:navigate', view);
+  });
   updateTray();
   void setupUpdater(managed.updateChannel);
 }).catch((e: unknown) => {
   // Without this, a failed start leaves an invisible process: no window, no tray icon.
-  dialog.showErrorBox('Tallywork could not start', e instanceof Error ? e.message : String(e));
+  dialog.showErrorBox('WorkPulse could not start', e instanceof Error ? e.message : String(e));
   app.exit(1);
 });
 

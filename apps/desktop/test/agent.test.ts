@@ -126,8 +126,8 @@ describe('screenshot scheduling', () => {
 describe('IPC contract', () => {
   it('rejects malformed payloads', () => {
     expect(IPC['timer:start'].safeParse({ projectId: 'not-a-uuid', taskId: null }).success).toBe(false);
-    expect(IPC['app:openWeb'].safeParse({ path: 'https://evil.test' }).success).toBe(false);
-    expect(IPC['app:openWeb'].safeParse({ path: '/o/123/activity' }).success).toBe(true);
+    // Workers use the desktop app only: the renderer has no way to open the web workspace.
+    expect(Object.keys(IPC)).not.toContain('app:openWeb');
     expect(IPC['auth:login'].safeParse({ serverUrl: 'javascript:alert(1)' }).success).toBe(false);
     // Own-data reads: only allowlisted resources, only real dates (the path is built in main).
     expect(IPC['me:get'].safeParse({ resource: 'timesheet', date: '2026-09-25' }).success).toBe(true);

@@ -53,6 +53,8 @@
 
 **Real-time.** Server-Sent Events via `GET /api/v1/stream`, fanned out through Redis pub/sub. They push timer state (web ↔ desktop sync), presence ("who's working"), and notifications. SSE is chosen over WebSockets because the traffic is one-way, and SSE works through proxies and HTTP/2.
 
+**Who uses which client (as built, ADR-128).** Workers use the Electron app only; the web workspace (`/o/*`) is for admins and managers, and members with only own/assigned grants are sent to `/download`. Signed-out pages (login, signup, invitation, verify email, download) are public web pages.
+
 **Presence.** The agent sends a heartbeat every 60s while a session is active. Redis holds `presence:{org}:{worker}` with a TTL, which gives the manager dashboard its live "working / idle / offline" state without querying the database.
 
 ## 4. Technology Stack
@@ -67,9 +69,9 @@
 | Database | **PostgreSQL 17** | Transactional integrity for time/money; RLS for tenant isolation; declarative partitioning for high-volume activity tables; JSONB for policy docs; materialized views | TimescaleDB is an optional future path for activity |
 | Queue / cache | **Redis 7 + BullMQ** | Reliable jobs (retries, backoff, delayed/repeatable jobs) for projectors, exports, and webhooks. Also rate limiting, presence, and SSE fan-out. | The durable source for events is the Postgres **outbox**. Redis is transport, not truth. |
 | Object storage | **S3-compatible** (AWS S3 / R2 / MinIO in dev) | Cheap, durable blobs; presigned direct uploads keep screenshots off the API; lifecycle rules help retention | SSE-S3/KMS encryption at rest |
-| Desktop | **Electron + TypeScript** (electron-vite, electron-builder, electron-updater) | Required by the brief. Cross-platform, and shares React UI and TS packages with the web. | Native addons: `uiohook-napi` (input *counts*), `get-windows` (active window), `better-sqlite3-multiple-ciphers` (encrypted queue) |
+| Desktop | **Electron + TypeScript** (electron-vite, electron-builder, electron-updater) | Required by the brief. Cross-platform, and shares React UI and TS packages with the web. | Native addons: `uiohook-napi` (input *counts*), `get-windows` (active window), `better-sqlite3-multiple-ciphers` (encrypted queue). As built: the queue is an AES-256-GCM encrypted file, and installers plus the update feed are published to GitHub Releases (`marketingcad/tallywork-desktop`) by the "Desktop release" workflow (ADR-131) |
 | API style | **REST /api/v1** + OpenAPI 3.1 generated from zod | Predictable for public API consumers; generated typed client for web/agent | Cursor pagination |
-| Email | Provider abstraction (Postmark/SES); React Email templates | Deliverability; templates in code | — |
+| Email | `Mailer` provider abstraction (`packages/api/src/lib/mailer.ts`): **Resend** (`RESEND_API_KEY`) or **SMTP** via nodemailer (`SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS`, e.g. Gmail with an app password), otherwise a console mailer in dev and tests. Plain-text messages with optional HTML, sender `MAIL_FROM` (ADR-126) | Deliverability; one interface for every sender; templates in code | Postmark or SES can be added behind the same interface |
 | PDF | `@react-pdf/renderer` in worker | Pure Node, no headless browser, deterministic invoice layout | Reports-as-PDF use the same engine |
 | XLSX | `exceljs` streaming writer | Large exports without memory blowups | — |
 | Observability | OpenTelemetry (traces/metrics) → OTLP; pino JSON logs; Sentry (web, API, Electron crash reports) | Vendor-neutral; correlation IDs flow across agent → API → worker | — |

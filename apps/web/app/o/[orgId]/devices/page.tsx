@@ -142,7 +142,7 @@ export default function DevicesPage() {
 
   return (
     <>
-      <PageHeader title={org.isManagerView ? 'Devices' : 'My devices'} description="Computers running the Tallywork desktop app. Revoke a device when it is lost, replaced or no longer used." />
+      <PageHeader title={org.isManagerView ? 'Devices' : 'My devices'} description="Computers running the WorkPulse desktop app. Revoke a device when it is lost, replaced or no longer used." />
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Panel title="Devices" actions={pendingCount > 0 ? <StatusBadge status="PENDING" label={`${pendingCount} awaiting approval`} /> : undefined}>
           {q.error ? (
@@ -174,7 +174,7 @@ export default function DevicesPage() {
             </ul>
             <ol className="list-decimal space-y-1 pl-4 text-text-muted">
               <li>Install the app and open it.</li>
-              <li>Choose “Sign in”. Your browser opens so you can sign in to Tallywork securely; the app never sees your password.</li>
+              <li>Choose “Sign in”. Your browser opens so you can sign in to WorkPulse securely; the app never sees your password.</li>
               <li>Pick a project and press start. The device appears in this list after its first sync.</li>
             </ol>
             <p className="text-xs text-text-faint">Ask your administrator for the installer for your organization. Activity and screenshots are captured only while the timer is running.</p>

@@ -1,8 +1,8 @@
 # Tallywork browser extension
 
-Tells the Tallywork desktop app which website is open in the active tab, so website
+Tells the WorkPulse desktop app which website is open in the active tab, so website
 tracking works on Windows (macOS reads it from the OS). Chrome, Edge and Brave
-(Manifest V3, Chrome 116+).
+(Manifest V3, Chrome 116+). The extension itself keeps the name Tallywork.
 
 - Sends only to the desktop app on this computer (`http://127.0.0.1:47816–47818`).
   The app only accepts this extension's ID (`pmgcginlglleofaohoddeemkibphkcij`,

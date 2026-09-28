@@ -65,7 +65,7 @@ pkg:
   artifactName: Tallywork-${version}.${ext}
 linux:
   target: [AppImage, deb]
-  # AppImage updates itself; the .deb is for people who prefer the package manager (no auto-update).
+  # AppImage updates itself; the .deb updates too (electron-updater asks for the password to install it).
   artifactName: Tallywork-linux.${ext}
   # Otherwise derived from the package name (@tallywork/desktop), which is not a valid file name.
   executableName: tallywork

@@ -71,6 +71,7 @@
 - **Tests:** Playwright-Electron E2E (login → start → stop); offline simulation (drop network 30 min → events replay, no duplicates); kill -9 mid-session recovers; clock jump ±2h is corrected; token reuse detection; IPC fuzz (invalid payloads rejected); signed builds verified in CI.
 - **Acceptance:** tracking 2h with the network toggled off/on randomly gives server totals within ±5s of agent-local elapsed; revoking a device stops ingest in ≤ 30s.
 - **Dependencies:** Phase 4. **Risks:** code-signing and notarization lead time. Start acquiring certificates in Phase 1.
+- **Delivered (Revision 4):** ✓ desktop sign-in, now primarily email + password in the app with 2FA and organization choice, PKCE via the browser as the alternative (ADR-129). ✓ Updater: GitHub Releases feed, `latest`/`beta` channels, 6-hour checks, install on quit (ADR-131). ✓ Win/macOS/Linux builds in CI ("Desktop release" workflow) and a Linux smoke test on Ubuntu 24.04. ✓ Linux keyring requirement and Wayland capability reporting (ADR-132). ✗ Signed builds are not in place yet (see Follow-ups).
 
 ### Phase 6 — Activity monitoring
 - **Goal:** activity %, idle, screenshots, apps, URLs with privacy controls, plus the Activity review UX.
@@ -170,6 +171,22 @@
 - **Tests:** k6 load tests, chaos tests (Redis outage → outbox backlog drains after recovery; PG failover), full cross-browser plus responsive plus a11y audit.
 - **Acceptance:** SLOs met (API p95 < 300ms for reads, ingest p95 < 500ms, 99.9% availability target); restore drill succeeds within the RTO.
 - **Dependencies:** all prior. **Risks:** unknown hot spots, handled by measure-first optimization.
+- **Delivered (Revision 4):** ✓ desktop installers published with stable names and a `/download` page that picks the visitor's OS (ADR-128, ADR-131). ✓ Managed settings for MDM (registry policy, macOS configuration profile), see [desktop-deployment.md](../ops/desktop-deployment.md). The MSI/PKG targets are configured but not published, and there is no enrollment token yet.
+
+### Also delivered outside the phase plan (Revision 4)
+- ✓ WorkPulse brand in the UI (mark, lockup, favicon, desktop icon), technical names kept as Tallywork (ADR-125).
+- ✓ Email through Resend or SMTP behind one `Mailer` interface (ADR-126).
+- ✓ Optional email verification with sign-in from the emailed link (ADR-127).
+- ✓ Workers are desktop-only; the web workspace is for admins and managers (ADR-128).
+- ✓ Tracking defaults by role: Workers tracked, owner/admins/managers untracked until switched on (ADR-130).
+
+### Follow-ups (open)
+- **macOS signing and notarization:** enroll in the Apple Developer Program, sign with a Developer ID, notarize and turn the hardened runtime back on, so macOS installs updates itself instead of the notification that links to `/download`.
+- **Windows code signing** (Authenticode, EV certificate recommended), so SmartScreen stops warning on first run.
+- **Optional rename of the desktop system name to WorkPulse** (install folder, app bundle, Linux executable, installer files). Needs a `userData` migration so installed apps keep their sign-in and offline queue, and a plan for the update feed and managed-policy paths.
+- **GNOME/KDE Wayland support** for activity, apps and screenshots (e.g. a GNOME Shell extension, KDE/KWin scripting, or portal-based screenshots), replacing the current "unavailable on Wayland" reporting.
+- **Custom domain for sending email** (SPF/DKIM/DMARC on our own domain with Resend or another provider), plus bounce handling, instead of a shared or personal SMTP mailbox.
+- Publish the per-machine `.msi` and `.pkg` from the release workflow.
 
 ### Future (tracked, not dropped)
 Mobile apps with GPS/geofences/job sites (Location subsystem schema is ready from Phase 1), PM integrations (Jira/Asana/Trello/GitHub/Linear), accounting sync (QuickBooks/Xero), worker payouts, SSO/SCIM, kiosk mode, anomaly insights, WebAuthn.

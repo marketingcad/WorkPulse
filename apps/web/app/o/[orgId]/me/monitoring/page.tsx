@@ -30,7 +30,7 @@ export default function MonitoringPage() {
 
   return (
     <>
-      <PageHeader title="What is monitored" description={`Exactly what ${org.organization.name} collects about your work in Tallywork, based on the policy that applies to you right now.`} />
+      <PageHeader title="What is monitored" description={`Exactly what ${org.organization.name} collects about your work in WorkPulse, based on the policy that applies to you right now.`} />
       <div className="mb-4 flex items-start gap-3 rounded-md border border-border bg-surface px-4 py-3">
         <ShieldCheck className="mt-0.5 size-5 shrink-0 text-success" aria-hidden />
         <div className="text-sm">

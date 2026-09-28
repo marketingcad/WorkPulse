@@ -1,6 +1,6 @@
-# Tallywork public API
+# WorkPulse public API
 
-This page is for developers who connect other systems to Tallywork: payroll, accounting or project tools, and data warehouses. It covers API keys, the endpoints each key can reach, errors and limits, and webhooks.
+This page is for developers who connect other systems to WorkPulse: payroll, accounting or project tools, and data warehouses. It covers API keys, the endpoints each key can reach, errors and limits, and webhooks.
 
 - **Base URL:** `https://<your-tallywork-host>/api/v1`
 - **Format:** JSON in and out. Timestamps are ISO 8601 in UTC. Dates are `YYYY-MM-DD` in the organization's time zone. Durations are whole seconds. Money is an integer number of minor units (cents) plus an ISO currency code.
@@ -8,7 +8,7 @@ This page is for developers who connect other systems to Tallywork: payroll, acc
 
 ## API keys
 
-An admin creates keys in **Developer → API keys**. The full key looks like `tw_live_<prefix>_<secret>`. It is shown **once**, when it is created. Tallywork stores only a hash of it.
+An admin creates keys in **Developer → API keys**. The full key looks like `tw_live_<prefix>_<secret>`. It is shown **once**, when it is created. WorkPulse stores only a hash of it.
 
 Send the key as a bearer token:
 
@@ -67,6 +67,31 @@ Errors use RFC 7807 problem JSON:
 
 Include `request_id` when you contact support.
 
+## Sign-in endpoints
+
+The web app and the desktop app sign people in with these. They are not under `/orgs/{orgId}` and API keys can't use them. They are listed here because their responses and error codes matter to anyone building a sign-in screen.
+
+| Endpoint | Body | Response |
+|---|---|---|
+| `POST /auth/signup` | `name`, `email`, `password`, `organization_name?`, `timezone?` | `201` `{ user_id, organization_id }` and a session cookie. With email verification required: `{ …, verification_required: true }` and **no** session; the person must open the emailed link first. |
+| `POST /auth/login` | `email`, `password` | The signed-in person, or `{ mfa_required: true }`. `401 invalid_credentials`; `403 email_not_verified` when verification is required and the email isn't confirmed (checked only after a correct password). |
+| `POST /auth/verify-email` | `token` | `{ ok: true, signed_in }`. With verification required, opening the link signs the person in (`signed_in: true`), unless the account has 2FA. |
+| `POST /auth/verify-email/resend` | `email` | Always `202`, so it doesn't reveal which emails have accounts. Sends a new link only to unverified accounts. 5 per hour. |
+| `POST /auth/invitations/accept` | `token`, `name?`, `password?` | `{ organization_id, membership_id, role_key }`. An account created here is already verified. Workers (`role_key: "WORKER"`) are sent to `/download`, because they use the desktop app only. |
+| `POST /agent/login` | `email`, `password`, `mfa_code?`, `organization_id?`, `device` | Desktop sign-in. `201` with `device_id`, `organization_id`, `status` and the device's `access_token` / `refresh_token`. `200` `{ organization_required: true, organizations: [{ id, name }] }` when the person is in several organizations: send again with `organization_id`. 20 per 15 minutes. |
+
+`POST /agent/login` runs the same checks as `/auth/login` (lockout, email verification). Its errors:
+
+| Status | `code` | Meaning |
+|---|---|---|
+| `401` | `invalid_credentials` | Wrong email or password. |
+| `401` | `mfa_required` | The account has 2FA. Send again with `mfa_code` (an authenticator code or a recovery code). |
+| `403` | `email_not_verified` | The email isn't confirmed yet. |
+| `403` | `no_organization` | The account isn't an active member of any organization. |
+| `429` | `account_locked` | Too many failed attempts. Try again in a few minutes. |
+
+The password is sent once and never stored by the desktop app. It keeps only the refresh token, encrypted with the OS keychain. The older browser flow (`/device/authorize`, then `POST /agent/authorize` and `POST /agent/register` with PKCE) is still there, as **Sign in with browser instead**.
+
 ## Webhooks
 
 An admin adds endpoints in **Developer → Webhooks**. Each endpoint chooses which events it receives, or `*` for all of them.
@@ -93,7 +118,9 @@ Tallywork-Signature: t=1790198400,v1=Qm9…  (see below)
 }
 ```
 
-Reply with any `2xx` status within 10 seconds. Tallywork never follows redirects.
+Header names keep the product's original `Tallywork-` prefix, and requests come with `User-Agent: Tallywork-Webhooks/1.0`.
+
+Reply with any `2xx` status within 10 seconds. WorkPulse never follows redirects.
 
 ### Verifying the signature
 
@@ -139,18 +166,18 @@ Deliveries are at-least-once and can arrive out of order. Use `event_id` to igno
 
 ### Allowed endpoint URLs
 
-Endpoint URLs must use `https` and must be publicly reachable. Tallywork refuses:
+Endpoint URLs must use `https` and must be publicly reachable. WorkPulse refuses:
 
 - `localhost`, `*.local` and `*.internal` names;
 - private, loopback, link-local, CGNAT, multicast and cloud-metadata addresses, including IPv6 forms and IPv4-mapped IPv6;
 - URLs with a username or password in them.
 
-The address is checked when the endpoint is saved and **again each time Tallywork connects**. A hostname that later resolves to a private address (DNS rebinding) is refused at connection time.
+The address is checked when the endpoint is saved and **again each time WorkPulse connects**. A hostname that later resolves to a private address (DNS rebinding) is refused at connection time.
 
 ## Integrations
 
-**Settings → Integrations** connects Tallywork to external systems through providers. Connection credentials are encrypted and never returned by the API. Syncs run in the background, hourly or on request (`POST /orgs/{orgId}/integrations/{id}/sync`).
+**Settings → Integrations** connects WorkPulse to external systems through providers. Connection credentials are encrypted and never returned by the API. Syncs run in the background, hourly or on request (`POST /orgs/{orgId}/integrations/{id}/sync`).
 
-Each connection remembers which external record matches which Tallywork record, so running a sync again updates records instead of creating duplicates. If a sync fails, the connection is marked `ERROR` and shows the reason.
+Each connection remembers which external record matches which WorkPulse record, so running a sync again updates records instead of creating duplicates. If a sync fails, the connection is marked `ERROR` and shows the reason.
 
 API keys cannot manage integrations.

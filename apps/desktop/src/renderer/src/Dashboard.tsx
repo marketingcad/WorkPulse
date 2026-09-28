@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AppWindow, Camera, CameraOff, ChevronDown, ChevronRight, ClipboardCheck, ClockPlus, CloudOff, ExternalLink, Eye, Globe, NotebookPen, Pause, Play, RefreshCw, Search, Settings, Square } from 'lucide-react';
+import { AppWindow, Camera, CameraOff, ChevronDown, ChevronRight, ClipboardCheck, ClockPlus, CloudOff, Eye, Globe, NotebookPen, Pause, Play, RefreshCw, Search, Settings, Square } from 'lucide-react';
 import type { AgentState, Assignment } from '../../shared/ipc';
 import { bridge, card, errorText, fmtClock, fmtHm, fmtRange, fmtTime, initials, useTick, type View } from './lib';
 import { CurrentSessionCard, RecentSessionsCard, TodaySummaryCard } from './HomeCards';
@@ -244,7 +244,6 @@ function QuickActions({ s, go }: { s: AgentState; go: (v: View) => void }) {
   const t = s.tracking;
   const [note, setNote] = useState(t.note);
   useEffect(() => setNote(t.note), [t.note, t.sessionId]);
-  const org = s.account!.organizationId;
   // Narrow window: note on its own row, the two actions share the next one.
   const action = 'flex h-9 flex-1 items-center justify-center gap-1.5 rounded-sm border border-border bg-surface px-3 text-sm hover:bg-surface-muted sm:flex-none';
   return (
@@ -270,13 +269,13 @@ function QuickActions({ s, go }: { s: AgentState; go: (v: View) => void }) {
             <ClockPlus className="size-4 text-text-muted" /> Manual time
           </button>
         )}
-        <button onClick={() => void bridge.openWeb(`/o/${org}/timesheets`)} className={action}>
-          <ClipboardCheck className="size-4 text-text-muted" /> My timesheet <ExternalLink className="size-3 text-text-faint" />
+        <button onClick={() => go('timesheet')} className={action}>
+          <ClipboardCheck className="size-4 text-text-muted" /> My timesheet
         </button>
       </div>
       {s.timesheetDue && (
         <button
-          onClick={() => void bridge.openWeb(`/o/${org}/timesheets?date=${s.timesheetDue!.periodStart}`)}
+          onClick={() => go('timesheet')}
           className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left text-xs ${s.timesheetDue.overdue ? 'border-warning/30 bg-warning-soft text-warning' : 'border-interactive/20 bg-interactive-soft text-interactive'}`}
         >
           <ClipboardCheck className="size-4 shrink-0" />
@@ -287,7 +286,7 @@ function QuickActions({ s, go }: { s: AgentState; go: (v: View) => void }) {
               {s.timesheetDue.status === 'REJECTED' ? ' · changes requested' : ''}
             </span>
           </span>
-          <ExternalLink className="size-3.5 shrink-0" />
+          <ChevronRight className="size-3.5 shrink-0" />
         </button>
       )}
     </div>

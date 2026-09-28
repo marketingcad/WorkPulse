@@ -36,7 +36,7 @@ const CHALLENGE_RE = /^[A-Za-z0-9\-._~]{43,128}$/;
 
 export default function DeviceAuthorizePage() {
   return (
-    <AuthShell title="Sign in to the Tallywork desktop app" subtitle="Connect this computer to your organization so you can track time from the desktop.">
+    <AuthShell title="Sign in to the WorkPulse desktop app" subtitle="Connect this computer to your organization so you can track time from the desktop.">
       <Suspense
         fallback={
           <div className="flex justify-center py-8">
@@ -147,7 +147,7 @@ function Authorize() {
       <div className="flex flex-col items-center gap-3 py-6 text-center">
         <CircleCheck className="size-8 text-success" aria-hidden />
         <p className="font-medium">Desktop app connected</p>
-        <p className="text-sm text-text-muted">You can close this tab and return to the Tallywork desktop app.</p>
+        <p className="text-sm text-text-muted">You can close this tab and return to the WorkPulse desktop app.</p>
       </div>
     );
 
@@ -188,11 +188,7 @@ function Authorize() {
             Nothing is collected when tracking is stopped. Location is never collected.
           </li>
         </ul>
-        {orgId && (
-          <Link href={`/o/${orgId}/me/monitoring`} target="_blank" className="mt-2 inline-block text-xs font-medium text-interactive hover:underline">
-            See exactly what this organization monitors →
-          </Link>
-        )}
+        <p className="mt-2 text-xs text-text-muted">The app shows exactly what this organization monitors before you start tracking.</p>
       </section>
 
       {submitError && (
@@ -204,7 +200,7 @@ function Authorize() {
         Authorize desktop app
       </Button>
       <p className="text-xs text-text-faint">
-        Only approve this if you just started sign-in from the Tallywork desktop app on this computer. You will be returned to{' '}
+        Only approve this if you just started sign-in from the WorkPulse desktop app on this computer. You will be returned to{' '}
         <span className="font-mono">
           {redirect!.hostname}:{redirect!.port}
         </span>

@@ -144,7 +144,7 @@ describe('two-factor authentication', () => {
   let recovery: string[];
   it('enrolls with an authenticator app and recovery codes', async () => {
     const s = await manager.post('/me/mfa/totp/setup');
-    expect(s.body.otpauth_url).toMatch(/^otpauth:\/\/totp\/Tallywork%3Amona%40sec\.test\?secret=[A-Z2-7]+&issuer=Tallywork/);
+    expect(s.body.otpauth_url).toMatch(/^otpauth:\/\/totp\/WorkPulse%3Amona%40sec\.test\?secret=[A-Z2-7]+&issuer=WorkPulse/);
     secret = s.body.secret;
     expect((await manager.post('/me/mfa/totp/confirm', { code: '000000' })).status).toBe(400);
     const c = await manager.post('/me/mfa/totp/confirm', { code: totpCode(secret, t.clock.now) });

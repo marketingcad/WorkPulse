@@ -250,7 +250,7 @@ export async function inviteWorker(x: Ctx, input: z.infer<typeof inviteInput>) {
     expiresAt: new Date(Date.now() + 7 * 86400_000),
   });
   const url = `${x.deps.config.appUrl}/invite?token=${token}`;
-  await x.deps.mailer.send({ to: input.email, subject: `You're invited to ${x.org.name} on Tallywork`, text: `${x.org.name} invited you to join their workspace on Tallywork.\n\nAccept the invitation: ${url}\n\nThis link expires in 7 days.` });
+  await x.deps.mailer.send({ to: input.email, subject: `You're invited to ${x.org.name} on WorkPulse`, text: `${x.org.name} invited you to join their workspace on WorkPulse.\n\nAccept the invitation: ${url}\n\nThis link expires in 7 days.` });
   await audit(x, { action: 'invitation.created', targetType: 'invitation', targetId: id, after: { email: input.email, role: role.key } });
   return { id, email: input.email.toLowerCase(), invite_url: url, expires_at: new Date(Date.now() + 7 * 86400_000).toISOString() };
 }

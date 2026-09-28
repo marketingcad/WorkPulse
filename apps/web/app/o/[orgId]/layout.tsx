@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
 import type { MeDto, OrgContextDto } from '@tallywork/contracts';
 import { ErrorState, Logo, Spinner } from '@tallywork/ui';
+import { isDesktopOnly } from '@tallywork/domain';
 import { api } from '@/lib/api';
 import { OrgProvider } from '@/lib/org';
 import { useAccountLocale } from '@/lib/i18n';
@@ -30,9 +31,10 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
       offMutations();
     };
   }, [qc]);
-  // Workers use Tallywork through the desktop app only; the web workspace is for admins and managers.
+  // Workers (anyone who only sees their own work, built-in or custom role) use Tallywork through the desktop app only;
+  // the web workspace is for admins and managers.
   const router = useRouter();
-  const desktopOnly = data?.membership.role_key === 'WORKER';
+  const desktopOnly = !!data && isDesktopOnly(data.grants);
   useEffect(() => {
     if (desktopOnly) router.replace('/download');
   }, [desktopOnly, router]);

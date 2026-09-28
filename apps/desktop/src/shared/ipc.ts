@@ -48,7 +48,6 @@ export const IPC = {
   'me:submitTimesheet': z.object({ date: z.iso.date(), version: z.number().int().positive().optional() }),
   'me:requestTimeOff': z.object({ policy_id: z.uuid(), start_date: z.iso.date(), end_date: z.iso.date(), half_day: z.boolean().optional(), reason: z.string().trim().max(1000).optional() }),
   'me:readNotifications': z.object({ ids: z.union([z.literal('all'), z.array(z.uuid()).max(200)]) }),
-  'app:openWeb': z.object({ path: z.string().max(200).regex(/^\/[\w\-/?=&.]*$/) }),
   'app:quit': z.void(),
 } as const;
 

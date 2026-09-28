@@ -1,6 +1,8 @@
-# Tallywork
+# WorkPulse
 
-Workforce time tracking, activity monitoring, timesheets and billing — a web app for admins, managers and workers, plus a desktop agent that tracks time on the worker's machine.
+**Track • Focus • Achieve.** WorkPulse is a workforce time tracking platform: activity monitoring, timesheets and billing, with a web app for admins and managers and a desktop app that workers use to track time on their own machine.
+
+> WorkPulse is the product name people see. Technical names still say Tallywork and did not change: the repo, the `@tallywork/*` packages, the `TALLYWORK_*` variables, the `Tallywork-*` webhook headers, the `tallywork.app` domain, the desktop installers and installed app ("Tallywork", so existing installs keep their sign-in and update path), the Linux `tallywork` executable, and the browser extension.
 
 The main flow the product covers is **Organization → People → Work structure → Tracking → Time → Approval → Money → Insight**:
 
@@ -8,7 +10,7 @@ The main flow the product covers is **Organization → People → Work structure
 - **Workforce:** workers, teams, clients, projects, tasks, devices.
 - **Time tracking:** a server-side session state machine; a web timer and a desktop timer; idle detection; pause/resume; daily and weekly limits.
 - **Activity monitoring (desktop, set by policy):** keyboard and mouse *counts* (keystrokes are never recorded), 10-minute activity blocks, screenshots of every display (optionally blurred), app usage, and website usage (macOS natively; Windows through the Tallywork browser extension or the address bar).
-- **Worker desktop app:** Home dashboard (timer, current session, recent sessions, today's summary with idle time, live activity), plus Time Tracking, Projects, Tasks, Timesheet (with submit), Activity, personal Reports, Time Off (with requests), Schedule and Settings. It reads only the signed-in worker's own data.
+- **Worker desktop app:** workers use WorkPulse through the desktop app only; the web app sends them to its download page. Home dashboard (timer, current session, recent sessions, today's summary with idle time, live activity), plus Time Tracking, Projects, Tasks, Timesheet (with submit), Activity, personal Reports, Time Off (with requests), Schedule and Settings. It reads only the signed-in worker's own data.
 - **Timesheets:** manual time requests, time edits with full revision history, periods, and submit → approve / reject / request changes.
 - **Operations:** schedules, shifts, attendance, holidays, time-off policies with accruals, a balance ledger, and requests.
 - **Finance:** effective-dated pay and bill rates, billing entries, budgets, expenses with receipts, invoices (PDF), payments.
@@ -20,7 +22,7 @@ The main flow the product covers is **Organization → People → Work structure
 
 ## Project status
 
-Updated 26 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app)
+Updated 29 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app)
 
 ### ✅ Completed
 
@@ -38,11 +40,16 @@ Updated 26 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallyw
 
 ### 🆕 New updates
 
-- Launched on the live site.
+- New name and look: **WorkPulse**, with a new logo and app icon.
+- Sign in to the desktop app with your email and password (browser sign-in is still there).
+- Workers use the desktop app only: after accepting an invitation they land on a download page for their computer.
+- Desktop app for Windows, macOS and Linux, published on GitHub Releases, with automatic updates.
+- Real email through Resend or any SMTP server (for example Gmail), and optional email verification before first sign-in.
+- Owners, admins and managers are no longer tracked by default, so only workers appear in Live tracking.
 - Worker desktop app dashboard: people see their own time, timesheet, activity, schedule and time off in the app.
 - Browser extension for website tracking on Windows.
 - Language & region setting: dates, numbers and money appear in each person's local format.
-- Support console: Tallywork support can help customers, but can only see their data when the customer allows it, for a limited time.
+- Support console: WorkPulse support can help customers, but can only see their data when the customer allows it, for a limited time.
 - Company-wide desktop rollout: installers and central settings for IT teams.
 
 ### 🚧 In progress / next
@@ -50,7 +57,7 @@ Updated 26 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallyw
 - Full-scale load test (10,000 devices) on a test environment.
 - A backup restore drill.
 - Public uptime monitoring and a status page.
-- Code-signing certificates for the desktop installers.
+- Code signing for the desktop installers (Windows) and Apple signing and notarization (macOS), so Macs can update automatically.
 - Translation of the app into other languages.
 - Planned later: single sign-on (SSO), links to project tools such as Jira, accounting sync (QuickBooks or Xero), and mobile apps.
 
@@ -83,7 +90,7 @@ Updated 26 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallyw
 | Database | **PostgreSQL** via **Drizzle ORM** (`pg` pool; **Supabase** Postgres via the Session pooler in production, any Postgres works); **PGlite** (Postgres compiled to WASM) for zero-setup local dev and tests |
 | Tenant isolation | PostgreSQL **row-level security** on every tenant table, plus composite `(organization_id, id)` foreign keys |
 | File storage | **Supabase Storage** (private bucket, signed upload URLs) in production; Vercel Blob also supported; local filesystem / in-memory in dev and tests |
-| Email | **Resend** HTTP API when configured, otherwise an in-memory / console mailer |
+| Email | **Resend** HTTP API, or **SMTP** (`nodemailer`, e.g. Gmail) when configured, otherwise printed to the server console |
 | Background work | Transactional **outbox** + Next.js `after()` dispatch + **Vercel Cron** (every minute and daily) |
 | Password hashing | **Argon2** (`@node-rs/argon2`) |
 | Documents | `pdf-lib` (invoices / PDF exports), `exceljs` (XLSX exports) |
@@ -91,7 +98,8 @@ Updated 26 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallyw
 | Browser extension | Chrome / Edge / Brave **Manifest V3** extension (`apps/extension`, plain JavaScript, no build) that reports the active tab to the desktop agent over a local `127.0.0.1` bridge |
 | Testing | **Vitest 5** (domain, db/RLS, API flows and security, desktop agent) |
 | Hosting | **Vercel** (Fluid Compute, Node 24) |
-| CI | GitHub Actions (typecheck, test, build; desktop builds on Windows / macOS / Linux) |
+| CI | GitHub Actions (typecheck, test, build; desktop builds on Windows / macOS / Linux; desktop release and Linux smoke-test workflows) |
+| Desktop distribution | **electron-builder** → GitHub Releases in the public `marketingcad/tallywork-desktop` repo (installers + auto-update feed) |
 
 ---
 
@@ -103,16 +111,21 @@ tallywork/
 │   ├── web/                    Next.js app: UI + the API route that hosts Hono
 │   │   ├── app/(auth)/         login, signup, invite, verify-email, forgot/reset password
 │   │   ├── app/o/[orgId]/      the org workspace (activity, timesheets, finance, reports, settings…)
-│   │   ├── app/device/authorize  desktop-agent sign-in consent page (PKCE)
+│   │   ├── app/device/authorize  desktop-agent browser sign-in consent page (PKCE)
+│   │   ├── app/download        desktop app download page (Workers land here; detects the OS)
+│   │   ├── app/icon.svg        favicon
 │   │   ├── app/api/v1/[[...route]]/route.ts   → forwards every /api/v1 request to the Hono app
 │   │   ├── components/         feature components (tracking, timesheets, finance, people, reports…)
 │   │   ├── lib/server/deps.ts  builds DB / storage / mailer once per server instance
 │   │   ├── scripts/seed.ts     demo data seeder
 │   │   └── vercel.json         cron schedule + function duration
 │   └── desktop/                Electron desktop agent
+│       ├── build/icon.svg      app icon source (rendered to build/icon.png for every platform)
+│       ├── electron-builder.yml  installers + GitHub Releases publishing
+│       ├── scripts/release.mjs local Windows release (`release:win`)
 │       └── src/
 │           ├── main/           privileged process: Agent core + services
-│           │   └── services/   agent, api, auth (PKCE), monitors, queue (offline), secure-store,
+│           │   └── services/   agent, api, auth (email + password, or browser PKCE), monitors, queue (offline), secure-store,
 │           │                   urls (browser-extension bridge + address-bar fallback)
 │           ├── preload/        typed, minimal contextBridge API
 │           ├── renderer/       sandboxed React UI: Shell (top bar + navigation), Dashboard (Home),
@@ -125,9 +138,10 @@ tallywork/
 │   ├── contracts/              Zod schemas for API inputs/DTOs and the agent ingest protocol
 │   ├── db/                     Drizzle schema, migrations, RLS setup, pg/PGlite client
 │   ├── api/                    Hono app: middleware, routes, services, jobs, seed
-│   └── ui/                     shared React components + design tokens (tokens.css)
+│   └── ui/                     shared React components + design tokens (tokens.css); `Logo` and
+│                               `BrandLockup` in src/logo.tsx (wordmark in Poppins Bold, `--font-brand`)
 ├── docs/plan/                  product & architecture plan, ADRs
-├── .github/workflows/ci.yml    CI pipeline
+├── .github/workflows/          ci.yml (CI), desktop-release.yml, desktop-linux-smoke.yml
 ├── turbo.json                  task graph
 └── pnpm-workspace.yaml
 ```
@@ -183,7 +197,7 @@ flowchart TB
   subgraph Data
     pg[("PostgreSQL (Supabase)<br/>RLS on tenant tables<br/>outbox, rollups")]
     blob[("Supabase Storage (private)<br/>screenshots, receipts,<br/>invoice PDFs, exports")]
-    mail["Resend<br/>transactional email"]
+    mail["Resend or SMTP<br/>transactional email"]
     hooks["Customer webhook<br/>endpoints (HMAC-signed)"]
   end
 
@@ -243,16 +257,43 @@ sequenceDiagram
   Admin->>Web: Sign up (name, email, password, org name, timezone)
   Web->>API: POST /auth/signup
   API->>DB: create user, organization, built-in roles, owner membership
+  alt REQUIRE_EMAIL_VERIFICATION=true
+    API-->>Web: verification_required (no session) → "Check your email"
+    Admin->>Web: Open emailed link → POST /auth/verify-email
+  end
   API-->>Web: session cookie (tw_session)
   Admin->>Web: Create teams, clients, projects, tasks; set tracking policy
   Admin->>API: POST /orgs/:id/invitations (email, role, teams)
-  API-->>Worker: invitation email (Resend)
+  API-->>Worker: invitation email
   Worker->>Web: Open invite link → set name + password
   Web->>API: POST /auth/invitations/accept
-  API->>DB: membership (WORKER) + worker_profile + team membership
+  API->>DB: verified user, membership (WORKER) + worker_profile + team membership
+  API-->>Web: role_key = WORKER → /download (desktop app)
 ```
 
-### 2. Desktop agent sign-in (PKCE, no password in the app)
+With email verification required, sign-up does not start a session. Opening the emailed link does (unless the account has 2FA), and **Resend** on the "Check your email" screen calls `POST /auth/verify-email/resend`. Login refuses unconfirmed accounts with `email_not_verified`.
+
+**Who is tracked.** The owner and invited admins and managers start with tracking **off** (`worker_profiles.tracking_enabled = false`), so they don't appear in Live tracking. Invited Workers start with it on. Admins switch it per person on the Workers page. Anyone whose role only sees their own work (the Worker role, or a custom one like it) is sent from the web workspace to `/download`.
+
+### 2. Desktop agent sign-in
+
+People sign in inside the app with their email and password:
+
+```mermaid
+sequenceDiagram
+  participant App as Desktop agent
+  participant API as API
+
+  App->>API: POST /agent/login (email, password, device info, capabilities)
+  API->>API: same checks as web login (lockout, email verification)
+  API-->>App: 401 mfa_required → ask for the code, send again with mfa_code
+  API-->>App: 200 organization_required + organizations → pick one, send again with organization_id
+  API-->>App: 201 device id + access token + refresh token
+  App->>App: store refresh token encrypted (OS keychain via safeStorage)
+  App->>API: GET /agent/bootstrap → policy, assignments, current session
+```
+
+The password is sent once to the server and never stored; only the device refresh token is kept. `POST /agent/login` is limited to 20 attempts per 15 minutes. **Sign in with browser instead** uses PKCE, so the password is typed only in the browser:
 
 ```mermaid
 sequenceDiagram
@@ -757,7 +798,7 @@ erDiagram
 - **Browser extension bridge:** local-only (`127.0.0.1`), accepts only the extension's fixed ID as `Origin` and a loopback `Host` (defeats web pages and DNS rebinding), and never sees incognito windows.
 - **Secrets:** passwords are hashed with Argon2. Session tokens, API keys and refresh tokens are stored only as hashes. MFA and webhook secrets are encrypted with a key derived from `APP_SECRET`.
 - **Media:** screenshots are private blobs. They are served only through `/api/v1/media/:token`, a short-lived HMAC-signed URL issued after authorization.
-- **Hardening:** secure headers (HSTS, frame-deny, nosniff, strict referrer, permissions policy), `Cache-Control: no-store` by default, rate limits (login, agent register/token, ingest, heartbeat; stored in Postgres), SSRF protection on webhook URLs, and an audit log with request ids.
+- **Hardening:** secure headers (HSTS, frame-deny, nosniff, strict referrer, permissions policy), `Cache-Control: no-store` by default, rate limits (login, verification resend, agent login/register/token, ingest, heartbeat; stored in Postgres), SSRF protection on webhook URLs, and an audit log with request ids.
 - **Desktop:** context isolation plus a sandboxed renderer with a minimal typed preload API (no generic `invoke`). Electron fuses are hardened (no `runAsNode`, ASAR integrity, only loads from ASAR). The refresh token and offline queue are AES-256-GCM encrypted with a data key wrapped by the OS keychain. The agent refuses to store credentials if no keychain is available.
 
 ---
@@ -769,9 +810,9 @@ Base path: **`/api/v1`**. JSON in and out. Errors use `application/problem+json`
 | Area | Endpoints (prefix `/orgs/:orgId` unless shown) |
 |---|---|
 | Health & infra | `GET /health`, `GET /media/:token`, `GET /cron/tick`, `GET /cron/daily` |
-| Auth (`/auth`) | `signup`, `login`, `logout`, `password/forgot`, `password/reset`, `password/change`, `verify-email`, `invitations/accept` |
+| Auth (`/auth`) | `signup`, `login`, `logout`, `password/forgot`, `password/reset`, `password/change`, `verify-email` (+ `resend`), `invitations/accept` |
 | Me (`/me`) | `GET /me`, `POST /me/organizations` |
-| Agent (`/agent`) | `authorize`, `register`, `token`, `bootstrap`, `policy/ack`, `ingest/batch`, `heartbeat`, `screenshots/upload-intent`, `screenshots/upload` |
+| Agent (`/agent`) | `login`, `authorize`, `register`, `token`, `bootstrap`, `policy/ack`, `ingest/batch`, `heartbeat`, `screenshots/upload-intent`, `screenshots/upload` |
 | Agent own data (`/agent/me`) | `summary`, `sessions`, `timesheet` (+ `submit`), `activity`, `tasks`, `schedule`, `time-off` (+ request), `notifications` (+ `read`). Device token only; bound worker only |
 | Organization | org settings, `roles`, `workers`, `invitations`, `teams`, `clients`, `projects`, `tasks`, `me/assignments`, `policies/:scope`, `devices` |
 | Tracking & time | `tracking/{current,start,stop,pause,resume,switch,note,live}`, `sessions`, `time-entries`, `manual-time`, `timesheets` (+ `submit`, `approvals`, `bulk-approve`), `activity/day`, `screenshots`, `idle-events` |
@@ -805,7 +846,7 @@ pnpm --filter @tallywork/web seed
 pnpm dev
 ```
 
-With no `DATABASE_URL`, the app uses a **file-backed PGlite** database at `apps/web/.data/pglite`, migrated automatically on boot. Files go to `apps/web/.data/blobs`, and email is logged to the console. Delete `apps/web/.data/` to start fresh.
+With no `DATABASE_URL`, the app uses a **file-backed PGlite** database at `apps/web/.data/pglite`, migrated automatically on boot. Files go to `apps/web/.data/blobs`, and emails (sign-up confirmation, password reset, invitations) are printed to the server console, links included. Delete `apps/web/.data/` to start fresh.
 
 **Demo login** (after seeding): `admin@demo.tallywork.app` / `demo-password-123`
 
@@ -816,7 +857,7 @@ With no `DATABASE_URL`, the app uses a **file-backed PGlite** database at `apps/
 pnpm --filter @tallywork/desktop dev
 ```
 
-In development the agent talks to `http://localhost:3000`. Set `TALLYWORK_SERVER` to point it somewhere else. Click **Sign in**: your browser opens the device-authorization page, and once you approve, the agent is registered.
+In development the agent talks to `http://localhost:3000`. Set `TALLYWORK_SERVER` to point it somewhere else. Sign in with an account's email and password (for example the demo login), or choose **Sign in with browser instead** to approve the device on the web's device-authorization page.
 
 > **`The requested module 'electron' does not provide an export named 'BrowserWindow'`** means `ELECTRON_RUN_AS_NODE=1` is set in your terminal. VS Code and tools inside it set this, and it makes Electron run as plain Node. Start the app without it:
 > `env -u ELECTRON_RUN_AS_NODE pnpm --filter @tallywork/desktop dev` (bash) or `Remove-Item Env:ELECTRON_RUN_AS_NODE; pnpm --filter @tallywork/desktop dev` (PowerShell).
@@ -849,6 +890,24 @@ In Supabase, also disable the **Data API** (Project Settings → Data API). The 
 
 Any other Postgres works too: set `DATABASE_URL` and skip the `SUPABASE_*` keys, and files stay on local disk (or use `BLOB_READ_WRITE_TOKEN` for Vercel Blob).
 
+### Send real email
+
+Set **one** provider in `apps/web/.env`. If both are set, Resend wins. With neither, emails go to the server console.
+
+- **Resend:** `RESEND_API_KEY`, and `MAIL_FROM` with an address on a domain verified in Resend.
+- **SMTP, e.g. Gmail:** turn on 2-Step Verification for the Google account, create an [app password](https://myaccount.google.com/apppasswords), then:
+
+  ```bash
+  SMTP_HOST=smtp.gmail.com
+  SMTP_PORT=465
+  SMTP_USER=you@gmail.com
+  SMTP_PASS=<16-character app password>
+  ```
+
+  `MAIL_FROM` defaults to `WorkPulse <SMTP_USER>`, because Gmail replaces any other sender with the signed-in account.
+
+Set `REQUIRE_EMAIL_VERIFICATION=true` once email works: new accounts must then open the emailed link before they can sign in.
+
 ---
 
 ## Commands
@@ -870,7 +929,8 @@ Run from the repo root unless noted.
 | `pnpm --filter @tallywork/desktop dev` | Run the Electron agent with hot reload |
 | `pnpm --filter @tallywork/desktop build` | Build the agent (`out/`) |
 | `pnpm --filter @tallywork/desktop dist` | Build installers for the current OS (`release/<version>/`) |
-| `pnpm --filter @tallywork/desktop dist:win` \| `dist:mac` \| `dist:linux` | Build installers for a specific OS (NSIS / DMG+ZIP / Linux targets) |
+| `pnpm --filter @tallywork/desktop dist:win` \| `dist:mac` \| `dist:linux` | Build installers for a specific OS (NSIS + MSI / DMG + ZIP + PKG / AppImage + deb) |
+| `pnpm --filter @tallywork/desktop release:win` | Build the Windows installer and publish it as a GitHub Release (see [Deployment](#deployment)) |
 | `pnpm --filter <pkg> test` | Run one package's tests, e.g. `@tallywork/api` |
 
 ### Changing the database schema
@@ -897,26 +957,29 @@ Run from the repo root unless noted.
 | `SUPABASE_STORAGE_BUCKET` | No | Private bucket name (default `tallywork`, created automatically) |
 | `BLOB_READ_WRITE_TOKEN` | No | Vercel Blob token, used only when Supabase Storage is not configured. With neither, files go to `LOCAL_STORAGE_DIR` |
 | `LOCAL_STORAGE_DIR` | No | Local file storage directory (default `apps/web/.data/blobs`) |
-| `RESEND_API_KEY` | No | Enables real email through Resend |
+| `RESEND_API_KEY` | No | Enables real email through Resend (takes precedence over SMTP) |
 | `SMTP_HOST` | No | Enables email over SMTP when `RESEND_API_KEY` is not set (e.g. `smtp.gmail.com`) |
 | `SMTP_PORT` | No | Default `465` (implicit TLS); use `587` for STARTTLS |
 | `SMTP_SECURE` | No | `true`/`false`; defaults to `true` on port 465 |
 | `SMTP_USER` / `SMTP_PASS` | No | SMTP credentials. For Gmail: the account address and a 16-character [app password](https://myaccount.google.com/apppasswords) (requires 2-Step Verification) |
-| `MAIL_FROM` | No | Sender address (default `Tallywork <no-reply@tallywork.app>`, or `Tallywork <SMTP_USER>` with SMTP) |
-| `REQUIRE_EMAIL_VERIFICATION` | No | `true`: new accounts stay signed out until they open the emailed link (which then signs them in); unverified accounts cannot sign in |
+| `MAIL_FROM` | No | Sender address (default `WorkPulse <no-reply@tallywork.app>`, or `WorkPulse <SMTP_USER>` with SMTP) |
+| `REQUIRE_EMAIL_VERIFICATION` | No | `true`: new accounts stay signed out until they open the emailed link (which then signs them in, unless they use 2FA); unverified accounts cannot sign in on the web or the desktop app (`email_not_verified`). Invited people are verified when they accept |
 | `SESSION_TTL_HOURS` | No | Web session lifetime (default 336 = 14 days) |
 | `MIN_AGENT_VERSION` | No | Oldest desktop agent version the API accepts (default `0.1.0`) |
-| `DESKTOP_DOWNLOAD_URL_WINDOWS` / `_MACOS` / `_LINUX` (the `.deb`) / `_LINUX_APPIMAGE` | No | Installer links shown on `/download`, where Workers land after accepting an invitation (Workers use the desktop app only). Without them the page asks the worker to get the installer from their administrator |
+| `DESKTOP_DOWNLOAD_URL_WINDOWS` / `_MACOS` / `_LINUX` (the `.deb`) / `_LINUX_APPIMAGE` | No | Installer links shown on `/download`, where Workers land after accepting an invitation (Workers use the desktop app only). Read at request time, so no rebuild is needed. Use the always-latest links, e.g. `https://github.com/marketingcad/tallywork-desktop/releases/latest/download/Tallywork-Setup.exe` (`Tallywork-mac.dmg`, `Tallywork-linux.deb`, `Tallywork-linux.AppImage`). Without them the page asks the worker to get the installer from their administrator |
 
 ### Desktop agent (`apps/desktop`)
 
 | Variable | Description |
 |---|---|
 | `TALLYWORK_SERVER` | API server URL (default `http://localhost:3000` in dev, the production URL when packaged) |
-| `TALLYWORK_UPDATE_URL` | Optional self-hosted auto-update feed. By default packaged builds update from GitHub Releases in `marketingcad/tallywork-desktop` |
+| `TALLYWORK_UPDATE_URL` | Optional self-hosted auto-update feed (a generic electron-updater feed). By default packaged builds update from GitHub Releases in `marketingcad/tallywork-desktop` |
+| `TALLYWORK_UPDATE_CHANNEL` | `beta` to also receive prerelease versions (default `latest`). A managed `UpdateChannel` overrides it |
+| `TALLYWORK_CRASH_URL` | Where crash reports (minidumps only) are sent, for the crash-free SLO |
 | `TALLYWORK_EXTENSION_IDS` | Extra browser-extension IDs the local bridge accepts (comma-separated), e.g. the Chrome Web Store ID once published. The unpacked extension's ID is built in |
-| `CSC_LINK`, `CSC_KEY_PASSWORD` | Code-signing certificate for Windows / macOS installers |
-| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | macOS notarization |
+| `DESKTOP_RELEASE_TOKEN` | GitHub Actions secret (not an app variable) for the **Desktop release** workflow: a fine-grained token for `marketingcad/tallywork-desktop` only, Contents: read and write |
+| `CSC_LINK`, `CSC_KEY_PASSWORD` | Code-signing certificate for Windows / macOS installers. Not used yet: releases are unsigned |
+| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | macOS notarization, once there is an Apple Developer account. Not used yet |
 
 ---
 
@@ -942,6 +1005,8 @@ Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgre
 - `verify` — install → typecheck packages + web → test domain / db / api → build web.
 - `desktop` — typecheck, test and build the agent on **Windows, macOS and Linux**.
 
+Two manual workflows ship the desktop app: **Desktop release** ([desktop-release.yml](.github/workflows/desktop-release.yml)) and **Desktop Linux smoke test** ([desktop-linux-smoke.yml](.github/workflows/desktop-linux-smoke.yml)). See [Deployment](#deployment).
+
 ---
 
 ## Deployment
@@ -949,10 +1014,12 @@ Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgre
 The web app and API deploy together to **Vercel** as one project (root directory `apps/web`).
 
 1. In Supabase, copy the **Session pooler** connection string (Connect → Session pooler, port 5432) into `DATABASE_URL`, and set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` for file storage. Don't use the direct host (IPv6-only) or the transaction pooler (port 6543): the app sets a restricted database role per connection, which transaction pooling doesn't preserve. Disable Supabase's Data API (or stop exposing the `public` schema), since the app doesn't use it.
-2. Set `APP_SECRET` (32+ random characters) and `CRON_SECRET`. Optionally set `RESEND_API_KEY` / `MAIL_FROM` and `APP_URL`.
+2. Set `APP_SECRET` (32+ random characters) and `CRON_SECRET`. Optionally set `APP_URL`, an email provider (`RESEND_API_KEY` or `SMTP_*`, plus `MAIL_FROM`; see [Send real email](#send-real-email)), `REQUIRE_EMAIL_VERIFICATION=true`, and the `DESKTOP_DOWNLOAD_URL_*` links for `/download`.
 3. Deploy. The `vercel-build` script runs `pnpm --filter @tallywork/db migrate` **before** `next build`, so every deploy applies migrations and RLS.
 4. [apps/web/vercel.json](apps/web/vercel.json) registers the cron jobs (`/api/v1/cron/tick` every minute, `/api/v1/cron/daily` at 03:15 UTC) and gives the API function a 300s max duration.
 
-**Desktop releases:** bump `version` in `apps/desktop/package.json`, push, then run the **Desktop release** workflow (GitHub → Actions → Desktop release → Run workflow). It builds Windows (`.exe`), macOS (universal `.dmg`, not yet signed or notarized) and Linux (`.AppImage`, `.deb`) and publishes them with the auto-update feed as one GitHub Release in the public `marketingcad/tallywork-desktop` repo. It needs the `DESKTOP_RELEASE_TOKEN` secret (fine-grained token, that repo only, Contents: read and write). Windows only, from your own PC: `pnpm --filter @tallywork/desktop release:win`. Installed Windows and Linux apps update within 6 hours (the `.deb` asks for the password); unsigned Mac builds show a notification that links to `/download`.
+**Desktop releases** (current version 0.1.4): bump `version` in `apps/desktop/package.json`, push, then run the **Desktop release** workflow (GitHub → Actions → Desktop release → Run workflow, `platforms`: `all`, or one platform to redo a failed build). It creates a draft, builds Windows (NSIS `.exe`), macOS (universal `.dmg` + `.zip`) and Linux (`.AppImage` + `.deb`), and publishes them with the auto-update feed as one GitHub Release in the public `marketingcad/tallywork-desktop` repo (no source code there) once every build has succeeded. It refuses to overwrite a published version, and needs the `DESKTOP_RELEASE_TOKEN` secret (fine-grained token, that repo only, Contents: read and write). Windows only, from your own PC: `pnpm --filter @tallywork/desktop release:win` (token from `gh auth token`). The `.msi` and `.pkg` targets aren't built by the workflow. Native modules use their prebuilt N-API binaries (`npmRebuild: false`), so no C++ toolchain is needed.
 
-**Linux notes:** offer the `.deb` to Ubuntu and Debian: apt installs its dependencies, and it installs the AppArmor profile Ubuntu 24.04 needs to keep Chromium's sandbox on. The AppImage needs `libfuse2`; where user namespaces are blocked (Ubuntu 24.04 without that profile) its launcher starts the app with `--no-sandbox`, acceptable because the window only loads the app's own bundled UI. On **Wayland** sessions Linux does not let apps observe input, other apps' windows or the screen, so activity, applications and screenshots are reported unavailable (the device's `wayland` capability) instead of recording partial data; workers who must be tracked sign in with **Ubuntu on Xorg**. Run the **Desktop Linux smoke test** workflow after each release.
+Installer names are stable (`Tallywork-Setup.exe`, `Tallywork-mac.dmg`, `Tallywork-mac.zip`, `Tallywork-linux.AppImage`, `Tallywork-linux.deb`), so `https://github.com/marketingcad/tallywork-desktop/releases/latest/download/<file>` always serves the newest; use these for `DESKTOP_DOWNLOAD_URL_*`. Installed apps check every 6 hours, download in the background and install on quit, never interrupting a timer (the `.deb` asks for the password). Builds are **not signed yet**: Windows shows SmartScreen (**More info → Run anyway**); Macs are ad-hoc signed and not notarized, so the first launch needs **System Settings → Privacy & Security → Open Anyway**, and updates arrive as a notification linking to `/download` instead of installing. IT rollout: [docs/ops/desktop-deployment.md](docs/ops/desktop-deployment.md). Release steps: [docs/ops/runbooks.md](docs/ops/runbooks.md#desktop-release-staged).
+
+**Linux notes:** offer the `.deb` to Ubuntu and Debian: apt installs its dependencies (including `libxt6` and `x11-utils` for the trackers), recommends a keyring (`gnome-keyring` or `kwalletmanager`), and installs the AppArmor profile Ubuntu 24.04 needs to keep Chromium's sandbox on. The AppImage needs `libfuse2` (`libfuse2t64` on Ubuntu 24.04); where user namespaces are blocked (Ubuntu 24.04 without that profile) its launcher starts the app with `--no-sandbox`, acceptable because the window only loads the app's own bundled UI. Without a desktop keyring the app shows a dialog saying what to install and exits, because the sign-in is never stored unencrypted; any other startup failure also shows an error dialog. On **Wayland** sessions Linux does not let apps observe input, other apps' windows or the screen, so activity, applications and screenshots are reported unavailable (the device's `wayland` capability) instead of recording partial data; workers who must be tracked sign in with **Ubuntu on Xorg**. Run the **Desktop Linux smoke test** workflow after each release: it installs the published packages on Ubuntu 24.04 with user namespaces restricted and a real keyring, and checks the app keeps running.

@@ -34,7 +34,12 @@ const api = {
   submitTimesheet: (date: string, version?: number) => call('me:submitTimesheet', { date, version }),
   requestTimeOff: (r: { policy_id: string; start_date: string; end_date: string; half_day?: boolean; reason?: string }) => call('me:requestTimeOff', r),
   readNotifications: (ids: string[] | 'all') => call('me:readNotifications', { ids }),
-  openWeb: (path: string) => call('app:openWeb', { path }),
+  /** Main asks to show a page, e.g. after a desktop notification is clicked. */
+  onNavigate: (cb: (view: string) => void): (() => void) => {
+    const listener = (_: unknown, view: string) => cb(view);
+    ipcRenderer.on('app:navigate', listener);
+    return () => ipcRenderer.removeListener('app:navigate', listener);
+  },
   quit: () => call('app:quit'),
 };
 

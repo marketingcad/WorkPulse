@@ -1,6 +1,6 @@
 # Service levels and monitoring
 
-This page is for the people who run Tallywork in production. It lists the targets, how each one is measured, and which alert fires when a target is at risk. The response to each alert is in [runbooks.md](runbooks.md).
+This page is for the people who run WorkPulse in production. It lists the targets, how each one is measured, and which alert fires when a target is at risk. The response to each alert is in [runbooks.md](runbooks.md).
 
 ## Targets
 

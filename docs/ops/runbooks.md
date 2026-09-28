@@ -1,6 +1,6 @@
 # Runbooks
 
-This page is for whoever is on call for Tallywork. Each section covers one alert or one planned operation: what it means, how to check, and what to do. Targets and alert rules are in [slo.md](slo.md).
+This page is for whoever is on call for WorkPulse. Each section covers one alert or one planned operation: what it means, how to check, and what to do. Targets and alert rules are in [slo.md](slo.md).
 
 The platform is **Vercel** (web app, API and cron) plus **Supabase** (Postgres and file storage). The sections below use:
 
@@ -43,7 +43,7 @@ The platform is **Vercel** (web app, API and cron) plus **Supabase** (Postgres a
 - **Dead** means a customer's endpoint keeps failing. Customers see every attempt under **Developer → Webhooks → Deliveries**, and endpoints are disabled automatically after 50 failures in a row.
   - Contact the organization if it's a paying customer.
   - After they fix their endpoint, they can **Replay** past deliveries themselves.
-- Tallywork never sends to private addresses and never follows redirects. An endpoint that recently moved behind a redirect will fail until its URL is updated.
+- WorkPulse never sends to private addresses and never follows redirects. An endpoint that recently moved behind a redirect will fail until its URL is updated.
 
 ## Exports stuck or failing
 
@@ -100,7 +100,11 @@ Supabase keeps point-in-time recovery (PITR) for the project's retention window.
 
 ## Desktop release (staged)
 
-1. Bump `version` in `apps/desktop/package.json`, then build, sign and publish with `pnpm --filter @tallywork/desktop release:win` (GitHub Releases in `marketingcad/tallywork-desktop`), with the signing variables set.
-2. For a staged rollout, publish under the **beta** channel first (a prerelease version such as `0.2.0-beta.1`). Machines with `TALLYWORK_UPDATE_CHANNEL=beta` get it within 6 hours.
-3. After 48 h with no crash increase (the crash-free SLO), publish to **latest** with `stagingPercentage: 10` in `latest.yml`. Raise it to 50, then 100, a day apart.
-4. To stop a rollout, set `stagingPercentage: 0` or republish the previous version. Updates never interrupt a running timer; they install when the app quits.
+1. Bump `version` in `apps/desktop/package.json` and push. The workflow refuses to overwrite a version that is already published.
+2. Run **Actions → Desktop release → Run workflow** with `platforms: all`. It creates a draft release in `marketingcad/tallywork-desktop`, builds Windows (`.exe`), macOS (universal `.dmg` + `.zip`) and Linux (`.AppImage` + `.deb`), and publishes the draft as the latest release only when all three succeed. It needs the `DESKTOP_RELEASE_TOKEN` secret (fine-grained token, that repo only, Contents: read and write).
+   - If one platform fails, fix it and rerun with just that platform. Files already uploaded to the draft stay.
+   - Windows only, from your own PC: `pnpm --filter @tallywork/desktop release:win` (token from `gh auth token`).
+3. Run **Actions → Desktop Linux smoke test** with the new tag (e.g. `v0.1.4`; empty means latest). It installs the published `.deb` and AppImage on Ubuntu 24.04 with user namespaces restricted and a real keyring, and fails if either app stops within 30 seconds.
+4. Installed Windows and Linux apps pick the release up within 6 hours and install it when they quit. Macs get a notification linking to `/download`, because the Mac build isn't signed yet.
+5. Staged rollouts aren't automated: the workflow makes every version the latest release for everyone, including the `/download` links. To stage one by hand, right after publishing, replace `latest.yml` and `latest-linux.yml` on the release with copies that add `stagingPercentage: 10`. After 48 h with no crash increase (the crash-free SLO), raise it to 50, then 100, a day apart. Machines on the **beta** channel (`TALLYWORK_UPDATE_CHANNEL=beta` or the managed `UpdateChannel`) only get something different when a prerelease version such as `0.2.0-beta.1` is published.
+6. To stop a rollout, set `stagingPercentage: 0` or publish a new version with the fix. Updates never interrupt a running timer.

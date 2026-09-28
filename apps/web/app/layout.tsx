@@ -1,12 +1,14 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, Poppins } from 'next/font/google';
 import { Providers } from './providers';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
+// Brand wordmark only (BrandLockup in packages/ui/src/logo.tsx).
+const brand = Poppins({ subsets: ['latin'], weight: '700', variable: '--font-brand', display: 'swap' });
 
 export const metadata: Metadata = {
-  title: { default: 'Tallywork', template: '%s · Tallywork' },
+  title: { default: 'WorkPulse', template: '%s · WorkPulse' },
   description: 'Time tracking, activity, timesheets and billing for teams.',
   robots: { index: false, follow: false },
 };
@@ -22,7 +24,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} ${brand.variable}`} suppressHydrationWarning>
       <head>
         {/* Apply the saved theme before paint (no flash). */}
         <script id="theme" dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('tw.theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}" }} />

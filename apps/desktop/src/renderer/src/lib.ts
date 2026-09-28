@@ -10,6 +10,24 @@ export const card = 'rounded-md border border-border bg-surface';
 export type Page = 'home' | 'tracking' | 'projects' | 'tasks' | 'timesheet' | 'activity' | 'reports' | 'timeoff' | 'schedule' | 'settings';
 export type View = Page | 'monitoring' | 'manual';
 
+const VIEWS: readonly View[] = ['home', 'tracking', 'projects', 'tasks', 'timesheet', 'activity', 'reports', 'timeoff', 'schedule', 'settings', 'monitoring', 'manual'];
+export const isView = (v: string): v is View => (VIEWS as readonly string[]).includes(v);
+
+/**
+ * The app page for a notification's link. Links are organization paths (e.g. "/timesheets?date=…");
+ * workers use the desktop app only, so they open here, never in the browser. Null when no page fits.
+ */
+export function viewForLink(link: string): View | null {
+  const path = link.split('?')[0]!.replace(/^\/+/, '');
+  if (path === '') return 'home';
+  if (path.startsWith('timesheets/manual')) return 'tracking';
+  if (path.startsWith('timesheets')) return 'timesheet';
+  if (path.startsWith('attendance/time-off') || path.startsWith('time-off')) return 'timeoff';
+  if (path.startsWith('me/monitoring')) return 'monitoring';
+  const top: Record<string, View> = { tasks: 'tasks', projects: 'projects', activity: 'activity', reports: 'reports', schedules: 'schedule' };
+  return top[path.split('/')[0]!] ?? null;
+}
+
 /** A date as the worker's calendar day, e.g. "Mon, Sep 22". `date` is YYYY-MM-DD. */
 export function fmtDay(date: string, opts: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric' }): string {
   return new Date(`${date}T12:00:00`).toLocaleDateString([], opts);

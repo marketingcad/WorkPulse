@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { CalendarPlus, Check, ChevronLeft, ChevronRight, ClockPlus, ExternalLink, PauseCircle, PenLine, Play, Send } from 'lucide-react';
+import { CalendarPlus, Check, ChevronLeft, ChevronRight, ClockPlus, PauseCircle, PenLine, Play, Send } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
 import { ProjectsCard } from './Dashboard';
 import { SessionList, localDay } from './HomeCards';
@@ -250,7 +250,8 @@ export function TasksPage({ s }: { s: AgentState }) {
 const TS_TONE: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'neutral'> = { APPROVED: 'success', SUBMITTED: 'info', REJECTED: 'danger', DRAFT: 'neutral' };
 
 export function TimesheetPage({ s }: { s: AgentState }) {
-  const [date, setDate] = useState(today());
+  // Opens on the period waiting to be submitted (possibly last period's), otherwise the current one.
+  const [date, setDate] = useState(s.timesheetDue?.periodStart ?? today());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const q = useMe<TimesheetDto>('timesheet', { date }, { deps: [s.tracking.sessionId] });
@@ -390,14 +391,7 @@ export function ActivityPage({ s }: { s: AgentState }) {
     <Page
       title="Activity"
       description="Your own activity in 10-minute blocks. Keystrokes are counted, never recorded."
-      actions={
-        <>
-          <Stepper label={date === today() ? 'Today' : fmtDay(date)} onPrev={() => setDate(addDays(date, -1))} onNext={() => setDate(addDays(date, 1))} nextDisabled={date >= today()} />
-          <button onClick={() => void bridge.openWeb(`/o/${s.account!.organizationId}/activity?date=${date}`)} className={btn}>
-            Screenshots <ExternalLink className="size-3 text-text-faint" />
-          </button>
-        </>
-      }
+      actions={<Stepper label={date === today() ? 'Today' : fmtDay(date)} onPrev={() => setDate(addDays(date, -1))} onNext={() => setDate(addDays(date, 1))} nextDisabled={date >= today()} />}
     >
       <Status loading={q.loading && !d} error={d ? null : q.error}>
         {d && (

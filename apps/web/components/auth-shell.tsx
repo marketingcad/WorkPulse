@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { Logo, fmtClock } from '@tallywork/ui';
+import { BrandLockup, fmtClock } from '@tallywork/ui';
 import { t, useBrowserLocale } from '@/lib/i18n';
 
 /** Split auth layout: brand instrument panel (desktop) + form. */
@@ -11,18 +11,16 @@ export function AuthShell({ title, subtitle, children, footer }: { title: string
   return (
     <div className="grid min-h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <aside className="instrument-grid relative hidden flex-col justify-between overflow-hidden bg-[#0f2240] p-10 text-[#e6ecf5] lg:flex">
-        <Link href="/" className="flex items-center gap-2.5 text-white">
-          <Logo size={28} />
-          <span className="text-lg font-bold tracking-tight">Tallywork</span>
+        <Link href="/" className="self-start" aria-label="WorkPulse home">
+          <BrandLockup size={52} tagline tone="onDark" />
         </Link>
         <InstrumentPreview />
         <p className="max-w-sm text-sm text-[#93a3bd]">{t('auth.tagline')}</p>
       </aside>
       <main id="main" className="flex items-center justify-center px-4 py-10 sm:px-8">
         <div className="w-full max-w-sm">
-          <div className="mb-8 flex items-center gap-2 lg:hidden">
-            <Logo size={26} className="text-[#0f2240] dark:text-white" />
-            <span className="text-lg font-bold tracking-tight">Tallywork</span>
+          <div className="mb-8 lg:hidden">
+            <BrandLockup size={34} tagline />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
           {subtitle && <p className="mt-1.5 text-sm text-text-muted">{subtitle}</p>}

@@ -1,6 +1,8 @@
 # 9. Electron Desktop Agent Architecture
 
 > **As built (Revision 3, [08-decisions.md](08-decisions.md)):** websites on Windows come from the Tallywork browser extension over a local `127.0.0.1` bridge, falling back to the address bar via UI Automation. There is no Native Messaging host (ADR-120). Screenshots use the current 10-minute block and capture every display (ADR-122). The renderer is the full worker workspace with 10 pages, fed by the device own-data API (ADR-121, ADR-124). The offline queue is an AES-256-GCM encrypted append-only file, not SQLCipher.
+>
+> **As built (Revision 4):** the app is branded **WorkPulse** in its UI, but its system/product name stays "Tallywork" so installed apps keep their sign-in storage and update path (ADR-125). People sign in **in the app with email + password** (plus 2FA code and organization choice); the browser PKCE flow is the alternative (ADR-129). Workers use only the desktop app (ADR-128). Installers and updates come from GitHub Releases (ADR-131). Linux packaging, the keyring requirement and Wayland limits are in ADR-132.
 
 ## Process model
 
@@ -9,7 +11,7 @@
 │                                                                                                 │
 │  AppController ── owns lifecycle, single-instance lock, tray/menu-bar, deep links (tallywork://)│
 │      │                                                                                          │
-│      ├── AuthService          PKCE login in system browser → loopback redirect → tokens         │
+│      ├── AuthService          in-app email+password (+2FA, org pick); alt: PKCE via browser     │
 │      ├── DeviceService        keypair gen, registration, capability report, credential rotation │
 │      ├── PolicyManager        fetch/cache policy, versioned; emits policy.changed to all svcs   │
 │      ├── SessionManager       local mirror of server state machine; seq numbers; guards         │
@@ -22,7 +24,7 @@
 │      ├── OfflineQueue         encrypted SQLite (SQLCipher) outbox of events + screenshot files  │
 │      ├── SyncEngine           batches, backoff, acks, clock-skew calc, upload scheduler         │
 │      ├── NotificationManager  native notifications (idle prompt, limit, reminders, policy)      │
-│      ├── Updater              electron-updater, signed, staged rollout channel from server     │
+│      ├── Updater              electron-updater, GitHub Releases feed, 6h checks, install on quit│
 │      ├── CrashReporter        Sentry (no PII, no screenshots)                                   │
 │      └── IpcRouter            ONLY place handling ipcMain; zod-validates every message          │
 └──────────────────────────────────────────┬──────────────────────────────────────────────────────┘
@@ -57,12 +59,13 @@
 | Capability | Windows | macOS | Linux (X11) | Linux (Wayland) |
 |---|---|---|---|---|
 | Idle time | `powerMonitor` ✓ | ✓ | ✓ | ✓ (via logind/`xprintidle` fallback) |
-| Input counts | uiohook ✓ | uiohook, **needs Accessibility/Input Monitoring permission** | ✓ | ✗ (reported as unsupported; idle-only activity) |
-| Screenshots | desktopCapturer ✓ | ✓ **needs Screen Recording permission** | ✓ | portal prompt; reported as limited |
-| Active app | get-windows ✓ | ✓ (titles need Screen Recording) | ✓ | ✗ / limited |
+| Input counts | uiohook ✓ | uiohook, **needs Accessibility/Input Monitoring permission** | ✓ (`.deb` depends on `libxt6`) | ✗ (reported unavailable; idle-only activity) |
+| Screenshots | desktopCapturer ✓ | ✓ **needs Screen Recording permission** | ✓ | ✗ (reported unavailable) |
+| Active app | get-windows ✓ | ✓ (titles need Screen Recording) | ✓ (`.deb` depends on `x11-utils`) | ✗ (reported unavailable) |
 | URLs | browser extension (all platforms); fallback Win UIA / macOS AppleScript for Chrome/Safari | | | extension only |
 
 - The agent sends `capabilities` at registration and on change. The web UI shows per-device support, so managers never see "0% activity" that is really "not supported".
+- **Wayland (as built, ADR-132):** the X11-based hooks would still load but only see XWayland programs, recording partial data that looks healthy. So on a Wayland session (`XDG_SESSION_TYPE=wayland`, or `WAYLAND_DISPLAY` set) activity, apps and screenshots stay off and the device reports the `wayland` capability. People who must be tracked choose an Xorg session (e.g. "Ubuntu on Xorg").
 - On macOS, onboarding walks through the permission prompts and re-checks them at every session start (`systemPreferences.isTrustedAccessibilityClient`, `getMediaAccessStatus('screen')`).
 
 ### Activity measurement (privacy-preserving)
@@ -98,10 +101,15 @@ SyncEngine loop ◀────────┘ (trigger: new event, 10s tick, ne
 - **Limits.** The queue is capped by policy (`max_offline_tracking`, default 24h). When it is exceeded, the agent stops tracking and tells the user, rather than growing the queue without bound.
 - **Crash safety.** Because every event is committed to SQLite before being acted on, a crash or restart recovers the local session. On restart the agent sends `session.interrupted` evidence (last activity minute) and asks the user whether to resume.
 
-## Auto updater
-- electron-updater with a generic provider (our update server / S3). The server returns the channel (stable/beta) and `min_supported_version` per org.
-- Signed builds: Windows (Authenticode, EV cert), macOS (Developer ID + notarization, hardened runtime), Linux (AppImage + deb/rpm with GPG-signed repo). The updater verifies signatures before applying.
-- Updates are never applied during an ACTIVE session. Forced updates (security) stop the session first, and the user is informed.
+## Distribution & auto updater
+
+*As built (ADR-131, ADR-132). The original plan (a generic update server, signed builds on every OS, a GPG-signed Linux repo) is the target once certificates are in place.*
+
+- **Where builds live:** GitHub Releases in the public repo `marketingcad/tallywork-desktop` (installers and update feed only, no source). File names are stable, so `…/releases/latest/download/<file>` always serves the newest build: `Tallywork-Setup.exe` (Windows, NSIS), `Tallywork-mac.dmg` + `Tallywork-mac.zip` (macOS universal), `Tallywork-linux.deb` + `Tallywork-linux.AppImage`. The web `/download` page offers the right one for the visitor's OS from `DESKTOP_DOWNLOAD_URL_*`.
+- **How releases are made:** bump `version` in `apps/desktop/package.json`, then run the **"Desktop release"** GitHub Actions workflow. It builds all three platforms into a draft release and publishes it only once every file is uploaded, so apps never see a half-uploaded release. It refuses to overwrite a published version.
+- **Updates:** electron-updater with the GitHub provider (baked in at build time), or `TALLYWORK_UPDATE_URL` for a self-hosted mirror. Channel `latest` or `beta` (`TALLYWORK_UPDATE_CHANNEL` or managed setting), plus `stagingPercentage` for staged rollouts. Apps check at start and every 6 hours, download in the background and **install on quit**; updates are never applied during an ACTIVE session. The `.deb` installs its update with a password prompt; the AppImage replaces itself.
+- **Signing (not yet):** the Windows installer is not code-signed (SmartScreen warns on first run). The Mac build is ad-hoc signed and not notarized, so macOS blocks the first launch until approved and will not install updates; the app instead shows a notification once per version that opens `/download`. The `.msi` (Windows, per machine) and `.pkg` (macOS) targets are configured but not published by the workflow.
+- **Linux packages:** the `.deb` depends on `libxt6` and `x11-utils`, recommends a desktop keyring (`gnome-keyring` or `kwalletmanager`), and installs an AppArmor profile so Chromium's sandbox stays on in Ubuntu 24.04. The AppImage needs `libfuse2` and its launcher falls back to `--no-sandbox` where unprivileged user namespaces are blocked (acceptable because the window only loads the app's own bundled UI). The **"Desktop Linux smoke test"** workflow installs and starts the published packages on Ubuntu 24.04 after each release.
 
 ## Electron security checklist
 - `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webSecurity: true`, `allowRunningInsecureContent: false`, `enableRemoteModule` absent.
@@ -109,6 +117,8 @@ SyncEngine loop ◀────────┘ (trigger: new event, 10s tick, ne
 - `setWindowOpenHandler` → deny, and open allowed https links in the external browser. `will-navigate` is blocked.
 - A custom `app://` protocol serves bundled assets (no `file://`).
 - Tokens are kept only in main memory plus `safeStorage`-encrypted at rest. Access tokens last 10 min; the device refresh token rotates.
+- **Sign-in (ADR-129):** the primary form is email + password in the app (`POST /agent/login`), with a 2FA code step and an organization choice for people in several organizations. The server applies the same checks as web login (lockout, email verification). The password goes to the server once and is **never stored**; only the device tokens are kept. "Sign in with browser instead" runs the PKCE flow through the system browser and a loopback redirect.
+- **No keyring, no start (Linux):** if `safeStorage` has no Secret Service keyring, the app shows a dialog explaining what to install and exits. It never falls back to storing credentials unencrypted.
 - Electron Fuses: disable `RunAsNode`, `EnableNodeCliInspectArguments`, and `EnableNodeOptionsEnvironmentVariable`; enable `EnableEmbeddedAsarIntegrityValidation` and `OnlyLoadAppFromAsar`.
 - Dependencies are pinned; `npm audit` and Electron version currency run in CI. Electron is upgraded within 4 weeks of each security release.
 - Least privilege: no admin/root install is required for per-user installs. An MDM-deployable machine-wide installer is offered separately.

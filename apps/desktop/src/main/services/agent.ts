@@ -1,4 +1,4 @@
-import { Notification, net, powerMonitor, shell } from 'electron';
+import { Notification, net, powerMonitor } from 'electron';
 import { EventEmitter } from 'node:events';
 import { put } from '@vercel/blob/client';
 import { newId, type TrackingPolicy } from '@tallywork/domain';
@@ -341,7 +341,7 @@ export class Agent extends EventEmitter {
       title: due.overdue ? 'Timesheet not submitted' : 'Timesheet due today',
       body: `Your timesheet for ${due.period_start} – ${due.period_end} is ready to review and submit.`,
     });
-    n.on('click', () => void shell.openExternal(`${this.serverUrl}/o/${b.organization.id}/timesheets?date=${due.period_start}`));
+    n.on('click', () => this.emit('open', 'timesheet'));
     n.show();
   }
 

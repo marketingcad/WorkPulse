@@ -53,8 +53,8 @@ async function sendVerificationEmail(deps: Deps, uid: string, email: string) {
   const token = await issueEmailToken(deps.db, uid, 'VERIFY_EMAIL', 60 * 24 * 3);
   await deps.mailer.send({
     to: email,
-    subject: 'Confirm your Tallywork email',
-    text: `Welcome to Tallywork!\n\nConfirm your email (valid for 3 days): ${deps.config.appUrl}/verify-email?token=${token}\n`,
+    subject: 'Confirm your WorkPulse email',
+    text: `Welcome to WorkPulse!\n\nConfirm your email (valid for 3 days): ${deps.config.appUrl}/verify-email?token=${token}\n`,
   });
 }
 
@@ -118,7 +118,7 @@ export const authRoutes = new Hono<AppEnv>()
     // Always 202 so the endpoint does not reveal which emails have accounts.
     if (u) {
       const token = await issueEmailToken(deps.db, u.id, 'RESET_PASSWORD', 60);
-      await deps.mailer.send({ to: u.email, subject: 'Reset your Tallywork password', text: `Reset your password (valid for 1 hour): ${deps.config.appUrl}/reset-password?token=${token}\n` });
+      await deps.mailer.send({ to: u.email, subject: 'Reset your WorkPulse password', text: `Reset your password (valid for 1 hour): ${deps.config.appUrl}/reset-password?token=${token}\n` });
     }
     return c.json({ ok: true }, 202);
   })

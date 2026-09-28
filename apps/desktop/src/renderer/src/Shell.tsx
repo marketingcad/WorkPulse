@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Activity, BarChart3, Bell, CalendarClock, CalendarDays, CalendarOff, Camera, CameraOff, CheckSquare, ChevronDown, Clock, CloudOff, ExternalLink, Eye, FolderKanban, Home, LogOut, Menu, RefreshCw, Settings, UserRound, X } from 'lucide-react';
+import { Activity, BarChart3, Bell, CalendarClock, CalendarDays, CalendarOff, Camera, CameraOff, CheckSquare, ChevronDown, Clock, CloudOff, Eye, FolderKanban, Home, LogOut, Menu, RefreshCw, Settings, X } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
-import { bridge, fmtTime, initials, useMe, useTick, type Page, type View } from './lib';
+import { bridge, fmtTime, initials, useMe, useTick, viewForLink, type Page, type View } from './lib';
 import type { NotificationsDto } from './types';
 
 const NAV: Array<{ v: Page; label: string; icon: ReactNode }> = [
@@ -86,15 +86,12 @@ export function Shell({ s, view, go, children }: { s: AgentState; view: View; go
             <span className="hidden md:inline">Screenshots {p.screenshots.enabled ? 'on' : 'off'}</span>
           </button>
         )}
-        <Notifications s={s} />
+        <Notifications s={s} go={go} />
         <ProfileMenu s={s} go={go} />
       </header>
       <div className="flex min-h-0 flex-1">
         <nav aria-label="Primary" className="hidden w-52 shrink-0 flex-col gap-0.5 overflow-y-auto bg-nav px-2 py-3 text-nav-fg lg:flex">
           <NavList view={view} go={go} />
-          <button onClick={() => void bridge.openWeb('/')} className="mt-auto flex h-9 shrink-0 items-center gap-2.5 rounded-sm px-2.5 text-left text-sm text-nav-muted hover:bg-white/5 hover:text-nav-fg">
-            <ExternalLink className="size-4" /> Open web app
-          </button>
         </nav>
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
       </div>
@@ -138,7 +135,7 @@ function usePopover() {
   return { open, setOpen, ref };
 }
 
-function Notifications({ s }: { s: AgentState }) {
+function Notifications({ s, go }: { s: AgentState; go: (v: View) => void }) {
   const pop = usePopover();
   const q = useMe<NotificationsDto>('notifications', {}, { refreshMs: 60_000, deps: [s.sync.online] });
   const unread = q.data?.unread ?? 0;
@@ -148,7 +145,11 @@ function Notifications({ s }: { s: AgentState }) {
   };
   const open = (n: NotificationsDto['data'][number]) => {
     if (!n.read_at) void bridge.readNotifications([n.id]).then(q.reload, () => undefined);
-    if (n.link) void bridge.openWeb(`/o/${s.account!.organizationId}${n.link.startsWith('/') ? n.link : `/${n.link}`}`);
+    const view = n.link ? viewForLink(n.link) : null;
+    if (view) {
+      go(view);
+      pop.setOpen(false);
+    }
   };
   return (
     <div ref={pop.ref} className="relative">
@@ -214,9 +215,6 @@ function ProfileMenu({ s, go }: { s: AgentState; go: (v: View) => void }) {
           </button>
           <button role="menuitem" className={item} onClick={pick(() => go('settings'))}>
             <Settings className="size-4 text-text-muted" /> Settings
-          </button>
-          <button role="menuitem" className={item} onClick={pick(() => void bridge.openWeb(`/o/${s.account!.organizationId}/me/profile`))}>
-            <UserRound className="size-4 text-text-muted" /> Profile on the web <ExternalLink className="ml-auto size-3 text-text-faint" />
           </button>
           <div className="my-1 border-t border-border" />
           <button role="menuitem" className={`${item} text-danger`} onClick={pick(() => void bridge.logout())}>

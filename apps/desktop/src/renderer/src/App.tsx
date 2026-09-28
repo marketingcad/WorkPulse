@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { AppWindow, Camera, Check, ChevronLeft, ClockPlus, ExternalLink, Eye, Globe, Keyboard, LogOut, MapPin, RefreshCw, TimerOff } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
 import { Dashboard } from './Dashboard';
 import { ActivityPage, ProjectsPage, ReportsPage, SchedulePage, TasksPage, TimeOffPage, TimesheetPage, TrackingPage } from './Pages';
 import { Shell } from './Shell';
-import { bridge, errorText, fmtHm, localDateInput, useAgentState, type View } from './lib';
+import { bridge, errorText, fmtHm, isView, localDateInput, useAgentState, type View } from './lib';
 
 export function App() {
   const s = useAgentState();
   const [view, setView] = useState<View>('home');
+  useEffect(() => bridge.onNavigate((v) => isView(v) && setView(v)), []);
   if (!s) return <div className="h-full bg-nav" />;
   if (s.phase === 'signed_out' || s.phase === 'signing_in')
     return (
@@ -81,15 +82,19 @@ function Loading() {
   );
 }
 
+/** Brand mark (same drawing as the web Logo in packages/ui/src/logo.tsx). */
 function Mark({ size = 32 }: { size?: number }) {
+  const clip = `wp-inner-${useId().replace(/:/g, '')}`;
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-label="Tallywork">
-      <rect width="32" height="32" rx="7" fill="#ffffff" opacity="0.1" />
-      <g stroke="#e6ecf5" strokeWidth="2.6" strokeLinecap="round">
-        <path d="M9 8.5v15M13.3 8.5v15M17.6 8.5v15M21.9 8.5v15" />
-      </g>
-      <path d="M6.5 21 25.5 11" stroke="#5B8DEF" strokeWidth="2.6" strokeLinecap="round" />
-      <circle cx="25.5" cy="11" r="2.1" fill="#5B8DEF" />
+    <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="WorkPulse">
+      <defs>
+        <clipPath id={clip}>
+          <path d="M32 12.5 49 22.25v19.5L32 51.5 15 41.75v-19.5Z" />
+        </clipPath>
+      </defs>
+      <path d="M32 5.5 55 18.75v26.5L32 58.5 9 45.25v-26.5Z" fill="#1766FF" stroke="#1766FF" strokeWidth="7" strokeLinejoin="round" />
+      <path d="M32 12.5 49 22.25v19.5L32 51.5 15 41.75v-19.5Z" fill="#0B2A66" stroke="#0B2A66" strokeWidth="4" strokeLinejoin="round" />
+      <path d="M9 41 22.5 26.5 32.5 41.5 41.5 28.5 56 37" fill="none" stroke="#FFFFFF" strokeWidth="6.4" strokeLinecap="round" strokeLinejoin="round" clipPath={`url(#${clip})`} />
     </svg>
   );
 }
@@ -132,7 +137,9 @@ function SignIn({ s }: { s: AgentState }) {
     <div className="instrument mx-auto flex h-full w-full max-w-md flex-col justify-between bg-nav p-6 text-nav-fg">
       <div className="flex items-center gap-2">
         <Mark size={28} />
-        <span className="text-base font-bold tracking-tight">Tallywork</span>
+        <span className="text-base font-bold tracking-tight">
+          Work<span className="text-[#4D8DFF]">Pulse</span>
+        </span>
       </div>
       <div>
         <h1 className="text-xl font-semibold">Sign in to start tracking</h1>
@@ -223,8 +230,8 @@ function websitesText(mode: 'domain' | 'full', s: AgentState): string {
   if (!s.capabilities.urls) return `${what} Not available on this computer.`;
   if (navigator.userAgent.includes('Windows')) {
     const how = s.browserExtension.length
-      ? `Read by the Tallywork browser extension in ${s.browserExtension.join(', ')}; other browsers: from the address bar.`
-      : 'Read from the browser address bar (install the Tallywork browser extension for exact addresses).';
+      ? `Read by the browser extension in ${s.browserExtension.join(', ')}; other browsers: from the address bar.`
+      : 'Read from the browser address bar (install the browser extension for exact addresses).';
     return `${what} ${how} Private/incognito windows are skipped when the extension is installed.`;
   }
   return what;
@@ -259,7 +266,7 @@ function Monitoring({ s, onBack }: { s: AgentState; onBack?: () => void }) {
         </ul>
         {s.capabilities.wayland && (p.activity.enabled || p.apps.enabled || p.screenshots.enabled) && (
           <p className="mb-3 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">
-            This computer uses a <strong>Wayland</strong> session, which does not let Tallywork see your activity level, the app you are using or your screen, so those are not recorded. Your organization may ask you to switch: sign out, select your name on the login screen,
+            This computer uses a <strong>Wayland</strong> session, which does not let WorkPulse see your activity level, the app you are using or your screen, so those are not recorded. Your organization may ask you to switch: sign out, select your name on the login screen,
             click the gear icon at the bottom right, choose <strong>Ubuntu on Xorg</strong> and sign in again.
           </p>
         )}
@@ -318,7 +325,7 @@ function Recovery({ s }: { s: AgentState }) {
   const r = s.recoveryPrompt!;
   return (
     <div className="mx-auto flex h-full max-w-md flex-col justify-center gap-4 bg-surface p-6">
-      <h1 className="text-lg font-semibold">Tallywork closed unexpectedly</h1>
+      <h1 className="text-lg font-semibold">WorkPulse closed unexpectedly</h1>
       <p className="text-sm text-text-muted">
         Your timer{r.projectName ? ` on ${r.projectName}` : ''} was running. Time until {new Date(r.lastEvidenceAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} is saved; the gap since then is not counted.
       </p>
@@ -480,14 +487,11 @@ function SettingsView({ s, onBack, onMonitoring }: { s: AgentState; onBack: () =
         <button onClick={onMonitoring} className="flex h-9 items-center justify-center gap-2 rounded-sm border border-border text-sm hover:bg-surface-muted">
           <Eye className="size-4" /> What is monitored
         </button>
-        <button onClick={() => void bridge.openWeb('/')} className="flex h-9 items-center justify-center gap-2 rounded-sm border border-border text-sm hover:bg-surface-muted">
-          <ExternalLink className="size-4" /> Open web dashboard
-        </button>
         <button onClick={() => void bridge.logout()} className="flex h-9 items-center justify-center gap-2 rounded-sm border border-border text-sm text-danger hover:bg-danger-soft">
           <LogOut className="size-4" /> Sign out
         </button>
         <button onClick={() => void bridge.quit()} className="h-9 rounded-sm text-sm text-text-muted hover:bg-surface-muted">
-          Quit Tallywork
+          Quit WorkPulse
         </button>
       </div>
     </div>

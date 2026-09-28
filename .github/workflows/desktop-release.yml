@@ -50,7 +50,8 @@ jobs:
     name: Build (${{ matrix.name }})
     needs: prepare
     strategy:
-      fail-fast: true
+      # Let every platform finish so one run shows all problems; publishing still needs all three.
+      fail-fast: false
       matrix:
         include:
           - name: Windows

@@ -46,6 +46,9 @@ mac:
   # `identity`, set CSC_LINK / CSC_KEY_PASSWORD and APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID,
   # and turn hardenedRuntime and notarize back on.
   identity: '-'
+  # Universal builds merge the x64 and arm64 apps. The native modules ship a prebuilt binary per
+  # architecture (identical in both builds), which the merge must keep as-is instead of lipo-ing.
+  x64ArchFiles: Contents/Resources/app.asar.unpacked/node_modules/**/*.node
   hardenedRuntime: false
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist

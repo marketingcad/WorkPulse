@@ -9,6 +9,12 @@ name: Desktop release
 
 on:
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: Platforms to build. Use one platform to redo a failed build; the others already uploaded to the draft stay.
+        type: choice
+        default: all
+        options: [all, Windows, macOS, Linux]
 
 concurrency:
   group: desktop-release
@@ -65,16 +71,25 @@ jobs:
             os: ubuntu-latest
             targets: --linux AppImage deb
     runs-on: ${{ matrix.os }}
+    # (Matrix values are not available in a job-level `if`, so a skipped platform skips its steps.)
+    env:
+      SELECTED: ${{ inputs.platforms == 'all' || inputs.platforms == matrix.name }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - if: env.SELECTED == 'true'
+        uses: actions/checkout@v4
+      - if: env.SELECTED == 'true'
+        uses: pnpm/action-setup@v4
+      - if: env.SELECTED == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @tallywork/desktop exec electron-vite build
-      - run: pnpm --filter @tallywork/desktop exec electron-builder ${{ matrix.targets }} --publish always
+      - if: env.SELECTED == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: env.SELECTED == 'true'
+        run: pnpm --filter @tallywork/desktop exec electron-vite build
+      - if: env.SELECTED == 'true'
+        run: pnpm --filter @tallywork/desktop exec electron-builder ${{ matrix.targets }} --publish always
         env:
           GH_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

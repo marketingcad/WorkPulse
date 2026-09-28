@@ -4,6 +4,8 @@
   "private": true,
   "description": "Tallywork desktop agent",
   "author": "Tallywork",
+  "homepage": "https://github.com/marketingcad/tallywork-desktop",
+  "desktopName": "tallywork.desktop",
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {

@@ -73,6 +73,12 @@ linux:
   syncDesktopName: true
   category: Office
   maintainer: Tallywork <no-reply@tallywork.app>
+deb:
+  # electron-builder's defaults, plus what the trackers need: libxt6 for input activity (uiohook-napi)
+  # and x11-utils (xprop, xwininfo) for the active app and window title (get-windows).
+  depends: [libgtk-3-0, libnotify4, libnss3, libxss1, libxtst6, libxt6, x11-utils, xdg-utils, libatspi2.0-0, libuuid1, libsecret-1-0]
+  # Sign-in tokens are only stored in the desktop keyring (Secret Service); without one the app cannot stay signed in.
+  recommends: [libayatana-appindicator3-1 | libappindicator3-1, gnome-keyring | kwalletmanager]
 # Installers and the auto-update feed (latest.yml + blockmap) are published as GitHub Releases in a
 # public repo that holds no source code. Installed apps check it every 6 hours (src/main/index.ts).
 # Publish all platforms with the "Desktop release" GitHub Actions workflow (or Windows only, locally, with

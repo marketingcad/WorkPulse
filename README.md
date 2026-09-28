@@ -906,7 +906,7 @@ Run from the repo root unless noted.
 | `REQUIRE_EMAIL_VERIFICATION` | No | `true`: new accounts stay signed out until they open the emailed link (which then signs them in); unverified accounts cannot sign in |
 | `SESSION_TTL_HOURS` | No | Web session lifetime (default 336 = 14 days) |
 | `MIN_AGENT_VERSION` | No | Oldest desktop agent version the API accepts (default `0.1.0`) |
-| `DESKTOP_DOWNLOAD_URL_WINDOWS` / `_MACOS` / `_LINUX` | No | Installer links shown on `/download`, where Workers land after accepting an invitation (Workers use the desktop app only). Without them the page asks the worker to get the installer from their administrator |
+| `DESKTOP_DOWNLOAD_URL_WINDOWS` / `_MACOS` / `_LINUX` (the `.deb`) / `_LINUX_APPIMAGE` | No | Installer links shown on `/download`, where Workers land after accepting an invitation (Workers use the desktop app only). Without them the page asks the worker to get the installer from their administrator |
 
 ### Desktop agent (`apps/desktop`)
 

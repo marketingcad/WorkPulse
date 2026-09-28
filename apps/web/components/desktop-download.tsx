@@ -12,11 +12,15 @@ const LINK_BUTTON = 'inline-flex h-9 w-full items-center justify-center gap-2 ro
 export interface DownloadLinks {
   windows: string | null;
   macos: string | null;
+  /** The .deb (Ubuntu, Debian and derivatives): apt installs its dependencies and its sandbox profile. */
   linux: string | null;
+  /** Other distributions; needs libfuse2. */
+  linuxAppImage: string | null;
 }
 
-type Platform = keyof DownloadLinks;
-const LABELS: Record<Platform, string> = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
+type Platform = 'windows' | 'macos' | 'linux';
+const PLATFORMS: Platform[] = ['windows', 'macos', 'linux'];
+const LABELS: Record<Platform, string> = { windows: 'Windows', macos: 'macOS', linux: 'Ubuntu / Debian (.deb)' };
 
 function detectPlatform(): Platform | null {
   const ua = navigator.userAgent;
@@ -33,7 +37,7 @@ export function DesktopDownload({ links }: { links: DownloadLinks }) {
   const [platform, setPlatform] = useState<Platform | null>(null);
   useEffect(() => setPlatform(detectPlatform()), []);
 
-  const available = (Object.keys(links) as Platform[]).filter((p) => links[p]);
+  const available = PLATFORMS.filter((p) => links[p]);
   const primary = platform && links[platform] ? platform : null;
   const others = available.filter((p) => p !== primary);
 
@@ -64,7 +68,19 @@ export function DesktopDownload({ links }: { links: DownloadLinks }) {
         </ol>
         {/* The Mac build is not notarized yet, and AppImages must be marked executable. */}
         {platform === 'macos' && links.macos && <p className="rounded-sm bg-surface-sunken px-3 py-2 text-xs text-text-muted">{t('download.macNote')}</p>}
-        {platform === 'linux' && links.linux && <p className="rounded-sm bg-surface-sunken px-3 py-2 text-xs text-text-muted">{t('download.linuxNote')}</p>}
+        {platform === 'linux' && (links.linux || links.linuxAppImage) && (
+          <p className="rounded-sm bg-surface-sunken px-3 py-2 text-xs text-text-muted">
+            {t('download.linuxNote')}
+            {links.linuxAppImage && (
+              <>
+                {' '}
+                <a href={links.linuxAppImage} download className="font-medium text-interactive hover:underline">
+                  {t('download.linuxAppImage')}
+                </a>
+              </>
+            )}
+          </p>
+        )}
         <button
           type="button"
           className="self-start text-sm text-text-muted hover:text-text hover:underline"

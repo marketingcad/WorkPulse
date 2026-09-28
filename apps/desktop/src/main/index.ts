@@ -1,4 +1,4 @@
-import { app, BrowserWindow, crashReporter, ipcMain, Menu, nativeImage, Notification, shell, Tray, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, crashReporter, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, shell, Tray, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IPC, type IpcChannel, type IpcPayload } from '../shared/ipc';
@@ -205,8 +205,27 @@ async function setupUpdater(managedChannel?: 'latest' | 'beta'): Promise<void> {
 // Crash reports (for the crash-free-rate SLO) go to TALLYWORK_CRASH_URL when set; minidumps only, no screen contents.
 if (process.env.TALLYWORK_CRASH_URL) crashReporter.start({ submitURL: process.env.TALLYWORK_CRASH_URL, uploadToServer: true, compress: true, ignoreSystemCrashHandler: true });
 
+/** Linux desktops without a Secret Service keyring cannot keep the sign-in encrypted, and we never store it in plain text. */
+function explainMissingKeyring(): void {
+  dialog.showMessageBoxSync({
+    type: 'error',
+    title: 'Tallywork',
+    message: 'Tallywork needs your desktop keyring',
+    detail:
+      'Tallywork keeps your sign-in encrypted with the system keyring, and none is available.\n\n' +
+      'Install and start one, then open Tallywork again:\n' +
+      '• GNOME, XFCE, Cinnamon, MATE and most others: sudo apt install gnome-keyring, then sign out and back in\n' +
+      '• KDE Plasma: enable KDE Wallet in System Settings',
+  });
+}
+
 app.whenReady().then(async () => {
   app.setAppUserModelId('app.tallywork.desktop');
+  if (process.platform === 'linux' && !safeStorage.isEncryptionAvailable()) {
+    explainMissingKeyring();
+    app.exit(1);
+    return;
+  }
   const managed = await readManagedConfig();
   if (managed.launchAtLogin !== undefined) app.setLoginItemSettings({ openAtLogin: managed.launchAtLogin });
   agent = new Agent(managed.serverUrl ?? DEFAULT_SERVER, app.getVersion(), managed.serverUrl ?? null);
@@ -222,6 +241,10 @@ app.whenReady().then(async () => {
   agent.on('show', () => showWindow());
   updateTray();
   void setupUpdater(managed.updateChannel);
+}).catch((e: unknown) => {
+  // Without this, a failed start leaves an invisible process: no window, no tray icon.
+  dialog.showErrorBox('Tallywork could not start', e instanceof Error ? e.message : String(e));
+  app.exit(1);
 });
 
 app.on('before-quit', (e) => {

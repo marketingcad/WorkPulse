@@ -34,14 +34,19 @@ jobs:
             echo "== $f"; ldd "$f" | grep "not found" && echo "::warning::$f is missing libraries" || echo ok
           done
           for t in xprop xwininfo; do command -v $t >/dev/null && echo "$t ok" || echo "::warning::$t is not installed (app/window tracking needs it)"; done
-      # timeout exits 124 when the app is still running after 30 s: that is the pass condition.
-      - name: .deb app starts and keeps running
+      # Like a real desktop session: a D-Bus session with an unlocked gnome-keyring (the Secret Service the app
+      # stores its sign-in in). timeout exits 124 when the app is still running after 30 s: that is the pass condition.
+      - name: .deb app starts and keeps running (with a desktop keyring)
         run: |
           set +e
-          xvfb-run -a timeout 30 /opt/Tallywork/tallywork --enable-logging=stderr > deb.log 2>&1; code=$?
-          tail -n 40 deb.log
-          if [ $code -ne 124 ]; then echo "::error::.deb app exited early (code $code)"; exit 1; fi
-          echo "still running after 30 s"
+          sudo apt-get install -y -qq gnome-keyring dbus-x11
+          dbus-run-session -- bash -c '
+            echo -n smoke | gnome-keyring-daemon --unlock --components=secrets >/dev/null
+            xvfb-run -a timeout 30 /opt/Tallywork/tallywork --enable-logging=stderr > deb.log 2>&1; echo $? > deb.code'
+          code=$(cat deb.code); tail -n 40 deb.log
+          if [ "$code" -ne 124 ]; then echo "::error::.deb app exited early (code $code)"; exit 1; fi
+          if grep -qE "could not start|UnhandledPromiseRejection|keychain\) is not available" deb.log; then echo "::error::startup error in the log"; exit 1; fi
+          echo "still running after 30 s, no startup errors"
       - name: AppImage without libfuse2 (default Ubuntu 22.04+)
         run: |
           set +e
@@ -50,7 +55,9 @@ jobs:
         run: |
           set +e
           sudo apt-get install -y -qq libfuse2t64
-          xvfb-run -a timeout 30 ./Tallywork-linux.AppImage --enable-logging=stderr > appimage.log 2>&1; code=$?
-          tail -n 40 appimage.log
+          dbus-run-session -- bash -c '
+            echo -n smoke | gnome-keyring-daemon --unlock --components=secrets >/dev/null
+            xvfb-run -a timeout 30 ./Tallywork-linux.AppImage --enable-logging=stderr > appimage.log 2>&1; echo $? > appimage.code'
+          code=$(cat appimage.code); tail -n 40 appimage.log
           if [ $code -ne 124 ]; then echo "::error::AppImage exited early (code $code)"; exit 1; fi
           echo "still running after 30 s"

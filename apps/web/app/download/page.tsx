@@ -9,6 +9,7 @@ export default function DownloadPage() {
     windows: process.env.DESKTOP_DOWNLOAD_URL_WINDOWS || null,
     macos: process.env.DESKTOP_DOWNLOAD_URL_MACOS || null,
     linux: process.env.DESKTOP_DOWNLOAD_URL_LINUX || null,
+    linuxAppImage: process.env.DESKTOP_DOWNLOAD_URL_LINUX_APPIMAGE || null,
   };
   return (
     <Suspense>

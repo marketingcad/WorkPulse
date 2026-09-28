@@ -155,6 +155,15 @@ export const agentRegisterInput = z.object({
   }),
 });
 
+/** Desktop sign-in with the account's email and password (plus a 2FA code when the account has one). */
+export const agentLoginInput = z.object({
+  email: z.email().max(254),
+  password: z.string().min(1).max(200),
+  mfa_code: z.string().trim().min(6).max(20).optional(),
+  organization_id: id.optional(),
+  device: agentRegisterInput.shape.device,
+});
+
 export const agentRefreshInput = z.object({ refresh_token: z.string().min(20).max(300) });
 
 export const screenshotUploadInput = z.object({

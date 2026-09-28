@@ -33,11 +33,13 @@ import {
   type SessionTrigger,
   type TrackingPolicy,
 } from '@tallywork/domain';
-import type { AgentBootstrapDto, AgentEvent, IngestBatchInput, IngestResponse, IngestResult, agentRegisterInput } from '@tallywork/contracts';
+import type { AgentBootstrapDto, AgentEvent, IngestBatchInput, IngestResponse, IngestResult, agentLoginInput, agentRegisterInput } from '@tallywork/contracts';
 import type { z } from 'zod';
 import type { Deps } from '../context';
 import { pkceMatches, randomToken, sha256, signToken } from '../lib/crypto';
 import { auditSystem, emit } from './events';
+import { login } from './identity';
+import { hasMfa, verifySecondFactor } from './mfa';
 import { effectivePolicy, policyHash } from './policies';
 import {
   applyTrigger,
@@ -100,29 +102,58 @@ export async function registerDevice(deps: Deps, input: z.infer<typeof agentRegi
   if (!code || code.expiresAt < deps.now()) throw new DomainError('unauthenticated', 'invalid_code', 'The sign-in code is invalid or expired. Please sign in again.');
   if (!pkceMatches(input.code_verifier, code.codeChallenge)) throw new DomainError('unauthenticated', 'pkce_mismatch', 'Sign-in verification failed');
   await deps.db.update(deviceAuthCodes).set({ usedAt: deps.now() }).where(eq(deviceAuthCodes.id, code.id));
+  return createDevice(deps, { organizationId: code.organizationId, membershipId: code.membershipId, userId: code.userId }, input.device);
+}
 
-  return withTenant(deps.db, code.organizationId, async (tx) => {
-    const [org] = await tx.select().from(organizations).where(eq(organizations.id, code.organizationId));
+async function createDevice(deps: Deps, owner: { organizationId: string; membershipId: string; userId: string }, device: z.infer<typeof agentRegisterInput>['device']) {
+  return withTenant(deps.db, owner.organizationId, async (tx) => {
+    const [org] = await tx.select().from(organizations).where(eq(organizations.id, owner.organizationId));
     const deviceId = newId();
     const status = org?.settings.requireDeviceApproval ? 'PENDING' : 'ACTIVE';
     await tx.insert(devices).values({
       id: deviceId,
-      organizationId: code.organizationId,
-      membershipId: code.membershipId,
-      name: input.device.name,
-      platform: input.device.platform,
-      osVersion: input.device.os_version ?? null,
-      agentVersion: input.device.agent_version,
-      capabilities: input.device.capabilities,
-      publicKey: input.device.public_key ?? null,
+      organizationId: owner.organizationId,
+      membershipId: owner.membershipId,
+      name: device.name,
+      platform: device.platform,
+      osVersion: device.os_version ?? null,
+      agentVersion: device.agent_version,
+      capabilities: device.capabilities,
+      publicKey: device.public_key ?? null,
       status,
       lastSeenAt: deps.now(),
     });
-    await auditSystem(tx, code.organizationId, { action: 'device.registered', actorType: 'user', actorId: code.membershipId, targetType: 'device', targetId: deviceId, after: { name: input.device.name, platform: input.device.platform, status } });
-    await emit(tx, code.organizationId, 'device.registered', { device_id: deviceId, membership_id: code.membershipId, status }, { workerId: code.membershipId, deviceId });
-    const tokens = await issueTokens(tx, deps, { id: deviceId, organizationId: code.organizationId, membershipId: code.membershipId }, code.userId);
-    return { device_id: deviceId, organization_id: code.organizationId, status, ...tokens };
+    await auditSystem(tx, owner.organizationId, { action: 'device.registered', actorType: 'user', actorId: owner.membershipId, targetType: 'device', targetId: deviceId, after: { name: device.name, platform: device.platform, status } });
+    await emit(tx, owner.organizationId, 'device.registered', { device_id: deviceId, membership_id: owner.membershipId, status }, { workerId: owner.membershipId, deviceId });
+    const tokens = await issueTokens(tx, deps, { id: deviceId, organizationId: owner.organizationId, membershipId: owner.membershipId }, owner.userId);
+    return { device_id: deviceId, organization_id: owner.organizationId, status, ...tokens };
   });
+}
+
+/**
+ * Desktop sign-in with email + password. Uses the web login checks (lockout, email verification),
+ * then asks for the 2FA code and, for people in several organizations, which one this device is for.
+ */
+export async function loginDevice(deps: Deps, input: z.infer<typeof agentLoginInput>) {
+  const { userId: uid } = await login(deps, input.email, input.password);
+  if (await hasMfa(deps, uid)) {
+    if (!input.mfa_code) throw new DomainError('unauthenticated', 'mfa_required', 'Enter the 6-digit code from your authenticator app');
+    await verifySecondFactor(deps, uid, input.mfa_code);
+  }
+  const orgs = await withSystem(deps.db, (tx) =>
+    tx
+      .select({ membershipId: memberships.id, organizationId: organizations.id, name: organizations.name })
+      .from(memberships)
+      .innerJoin(organizations, eq(organizations.id, memberships.organizationId))
+      .where(and(eq(memberships.userId, uid), eq(memberships.status, 'ACTIVE'))),
+  );
+  if (!orgs.length) throw new DomainError('forbidden', 'no_organization', 'This account is not part of any organization yet');
+  const chosen = input.organization_id ? orgs.find((o) => o.organizationId === input.organization_id) : orgs.length === 1 ? orgs[0] : undefined;
+  if (!chosen) {
+    if (input.organization_id) throw notFound('organization');
+    return { organization_required: true as const, organizations: orgs.map((o) => ({ id: o.organizationId, name: o.name })) };
+  }
+  return createDevice(deps, { organizationId: chosen.organizationId, membershipId: chosen.membershipId, userId: uid }, input.device);
 }
 
 /** Rotate a refresh token. Reuse of an already-used token revokes the whole family. */

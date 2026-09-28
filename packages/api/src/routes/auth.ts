@@ -14,7 +14,7 @@ import {
 import { DomainError, businessRule, validation } from '@tallywork/domain';
 import { z } from 'zod';
 import { confirmTotpSetup, disableTotp, hasMfa, recoveryCodesLeft, regenerateRecoveryCodes, startTotpSetup, verifyLoginCode } from '../services/mfa';
-import type { AppEnv } from '../context';
+import type { AppEnv, Deps } from '../context';
 import { body } from '../lib/http';
 import { hashPassword, verifyPassword } from '../lib/crypto';
 import { rateLimit } from '../middleware/rate-limit';
@@ -49,6 +49,15 @@ async function startSession(c: Context<AppEnv>, uid: string, mfaPending = false)
   });
 }
 
+async function sendVerificationEmail(deps: Deps, uid: string, email: string) {
+  const token = await issueEmailToken(deps.db, uid, 'VERIFY_EMAIL', 60 * 24 * 3);
+  await deps.mailer.send({
+    to: email,
+    subject: 'Confirm your Tallywork email',
+    text: `Welcome to Tallywork!\n\nConfirm your email (valid for 3 days): ${deps.config.appUrl}/verify-email?token=${token}\n`,
+  });
+}
+
 export const authRoutes = new Hono<AppEnv>()
   .post('/signup', rateLimit('signup', 10, 3600), async (c) => {
     const input = await body(c, signupInput);
@@ -60,14 +69,20 @@ export const authRoutes = new Hono<AppEnv>()
       currency: 'USD',
       ownerUserId: uid,
     });
-    const token = await issueEmailToken(deps.db, uid, 'VERIFY_EMAIL', 60 * 24 * 3);
-    await deps.mailer.send({
-      to: input.email,
-      subject: 'Confirm your Tallywork email',
-      text: `Welcome to Tallywork!\n\nConfirm your email: ${deps.config.appUrl}/verify-email?token=${token}\n`,
-    });
+    await sendVerificationEmail(deps, uid, input.email);
+    // With verification required, the account stays signed out until the emailed link is opened.
+    if (deps.config.requireEmailVerification) return c.json({ user_id: uid, organization_id: org.organizationId, verification_required: true }, 201);
     await startSession(c, uid);
     return c.json({ user_id: uid, organization_id: org.organizationId }, 201);
+  })
+
+  .post('/verify-email/resend', rateLimit('verify-resend', 5, 3600), async (c) => {
+    const { email } = await body(c, forgotPasswordInput);
+    const { deps } = c.var;
+    const u = await findUserByEmail(deps.db, email);
+    // Always 202 so the endpoint does not reveal which emails have accounts.
+    if (u && !u.emailVerifiedAt) await sendVerificationEmail(deps, u.id, u.email);
+    return c.json({ ok: true }, 202);
   })
 
   .post('/login', rateLimit('login', 20, 900), async (c) => {
@@ -128,7 +143,13 @@ export const authRoutes = new Hono<AppEnv>()
     const { token } = await body(c, resetPasswordInput.pick({ token: true }));
     const uid = await consumeEmailToken(c.var.deps.db, token, 'VERIFY_EMAIL');
     await markEmailVerified(c.var.deps.db, uid);
-    return c.json({ ok: true });
+    // The link proves control of the mailbox, so it completes sign-in — unless two-factor needs its own step.
+    const signedIn = c.var.principal?.type === 'user' && c.var.principal.userId === uid;
+    if (!signedIn && c.var.deps.config.requireEmailVerification && !(await hasMfa(c.var.deps, uid))) {
+      await startSession(c, uid);
+      return c.json({ ok: true, signed_in: true });
+    }
+    return c.json({ ok: true, signed_in: signedIn });
   })
 
   .post('/invitations/accept', rateLimit('invite-accept', 20, 3600), async (c) => {
@@ -136,7 +157,7 @@ export const authRoutes = new Hono<AppEnv>()
     const p = c.var.principal;
     const r = await acceptInvitation(c.var.deps.db, { token: input.token, name: input.name ?? null, password: input.password ?? null, currentUserId: p?.type === 'user' ? p.userId : null });
     if (!p) await startSession(c, r.userId);
-    return c.json({ organization_id: r.organizationId, membership_id: r.membershipId });
+    return c.json({ organization_id: r.organizationId, membership_id: r.membershipId, role_key: r.roleKey });
   });
 
 export const meRoutes = new Hono<AppEnv>()

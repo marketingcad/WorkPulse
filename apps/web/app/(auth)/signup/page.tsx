@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button, Field, Input } from '@tallywork/ui';
 import { AuthShell } from '@/components/auth-shell';
+import { CheckEmail } from '@/components/check-email';
 import { api, ApiError } from '@/lib/api';
 import { t } from '@/lib/i18n';
 
@@ -12,22 +13,42 @@ export default function SignupPage() {
   const [form, setForm] = useState({ name: '', email: '', password: '', organization_name: '' });
   const [err, setErr] = useState<ApiError | null>(null);
   const [loading, setLoading] = useState(false);
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const set =(k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setErr(null);
     try {
-      const r = await api<{ organization_id: string }>('/auth/signup', {
+      const r = await api<{ organization_id: string; verification_required?: boolean }>('/auth/signup', {
         body: { ...form, organization_name: form.organization_name || undefined, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
       });
+      if (r.verification_required) {
+        setPendingEmail(form.email);
+        setLoading(false);
+        return;
+      }
       router.replace(`/o/${r.organization_id}?welcome=1`);
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2 : new ApiError(500, 'error', t('auth.signup.failed')));
       setLoading(false);
     }
   }
+
+  if (pendingEmail)
+    return (
+      <AuthShell
+        title={t('auth.verify.checkTitle')}
+        footer={
+          <Link href="/login" className="font-medium text-interactive hover:underline">
+            {t('auth.verify.signIn')}
+          </Link>
+        }
+      >
+        <CheckEmail email={pendingEmail} />
+      </AuthShell>
+    );
 
   return (
     <AuthShell

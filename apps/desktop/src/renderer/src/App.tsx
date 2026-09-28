@@ -94,10 +94,40 @@ function Mark({ size = 32 }: { size?: number }) {
   );
 }
 
+const signInInput = 'mt-1 h-10 w-full rounded-sm border border-white/15 bg-white/5 px-3 text-sm text-nav-fg focus:border-interactive focus:outline-none';
+
 function SignIn({ s }: { s: AgentState }) {
   const [server, setServer] = useState(s.serverUrl);
   const [advanced, setAdvanced] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+  const [organizationId, setOrganizationId] = useState('');
+  // Extra steps the server can ask for after email + password.
+  const [step, setStep] = useState<'password' | 'mfa' | 'organization'>('password');
+  const [organizations, setOrganizations] = useState<Array<{ id: string; name: string }>>([]);
+  const [viaBrowser, setViaBrowser] = useState(false);
   const busy = s.phase === 'signing_in';
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setViaBrowser(false);
+    const r = await bridge.loginWithPassword({ email: email.trim(), password, mfaCode: step === 'mfa' ? mfaCode : undefined, organizationId: organizationId || undefined, serverUrl: server });
+    if (r.status === 'mfa_required') setStep('mfa');
+    else if (r.status === 'organization_required') {
+      setOrganizations(r.organizations);
+      setOrganizationId(r.organizations[0]?.id ?? '');
+      setStep('organization');
+    } else if (r.status === 'signed_in') setPassword('');
+  }
+
+  function restart() {
+    setStep('password');
+    setMfaCode('');
+    setOrganizationId('');
+  }
+
+  const ready = !!email.trim() && !!password && (step !== 'mfa' || mfaCode.trim().length >= 6) && (step !== 'organization' || !!organizationId);
   return (
     <div className="instrument mx-auto flex h-full w-full max-w-md flex-col justify-between bg-nav p-6 text-nav-fg">
       <div className="flex items-center gap-2">
@@ -106,11 +136,54 @@ function SignIn({ s }: { s: AgentState }) {
       </div>
       <div>
         <h1 className="text-xl font-semibold">Sign in to start tracking</h1>
-        <p className="mt-1.5 text-sm text-nav-muted">Your browser will open to confirm it is you. The desktop app never sees your password.</p>
-        {s.error && <p className="mt-3 rounded-sm bg-danger/20 px-3 py-2 text-sm text-[#ffb4ad]">{s.error}</p>}
-        <button disabled={busy} onClick={() => void bridge.login(server)} className="mt-5 flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-60">
-          {busy ? <RefreshCw className="size-4 animate-spin" /> : <ExternalLink className="size-4" />}
-          {busy ? 'Waiting for browser…' : 'Sign in with browser'}
+        <p className="mt-1.5 text-sm text-nav-muted">Use the email and password you chose when you accepted your invitation.</p>
+        {s.error && <p role="alert" className="mt-3 rounded-sm bg-danger/20 px-3 py-2 text-sm text-[#ffb4ad]">{s.error}</p>}
+        <form onSubmit={submit} className="mt-5 flex flex-col gap-3" noValidate>
+          <label className="block text-xs text-nav-muted">
+            Email
+            <input type="email" autoComplete="email" autoFocus value={email} disabled={step !== 'password'} onChange={(e) => setEmail(e.target.value)} className={signInInput} />
+          </label>
+          <label className="block text-xs text-nav-muted">
+            Password
+            <input type="password" autoComplete="current-password" value={password} disabled={step !== 'password'} onChange={(e) => setPassword(e.target.value)} className={signInInput} />
+          </label>
+          {step === 'mfa' && (
+            <label className="block text-xs text-nav-muted">
+              Authentication code (or a recovery code)
+              <input inputMode="numeric" autoComplete="one-time-code" autoFocus value={mfaCode} maxLength={20} onChange={(e) => setMfaCode(e.target.value)} className={`${signInInput} tabular tracking-[0.2em]`} />
+            </label>
+          )}
+          {step === 'organization' && (
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="mb-1 text-xs text-nav-muted">Which organization is this computer for?</legend>
+              {organizations.map((o) => (
+                <label key={o.id} className="flex items-center gap-2 rounded-sm border border-white/15 px-3 py-2 text-sm">
+                  <input type="radio" name="org" checked={organizationId === o.id} onChange={() => setOrganizationId(o.id)} />
+                  {o.name}
+                </label>
+              ))}
+            </fieldset>
+          )}
+          <button type="submit" disabled={busy || !ready} className="mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-60">
+            {busy && !viaBrowser && <RefreshCw className="size-4 animate-spin" />}
+            {step === 'password' ? 'Sign in' : 'Continue'}
+          </button>
+          {step !== 'password' && (
+            <button type="button" onClick={restart} className="text-xs text-nav-muted hover:text-nav-fg">
+              Use a different account
+            </button>
+          )}
+        </form>
+        <button
+          disabled={busy}
+          onClick={() => {
+            setViaBrowser(true);
+            void bridge.login(server);
+          }}
+          className="mt-4 flex w-full items-center justify-center gap-1.5 text-xs text-nav-muted hover:text-nav-fg disabled:opacity-60"
+        >
+          {busy && viaBrowser ? <RefreshCw className="size-3.5 animate-spin" /> : <ExternalLink className="size-3.5" />}
+          {busy && viaBrowser ? 'Waiting for browser…' : 'Sign in with browser instead'}
         </button>
         {s.serverManaged ? (
           <p className="mt-3 text-xs text-nav-muted">Server set by your organization: {s.serverUrl}</p>

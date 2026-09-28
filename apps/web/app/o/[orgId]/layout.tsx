@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import type { MeDto, OrgContextDto } from '@tallywork/contracts';
 import { ErrorState, Logo, Spinner } from '@tallywork/ui';
 import { api } from '@/lib/api';
@@ -30,6 +30,12 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
       offMutations();
     };
   }, [qc]);
+  // Workers use Tallywork through the desktop app only; the web workspace is for admins and managers.
+  const router = useRouter();
+  const desktopOnly = data?.membership.role_key === 'WORKER';
+  useEffect(() => {
+    if (desktopOnly) router.replace('/download');
+  }, [desktopOnly, router]);
 
   if (mfaBlocked || isMfaEnrollmentError(error))
     return (
@@ -47,7 +53,7 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
         <ErrorState error={error} onRetry={() => refetch()} />
       </div>
     );
-  if (!data)
+  if (!data || desktopOnly)
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-3 text-text-muted">
         <Logo size={36} className="text-[#0f2240] dark:text-white" />

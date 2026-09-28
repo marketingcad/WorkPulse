@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { agentRefreshInput, agentRegisterInput, deviceAuthorizeInput, heartbeatInput, ingestBatchInput, isoDate, screenshotUploadInput, timeOffRequestInput } from '@tallywork/contracts';
+import { agentLoginInput, agentRefreshInput, agentRegisterInput, deviceAuthorizeInput, heartbeatInput, ingestBatchInput, isoDate, screenshotUploadInput, timeOffRequestInput } from '@tallywork/contracts';
 import { DomainError, forbidden } from '@tallywork/domain';
 import type { AppEnv } from '../context';
 import { body, query } from '../lib/http';
@@ -8,7 +8,7 @@ import { rateLimit } from '../middleware/rate-limit';
 import { requireUser, userId } from '../middleware/auth';
 import { runInTenantTx } from '../middleware/tenant';
 import { myActivity, myNotifications, mySchedule, mySessions, mySummary, myTasks, myTimeOff, myTimesheet, readMyNotifications, requestMyTimeOff, submitMyTimesheet } from '../services/agent-me';
-import { acknowledgePolicy, bootstrap, createDeviceAuthCode, heartbeat, ingestBatch, loadAgentCtx, refreshDeviceToken, registerDevice, screenshotKeyPrefix, type AgentCtx } from '../services/agent';
+import { acknowledgePolicy, bootstrap, createDeviceAuthCode, heartbeat, ingestBatch, loadAgentCtx, loginDevice, refreshDeviceToken, registerDevice, screenshotKeyPrefix, type AgentCtx } from '../services/agent';
 
 type AgentEnv = AppEnv & { Variables: AppEnv['Variables'] & { agent: AgentCtx } };
 
@@ -91,5 +91,10 @@ export const agentRoutes = new Hono<AppEnv>()
     return c.json({ code: await createDeviceAuthCode(c.var.deps, userId(c), i.organization_id, i.code_challenge) });
   })
   .post('/register', rateLimit('agent-register', 20, 3600), async (c) => c.json(await registerDevice(c.var.deps, await body(c, agentRegisterInput)), 201))
+  /** Desktop sign-in with email + password; 200 with organization_required when the person must pick an organization. */
+  .post('/login', rateLimit('agent-login', 20, 900), async (c) => {
+    const r = await loginDevice(c.var.deps, await body(c, agentLoginInput));
+    return 'organization_required' in r ? c.json(r) : c.json(r, 201);
+  })
   .post('/token', rateLimit('agent-token', 60, 3600), async (c) => c.json(await refreshDeviceToken(c.var.deps, (await body(c, agentRefreshInput)).refresh_token)))
   .route('/', agentOnly as never);

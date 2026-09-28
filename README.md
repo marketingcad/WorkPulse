@@ -898,17 +898,22 @@ Run from the repo root unless noted.
 | `BLOB_READ_WRITE_TOKEN` | No | Vercel Blob token, used only when Supabase Storage is not configured. With neither, files go to `LOCAL_STORAGE_DIR` |
 | `LOCAL_STORAGE_DIR` | No | Local file storage directory (default `apps/web/.data/blobs`) |
 | `RESEND_API_KEY` | No | Enables real email through Resend |
-| `MAIL_FROM` | No | Sender address (default `Tallywork <no-reply@tallywork.app>`) |
-| `REQUIRE_EMAIL_VERIFICATION` | No | `true` to block unverified sign-ins |
+| `SMTP_HOST` | No | Enables email over SMTP when `RESEND_API_KEY` is not set (e.g. `smtp.gmail.com`) |
+| `SMTP_PORT` | No | Default `465` (implicit TLS); use `587` for STARTTLS |
+| `SMTP_SECURE` | No | `true`/`false`; defaults to `true` on port 465 |
+| `SMTP_USER` / `SMTP_PASS` | No | SMTP credentials. For Gmail: the account address and a 16-character [app password](https://myaccount.google.com/apppasswords) (requires 2-Step Verification) |
+| `MAIL_FROM` | No | Sender address (default `Tallywork <no-reply@tallywork.app>`, or `Tallywork <SMTP_USER>` with SMTP) |
+| `REQUIRE_EMAIL_VERIFICATION` | No | `true`: new accounts stay signed out until they open the emailed link (which then signs them in); unverified accounts cannot sign in |
 | `SESSION_TTL_HOURS` | No | Web session lifetime (default 336 = 14 days) |
 | `MIN_AGENT_VERSION` | No | Oldest desktop agent version the API accepts (default `0.1.0`) |
+| `DESKTOP_DOWNLOAD_URL_WINDOWS` / `_MACOS` / `_LINUX` | No | Installer links shown on `/download`, where Workers land after accepting an invitation (Workers use the desktop app only). Without them the page asks the worker to get the installer from their administrator |
 
 ### Desktop agent (`apps/desktop`)
 
 | Variable | Description |
 |---|---|
 | `TALLYWORK_SERVER` | API server URL (default `http://localhost:3000` in dev, the production URL when packaged) |
-| `TALLYWORK_UPDATE_URL` | Auto-update feed URL (packaged builds only) |
+| `TALLYWORK_UPDATE_URL` | Optional self-hosted auto-update feed. By default packaged builds update from GitHub Releases in `marketingcad/tallywork-desktop` |
 | `TALLYWORK_EXTENSION_IDS` | Extra browser-extension IDs the local bridge accepts (comma-separated), e.g. the Chrome Web Store ID once published. The unpacked extension's ID is built in |
 | `CSC_LINK`, `CSC_KEY_PASSWORD` | Code-signing certificate for Windows / macOS installers |
 | `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | macOS notarization |
@@ -948,4 +953,4 @@ The web app and API deploy together to **Vercel** as one project (root directory
 3. Deploy. The `vercel-build` script runs `pnpm --filter @tallywork/db migrate` **before** `next build`, so every deploy applies migrations and RLS.
 4. [apps/web/vercel.json](apps/web/vercel.json) registers the cron jobs (`/api/v1/cron/tick` every minute, `/api/v1/cron/daily` at 03:15 UTC) and gives the API function a 300s max duration.
 
-**Desktop releases:** run `pnpm --filter @tallywork/desktop dist` on a tagged release with the signing and notarization variables set. Installers are written to `apps/desktop/release/<version>/`. Point `TALLYWORK_UPDATE_URL` at the published feed to enable auto-update.
+**Desktop releases:** bump `version` in `apps/desktop/package.json`, push, then run the **Desktop release** workflow (GitHub → Actions → Desktop release → Run workflow). It builds Windows (`.exe`), macOS (universal `.dmg`, not yet signed or notarized) and Linux (`.AppImage`, `.deb`) and publishes them with the auto-update feed as one GitHub Release in the public `marketingcad/tallywork-desktop` repo. It needs the `DESKTOP_RELEASE_TOKEN` secret (fine-grained token, that repo only, Contents: read and write). Windows only, from your own PC: `pnpm --filter @tallywork/desktop release:win`. Installed Windows and Linux (AppImage) apps update within 6 hours; unsigned Mac builds show a notification that links to `/download`.

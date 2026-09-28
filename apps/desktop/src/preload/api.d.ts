@@ -1,4 +1,4 @@
-import type { AgentState, MeResource } from '../shared/ipc';
+import type { AgentState, LoginResult, MeResource } from '../shared/ipc';
 
 declare global {
   interface Window {
@@ -6,6 +6,7 @@ declare global {
       getState(): Promise<AgentState>;
       onState(cb: (s: AgentState) => void): () => void;
       login(serverUrl?: string): Promise<void>;
+      loginWithPassword(r: { email: string; password: string; mfaCode?: string; organizationId?: string; serverUrl?: string }): Promise<LoginResult>;
       logout(): Promise<void>;
       start(projectId: string, taskId: string | null): Promise<void>;
       switchTask(projectId: string, taskId: string | null): Promise<void>;

@@ -100,7 +100,7 @@ Supabase keeps point-in-time recovery (PITR) for the project's retention window.
 
 ## Desktop release (staged)
 
-1. Build and sign with `pnpm --filter @tallywork/desktop dist`, with the signing variables set in CI.
-2. Publish to the update server under the **beta** channel first. Machines with `TALLYWORK_UPDATE_CHANNEL=beta` get it within 6 hours.
+1. Bump `version` in `apps/desktop/package.json`, then build, sign and publish with `pnpm --filter @tallywork/desktop release:win` (GitHub Releases in `marketingcad/tallywork-desktop`), with the signing variables set.
+2. For a staged rollout, publish under the **beta** channel first (a prerelease version such as `0.2.0-beta.1`). Machines with `TALLYWORK_UPDATE_CHANNEL=beta` get it within 6 hours.
 3. After 48 h with no crash increase (the crash-free SLO), publish to **latest** with `stagingPercentage: 10` in `latest.yml`. Raise it to 50, then 100, a day apart.
 4. To stop a rollout, set `stagingPercentage: 0` or republish the previous version. Updates never interrupt a running timer; they install when the app quits.

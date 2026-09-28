@@ -1,4 +1,4 @@
-import { app, BrowserWindow, crashReporter, ipcMain, Menu, nativeImage, shell, Tray, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, crashReporter, ipcMain, Menu, nativeImage, Notification, shell, Tray, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IPC, type IpcChannel, type IpcPayload } from '../shared/ipc';
@@ -125,6 +125,7 @@ function registerIpc(): void {
   const handlers: { [C in IpcChannel]: (payload: never) => unknown } = {
     'state:get': () => agent.state(),
     'auth:login': (p: { serverUrl?: string }) => agent.login(p.serverUrl),
+    'auth:loginPassword': (p: IpcPayload<'auth:loginPassword'>) => agent.loginWithPassword(p),
     'auth:logout': () => agent.logout(),
     'timer:start': (p: { projectId: string; taskId: string | null }) => agent.start(p.projectId, p.taskId),
     'timer:stop': () => agent.stop(),
@@ -167,19 +168,34 @@ function registerIpc(): void {
 }
 
 /**
- * Updates come from TALLYWORK_UPDATE_URL. Rollouts are staged two ways: the channel
+ * Updates come from the GitHub Releases feed baked in at build time (electron-builder.yml `publish`),
+ * or from TALLYWORK_UPDATE_URL when set (a self-hosted mirror). Rollouts are staged two ways: the channel
  * (TALLYWORK_UPDATE_CHANNEL = beta | latest; beta machines get releases first) and electron-updater's
  * stagingPercentage in latest.yml, which offers a release to a growing share of machines
  * (docs/ops/runbooks.md, "Desktop release").
  */
 async function setupUpdater(managedChannel?: 'latest' | 'beta'): Promise<void> {
-  if (!app.isPackaged || !process.env.TALLYWORK_UPDATE_URL) return;
+  if (!app.isPackaged) return;
   const { autoUpdater } = await import('electron-updater');
+  if (process.env.TALLYWORK_UPDATE_URL) autoUpdater.setFeedURL({ provider: 'generic', url: process.env.TALLYWORK_UPDATE_URL });
   const channel = managedChannel ?? (process.env.TALLYWORK_UPDATE_CHANNEL === 'beta' ? 'beta' : 'latest');
   autoUpdater.channel = channel;
   autoUpdater.allowPrerelease = channel === 'beta';
   autoUpdater.allowDowngrade = false;
   autoUpdater.autoInstallOnAppQuit = true;
+  if (process.platform === 'darwin') {
+    // The Mac build is not code-signed yet, and macOS only installs updates into signed apps.
+    // Instead of downloading and failing, tell the person once per version and open the download page.
+    autoUpdater.autoDownload = false;
+    let offered: string | null = null;
+    autoUpdater.on('update-available', (info) => {
+      if (offered === info.version || !Notification.isSupported()) return;
+      offered = info.version;
+      const n = new Notification({ title: `Tallywork ${info.version} is available`, body: 'Click to download the new version. Your tracked time is kept.' });
+      n.on('click', () => void shell.openExternal(`${agent.state().serverUrl}/download`));
+      n.show();
+    });
+  }
   // Never interrupt an active session: download in the background, install on quit.
   const check = () => void autoUpdater.checkForUpdates().catch(() => undefined);
   check();

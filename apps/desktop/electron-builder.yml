@@ -6,6 +6,9 @@ directories:
 files:
   - out/**
   - package.json
+# The native modules (uiohook-napi, get-windows) ship prebuilt N-API binaries, which work in Electron
+# as they are. Rebuilding from source would need Python and C++ build tools on every build machine.
+npmRebuild: false
 asarUnpack:
   - node_modules/uiohook-napi/**
   - node_modules/get-windows/**
@@ -19,7 +22,8 @@ electronFuses:
 win:
   # nsis: interactive installer for people; msi: silent, per-machine install for Intune / Group Policy / SCCM.
   target: [nsis, msi]
-  artifactName: Tallywork-Setup-${version}.${ext}
+  # No version in the name, so .../releases/latest/download/Tallywork-Setup.exe always serves the newest build.
+  artifactName: Tallywork-Setup.${ext}
   # Authenticode signing: set CSC_LINK / CSC_KEY_PASSWORD (EV certificate recommended).
 nsis:
   oneClick: false
@@ -33,15 +37,23 @@ msi:
 mac:
   # dmg/zip for people and auto-update; pkg for Jamf / Kandji / Intune (installs to /Applications for all users).
   target: [dmg, zip, pkg]
+  # No version in the name, so .../releases/latest/download/Tallywork-mac.dmg always serves the newest build.
+  artifactName: Tallywork-mac.${ext}
   category: public.app-category.productivity
-  hardenedRuntime: true
+  # Not yet enrolled in the Apple Developer Program: builds are ad-hoc signed ("-"), which Apple Silicon
+  # needs to launch the app at all, and not notarized. macOS asks people to approve the first launch, and
+  # updates are offered as a download instead of installed (src/main/index.ts). Once enrolled: remove
+  # `identity`, set CSC_LINK / CSC_KEY_PASSWORD and APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID,
+  # and turn hardenedRuntime and notarize back on.
+  identity: '-'
+  hardenedRuntime: false
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     NSAppleEventsUsageDescription: Tallywork reads the active browser tab domain while you track time, when your organization enables URL tracking.
     NSScreenCaptureUsageDescription: Tallywork captures screenshots while you track time, when your organization enables screenshots.
-  notarize: true
+  notarize: false
 pkg:
   installLocation: /Applications
   allowAnywhere: false
@@ -50,8 +62,18 @@ pkg:
   artifactName: Tallywork-${version}.${ext}
 linux:
   target: [AppImage, deb]
+  # AppImage updates itself; the .deb is for people who prefer the package manager (no auto-update).
+  artifactName: Tallywork-linux.${ext}
   category: Office
-  maintainer: Tallywork
+  maintainer: Tallywork <no-reply@tallywork.app>
+# Installers and the auto-update feed (latest.yml + blockmap) are published as GitHub Releases in a
+# public repo that holds no source code. Installed apps check it every 6 hours (src/main/index.ts).
+# Publish all platforms with the "Desktop release" GitHub Actions workflow (or Windows only, locally, with
+# `pnpm --filter @tallywork/desktop release:win`) after bumping "version" in package.json.
 publish:
-  provider: generic
-  url: ${env.TALLYWORK_UPDATE_URL}
+  provider: github
+  owner: marketingcad
+  repo: tallywork-desktop
+  # Uploads go into a draft (GitHub refuses to create a published release without an existing tag);
+  # scripts/release.mjs publishes it once every file is uploaded, so apps never see a half-uploaded release.
+  releaseType: draft

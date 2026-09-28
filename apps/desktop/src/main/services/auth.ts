@@ -16,7 +16,7 @@ function platform(): 'windows' | 'macos' | 'linux' {
  * 2. open <server>/device/authorize?code_challenge&redirect_uri&state in the browser
  * 3. the signed-in web page redirects back with a one-time code
  * 4. exchange code + verifier for device credentials (POST /agent/register)
- * Passwords never touch the desktop app.
+ * The alternative to signInWithPassword below, for people who prefer to confirm in the browser.
  */
 export async function signIn(api: AgentApi, serverUrl: string, capabilities: Record<string, boolean>): Promise<void> {
   const verifier = randomBytes(32).toString('base64url');
@@ -60,19 +60,64 @@ export async function signIn(api: AgentApi, serverUrl: string, capabilities: Rec
     body: JSON.stringify({
       code,
       code_verifier: verifier,
-      device: {
-        name: `${os.hostname()}`.slice(0, 100),
-        platform: platform(),
-        os_version: `${os.type()} ${os.release()}`.slice(0, 100),
-        agent_version: app.getVersion(),
-        capabilities,
-      },
+      device: deviceInfo(capabilities),
     }),
   });
   if (!res.ok) {
     const p = (await res.json().catch(() => ({}))) as { title?: string };
     throw new Error(p.title ?? `Registration failed (${res.status})`);
   }
-  const r = (await res.json()) as { device_id: string; organization_id: string; access_token: string; refresh_token: string; expires_in: number };
+  saveDevice(api, serverUrl, (await res.json()) as DeviceTokens);
+}
+
+export interface PasswordCredentials {
+  email: string;
+  password: string;
+  mfaCode?: string;
+  organizationId?: string;
+}
+
+/** What the sign-in form needs to ask next, when the server wants more than email and password. */
+export type PasswordSignInResult = { status: 'signed_in' } | { status: 'mfa_required' } | { status: 'organization_required'; organizations: Array<{ id: string; name: string }> };
+
+/**
+ * Desktop sign-in with the account's email and password (POST /agent/login).
+ * The password is sent once over the connection to the server and never stored; only device tokens are kept.
+ */
+export async function signInWithPassword(api: AgentApi, serverUrl: string, capabilities: Record<string, boolean>, creds: PasswordCredentials): Promise<PasswordSignInResult> {
+  const res = await net.fetch(`${serverUrl}/api/v1/agent/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: creds.email, password: creds.password, mfa_code: creds.mfaCode || undefined, organization_id: creds.organizationId, device: deviceInfo(capabilities) }),
+  });
+  const p = (await res.json().catch(() => ({}))) as { code?: string; title?: string; organization_required?: boolean; organizations?: Array<{ id: string; name: string }> };
+  if (!res.ok) {
+    if (p.code === 'mfa_required') return { status: 'mfa_required' };
+    throw new Error(p.title ?? `Sign-in failed (${res.status})`);
+  }
+  if (p.organization_required) return { status: 'organization_required', organizations: p.organizations ?? [] };
+  saveDevice(api, serverUrl, p as unknown as DeviceTokens);
+  return { status: 'signed_in' };
+}
+
+interface DeviceTokens {
+  device_id: string;
+  organization_id: string;
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}
+
+function deviceInfo(capabilities: Record<string, boolean>) {
+  return {
+    name: `${os.hostname()}`.slice(0, 100),
+    platform: platform(),
+    os_version: `${os.type()} ${os.release()}`.slice(0, 100),
+    agent_version: app.getVersion(),
+    capabilities,
+  };
+}
+
+function saveDevice(api: AgentApi, serverUrl: string, r: DeviceTokens) {
   api.saveCredentials({ deviceId: r.device_id, organizationId: r.organization_id, refreshToken: r.refresh_token, serverUrl }, { token: r.access_token, expiresIn: r.expires_in });
 }

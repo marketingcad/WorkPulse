@@ -12,6 +12,13 @@ export type MeResource = (typeof ME_RESOURCES)[number];
 export const IPC = {
   'state:get': z.void(),
   'auth:login': z.object({ serverUrl: z.url({ protocol: /^https?$/ }).max(300).optional() }),
+  'auth:loginPassword': z.object({
+    email: z.email().max(254),
+    password: z.string().min(1).max(200),
+    mfaCode: z.string().trim().max(20).optional(),
+    organizationId: z.uuid().optional(),
+    serverUrl: z.url({ protocol: /^https?$/ }).max(300).optional(),
+  }),
   'auth:logout': z.void(),
   'timer:start': z.object({ projectId: z.uuid(), taskId: z.uuid().nullable() }),
   'timer:stop': z.void(),
@@ -44,6 +51,13 @@ export const IPC = {
   'app:openWeb': z.object({ path: z.string().max(200).regex(/^\/[\w\-/?=&.]*$/) }),
   'app:quit': z.void(),
 } as const;
+
+/** Reply to 'auth:loginPassword'. Failures also set AgentState.error. */
+export type LoginResult =
+  | { status: 'signed_in' }
+  | { status: 'mfa_required' }
+  | { status: 'organization_required'; organizations: Array<{ id: string; name: string }> }
+  | { status: 'error' };
 
 export type IpcChannel = keyof typeof IPC;
 export type IpcPayload<C extends IpcChannel> = z.infer<(typeof IPC)[C]>;

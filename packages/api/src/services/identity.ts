@@ -97,7 +97,8 @@ export async function createOrganization(
     }
     const membershipId = newId();
     await tx.insert(memberships).values({ id: membershipId, organizationId, userId: input.ownerUserId, roleId: roleIds.SYSTEM_ADMIN, isOwner: true });
-    await tx.insert(workerProfiles).values({ membershipId, organizationId, timezone: input.timezone });
+    // The owner runs the organization; they are only tracked if an admin turns it on.
+    await tx.insert(workerProfiles).values({ membershipId, organizationId, timezone: input.timezone, trackingEnabled: false });
     await tx.insert(trackingPolicies).values({ id: newId(), organizationId, scopeType: 'ORG', scopeId: organizationId, doc: {} });
     await tx.insert(retentionPolicies).values(Object.entries(DEFAULT_RETENTION_DAYS).map(([dataClass, keepDays]) => ({ organizationId, dataClass: dataClass as keyof typeof DEFAULT_RETENTION_DAYS, keepDays })));
     await tx.insert(invoiceSequences).values({ organizationId });
@@ -168,6 +169,10 @@ export async function login(deps: Deps, email: string, password: string): Promis
       .where(eq(users.id, u.id));
     throw invalid;
   }
+  // Checked only after the password, so it does not reveal which emails have accounts.
+  if (deps.config.requireEmailVerification && !u.emailVerifiedAt) {
+    throw new DomainError('forbidden', 'email_not_verified', 'Confirm your email before signing in. Check your inbox for the link.');
+  }
   if (u.failedLoginCount > 0 || u.lockedUntil) await deps.db.update(users).set({ failedLoginCount: 0, lockedUntil: null }).where(eq(users.id, u.id));
   return { userId: u.id };
 }
@@ -230,7 +235,7 @@ export async function resetPassword(db: Db, token: string, password: string): Pr
 export async function acceptInvitation(
   db: Db,
   input: { token: string; name?: string | null; password?: string | null; currentUserId?: string | null },
-): Promise<{ userId: string; organizationId: string; membershipId: string }> {
+): Promise<{ userId: string; organizationId: string; membershipId: string; roleKey: string | null }> {
   const inv = await withSystem(db, async (tx) => {
     const [i] = await tx
       .select()
@@ -254,7 +259,8 @@ export async function acceptInvitation(
   }
 
   return withTenant(db, inv.organizationId, async (tx) => {
-    const [dup] = await tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.userId, uid!), eq(memberships.organizationId, inv.organizationId))).limit(1);
+    const [role] = await tx.select({ key: roles.key }).from(roles).where(eq(roles.id, inv.roleId));
+    const [dup] =await tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.userId, uid!), eq(memberships.organizationId, inv.organizationId))).limit(1);
     let membershipId: string;
     if (dup) {
       membershipId = dup.id;
@@ -263,14 +269,15 @@ export async function acceptInvitation(
       membershipId = newId();
       const [org] = await tx.select({ tz: organizations.timezone }).from(organizations).where(eq(organizations.id, inv.organizationId));
       await tx.insert(memberships).values({ id: membershipId, organizationId: inv.organizationId, userId: uid!, roleId: inv.roleId });
-      await tx.insert(workerProfiles).values({ membershipId, organizationId: inv.organizationId, timezone: org?.tz ?? 'UTC' });
+      // Only Workers are tracked by default; admins and managers can be switched on per person.
+      await tx.insert(workerProfiles).values({ membershipId, organizationId: inv.organizationId, timezone: org?.tz ?? 'UTC', trackingEnabled: role?.key === 'WORKER' });
       for (const teamId of inv.teamIds) {
         await tx.insert(teamMembers).values({ organizationId: inv.organizationId, teamId, membershipId }).onConflictDoNothing();
       }
     }
     await tx.update(invitations).set({ acceptedAt: new Date() }).where(eq(invitations.id, inv.id));
     await auditSystem(tx, inv.organizationId, { action: 'invitation.accepted', actorType: 'user', actorId: membershipId, targetType: 'membership', targetId: membershipId, after: { email: inv.email } });
-    return { userId: uid!, organizationId: inv.organizationId, membershipId };
+    return { userId: uid!, organizationId: inv.organizationId, membershipId, roleKey: role?.key ?? null };
   });
 }
 

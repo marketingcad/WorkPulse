@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AgentState, IpcChannel, MeResource } from '../shared/ipc';
+import type { AgentState, IpcChannel, LoginResult, MeResource } from '../shared/ipc';
 
 /**
  * Minimal, typed bridge. No generic invoke, no ipcRenderer, no Node APIs are
@@ -15,6 +15,8 @@ const api = {
     return () => ipcRenderer.removeListener('state:changed', listener);
   },
   login: (serverUrl?: string) => call('auth:login', { serverUrl }),
+  /** Email + password sign-in; resolves with the next step (2FA code or organization choice) when one is needed. */
+  loginWithPassword: (r: { email: string; password: string; mfaCode?: string; organizationId?: string; serverUrl?: string }): Promise<LoginResult> => call('auth:loginPassword', r),
   logout: () => call('auth:logout'),
   start: (projectId: string, taskId: string | null) => call('timer:start', { projectId, taskId }),
   switchTask: (projectId: string, taskId: string | null) => call('timer:switch', { projectId, taskId }),

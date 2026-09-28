@@ -1,6 +1,6 @@
 {
   "name": "@tallywork/desktop",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "description": "Tallywork desktop agent",
   "author": "Tallywork",
@@ -14,7 +14,8 @@
     "dist": "electron-vite build && electron-builder",
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:mac": "electron-vite build && electron-builder --mac",
-    "dist:linux": "electron-vite build && electron-builder --linux"
+    "dist:linux": "electron-vite build && electron-builder --linux",
+    "release:win": "node scripts/release.mjs --win nsis"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.0",

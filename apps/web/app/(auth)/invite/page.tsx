@@ -21,8 +21,9 @@ function Form() {
         setLoading(true);
         setError(null);
         try {
-          const r = await api<{ organization_id: string }>('/auth/invitations/accept', { body: { token, name: name || undefined, password: password || undefined } });
-          router.replace(`/o/${r.organization_id}?welcome=1`);
+          const r = await api<{ organization_id: string; role_key: string | null }>('/auth/invitations/accept', { body: { token, name: name || undefined, password: password || undefined } });
+          // Workers use the desktop app only, so they go to its download page instead of the web workspace.
+          router.replace(r.role_key === 'WORKER' ? '/download?welcome=1' : `/o/${r.organization_id}?welcome=1`);
         } catch (err) {
           const e2 = err instanceof ApiError ? err : new ApiError(500, 'error', t('auth.invite.failed'));
           if (e2.code === 'login_required') {

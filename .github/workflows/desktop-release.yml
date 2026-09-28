@@ -1,0 +1,90 @@
+name: Desktop release
+
+# Builds the desktop app for Windows, macOS and Linux and publishes it as one GitHub Release in the
+# public marketingcad/tallywork-desktop repo, which is also the auto-update feed installed apps read.
+# Run it from Actions → "Desktop release" → Run workflow, after bumping "version" in apps/desktop/package.json.
+#
+# Needs the DESKTOP_RELEASE_TOKEN secret: a fine-grained token limited to marketingcad/tallywork-desktop
+# with Contents: read and write (this workflow's own GITHUB_TOKEN cannot write to another repository).
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+env:
+  RELEASE_REPO: marketingcad/tallywork-desktop
+
+jobs:
+  prepare:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: echo "tag=v$(node -p "require('./apps/desktop/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Refuse to overwrite a published version
+        env:
+          GH_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" -R "$RELEASE_REPO" --json isDraft --jq .isDraft 2>/dev/null | grep -q false; then
+            echo "::error::$TAG is already published. Bump \"version\" in apps/desktop/package.json first."
+            exit 1
+          fi
+      # Created up front so every build uploads into the same draft (parallel uploads would otherwise race).
+      - name: Create draft
+        env:
+          GH_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release view "$TAG" -R "$RELEASE_REPO" >/dev/null 2>&1 || gh release create "$TAG" -R "$RELEASE_REPO" --draft \
+            --title "Tallywork ${TAG#v}" \
+            --notes "Download the installer for your computer below, run it, then sign in with the email and password from your invitation. Installed apps update to this version automatically."
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: prepare
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            targets: --win nsis
+          # Universal: one .dmg for Intel and Apple Silicon Macs. Unsigned until the Apple Developer Program.
+          - name: macOS
+            os: macos-latest
+            targets: --mac dmg zip --universal
+          - name: Linux
+            os: ubuntu-latest
+            targets: --linux AppImage deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @tallywork/desktop exec electron-vite build
+      - run: pnpm --filter @tallywork/desktop exec electron-builder ${{ matrix.targets }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+  publish:
+    name: Publish release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      # Only now does the release become "latest", so installed apps never see a half-uploaded version.
+      - env:
+          GH_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release edit "$TAG" -R "$RELEASE_REPO" --draft=false --latest

@@ -59,6 +59,11 @@ async function checkSecondFactor(deps: Deps, userId: string, code: string): Prom
   return true;
 }
 
+/** Second factor for sign-ins that do not use a web session (the desktop app). */
+export async function verifySecondFactor(deps: Deps, userId: string, code: string): Promise<void> {
+  if (!(await checkSecondFactor(deps, userId, code))) throw new DomainError('unauthenticated', 'invalid_mfa_code', 'That code is not valid');
+}
+
 /** Second step of sign-in: turns a pending session into a full one. */
 export async function verifyLoginCode(deps: Deps, userId: string, sessionId: string, code: string) {
   if (!(await checkSecondFactor(deps, userId, code))) throw new DomainError('unauthenticated', 'invalid_mfa_code', 'That code is not valid');

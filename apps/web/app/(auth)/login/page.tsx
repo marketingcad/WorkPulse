@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Field, Input } from '@tallywork/ui';
 import type { MeDto } from '@tallywork/contracts';
 import { AuthShell } from '@/components/auth-shell';
+import { CheckEmail } from '@/components/check-email';
 import { api, ApiError } from '@/lib/api';
 import { t } from '@/lib/i18n';
 
@@ -17,6 +18,7 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   // Accounts with two-factor get a second step after the password.
   const [step, setStep] = useState<'password' | 'code'>('password');
+  const [unverified, setUnverified] = useState(false);
 
   function finish(me: MeDto) {
     const next = params.get('next');
@@ -37,10 +39,24 @@ function LoginForm() {
       }
       finish(r);
     } catch (err) {
+      setUnverified(err instanceof ApiError && err.code === 'email_not_verified');
       setError(err instanceof ApiError ? err.title : t('auth.login.failed'));
       setLoading(false);
     }
   }
+
+  if (unverified)
+    return (
+      <div className="flex flex-col gap-4">
+        <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
+          {error}
+        </p>
+        <CheckEmail email={email} />
+        <button type="button" className="text-sm text-interactive hover:underline" onClick={() => setUnverified(false)}>
+          {t('auth.mfa.back')}
+        </button>
+      </div>
+    );
 
   if (step === 'code')
     return (

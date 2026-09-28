@@ -4,7 +4,7 @@ import { put } from '@vercel/blob/client';
 import { newId, type TrackingPolicy } from '@tallywork/domain';
 import type { AgentState, Assignment, IpcPayload, ManualRequest } from '../../shared/ipc';
 import { AgentApi, ApiError } from './api';
-import { signIn } from './auth';
+import { signIn, signInWithPassword, type PasswordCredentials, type PasswordSignInResult } from './auth';
 import { manualRequestError, reminderKey } from './manual';
 import { limitAction, shiftReminder } from './reminders';
 import { ActivityMonitor, AppTracker, captureScreens, msUntilNextShotSlot, nextShotDelays } from './monitors';
@@ -154,6 +154,28 @@ export class Agent extends EventEmitter {
       this.error = e instanceof Error ? e.message : 'Sign-in failed';
     }
     this.emitState();
+  }
+
+  /** Email + password sign-in. Returns the next step when the server needs a 2FA code or an organization choice. */
+  async loginWithPassword(creds: PasswordCredentials & { serverUrl?: string }): Promise<PasswordSignInResult | { status: 'error' }> {
+    if (creds.serverUrl && !this.managedServer) this.serverUrl = creds.serverUrl.replace(/\/$/, '');
+    this.phase = 'signing_in';
+    this.error = null;
+    this.emitState();
+    let result: PasswordSignInResult | { status: 'error' };
+    try {
+      result = await signInWithPassword(this.api, this.serverUrl, this.capabilities, creds);
+      if (result.status === 'signed_in') {
+        this.phase = 'ready';
+        await this.refreshBootstrap();
+      } else this.phase = 'signed_out';
+    } catch (e) {
+      this.phase = 'signed_out';
+      this.error = e instanceof Error ? e.message : 'Sign-in failed';
+      result = { status: 'error' };
+    }
+    this.emitState();
+    return result;
   }
 
   async logout(): Promise<void> {

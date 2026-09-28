@@ -18,6 +18,44 @@ The main flow the product covers is **Organization → People → Work structure
 
 ---
 
+## Project status
+
+Updated 26 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app)
+
+### ✅ Completed
+
+- Time tracking on the web and the desktop app, including while offline. No tracked time is lost.
+- Activity monitoring with privacy built in: activity levels (keystrokes are counted, never recorded), optional blurred screenshots, and app and website usage, each switched on or off by the organization.
+- Timesheets and approvals: submit, approve, reject or request changes, with a full history of every edit.
+- Workforce tools: schedules, attendance, late and missed-shift alerts, time off with balances, breaks, overtime rules and time limits.
+- Billing: pay and bill rates, invoices, payments, budgets and expenses. Figures match to the cent across invoices and reports.
+- Dashboards that update live, plus an optional daily summary email.
+- 18 reports, with downloads (CSV, Excel, PDF) and scheduled reports by email.
+- Integrations: API keys and webhooks for connecting other systems.
+- Security and privacy: two-factor sign-in, IP allowlists, a tamper-proof audit log, data retention rules, a personal data export, a right-to-erasure process, and an access review.
+- Ready for production use: health monitoring, alerts, load tests, recovery procedures and on-call guides.
+- Accessibility: every main screen meets the WCAG 2.1 AA standard, in light and dark mode.
+
+### 🆕 New updates
+
+- Launched on the live site.
+- Worker desktop app dashboard: people see their own time, timesheet, activity, schedule and time off in the app.
+- Browser extension for website tracking on Windows.
+- Language & region setting: dates, numbers and money appear in each person's local format.
+- Support console: Tallywork support can help customers, but can only see their data when the customer allows it, for a limited time.
+- Company-wide desktop rollout: installers and central settings for IT teams.
+
+### 🚧 In progress / next
+
+- Full-scale load test (10,000 devices) on a test environment.
+- A backup restore drill.
+- Public uptime monitoring and a status page.
+- Code-signing certificates for the desktop installers.
+- Translation of the app into other languages.
+- Planned later: single sign-on (SSO), links to project tools such as Jira, accounting sync (QuickBooks or Xero), and mobile apps.
+
+---
+
 ## Contents
 
 1. [Tech stack](#tech-stack)

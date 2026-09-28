@@ -1,0 +1,56 @@
+name: Desktop Linux smoke test
+
+# Installs the PUBLISHED Linux packages the way people do and checks the app starts and keeps running.
+# Run after a release: Actions → "Desktop Linux smoke test" → Run workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release to test (e.g. v0.1.2). Empty = latest.
+        required: false
+
+jobs:
+  smoke:
+    name: Start on Ubuntu 24.04
+    runs-on: ubuntu-24.04
+    env:
+      BASE: https://github.com/marketingcad/tallywork-desktop/releases/${{ inputs.tag && format('download/{0}', inputs.tag) || 'latest/download' }}
+    steps:
+      - name: Download packages
+        run: |
+          curl -fsSL -o Tallywork-linux.deb "$BASE/Tallywork-linux.deb"
+          curl -fsSL -o Tallywork-linux.AppImage "$BASE/Tallywork-linux.AppImage" && chmod +x Tallywork-linux.AppImage
+          ls -la
+      - name: Install the .deb (apt resolves its declared dependencies)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb ./Tallywork-linux.deb
+          ls -l /opt/Tallywork/chrome-sandbox
+      - name: Native modules resolve their libraries
+        run: |
+          for f in /opt/Tallywork/resources/app.asar.unpacked/node_modules/uiohook-napi/prebuilds/linux-x64/*.node \
+                   /opt/Tallywork/resources/app.asar.unpacked/node_modules/get-windows/lib/binding/*linux*x64/*.node; do
+            echo "== $f"; ldd "$f" | grep "not found" && echo "::warning::$f is missing libraries" || echo ok
+          done
+          for t in xprop xwininfo; do command -v $t >/dev/null && echo "$t ok" || echo "::warning::$t is not installed (app/window tracking needs it)"; done
+      # timeout exits 124 when the app is still running after 30 s: that is the pass condition.
+      - name: .deb app starts and keeps running
+        run: |
+          set +e
+          xvfb-run -a timeout 30 /opt/Tallywork/tallywork --enable-logging=stderr > deb.log 2>&1; code=$?
+          tail -n 40 deb.log
+          if [ $code -ne 124 ]; then echo "::error::.deb app exited early (code $code)"; exit 1; fi
+          echo "still running after 30 s"
+      - name: AppImage without libfuse2 (default Ubuntu 22.04+)
+        run: |
+          set +e
+          ./Tallywork-linux.AppImage --version > fuse.log 2>&1; echo "exit $?"; head -n 5 fuse.log
+      - name: AppImage starts once libfuse2 is installed
+        run: |
+          set +e
+          sudo apt-get install -y -qq libfuse2t64
+          xvfb-run -a timeout 30 ./Tallywork-linux.AppImage --enable-logging=stderr > appimage.log 2>&1; code=$?
+          tail -n 40 appimage.log
+          if [ $code -ne 124 ]; then echo "::error::AppImage exited early (code $code)"; exit 1; fi
+          echo "still running after 30 s"

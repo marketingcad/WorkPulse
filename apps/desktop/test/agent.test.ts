@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('electron', () => ({ desktopCapturer: {}, nativeImage: {}, screen: {} }));
-const { ActivityMonitor, msUntilNextShotSlot, nextShotDelays } = await import('../src/main/services/monitors');
+const { ActivityMonitor, isWaylandSession, msUntilNextShotSlot, nextShotDelays } = await import('../src/main/services/monitors');
 const { IPC } = await import('../src/shared/ipc');
 const { manualRequestError, reminderKey } = await import('../src/main/services/manual');
 const { DEFAULT_POLICY } = await import('@tallywork/domain');
@@ -217,5 +217,15 @@ describe('managed configuration (MDM / Group Policy)', async () => {
     expect(parseJsonConfig('{"serverUrl":"https://time.acme.com/x","launchAtLogin":true}')).toEqual({ serverUrl: 'https://time.acme.com', launchAtLogin: true });
     expect(parseJsonConfig('{"serverUrl":"http://evil.example","updateChannel":"nightly"}')).toEqual({});
     expect(parseJsonConfig('not json')).toEqual({});
+  });
+});
+
+describe('Wayland sessions', () => {
+  it('are detected from the session type, falling back to WAYLAND_DISPLAY', () => {
+    expect(isWaylandSession({ XDG_SESSION_TYPE: 'wayland' }, 'linux')).toBe(true);
+    expect(isWaylandSession({ XDG_SESSION_TYPE: 'x11', WAYLAND_DISPLAY: 'wayland-0' }, 'linux')).toBe(false);
+    expect(isWaylandSession({ WAYLAND_DISPLAY: 'wayland-0' }, 'linux')).toBe(true);
+    expect(isWaylandSession({}, 'linux')).toBe(false);
+    expect(isWaylandSession({ XDG_SESSION_TYPE: 'wayland' }, 'darwin')).toBe(false);
   });
 });

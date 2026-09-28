@@ -2,6 +2,17 @@ import { desktopCapturer, nativeImage, screen } from 'electron';
 import { createHash } from 'node:crypto';
 import { applyUrlPolicy, newId, type TrackingPolicy } from '@tallywork/domain';
 
+/**
+ * Linux Wayland sessions do not let apps observe global input or other apps' windows. The X11-based
+ * hooks still load there, but only see programs running through XWayland, so they would record
+ * partial data while looking healthy. On Wayland they are reported unavailable instead.
+ */
+export function isWaylandSession(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): boolean {
+  if (platform !== 'linux') return false;
+  if (env.XDG_SESSION_TYPE) return env.XDG_SESSION_TYPE === 'wayland';
+  return !!env.WAYLAND_DISPLAY;
+}
+
 // ─── Activity (input FREQUENCY only) ─────────────────────────────────────────
 export interface MinuteBucket {
   minute_start: string;
@@ -33,6 +44,7 @@ export class ActivityMonitor {
   available = false;
 
   async init(): Promise<void> {
+    if (isWaylandSession()) return; // stays unavailable: see isWaylandSession
     try {
       const mod = (await import('uiohook-napi')) as unknown as { uIOhook: ActivityMonitor['hook'] };
       this.hook = mod.uIOhook;
@@ -199,6 +211,7 @@ export class AppTracker {
   }
 
   async init(): Promise<void> {
+    if (isWaylandSession()) return; // stays unavailable: see isWaylandSession
     try {
       const mod = (await import('get-windows')) as unknown as { activeWindow: AppTracker['activeWindow'] };
       this.activeWindow = mod.activeWindow;

@@ -251,12 +251,18 @@ function Monitoring({ s, onBack }: { s: AgentState; onBack?: () => void }) {
         </p>
         <ul className="divide-y divide-border">
           <Row icon={<Keyboard className="size-4" />} label="Activity level" value="How often you use the keyboard and mouse, per minute. Keystrokes and typed text are never recorded." on={p.activity.enabled && s.capabilities.input !== false} />
-          <Row icon={<Camera className="size-4" />} label="Screenshots" value={p.screenshots.enabled ? `${p.screenshots.perTenMinutes} per 10 minutes, all displays${p.screenshots.blur ? ', blurred on this device before upload' : ''}.` : 'Not captured.'} on={p.screenshots.enabled} />
-          <Row icon={<AppWindow className="size-4" />} label="Applications" value="Name of the app in the foreground and for how long." on={p.apps.enabled} />
+          <Row icon={<Camera className="size-4" />} label="Screenshots" value={p.screenshots.enabled ? `${p.screenshots.perTenMinutes} per 10 minutes, all displays${p.screenshots.blur ? ', blurred on this device before upload' : ''}.` : 'Not captured.'} on={p.screenshots.enabled && s.capabilities.screenshots !== false} />
+          <Row icon={<AppWindow className="size-4" />} label="Applications" value="Name of the app in the foreground and for how long." on={p.apps.enabled && s.capabilities.apps !== false} />
           <Row icon={<Globe className="size-4" />} label="Websites" value={p.urls.enabled ? websitesText(p.urls.mode, s) : 'Not recorded.'} on={p.urls.enabled} />
           <Row icon={<MapPin className="size-4" />} label="Location" value="Never collected by the desktop app." on={false} />
           <Row icon={<TimerOff className="size-4" />} label="Idle detection" value={p.idle.enabled ? `After ${p.idle.thresholdMinutes} minutes without input you choose to keep or discard that time.` : 'Off.'} on={p.idle.enabled} />
         </ul>
+        {s.capabilities.wayland && (p.activity.enabled || p.apps.enabled || p.screenshots.enabled) && (
+          <p className="mb-3 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">
+            This computer uses a <strong>Wayland</strong> session, which does not let Tallywork see your activity level, the app you are using or your screen, so those are not recorded. Your organization may ask you to switch: sign out, select your name on the login screen,
+            click the gear icon at the bottom right, choose <strong>Ubuntu on Xorg</strong> and sign in again.
+          </p>
+        )}
         {(p.limits.dailySeconds || p.limits.weeklySeconds) && (
           <p className="mb-3 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">
             Time limits: {p.limits.dailySeconds ? `${fmtHm(p.limits.dailySeconds)} per day` : ''}

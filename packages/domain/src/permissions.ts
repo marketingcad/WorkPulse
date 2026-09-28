@@ -159,6 +159,16 @@ export function scopeFor(grants: Grants, permission: Permission): Scope | null {
   return grants[permission] ?? null;
 }
 
+/**
+ * Desktop-only members (workers) see nothing beyond their own and assigned work; they use Tallywork
+ * through the desktop app, and the web workspace is for people who oversee others (team or org scope).
+ * Decided from grants rather than the role key so custom worker-like roles are covered too.
+ * `org:read` is ignored: every member can read their organization.
+ */
+export function isDesktopOnly(grants: Grants): boolean {
+  return !Object.entries(grants).some(([p, s]) => p !== 'org:read' && (s === 'team' || s === 'org'));
+}
+
 /** Coarse check: does the actor hold `permission` at any scope? */
 export function hasPermission(grants: Grants, permission: Permission): boolean {
   return grants[permission] !== undefined;

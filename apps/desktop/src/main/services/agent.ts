@@ -7,7 +7,7 @@ import { AgentApi, ApiError } from './api';
 import { signIn, signInWithPassword, type PasswordCredentials, type PasswordSignInResult } from './auth';
 import { manualRequestError, reminderKey } from './manual';
 import { limitAction, shiftReminder } from './reminders';
-import { ActivityMonitor, AppTracker, captureScreens, msUntilNextShotSlot, nextShotDelays } from './monitors';
+import { ActivityMonitor, AppTracker, captureScreens, isWaylandSession, msUntilNextShotSlot, nextShotDelays } from './monitors';
 import { OfflineQueue, type QueuedEvent } from './queue';
 import { SecureStore } from './secure-store';
 import { BROWSER_NAMES, UrlResolver } from './urls';
@@ -133,9 +133,11 @@ export class Agent extends EventEmitter {
   get capabilities(): Record<string, boolean> {
     return {
       input: this.activity.available,
-      screenshots: process.platform !== 'linux' || process.env.XDG_SESSION_TYPE !== 'wayland',
+      screenshots: !isWaylandSession(),
       apps: this.apps.available,
       urls: this.apps.urlsAvailable,
+      // Reported so admins can see why a Linux worker has no activity, app or screenshot data.
+      wayland: isWaylandSession(),
     };
   }
 
@@ -377,7 +379,8 @@ export class Agent extends EventEmitter {
   private startMonitors(): void {
     const p = this.boot?.policy;
     if (!p) return;
-    if (p.activity.enabled) this.activity.start();
+    // Unavailable input (Wayland, no macOS permission) records nothing rather than minutes at 0 %.
+    if (p.activity.enabled && this.activity.available) this.activity.start();
     if (p.apps.enabled || p.urls.enabled) this.apps.start();
     this.scheduleScreenshots();
   }

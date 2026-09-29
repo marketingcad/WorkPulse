@@ -64,3 +64,36 @@ describe('portal admin', () => {
     expect(list.find((a: { email: string }) => a.email === 'temp@acme.test').status).toBe('REVOKED');
   });
 });
+
+const tokenOf = (url: string) => new URL(url).searchParams.get('token')!;
+let dora: Client;
+let doraAccessId: string;
+
+describe('accepting a portal invitation', () => {
+  it('creates a verified account that is not a member of the organization', async () => {
+    const inv = await admin.post(o(`/clients/${clientId}/portal/invitations`), { email: 'dora@acme.test', name: 'Dora' });
+    dora = new Client(t);
+    const r = await dora.post('/portal/invitations/accept', { token: tokenOf(inv.body.invite_url), name: 'Dora', password: PASSWORD });
+    expect(r.status).toBe(200);
+    doraAccessId = r.body.access_id;
+    const me = await dora.get('/me');
+    expect(me.body.organizations).toEqual([]);
+    expect(me.body.user.email_verified).toBe(true);
+    expect(me.body.client_portals).toEqual([{ access_id: doraAccessId, organization_name: "Ada's Org", client_name: 'Acme' }]);
+    // Not a member: every org route is closed to them.
+    expect((await dora.get(o('/workers'))).status).toBe(404);
+  });
+
+  it('rejects a reused or unknown token', async () => {
+    expect((await new Client(t).post('/portal/invitations/accept', { token: 'x'.repeat(43), password: PASSWORD })).status).toBe(422);
+  });
+
+  it('asks an existing account to sign in first, then links it', async () => {
+    const inv = await admin.post(o(`/clients/${clientId}/portal/invitations`), { email: 'walt@portal.test' });
+    const r = await new Client(t).post('/portal/invitations/accept', { token: tokenOf(inv.body.invite_url) });
+    expect(r.status).toBe(422);
+    expect(r.body.code).toBe('login_required');
+    const ok = await walt.client.post('/portal/invitations/accept', { token: tokenOf(inv.body.invite_url) });
+    expect(ok.status).toBe(200);
+  });
+});

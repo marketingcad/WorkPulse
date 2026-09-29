@@ -9,6 +9,7 @@ import { safeEqual, verifyToken } from './lib/crypto';
 import { authenticate } from './middleware/auth';
 import { tenant } from './middleware/tenant';
 import { supportRoutes } from './routes/support';
+import { portalRoutes } from './routes/portal';
 import { rateLimit } from './middleware/rate-limit';
 
 export const API_KEY_REQUESTS_PER_MINUTE = 600;
@@ -87,6 +88,7 @@ export function createApp(deps: Deps) {
   const apiKeyLimit = rateLimit('api-key', API_KEY_REQUESTS_PER_MINUTE, 60);
   app.use('/orgs/:orgId/*', (c, next) => (c.var.principal?.type === 'api_key' ? apiKeyLimit(c, next) : next()));
   app.route('/support', supportRoutes);
+  app.route('/portal', portalRoutes);
   app.use('/orgs/:orgId/*', tenant);
   app.route('/orgs/:orgId', orgRoutes);
   app.route('/orgs/:orgId', timeRoutes);

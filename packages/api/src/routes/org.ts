@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import {
   clientInput,
+  clientPortalInviteInput,
+  clientPortalSettingsInput,
   inviteInput,
   policyDocInput,
   projectInput,
@@ -49,6 +51,7 @@ import {
 } from '../services/work';
 import { getEffectivePolicy, getPolicyLayer, listDevices, putPolicyLayer, setDeviceStatus } from '../services/platform';
 import { myAssignments } from '../services/timer';
+import { getPortalSettings, invitePortalViewer, revokePortalViewer, updatePortalSettings } from '../services/portal-admin';
 
 const bool = z.enum(['true', 'false']).optional().transform((v) => v === 'true');
 const scopeType = z.enum(['ORG', 'TEAM', 'WORKER']);
@@ -118,6 +121,15 @@ export const orgRoutes = new Hono<AppEnv>()
   })
   .post('/clients/:id/restore', async (c) => {
     await setClientArchived(ctx(c), c.req.param('id'), false);
+    return c.body(null, 204);
+  })
+
+  // Client portal (admins): settings, viewers, invitations
+  .get('/clients/:id/portal', requirePermission('clients:manage'), async (c) => c.json(await getPortalSettings(ctx(c), c.req.param('id'))))
+  .put('/clients/:id/portal', requirePermission('clients:manage'), async (c) => c.json(await updatePortalSettings(ctx(c), c.req.param('id'), await body(c, clientPortalSettingsInput))))
+  .post('/clients/:id/portal/invitations', requirePermission('clients:manage'), async (c) => c.json(await invitePortalViewer(ctx(c), c.req.param('id'), await body(c, clientPortalInviteInput)), 201))
+  .delete('/clients/:id/portal/access/:accessId', requirePermission('clients:manage'), async (c) => {
+    await revokePortalViewer(ctx(c), c.req.param('id'), c.req.param('accessId'));
     return c.body(null, 204);
   })
 

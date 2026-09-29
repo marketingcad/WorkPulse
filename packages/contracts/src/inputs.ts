@@ -107,6 +107,29 @@ export const taskInput = z.object({
   assignee_ids: z.array(id).max(100).optional(),
 });
 
+// ─── Client portal ───────────────────────────────────────────────────────────
+export const portalSectionsInput = z.object({ hours: z.boolean(), tasks: z.boolean(), activity: z.boolean(), screenshots: z.boolean() });
+
+export const clientPortalSettingsInput = z.object({
+  enabled: z.boolean().optional(),
+  sections: portalSectionsInput.partial().optional(),
+  /** null = all of the client's projects */
+  project_ids: z.array(id).max(500).nullable().optional(),
+});
+
+export const clientPortalInviteInput = z.object({ email: z.email().max(254), name: optionalText(100) });
+
+export const clientPortalAcceptInput = z.object({
+  token: z.string().min(20).max(200),
+  name: optionalText(100),
+  password: password.optional(),
+});
+
+/** Dashboard range; at most 93 days. */
+export const portalRangeInput = z
+  .object({ from: isoDate, to: isoDate })
+  .refine((r) => r.from <= r.to && (Date.parse(r.to) - Date.parse(r.from)) / 86_400_000 <= 93, { message: 'Choose a range of up to 93 days' });
+
 // ─── Tracking policy (deep partial; server validates the merged result) ──────
 export const policyDocInput = z
   .object({

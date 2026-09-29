@@ -2,8 +2,11 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import {
   clientInput,
+  clientPortalInviteInput,
+  clientPortalSettingsInput,
   inviteInput,
   policyDocInput,
+  portalRangeInput,
   projectInput,
   roleInput,
   taskInput,
@@ -49,6 +52,8 @@ import {
 } from '../services/work';
 import { getEffectivePolicy, getPolicyLayer, listDevices, putPolicyLayer, setDeviceStatus } from '../services/platform';
 import { myAssignments } from '../services/timer';
+import { getPortalSettings, invitePortalViewer, previewAccess, previewScreenshots, revokePortalViewer, updatePortalSettings } from '../services/portal-admin';
+import { clientVisibilityFor, portalSummaryTx } from '../services/portal';
 
 const bool = z.enum(['true', 'false']).optional().transform((v) => v === 'true');
 const scopeType = z.enum(['ORG', 'TEAM', 'WORKER']);
@@ -121,6 +126,21 @@ export const orgRoutes = new Hono<AppEnv>()
     return c.body(null, 204);
   })
 
+  // Client portal (admins): settings, viewers, invitations
+  .get('/clients/:id/portal', requirePermission('clients:manage'), async (c) => c.json(await getPortalSettings(ctx(c), c.req.param('id'))))
+  .put('/clients/:id/portal', requirePermission('clients:manage'), async (c) => c.json(await updatePortalSettings(ctx(c), c.req.param('id'), await body(c, clientPortalSettingsInput))))
+  .post('/clients/:id/portal/invitations', requirePermission('clients:manage'), async (c) => c.json(await invitePortalViewer(ctx(c), c.req.param('id'), await body(c, clientPortalInviteInput)), 201))
+  .delete('/clients/:id/portal/access/:accessId', requirePermission('clients:manage'), async (c) => {
+    await revokePortalViewer(ctx(c), c.req.param('id'), c.req.param('accessId'));
+    return c.body(null, 204);
+  })
+  .get('/clients/:id/portal/preview', requirePermission('clients:manage'), async (c) => {
+    const x = ctx(c);
+    // Reuses this request's already-open tenant transaction (portalSummary would open a second one).
+    return c.json(await portalSummaryTx(x.tx, await previewAccess(x, c.req.param('id')), query(c, portalRangeInput)));
+  })
+  .get('/clients/:id/portal/preview/screenshots', requirePermission('clients:manage'), async (c) => c.json(await previewScreenshots(ctx(c), c.req.param('id'), query(c, portalRangeInput))))
+
   // Projects & tasks
   .get('/projects', async (c) => {
     const q = query(c, z.object({ include_archived: bool, client_id: z.uuid().optional() }));
@@ -153,6 +173,7 @@ export const orgRoutes = new Hono<AppEnv>()
     return c.body(null, 204);
   })
   .get('/me/assignments', async (c) => c.json(await myAssignments(ctx(c))))
+  .get('/me/client-visibility', async (c) => c.json(await clientVisibilityFor(c.var.tx, c.var.actor.membershipId)))
 
   // Policies & devices
   .get('/policies/:scopeType/:scopeId', async (c) => c.json(await getPolicyLayer(ctx(c), scopeType.parse(c.req.param('scopeType')), c.req.param('scopeId'))))

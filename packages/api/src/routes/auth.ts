@@ -38,7 +38,7 @@ function meta(c: Context<AppEnv>) {
   return { ip: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null, userAgent: c.req.header('user-agent') ?? null };
 }
 
-async function startSession(c: Context<AppEnv>, uid: string, mfaPending = false) {
+export async function startUserSession(c: Context<AppEnv>, uid: string, mfaPending = false) {
   const { token, expiresAt } = await createSession(c.var.deps, uid, meta(c), { mfaPending });
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
@@ -72,7 +72,7 @@ export const authRoutes = new Hono<AppEnv>()
     await sendVerificationEmail(deps, uid, input.email);
     // With verification required, the account stays signed out until the emailed link is opened.
     if (deps.config.requireEmailVerification) return c.json({ user_id: uid, organization_id: org.organizationId, verification_required: true }, 201);
-    await startSession(c, uid);
+    await startUserSession(c, uid);
     return c.json({ user_id: uid, organization_id: org.organizationId }, 201);
   })
 
@@ -90,10 +90,10 @@ export const authRoutes = new Hono<AppEnv>()
     const { userId: uid } = await login(c.var.deps, input.email, input.password);
     // With two-factor on, the password only opens a short session that can do nothing but the second step.
     if (await hasMfa(c.var.deps, uid)) {
-      await startSession(c, uid, true);
+      await startUserSession(c, uid, true);
       return c.json({ mfa_required: true });
     }
-    await startSession(c, uid);
+    await startUserSession(c, uid);
     return c.json(await getMe(c.var.deps.db, uid));
   })
   .post('/mfa/verify', rateLimit('mfa-verify', 10, 900), async (c) => {
@@ -146,7 +146,7 @@ export const authRoutes = new Hono<AppEnv>()
     // The link proves control of the mailbox, so it completes sign-in — unless two-factor needs its own step.
     const signedIn = c.var.principal?.type === 'user' && c.var.principal.userId === uid;
     if (!signedIn && c.var.deps.config.requireEmailVerification && !(await hasMfa(c.var.deps, uid))) {
-      await startSession(c, uid);
+      await startUserSession(c, uid);
       return c.json({ ok: true, signed_in: true });
     }
     return c.json({ ok: true, signed_in: signedIn });
@@ -156,7 +156,7 @@ export const authRoutes = new Hono<AppEnv>()
     const input = await body(c, acceptInviteInput);
     const p = c.var.principal;
     const r = await acceptInvitation(c.var.deps.db, { token: input.token, name: input.name ?? null, password: input.password ?? null, currentUserId: p?.type === 'user' ? p.userId : null });
-    if (!p) await startSession(c, r.userId);
+    if (!p) await startUserSession(c, r.userId);
     return c.json({ organization_id: r.organizationId, membership_id: r.membershipId, role_key: r.roleKey });
   });
 

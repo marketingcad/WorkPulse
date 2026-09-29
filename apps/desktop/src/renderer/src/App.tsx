@@ -4,7 +4,8 @@ import type { AgentState } from '../../shared/ipc';
 import { Dashboard } from './Dashboard';
 import { ActivityPage, ProjectsPage, ReportsPage, SchedulePage, TasksPage, TimeOffPage, TimesheetPage, TrackingPage } from './Pages';
 import { Shell } from './Shell';
-import { bridge, errorText, fmtHm, isView, localDateInput, useAgentState, type View } from './lib';
+import { bridge, errorText, fmtHm, isView, localDateInput, useAgentState, useMe, type View } from './lib';
+import type { ClientVisibilityDto } from './types';
 
 export function App() {
   const s = useAgentState();
@@ -241,6 +242,7 @@ function websitesText(mode: 'domain' | 'full', s: AgentState): string {
 function Monitoring({ s, onBack }: { s: AgentState; onBack?: () => void }) {
   const p = s.policy!;
   const [busy, setBusy] = useState(false);
+  const visibility = useMe<ClientVisibilityDto>('client-visibility');
   return (
     <div className="flex h-full flex-col bg-surface md:overflow-hidden md:rounded-md md:border md:border-border">
       <header className="flex items-center gap-2 border-b border-border px-4 py-3">
@@ -264,6 +266,11 @@ function Monitoring({ s, onBack }: { s: AgentState; onBack?: () => void }) {
           <Row icon={<MapPin className="size-4" />} label="Location" value="Never collected by the desktop app." on={false} />
           <Row icon={<TimerOff className="size-4" />} label="Idle detection" value={p.idle.enabled ? `After ${p.idle.thresholdMinutes} minutes without input you choose to keep or discard that time.` : 'Off.'} on={p.idle.enabled} />
         </ul>
+        {visibility.data && visibility.data.clients.length > 0 && (
+          <p className="mb-3 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">
+            Clients can see some of your monitoring data from time on their projects: {visibility.data.clients.map((c) => `${c.client_name} (${[c.activity && 'activity level', c.screenshots && 'screenshots'].filter(Boolean).join(', ')})`).join('; ')}.
+          </p>
+        )}
         {s.capabilities.wayland && (p.activity.enabled || p.apps.enabled || p.screenshots.enabled) && (
           <p className="mb-3 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">
             This computer uses a <strong>Wayland</strong> session, which does not let WorkPulse see your activity level, the app you are using or your screen, so those are not recorded. Your organization may ask you to switch: sign out, select your name on the login screen,

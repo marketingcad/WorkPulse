@@ -7,6 +7,8 @@ import type { Grants, TrackingPolicy } from '@tallywork/domain';
 export interface MeDto {
   user: { id: string; name: string; email: string; email_verified: boolean; mfa_enabled: boolean; locale: string };
   organizations: Array<{ id: string; slug: string; name: string; role_key: string; role_name: string; membership_id: string; is_owner: boolean }>;
+  /** client portals this person can open (they are a client viewer, not a member) */
+  client_portals: Array<{ access_id: string; organization_name: string; client_name: string }>;
 }
 
 export interface OrgContextDto {
@@ -344,4 +346,60 @@ export interface AuditLogDto {
   after: unknown;
   ip_address: string | null;
   created_at: string;
+}
+
+// ─── Client portal ───────────────────────────────────────────────────────────
+export interface PortalSectionsDto {
+  hours: boolean;
+  tasks: boolean;
+  activity: boolean;
+  screenshots: boolean;
+}
+
+export interface ClientPortalSettingsDto {
+  client_id: string;
+  enabled: boolean;
+  sections: PortalSectionsDto;
+  project_ids: string[] | null;
+  projects: Array<{ id: string; name: string }>;
+  access: Array<{ id: string; email: string; name: string | null; status: 'INVITED' | 'ACTIVE' | 'REVOKED'; accepted_at: string | null; last_viewed_at: string | null }>;
+  /** what the current admin may switch on */
+  can_enable: { activity: boolean; screenshots: boolean };
+}
+
+export interface PortalListItemDto {
+  access_id: string;
+  organization_name: string;
+  client_name: string;
+}
+
+export interface PortalSummaryDto {
+  access_id: string | null; // null in the admin preview
+  organization: { id: string; name: string };
+  client: { id: string; name: string };
+  sections: PortalSectionsDto;
+  range: { from: string; to: string };
+  totals: { tracked_seconds: number; manual_seconds: number; billable_seconds: number };
+  projects: Array<{ id: string; name: string; color: string; status: 'ACTIVE' | 'ON_HOLD' | 'COMPLETED'; tracked_seconds: number; budget: { amount_seconds: number; used_seconds: number; pct_used: number } | null }>;
+  /** present when sections.hours */
+  workers: Array<{ membership_id: string; name: string; title: string | null; tracked_seconds: number; manual_seconds: number; activity_pct: number | null; tasks: Array<{ task_id: string | null; title: string; seconds: number }> }> | null;
+  /** present when sections.hours */
+  days: Array<{ date: string; seconds: number }> | null;
+  /** present when sections.tasks */
+  tasks: Array<{ id: string; project_id: string; title: string; status: 'TODO' | 'IN_PROGRESS' | 'DONE'; priority: string; due_date: string | null; estimate_seconds: number | null; tracked_seconds: number; assignees: string[] }> | null;
+}
+
+export interface PortalScreenshotDto {
+  id: string;
+  captured_at: string;
+  worker_name: string;
+  project_id: string;
+  blurred: boolean;
+  thumb_url: string;
+  full_url: string;
+}
+
+/** Shown to a worker: clients that can see their monitoring data. */
+export interface ClientVisibilityDto {
+  clients: Array<{ client_name: string; activity: boolean; screenshots: boolean }>;
 }

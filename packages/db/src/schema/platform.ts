@@ -133,7 +133,7 @@ export const auditLogs = pgTable(
   {
     id: pk(),
     organizationId: orgId(),
-    actorType: text().$type<'user' | 'agent' | 'system' | 'api_key' | 'support'>().notNull(),
+    actorType: text().$type<'user' | 'agent' | 'system' | 'api_key' | 'support' | 'client'>().notNull(),
     actorId: uuid(),
     action: text().notNull(),
     targetType: text(),

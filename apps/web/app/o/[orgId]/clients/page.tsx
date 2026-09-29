@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Archive, ArchiveRestore, FolderKanban, MoreHorizontal, Pencil, Plus } from 'lucide-react';
+import { Archive, ArchiveRestore, FolderKanban, LayoutDashboard, MoreHorizontal, Pencil, Plus } from 'lucide-react';
 import type { ClientDto } from '@tallywork/contracts';
 import {
   Button,
@@ -26,6 +26,7 @@ import {
 } from '@tallywork/ui';
 import { ApiError, errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { t } from '@/lib/i18n';
 import { useOrgAction } from '@/components/workspace/shared';
 
 export default function ClientsPage() {
@@ -88,6 +89,9 @@ export default function ClientsPage() {
                   </MenuItem>
                   <MenuItem icon={<FolderKanban className="size-3.5" />} onSelect={() => router.push(`${org.base}/projects?client=${c.id}`)}>
                     View projects
+                  </MenuItem>
+                  <MenuItem icon={<LayoutDashboard className="size-3.5" />} onSelect={() => router.push(`${org.base}/clients/${c.id}/portal`)}>
+                    {t('portal.admin.title')}
                   </MenuItem>
                   {c.archived_at ? (
                     <MenuItem icon={<ArchiveRestore className="size-3.5" />} onSelect={() => restore(c)}>

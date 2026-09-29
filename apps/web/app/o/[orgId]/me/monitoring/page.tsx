@@ -1,10 +1,11 @@
 'use client';
 import type { ReactNode } from 'react';
 import { CircleCheck, CircleMinus, ShieldCheck } from 'lucide-react';
-import type { EffectivePolicyDto } from '@tallywork/contracts';
+import type { ClientVisibilityDto, EffectivePolicyDto } from '@tallywork/contracts';
 import { ErrorState, PageHeader, Panel, SkeletonRows, cx } from '@tallywork/ui';
 import { useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { t } from '@/lib/i18n';
 
 function Item({ on, title, children }: { on: boolean; title: string; children?: ReactNode }) {
   return (
@@ -26,11 +27,17 @@ const hours = (s: number | null) => (s === null ? null : `${Math.round((s / 3600
 export default function MonitoringPage() {
   const org = useOrg();
   const q = useOrgQuery<EffectivePolicyDto>(`/workers/${org.membership.id}/effective-policy`);
+  const v = useOrgQuery<ClientVisibilityDto>('/me/client-visibility');
   const p = q.data?.policy;
 
   return (
     <>
       <PageHeader title="What is monitored" description={`Exactly what ${org.organization.name} collects about your work in WorkPulse, based on the policy that applies to you right now.`} />
+      {v.data && v.data.clients.length > 0 && (
+        <p className="mb-4 rounded-sm bg-warning-soft px-3 py-2 text-sm text-warning">
+          {t('portal.visibility.web', { clients: v.data.clients.map((c) => `${c.client_name} (${[c.activity && t('portal.visibility.activity'), c.screenshots && t('portal.visibility.screenshots')].filter(Boolean).join(', ')})`).join('; ') })}
+        </p>
+      )}
       <div className="mb-4 flex items-start gap-3 rounded-md border border-border bg-surface px-4 py-3">
         <ShieldCheck className="mt-0.5 size-5 shrink-0 text-success" aria-hidden />
         <div className="text-sm">

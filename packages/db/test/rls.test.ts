@@ -55,4 +55,14 @@ describe('row level security', () => {
     const all = await withSystem(h.db, (tx) => tx.select().from(clients));
     expect(all).toHaveLength(2);
   });
+
+  it('client portal tables are tenant-isolated', async () => {
+    const tables = await h.db.execute(
+      sql`select tablename from pg_policies where policyname = 'tenant_isolation' and tablename in ('client_portal_settings', 'client_portal_access')`,
+    );
+    expect((tables as unknown as { rows: Array<{ tablename: string }> }).rows.map((r) => r.tablename).sort()).toEqual([
+      'client_portal_access',
+      'client_portal_settings',
+    ]);
+  });
 });

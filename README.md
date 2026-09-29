@@ -51,6 +51,7 @@ Updated 29 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallyw
 - Language & region setting: dates, numbers and money appear in each person's local format.
 - Support console: WorkPulse support can help customers, but can only see their data when the customer allows it, for a limited time.
 - Company-wide desktop rollout: installers and central settings for IT teams.
+- Client portal: a read-only, no-money dashboard per client (hours, tasks, and optionally activity and screenshots), with its own invitations, and a notice to workers when a client can see their monitoring data.
 
 ### 🚧 In progress / next
 

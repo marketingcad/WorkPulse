@@ -92,6 +92,43 @@ The web app and the desktop app sign people in with these. They are not under `/
 
 The password is sent once and never stored by the desktop app. It keeps only the refresh token, encrypted with the OS keychain. The older browser flow (`/device/authorize`, then `POST /agent/authorize` and `POST /agent/register` with PKCE) is still there, as **Sign in with browser instead**.
 
+## Client portal
+
+Read-only dashboards for an organization's clients. None of this is part of the API-key surface above: a client viewer is a `client_portal_access` row, never a membership or an API key, and the admin and worker endpoints below need permissions no key scope grants.
+
+### Client (viewer) endpoints
+
+Not under `/orgs/{orgId}`. A client reaches these after accepting an emailed invitation, identified by the `access_id` the accept response and the dashboard list return, never by organization membership.
+
+| Endpoint | Notes |
+|---|---|
+| `POST /portal/invitations/accept` | Body `{ token, name?, password? }` → `{ access_id }`. Creates the client's account and signs it in on first acceptance; an already-signed-in client account can accept a further invitation with just the token. `400` invalid body; `422` `invalid_invitation` (unknown, expired, revoked or already-used token — including when the invitation is revoked, re-issued or accepted by someone else while this request runs; no account is left behind in that case), `invitation_email_mismatch` (signed in as a different email than the invitation), `login_required`, or `password_required`. Limited to **20 per hour**. |
+| `GET /portal` | The signed-in client's dashboards: one entry per client they have accepted access to, across every organization. |
+| `GET /portal/{accessId}/summary` | `?from=&to=`. Hours total, projects, people (with activity level if that section is on), tasks and hour budgets (if that section is on). Never money. `404` if `accessId` is malformed, unknown, revoked, or the client's portal is turned off. |
+| `GET /portal/{accessId}/screenshots` | `?from=&to=`. `403` if the screenshots section isn't enabled for this client. Only screenshots captured during desktop-tracked time on the client's included projects, served through the signed media route (never a direct storage URL). |
+
+`GET /portal` and the two `/portal/{accessId}/*` reads are limited to **120 per minute**.
+
+### Admin endpoints (`/orgs/{orgId}`, requires `clients:manage`)
+
+| Endpoint | Notes |
+|---|---|
+| `GET /clients/{id}/portal` | Current settings: `enabled`, `sections` (`hours`, `tasks`, `activity`, `screenshots`), included project ids (`null` = all, including future ones). |
+| `PUT /clients/{id}/portal` | Update settings. Turning on `activity` or `screenshots` requires the admin's own grant for that resource to already be organization-wide; otherwise `403`. While either is on, widening the project scope (adding a project, or `project_ids: null`) needs the same org-wide grants, otherwise `403`; narrowing the scope or turning sections off is always allowed. |
+| `POST /clients/{id}/portal/invitations` | Invite a client viewer by email. `201`. `403` while activity or screenshots are on and the admin lacks org-wide `activity:read` / `screenshots:read` for the sections that are on. `409` `portal_viewer_exists` if the email already has access or a pending, unexpired invitation; a revoked or expired one is re-issued (same access id, new token and 7-day link). |
+| `DELETE /clients/{id}/portal/access/{accessId}` | Revoke a viewer's access. `204`. `422` `already_revoked` if it already was. Re-inviting the same email is how access is restored; there is no resend. |
+| `GET /clients/{id}/portal/preview` | The dashboard exactly as the client would see it — same shape as `GET /portal/{accessId}/summary` — except that `activity` and `screenshots` are masked off unless the admin's own `activity:read` / `screenshots:read` is organization-wide. Writes no client audit row. |
+| `GET /clients/{id}/portal/preview/screenshots` | Same, for screenshots. `403` when the section is off or masked for this admin. Audited as the admin (`client_portal.preview_screenshots_viewed`, with `count`, `from`, `to`). |
+
+### Worker endpoint: who can see my data
+
+| Endpoint | Notes |
+|---|---|
+| `GET /orgs/{orgId}/me/client-visibility` | Web. `{ clients: [{ client_name, activity, screenshots }] }` — every client whose portal can currently see this worker's data (through time on that client's included projects), and whether that includes activity level and/or screenshots. |
+| `GET /agent/me/client-visibility` | Desktop, same response shape, for the signed-in worker's device. |
+
+Both apps show this as a notice on "What is monitored" whenever the list isn't empty.
+
 ## Webhooks
 
 An admin adds endpoints in **Developer → Webhooks**. Each endpoint chooses which events it receives, or `*` for all of them.

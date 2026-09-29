@@ -41,7 +41,7 @@ Actions: R read, C create, U update, D delete/archive, X special action (named).
 | Time-off requests | R O; X approve | R T; X approve T | C S; R S; X cancel own | — | — |
 | Billing rates | R C U D | R T **P** | R S **P** (pay) | — | — |
 | Billing entries / amounts owed | R O | R T **P** | R S **P** | — | — |
-| Budgets | R C U D | R A/T | — | — | — |
+| Budgets | R C U D | R A/T | — | — | R (hour budgets of included projects, if tasks) |
 | Expenses | R O; X approve, reimburse | R T; X approve T | C S; R S | — | — |
 | Invoices | R C U D; X send/void | — (R A **P**) | — | — | — |
 | Payments | R C U | — | R S (own payouts, future) | — | — |

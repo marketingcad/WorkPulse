@@ -14,49 +14,51 @@
 Legend: **O** = org-wide, **T** = team-scoped, **A** = assigned projects only, **S** = self only, **P** = policy-dependent (the org can enable/disable), **—** = no access.
 Actions: R read, C create, U update, D delete/archive, X special action (named).
 
-| Resource | System Admin | Team Manager | Worker | Agent (device principal) |
-|---|---|---|---|---|
-| Organization settings | R U | R (basic) | R (basic) | — |
-| Billing plan / subscription | R U (owner only for plan changes) | — | — | — |
-| Roles & permissions | R C U D | R | — | — |
-| Members / workers | R C U D (invite, suspend) | R T; U T (limited: schedule, limits if allowed) | R S (+ directory names) | — |
-| Worker pay rate | R U | R T **P** | R S **P** | — |
-| Teams | R C U D | R T; U T (membership) **P** | R S | — |
-| Clients | R C U D | R A | R A (name only) | — |
-| Projects | R C U D | R T/A; C U **P** | R A | R A (own assignments list) |
-| Tasks | R C U D | R C U D A | R A; C **P**; U (status of own) | R A (own assignments) |
-| Tracking policies | R C U D | R T | R S (effective policy) | R S (effective policy) |
-| Devices | R U (revoke, force re-auth) | R T | R S; X revoke own | R/U self (heartbeat, capabilities) |
-| Tracking sessions | R O; X force-stop | R T; X force-stop **P** | R S; X start/stop/pause own | C/U S (commands for its bound worker only) |
-| Activity (minutes/windows) | R O | R T | R S | C S (write-only) |
-| Idle events | R O; X resolve **P** | R T; X resolve **P** | R S; X resolve own | C S |
-| Screenshots | R O; D **P** | R T; D **P** | R S **P**; D S **P** | C S (upload intent/confirm only) |
-| App / URL usage | R O | R T | R S **P** | C S |
-| Time entries | R U D O | R T; U T **P** | R S; U S **P** (unlocked only) | — (derived server-side) |
-| Manual time | R O; X approve | R T; X approve T | C S; R S | C S (request) |
-| Timesheets | R O; X approve/reject/reopen | R T; X approve/reject T | R S; X submit own | — |
-| Attendance | R O | R T | R S | — |
-| Schedules / shifts | R C U D | R C U D T | R S | R S (today's shift for reminders) |
-| Time-off policies | R C U D | R | R (applicable) | — |
-| Time-off requests | R O; X approve | R T; X approve T | C S; R S; X cancel own | — |
-| Billing rates | R C U D | R T **P** | R S **P** (pay) | — |
-| Billing entries / amounts owed | R O | R T **P** | R S **P** | — |
-| Budgets | R C U D | R A/T | — | — |
-| Expenses | R O; X approve, reimburse | R T; X approve T | C S; R S | — |
-| Invoices | R C U D; X send/void | — (R A **P**) | — | — |
-| Payments | R C U | — | R S (own payouts, future) | — |
-| Reports | R O (all) | R T (scope-filtered; no finance reports unless **P**) | R S (my time, my activity) | — |
-| Saved/scheduled reports | C U D (own + shared) | C U D own | C U D own | — |
-| Dashboards | R U own layout; widgets scope O | own layout; widgets scope T | own layout; widgets scope S | — |
-| Notifications | R U own | R U own | R U own | — |
-| API keys | R C D | — | — | — |
-| Webhooks | R C U D | — | — | — |
-| Audit log | R O | R T (actions on their team) **P** | R S (access log of own screenshots) | — |
-| Retention / security settings | R U | — | — | — |
+| Resource | System Admin | Team Manager | Worker | Agent (device principal) | Client viewer |
+|---|---|---|---|---|---|
+| Organization settings | R U | R (basic) | R (basic) | — | — |
+| Billing plan / subscription | R U (owner only for plan changes) | — | — | — | — |
+| Roles & permissions | R C U D | R | — | — | — |
+| Members / workers | R C U D (invite, suspend) | R T; U T (limited: schedule, limits if allowed) | R S (+ directory names) | — | — |
+| Worker pay rate | R U | R T **P** | R S **P** | — | — |
+| Teams | R C U D | R T; U T (membership) **P** | R S | — | — |
+| Clients | R C U D | R A | R A (name only) | — | — |
+| Projects | R C U D | R T/A; C U **P** | R A | R A (own assignments list) | R (included) |
+| Tasks | R C U D | R C U D A | R A; C **P**; U (status of own) | R A (own assignments) | R (if tasks) |
+| Tracking policies | R C U D | R T | R S (effective policy) | R S (effective policy) | — |
+| Devices | R U (revoke, force re-auth) | R T | R S; X revoke own | R/U self (heartbeat, capabilities) | — |
+| Tracking sessions | R O; X force-stop | R T; X force-stop **P** | R S; X start/stop/pause own | C/U S (commands for its bound worker only) | — |
+| Activity (minutes/windows) | R O | R T | R S | C S (write-only) | R (if enabled) |
+| Idle events | R O; X resolve **P** | R T; X resolve **P** | R S; X resolve own | C S | — |
+| Screenshots | R O; D **P** | R T; D **P** | R S **P**; D S **P** | C S (upload intent/confirm only) | R (if enabled) |
+| App / URL usage | R O | R T | R S **P** | C S | — |
+| Time entries | R U D O | R T; U T **P** | R S; U S **P** (unlocked only) | — (derived server-side) | R (if hours) |
+| Manual time | R O; X approve | R T; X approve T | C S; R S | C S (request) | — |
+| Timesheets | R O; X approve/reject/reopen | R T; X approve/reject T | R S; X submit own | — | — |
+| Attendance | R O | R T | R S | — | — |
+| Schedules / shifts | R C U D | R C U D T | R S | R S (today's shift for reminders) | — |
+| Time-off policies | R C U D | R | R (applicable) | — | — |
+| Time-off requests | R O; X approve | R T; X approve T | C S; R S; X cancel own | — | — |
+| Billing rates | R C U D | R T **P** | R S **P** (pay) | — | — |
+| Billing entries / amounts owed | R O | R T **P** | R S **P** | — | — |
+| Budgets | R C U D | R A/T | — | — | — |
+| Expenses | R O; X approve, reimburse | R T; X approve T | C S; R S | — | — |
+| Invoices | R C U D; X send/void | — (R A **P**) | — | — | — |
+| Payments | R C U | — | R S (own payouts, future) | — | — |
+| Reports | R O (all) | R T (scope-filtered; no finance reports unless **P**) | R S (my time, my activity) | — | — |
+| Saved/scheduled reports | C U D (own + shared) | C U D own | C U D own | — | — |
+| Dashboards | R U own layout; widgets scope O | own layout; widgets scope T | own layout; widgets scope S | — | — |
+| Notifications | R U own | R U own | R U own | — | — |
+| API keys | R C D | — | — | — | — |
+| Webhooks | R C U D | — | — | — | — |
+| Audit log | R O | R T (actions on their team) **P** | R S (access log of own screenshots) | — | — |
+| Retention / security settings | R U | — | — | — | — |
 
 > **Amended by ADR-121 ([08-decisions.md](08-decisions.md)):** a device may also read back its bound worker's *own* data through `/api/v1/agent/me/*`, with grants narrowed to `own` scope, never screenshots and never other people. The only writes allowed are submitting a timesheet and requesting time off.
 >
 > **Amended by ADR-128:** Workers reach their "S" rows through the desktop app, not the web. A member whose grants are all own/assigned scope is redirected from the web workspace to `/download`. This is a UX rule; the server still enforces the matrix for every call.
+>
+> **Amended by ADR-133:** a **Client viewer** is a `client_portal_access` row, never a membership. It sees only the client's own included projects, and only the sections the admin turned on (activity and screenshots require the admin's own grant to already be org-wide). It never sees money, other clients, or anything not listed above. Every read is audited with `actor_type = 'client'`, and workers whose data is shared this way are told, on the web and in the desktop app.
 
 **AGENT constraints (non-negotiable):** the credential is bound to `(organization_id, membership_id, device_id)`. It can read only the bound worker's effective policy and assignments, and it can write only tracking commands and observations for that worker. It has no list endpoints for other workers and cannot read activity back. Revoking the device kills all of its tokens immediately (per-request `devices.status` check, cached 30s in Redis).
 

@@ -206,6 +206,9 @@ export const webEn = {
   'portal.admin.accessRevoked': 'Access revoked',
   'portal.admin.preview': 'Preview as client',
   'portal.admin.noViewers': 'No one has been invited to this client’s portal yet.',
+  'portal.visibility.web': 'Clients can see some of your monitoring data from time on their projects: {clients}.',
+  'portal.visibility.activity': 'activity level',
+  'portal.visibility.screenshots': 'screenshots',
 
   // Profile: language and region
   'profile.locale.title': 'Language & region',

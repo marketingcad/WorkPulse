@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import {
   auditLogs,
   clientPortalAccess,
@@ -9,6 +9,7 @@ import {
   organizations,
   projects,
   rollupWorkerDay,
+  screenshots,
   taskAssignees,
   tasks,
   timeEntries,
@@ -19,13 +20,15 @@ import {
   type ClientPortalSections,
   type Tx,
 } from '@tallywork/db';
-import { businessRule, newId, notFound } from '@tallywork/domain';
-import type { clientPortalAcceptInput, PortalListItemDto, PortalSummaryDto } from '@tallywork/contracts';
+import { businessRule, forbidden, newId, notFound } from '@tallywork/domain';
+import type { clientPortalAcceptInput, PortalListItemDto, PortalScreenshotDto, PortalSummaryDto } from '@tallywork/contracts';
 import type { z } from 'zod';
 import type { Deps } from '../context';
 import { sha256 } from '../lib/crypto';
+import { mediaUrl } from './activity';
 import { createUser, findUserByEmail } from './identity';
 import { budgetStatuses } from './finance';
+import { loadOrg } from '../middleware/tenant';
 
 /** Accept a client portal invitation: links (or creates) the viewer's account. Never a membership. */
 export async function acceptPortalInvitation(deps: Deps, input: z.infer<typeof clientPortalAcceptInput>, currentUserId: string | null) {
@@ -227,4 +230,44 @@ export async function portalSummaryTx(tx: Tx, access: PortalAccess, range: { fro
           }))
         : null,
     };
+}
+
+/**
+ * Screenshots captured while the worker tracked time on one of the client's included projects
+ * (Controller Ruling 6): joined to `time_entries` by `session_id`, with capture time inside the
+ * entry's [started_at, ended_at] window, so only desktop-tracked entries (which carry a session id)
+ * can ever surface a screenshot — manual time never does.
+ *
+ * Same split as `portalSummary`/`portalSummaryTx` above: the viewer route has no transaction open
+ * yet, while the admin preview route reuses the org route's already-open tenant transaction.
+ */
+export async function portalScreenshots(deps: Deps, access: PortalAccess, range: { from: string; to: string }): Promise<PortalScreenshotDto[]> {
+  return withTenant(deps.db, access.organizationId, (tx) => portalScreenshotsTx(tx, deps, access, range));
+}
+
+export async function portalScreenshotsTx(tx: Tx, deps: Deps, access: PortalAccess, range: { from: string; to: string }): Promise<PortalScreenshotDto[]> {
+  if (!access.sections.screenshots) throw forbidden('Screenshots are not shared on this dashboard');
+  if (!access.projectIds.length) return [];
+  const org = await loadOrg(tx, access.organizationId);
+  const rows = await tx
+    .select({ id: screenshots.id, capturedAt: screenshots.capturedAt, storageKey: screenshots.storageKey, blurred: screenshots.blurred, projectId: timeEntries.projectId, worker: users.name })
+    .from(screenshots)
+    .innerJoin(
+      timeEntries,
+      and(
+        eq(timeEntries.sessionId, screenshots.sessionId),
+        isNull(timeEntries.deletedAt),
+        lte(timeEntries.startedAt, screenshots.capturedAt),
+        gte(timeEntries.endedAt, screenshots.capturedAt),
+        inArray(timeEntries.projectId, access.projectIds),
+      ),
+    )
+    .innerJoin(memberships, eq(memberships.id, screenshots.membershipId))
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .where(and(isNull(screenshots.deletedAt), gte(timeEntries.localDate, range.from), lte(timeEntries.localDate, range.to)))
+    .orderBy(desc(screenshots.capturedAt))
+    .limit(200);
+  const media = { deps, org };
+  await logPortalView(tx, access, 'client_portal.screenshots_viewed', { count: rows.length, from: range.from, to: range.to });
+  return rows.map((s) => ({ id: s.id, captured_at: s.capturedAt.toISOString(), worker_name: s.worker, project_id: s.projectId, blurred: s.blurred, thumb_url: mediaUrl(media, s.storageKey, 'thumb'), full_url: mediaUrl(media, s.storageKey) }));
 }

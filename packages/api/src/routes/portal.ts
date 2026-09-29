@@ -5,7 +5,7 @@ import type { AppEnv } from '../context';
 import { body, query } from '../lib/http';
 import { rateLimit } from '../middleware/rate-limit';
 import { startUserSession } from './auth';
-import { acceptPortalInvitation, listMyPortals, loadPortalAccess, portalSummary } from '../services/portal';
+import { acceptPortalInvitation, listMyPortals, loadPortalAccess, portalScreenshots, portalSummary } from '../services/portal';
 
 function viewer(c: Context<AppEnv>): string {
   const p = c.var.principal;
@@ -34,4 +34,8 @@ export const portalRoutes = new Hono<AppEnv>()
   .get('/:accessId/summary', async (c) => {
     const access = await loadPortalAccess(c.var.deps, viewer(c), accessIdParam(c));
     return c.json(await portalSummary(c.var.deps, access, query(c, portalRangeInput)));
+  })
+  .get('/:accessId/screenshots', async (c) => {
+    const access = await loadPortalAccess(c.var.deps, viewer(c), accessIdParam(c));
+    return c.json(await portalScreenshots(c.var.deps, access, query(c, portalRangeInput)));
   });

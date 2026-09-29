@@ -53,7 +53,7 @@ import {
 import { getEffectivePolicy, getPolicyLayer, listDevices, putPolicyLayer, setDeviceStatus } from '../services/platform';
 import { myAssignments } from '../services/timer';
 import { getPortalSettings, invitePortalViewer, previewAccess, revokePortalViewer, updatePortalSettings } from '../services/portal-admin';
-import { portalSummaryTx } from '../services/portal';
+import { portalScreenshotsTx, portalSummaryTx } from '../services/portal';
 
 const bool = z.enum(['true', 'false']).optional().transform((v) => v === 'true');
 const scopeType = z.enum(['ORG', 'TEAM', 'WORKER']);
@@ -138,6 +138,11 @@ export const orgRoutes = new Hono<AppEnv>()
     const x = ctx(c);
     // Reuses this request's already-open tenant transaction (portalSummary would open a second one).
     return c.json(await portalSummaryTx(x.tx, await previewAccess(x, c.req.param('id')), query(c, portalRangeInput)));
+  })
+  .get('/clients/:id/portal/preview/screenshots', requirePermission('clients:manage'), async (c) => {
+    const x = ctx(c);
+    // Same reasoning as /preview above: reuse the open tenant transaction, never a second one.
+    return c.json(await portalScreenshotsTx(x.tx, x.deps, await previewAccess(x, c.req.param('id')), query(c, portalRangeInput)));
   })
 
   // Projects & tasks

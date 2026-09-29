@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { newId } from '@tallywork/domain';
-import { Client, addMember, createHarness, signup, type Harness } from './harness';
+import { Client, addMember, createHarness, pkce, signup, type Harness } from './harness';
 
 let t: Harness;
 let admin: Client;
@@ -207,5 +207,65 @@ describe('portal dashboard', () => {
     const { client: zedAdmin, orgId: zedOrg } = await signup(t, 'Zed', 'zed@portal.test');
     expect((await dora.get(`/portal/${newId()}/summary${range}`)).status).toBe(404);
     expect((await zedAdmin.get(`/orgs/${zedOrg}/clients/${clientId}/portal`)).status).toBe(404);
+  });
+});
+
+describe('portal screenshots', () => {
+  let shotOnClient: string;
+  beforeAll(async () => {
+    await admin.put(o(`/policies/ORG/${orgId}`), { screenshots: { enabled: true, perTenMinutes: 1 } });
+    const { verifier, challenge } = pkce();
+    const code = await walt.client.post('/agent/authorize', { code_challenge: challenge, organization_id: orgId });
+    const agent = new Client(t);
+    agent.bearer = (await agent.post('/agent/register', { code: code.body.code, code_verifier: verifier, device: { name: 'Walt-PC', platform: 'windows', agent_version: '0.1.0' } })).body.access_token;
+    const session = newId();
+    const start = new Date(t.clock.now);
+    const at = (ms: number) => new Date(start.getTime() + ms).toISOString();
+    await agent.post('/agent/ingest/batch', { sent_at: at(0), events: [{ event_id: newId(), type: 'session.start', session_id: session, seq: 1, occurred_at: at(0), project_id: siteId }] });
+    t.clock.advance(5 * 60_000);
+    shotOnClient = newId();
+    const intent = await agent.post('/agent/screenshots/upload-intent', { screenshot_id: shotOnClient, session_id: session, captured_at: at(5 * 60_000), content_type: 'image/webp', bytes: 4 });
+    await agent.post('/agent/ingest/batch', {
+      sent_at: at(5 * 60_000),
+      events: [
+        { event_id: newId(), type: 'activity.minutes', session_id: session, occurred_at: at(5 * 60_000), minutes: [{ minute_start: at(60_000), keyboard: 30, mouse: 20, active_seconds: 45, tracked_seconds: 60 }] },
+        { event_id: newId(), type: 'screenshot.captured', session_id: session, occurred_at: at(5 * 60_000), screenshot_id: shotOnClient, captured_at: at(5 * 60_000), display_index: 0, blurred: false, width: 1920, height: 1080, bytes: 4, sha256: 'a'.repeat(64), storage_key: intent.body.storage_key },
+      ],
+    });
+    t.clock.advance(10 * 60_000);
+    await agent.post('/agent/ingest/batch', { sent_at: at(15 * 60_000), events: [{ event_id: newId(), type: 'session.stop', session_id: session, seq: 2, occurred_at: at(15 * 60_000) }] });
+    await t.flush();
+  });
+
+  const today = () => t.clock.now.toISOString().slice(0, 10);
+
+  it('is refused while the section is off', async () => {
+    expect((await dora.get(`/portal/${doraAccessId}/screenshots?from=${today()}&to=${today()}`)).status).toBe(403);
+  });
+
+  it('shows screenshots from time on the client’s projects, with signed media links, and logs the view', async () => {
+    await admin.put(o(`/clients/${clientId}/portal`), { sections: { screenshots: true } });
+    const r = await dora.get(`/portal/${doraAccessId}/screenshots?from=${today()}&to=${today()}`);
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual([expect.objectContaining({ id: shotOnClient, worker_name: 'Walt', project_id: siteId, full_url: expect.stringMatching(/\/api\/v1\/media\//) })]);
+    const log = await admin.get(o('/audit-logs?action=client_portal.screenshots_viewed'));
+    expect(log.body[0]).toMatchObject({ actor_type: 'client' });
+  });
+
+  it('never shows them when the project is not included', async () => {
+    await admin.put(o(`/clients/${clientId}/portal`), { project_ids: [appId] });
+    const r = await dora.get(`/portal/${doraAccessId}/screenshots?from=${today()}&to=${today()}`);
+    expect(r.body).toEqual([]);
+    await admin.put(o(`/clients/${clientId}/portal`), { project_ids: null, sections: { screenshots: false } });
+  });
+
+  it('shows a numeric activity_pct for today’s range once desktop activity minutes exist', async () => {
+    await admin.put(o(`/clients/${clientId}/portal`), { sections: { activity: true } });
+    const r = await dora.get(`/portal/${doraAccessId}/summary?from=${today()}&to=${today()}`);
+    const w = r.body.workers.find((x: { name: string }) => x.name === 'Walt');
+    expect(typeof w.activity_pct).toBe('number');
+    expect(w.activity_pct).toBeGreaterThanOrEqual(0);
+    expect(w.activity_pct).toBeLessThanOrEqual(100);
+    await admin.put(o(`/clients/${clientId}/portal`), { sections: { activity: false } });
   });
 });

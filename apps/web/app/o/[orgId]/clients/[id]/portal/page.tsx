@@ -2,10 +2,11 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import type { ClientDto, ClientPortalSettingsDto, PortalScreenshotDto, PortalSummaryDto } from '@tallywork/contracts';
 import { Button, Checkbox, ConfirmDialog, ErrorState, Field, Input, PageHeader, Panel, PermissionState, Spinner, StatusBadge, useToast } from '@tallywork/ui';
 import { PortalDashboard } from '@/components/portal/portal-dashboard';
-import { errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
+import { errorMessage, qs, useOrgId, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
 
@@ -26,7 +27,13 @@ export default function ClientPortalSettingsPage() {
   const clientName = clientsQ.data?.find((c) => c.id === id)?.name;
 
   const settingsQ = useOrgQuery<ClientPortalSettingsDto>(canManage ? `/clients/${id}/portal` : null);
-  const save = useOrgMutation<Record<string, unknown>, ClientPortalSettingsDto>('PUT', `/clients/${id}/portal`);
+  const qc = useQueryClient();
+  const orgId = useOrgId();
+  // The PUT answers with the saved settings: put them in the cache right away, so the controls unlock
+  // on fresh state instead of waiting for the background refetch.
+  const save = useOrgMutation<Record<string, unknown>, ClientPortalSettingsDto>('PUT', `/clients/${id}/portal`, {
+    onSuccess: (r) => qc.setQueryData(['org', orgId, `/clients/${id}/portal`], r),
+  });
 
   const [email, setEmail] = useState('');
   const invite = useOrgMutation<{ email: string }>('POST', `/clients/${id}/portal/invitations`, {
@@ -60,6 +67,9 @@ export default function ClientPortalSettingsPage() {
     );
   const s = settingsQ.data;
 
+  // Every toggle saves from the last server state: while one save is in flight, lock the controls so a
+  // second click cannot build its change on stale settings and undo the first.
+  const saving = save.isPending;
   const toggleSection = (k: Section) => save.mutate({ sections: { [k]: !s.sections[k] } });
   const disabledSection = (k: Section) => (k === 'activity' && !s.can_enable.activity && !s.sections.activity) || (k === 'screenshots' && !s.can_enable.screenshots && !s.sections.screenshots);
 
@@ -87,12 +97,12 @@ export default function ClientPortalSettingsPage() {
       )}
 
       <Panel bodyClassName="flex flex-col gap-5 p-4">
-        <Checkbox label={t('portal.admin.enabled')} checked={s.enabled} onChange={() => save.mutate({ enabled: !s.enabled })} />
+        <Checkbox label={t('portal.admin.enabled')} checked={s.enabled} disabled={saving} onChange={() => save.mutate({ enabled: !s.enabled })} />
 
         <fieldset className="flex flex-col gap-2 border-t border-border pt-4">
           <legend className="mb-1 text-sm font-semibold">{t('portal.admin.sections')}</legend>
           {SECTIONS.map((k) => (
-            <Checkbox key={k} label={t(`portal.admin.${k}`)} checked={s.sections[k]} disabled={disabledSection(k)} onChange={() => toggleSection(k)} />
+            <Checkbox key={k} label={t(`portal.admin.${k}`)} checked={s.sections[k]} disabled={saving || disabledSection(k)} onChange={() => toggleSection(k)} />
           ))}
           <p className="mt-1 text-xs text-text-muted">{t('portal.admin.monitoringNote')}</p>
         </fieldset>
@@ -102,6 +112,7 @@ export default function ClientPortalSettingsPage() {
           <Checkbox
             label={t('portal.admin.allProjects')}
             checked={s.project_ids === null}
+            disabled={saving}
             onChange={() => save.mutate({ project_ids: s.project_ids === null ? s.projects.map((p) => p.id) : null })}
           />
           {s.project_ids !== null &&
@@ -111,6 +122,7 @@ export default function ClientPortalSettingsPage() {
                 label={p.name}
                 className="ml-6"
                 checked={s.project_ids!.includes(p.id)}
+                disabled={saving}
                 onChange={() => save.mutate({ project_ids: s.project_ids!.includes(p.id) ? s.project_ids!.filter((x) => x !== p.id) : [...s.project_ids!, p.id] })}
               />
             ))}

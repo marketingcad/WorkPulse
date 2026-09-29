@@ -4,13 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import type { PortalListItemDto } from '@tallywork/contracts';
 import { ErrorState, Spinner } from '@tallywork/ui';
 import { AuthShell } from '@/components/auth-shell';
+import { PortalToolbar } from '@/components/portal/portal-toolbar';
 import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
 
 export default function PortalListPage() {
   const { data, error, refetch } = useQuery({ queryKey: ['portal', 'list'], queryFn: () => api<PortalListItemDto[]>('/portal') });
   return (
-    <AuthShell title={t('portal.list.title')}>
+    <AuthShell title={t('portal.list.title')} footer={<PortalToolbar showAll={false} />}>
       {error ? (
         <ErrorState error={error} onRetry={() => refetch()} />
       ) : !data ? (

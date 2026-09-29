@@ -23,7 +23,7 @@ function LoginForm() {
   function finish(me: MeDto) {
     const next = params.get('next');
     // Client viewers have no organization of their own: they go to their dashboards.
-    const fallback = me.organizations[0] ? `/o/${me.organizations[0].id}` : me.client_portals.length ? (me.client_portals.length === 1 ? `/portal/${me.client_portals[0]!.access_id}` : '/portal') : '/welcome';
+    const fallback = me.organizations[0] ? `/o/${me.organizations[0].id}` : me.client_portals?.length ? (me.client_portals.length === 1 ? `/portal/${me.client_portals[0]!.access_id}` : '/portal') : '/welcome';
     router.replace(next && next.startsWith('/') && !next.startsWith('//') ? next : fallback);
   }
 

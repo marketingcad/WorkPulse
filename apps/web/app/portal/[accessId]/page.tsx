@@ -19,5 +19,14 @@ export default function PortalPage() {
   if (!summary.data) return <div className="flex min-h-dvh items-center justify-center"><Spinner /></div>;
   // If the screenshots request fails (e.g. transient network error), fall back to an empty list rather than
   // surfacing a broken state; the rest of the dashboard (hours, projects, tasks) still renders normally.
-  return <PortalDashboard summary={summary.data} screenshots={summary.data.sections.screenshots ? (shots.data ?? []) : null} range={range} onRange={setRange} />;
+  // While it's still loading, pass screenshotsLoading so the dashboard shows a spinner instead of an empty grid.
+  return (
+    <PortalDashboard
+      summary={summary.data}
+      screenshots={summary.data.sections.screenshots ? (shots.data ?? []) : null}
+      screenshotsLoading={summary.data.sections.screenshots && shots.isLoading}
+      range={range}
+      onRange={setRange}
+    />
+  );
 }

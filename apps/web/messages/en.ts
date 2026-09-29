@@ -160,6 +160,13 @@ export const webEn = {
   'auth.invite.passwordHint': 'At least 10 characters. Already have an account? Sign in first, then open this link again.',
   'auth.invite.submit': 'Join organization',
 
+  // Client portal: invitation and dashboard list for portal-only users
+  'portal.invite.title': 'Open your project dashboard',
+  'portal.invite.subtitle': 'Create your WorkPulse account to follow the work on your projects.',
+  'portal.invite.submit': 'Open dashboard',
+  'portal.list.title': 'Your dashboards',
+  'portal.list.empty': 'You do not have access to any dashboards yet. Ask the organization you work with to invite you.',
+
   // Profile: language and region
   'profile.locale.title': 'Language & region',
   'profile.locale.label': 'Language and formats',

@@ -18,7 +18,8 @@ export default function Home() {
           /* ignore */
         }
         const target = me.organizations.find((o) => o.id === last) ?? me.organizations[0];
-        router.replace(target ? `/o/${target.id}` : '/welcome');
+        // Client viewers have no organization of their own: they go to their dashboards.
+        router.replace(target ? `/o/${target.id}` : me.client_portals.length ? (me.client_portals.length === 1 ? `/portal/${me.client_portals[0]!.access_id}` : '/portal') : '/welcome');
       })
       .catch(() => router.replace('/login'));
   }, [router]);

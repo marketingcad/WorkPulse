@@ -1,17 +1,26 @@
 import { and, eq } from 'drizzle-orm';
 import { clientPortalAccess, clientPortalSettings, clients, DEFAULT_PORTAL_SECTIONS, projects, type ClientPortalSections } from '@tallywork/db';
 import { businessRule, conflict, forbidden, newId, notFound, validation } from '@tallywork/domain';
-import type { ClientPortalSettingsDto, clientPortalInviteInput, clientPortalSettingsInput } from '@tallywork/contracts';
+import type { ClientPortalSettingsDto, clientPortalInviteInput, clientPortalSettingsInput, PortalScreenshotDto } from '@tallywork/contracts';
 import type { z } from 'zod';
 import { randomToken, sha256 } from '../lib/crypto';
 import type { Ctx } from './ctx';
 import { audit } from './events';
-import { includedProjects, type PortalAccess } from './portal';
+import { includedProjects, portalScreenshotsTx, type PortalAccess } from './portal';
 
 const INVITE_DAYS = 7;
 
 function assertManager(x: Ctx) {
   if (x.actor.grants['clients:manage'] !== 'org') throw forbidden('Only organization admins can manage client portals');
+}
+
+/**
+ * While activity or screenshots are shared, anything that lets more people (a new viewer) or more
+ * projects (a wider scope) see them needs the same org-wide grants as switching them on.
+ */
+function assertMonitoringGrants(x: Ctx, sections: ClientPortalSections, what: string) {
+  if (sections.activity && x.actor.grants['activity:read'] !== 'org') throw forbidden(`You need organization-wide access to activity to ${what} a dashboard that shares activity`);
+  if (sections.screenshots && x.actor.grants['screenshots:read'] !== 'org') throw forbidden(`You need organization-wide access to screenshots to ${what} a dashboard that shares screenshots`);
 }
 
 async function loadClient(x: Ctx, clientId: string) {
@@ -56,6 +65,10 @@ export async function updatePortalSettings(x: Ctx, clientId: string, input: z.in
     if (projectIds.some((id) => !own.has(id))) throw validation('Choose only this client’s projects', { errors: [{ field: 'project_ids', message: 'Includes a project of another client' }] });
     projectIds = [...new Set(projectIds)];
   }
+  // Widening the scope (switching to "all projects" or adding a project) exposes more monitoring data
+  // while activity or screenshots are shared, so it needs the same org-wide grants. Narrowing never does.
+  const widened = before.projectIds !== null && (projectIds === null || projectIds.some((id) => !before.projectIds!.includes(id)));
+  if (widened) assertMonitoringGrants(x, sections, 'widen the projects of');
   const enabled = input.enabled ?? before.enabled;
   await x.tx
     .insert(clientPortalSettings)
@@ -68,9 +81,13 @@ export async function updatePortalSettings(x: Ctx, clientId: string, input: z.in
 export async function invitePortalViewer(x: Ctx, clientId: string, input: z.infer<typeof clientPortalInviteInput>): Promise<{ id: string; invite_url: string }> {
   assertManager(x);
   const client = await loadClient(x, clientId);
+  // A new viewer would see whatever monitoring data is shared: same org-wide grants as sharing it.
+  assertMonitoringGrants(x, { ...DEFAULT_PORTAL_SECTIONS, ...(await settingsRow(x, clientId)).sections }, 'invite viewers to');
   const email = input.email.toLowerCase();
   const [existing] = await x.tx.select().from(clientPortalAccess).where(and(eq(clientPortalAccess.clientId, clientId), eq(clientPortalAccess.email, email)));
-  if (existing && existing.status !== 'REVOKED') throw conflict('portal_viewer_exists', 'This person already has access or a pending invitation');
+  // Revoked access and an invitation that expired unused can both be re-issued.
+  const expired = existing?.status === 'INVITED' && !!existing.inviteExpiresAt && existing.inviteExpiresAt.getTime() <= x.deps.now().getTime();
+  if (existing && existing.status !== 'REVOKED' && !expired) throw conflict('portal_viewer_exists', 'This person already has access or a pending invitation');
   const token = randomToken(32);
   const id = existing?.id ?? newId();
   const values = { status: 'INVITED' as const, name: input.name ?? null, inviteTokenHash: sha256(token), inviteExpiresAt: new Date(x.deps.now().getTime() + INVITE_DAYS * 86_400_000), invitedBy: x.actor.membershipId, revokedAt: null, acceptedAt: null, userId: null };
@@ -95,10 +112,25 @@ export async function revokePortalViewer(x: Ctx, clientId: string, accessId: str
   await audit(x, { action: 'client_portal.viewer_revoked', targetType: 'client', targetId: clientId, before: { email: a.email, status: a.status } });
 }
 
-/** The access object the client would get, for "Preview as client" (no viewer, so no client audit row). */
+/**
+ * The access object the client would get, for "Preview as client" (no viewer, so no client audit row).
+ * Monitoring sections are masked to what the previewing admin may see org-wide themselves, so a
+ * clients:manage holder without those grants cannot use the preview to read activity or screenshots.
+ */
 export async function previewAccess(x: Ctx, clientId: string): Promise<PortalAccess> {
   assertManager(x);
   await loadClient(x, clientId);
   const s = await settingsRow(x, clientId);
-  return { accessId: null, organizationId: x.org.id, clientId, sections: { ...DEFAULT_PORTAL_SECTIONS, ...s.sections }, projectIds: await includedProjects(x.tx, clientId, s.projectIds) };
+  const sections = { ...DEFAULT_PORTAL_SECTIONS, ...s.sections };
+  sections.activity = sections.activity && x.actor.grants['activity:read'] === 'org';
+  sections.screenshots = sections.screenshots && x.actor.grants['screenshots:read'] === 'org';
+  return { accessId: null, organizationId: x.org.id, clientId, sections, projectIds: await includedProjects(x.tx, clientId, s.projectIds) };
+}
+
+/** "Preview as client" screenshots: same rows the client would get, audited as the previewing admin. */
+export async function previewScreenshots(x: Ctx, clientId: string, range: { from: string; to: string }): Promise<PortalScreenshotDto[]> {
+  // Reuses the org route's already-open tenant transaction (portalScreenshots would open a second one).
+  const rows = await portalScreenshotsTx(x.tx, x.deps, await previewAccess(x, clientId), range);
+  await audit(x, { action: 'client_portal.preview_screenshots_viewed', targetType: 'client', targetId: clientId, metadata: { count: rows.length, from: range.from, to: range.to } });
+  return rows;
 }

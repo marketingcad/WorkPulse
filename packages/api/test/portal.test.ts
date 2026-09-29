@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { sql } from 'drizzle-orm';
+import { withSystem } from '@tallywork/db';
 import { newId } from '@tallywork/domain';
 import { Client, addMember, createHarness, pkce, signup, type Harness } from './harness';
 
@@ -29,6 +31,9 @@ beforeAll(async () => {
   otherProjectId = (await admin.post(o('/projects'), { name: 'Globex site', client_id: otherClientId, member_ids: [bea.membershipId] })).body.id;
 });
 afterAll(() => t.close());
+
+/** Raw SQL with RLS bypassed, for fixtures and audit assertions the HTTP API does not expose. */
+const system = async <T = Record<string, unknown>>(q: ReturnType<typeof sql>) => ((await withSystem(t.h.db, (tx) => tx.execute(q))) as unknown as { rows: T[] }).rows;
 
 describe('portal admin', () => {
   it('starts disabled, with hours and tasks on and monitoring off', async () => {
@@ -64,6 +69,26 @@ describe('portal admin', () => {
     const list = (await admin.get(o(`/clients/${clientId}/portal`))).body.access;
     expect(list.find((a: { email: string }) => a.email === 'temp@acme.test').status).toBe('REVOKED');
   });
+
+  it('re-issues an invitation that expired unused', async () => {
+    const first = await admin.post(o(`/clients/${clientId}/portal/invitations`), { email: 'ivy@acme.test' });
+    expect(first.status).toBe(201);
+    // Still pending: a second invite is a conflict.
+    expect((await admin.post(o(`/clients/${clientId}/portal/invitations`), { email: 'ivy@acme.test' })).status).toBe(409);
+    const saved = new Date(t.clock.now);
+    try {
+      t.clock.advance(8 * 86_400_000);
+      const again = await admin.post(o(`/clients/${clientId}/portal/invitations`), { email: 'ivy@acme.test' });
+      expect(again.status).toBe(201);
+      expect(again.body.id).toBe(first.body.id);
+      // The expired link stays dead; only the new one would work.
+      const old = await new Client(t).post('/portal/invitations/accept', { token: new URL(first.body.invite_url).searchParams.get('token'), password: PASSWORD });
+      expect(old.status).toBe(422);
+      expect(old.body.code).toBe('invalid_invitation');
+    } finally {
+      t.clock.set(saved);
+    }
+  });
 });
 
 const tokenOf = (url: string) => new URL(url).searchParams.get('token')!;
@@ -87,6 +112,29 @@ describe('accepting a portal invitation', () => {
 
   it('rejects a reused or unknown token', async () => {
     expect((await new Client(t).post('/portal/invitations/accept', { token: 'x'.repeat(43), password: PASSWORD })).status).toBe(422);
+  });
+
+  it('rejects the token of a revoked invitation, and a second accept of the same token', async () => {
+    const revoked = await admin.post(o(`/clients/${clientId}/portal/invitations`), { email: 'gus@acme.test' });
+    expect((await admin.del(o(`/clients/${clientId}/portal/access/${revoked.body.id}`))).status).toBe(204);
+    const r = await new Client(t).post('/portal/invitations/accept', { token: tokenOf(revoked.body.invite_url), password: PASSWORD });
+    expect(r.status).toBe(422);
+    expect(r.body.code).toBe('invalid_invitation');
+    // No account was created for the revoked invitation.
+    expect(await system(sql`select id from users where email = 'gus@acme.test'`)).toEqual([]);
+
+    const inv = await admin.post(o(`/clients/${clientId}/portal/invitations`), { email: 'fay@acme.test' });
+    expect((await new Client(t).post('/portal/invitations/accept', { token: tokenOf(inv.body.invite_url), password: PASSWORD })).status).toBe(200);
+    const twice = await new Client(t).post('/portal/invitations/accept', { token: tokenOf(inv.body.invite_url), password: PASSWORD });
+    expect(twice.status).toBe(422);
+    expect(twice.body.code).toBe('invalid_invitation');
+  });
+
+  it('refuses a signed-in account whose email differs from the invitation', async () => {
+    const inv = await admin.post(o(`/clients/${clientId}/portal/invitations`), { email: 'hal@acme.test' });
+    const r = await bea.client.post('/portal/invitations/accept', { token: tokenOf(inv.body.invite_url) });
+    expect(r.status).toBe(422);
+    expect(r.body.code).toBe('invitation_email_mismatch');
   });
 
   it('asks an existing account to sign in first, then links it', async () => {
@@ -160,6 +208,14 @@ describe('portal dashboard', () => {
     await admin.put(o(`/clients/${clientId}/portal`), { enabled: true });
     const audit = await admin.get(o('/audit-logs?action=client_portal.viewed'));
     expect(audit.body.some((a: { actor_type: string }) => a.actor_type === 'client')).toBe(true);
+  });
+
+  it('records the request context (ip, user agent, request id) on the client audit row', async () => {
+    const r = await dora.req('GET', `/portal/${doraAccessId}/summary${range}`, undefined, { 'x-real-ip': '203.0.113.7', 'user-agent': 'PortalTest/1.0' });
+    expect(r.status).toBe(200);
+    const requestId = r.headers.get('x-request-id')!;
+    const rows = await system(sql`select actor_type, ip_address, user_agent from audit_logs where request_id = ${requestId} and action = 'client_portal.viewed'`);
+    expect(rows).toEqual([{ actor_type: 'client', ip_address: '203.0.113.7', user_agent: 'PortalTest/1.0' }]);
   });
 
   it('answers a malformed accessId exactly like an unknown one (404, not a 500)', async () => {
@@ -267,6 +323,20 @@ describe('portal screenshots', () => {
     expect(p.status).toBe(200);
     expect(p.body.map((s: { id: string }) => s.id)).toEqual(v.body.map((s: { id: string }) => s.id));
     expect(await clientViews()).toBe(before);
+    // The preview itself is audited, as the admin who looked.
+    const log = await admin.get(o('/audit-logs?action=client_portal.preview_screenshots_viewed'));
+    expect(log.body[0]).toMatchObject({ actor_type: 'user', target_id: clientId });
+  });
+
+  it('never returns a deleted screenshot', async () => {
+    await system(sql`update screenshots set deleted_at = now() where id = ${shotOnClient}`);
+    try {
+      const r = await dora.get(`/portal/${doraAccessId}/screenshots?from=${localDate}&to=${localDate}`);
+      expect(r.status).toBe(200);
+      expect(r.body).toEqual([]);
+    } finally {
+      await system(sql`update screenshots set deleted_at = null where id = ${shotOnClient}`);
+    }
   });
 
   it('never shows them when the project is not included', async () => {
@@ -306,5 +376,61 @@ describe('worker transparency', () => {
     const dev = await device.get('/agent/me/client-visibility');
     expect(dev.status).toBe(200);
     expect(dev.body).toEqual(web.body);
+  });
+});
+
+describe('monitoring grants for client managers without org-wide monitoring access', () => {
+  const month = '?from=2026-10-01&to=2026-10-31';
+  let rita: Client;
+  beforeAll(async () => {
+    const role = await admin.post(o('/roles'), {
+      name: 'Client manager',
+      grants: { 'org:read': 'org', 'clients:read': 'org', 'clients:manage': 'org', 'projects:read': 'org', 'activity:read': 'team', 'screenshots:read': 'team' },
+    });
+    expect(role.status).toBe(201);
+    const inv = await admin.post(o('/invitations'), { email: 'rita@portal.test', name: 'Rita', role_id: role.body.id });
+    expect(inv.status).toBe(201);
+    rita = new Client(t);
+    const acc = await rita.post('/auth/invitations/accept', { token: tokenOf(inv.body.invite_url), name: 'Rita', password: PASSWORD });
+    expect(acc.status).toBe(200);
+    await admin.put(o(`/clients/${clientId}/portal`), { enabled: true, project_ids: null, sections: { activity: false, screenshots: false } });
+  });
+
+  it('cannot switch screenshots or activity on', async () => {
+    expect((await rita.put(o(`/clients/${clientId}/portal`), { sections: { screenshots: true } })).status).toBe(403);
+    expect((await rita.put(o(`/clients/${clientId}/portal`), { sections: { activity: true } })).status).toBe(403);
+  });
+
+  describe('while an admin shares screenshots', () => {
+    beforeAll(async () => {
+      expect((await admin.put(o(`/clients/${clientId}/portal`), { project_ids: [siteId], sections: { screenshots: true } })).status).toBe(200);
+    });
+
+    it('cannot invite viewers', async () => {
+      expect((await rita.post(o(`/clients/${clientId}/portal/invitations`), { email: 'jo@acme.test' })).status).toBe(403);
+    });
+
+    it('cannot widen the project scope, but can narrow it', async () => {
+      expect((await rita.put(o(`/clients/${clientId}/portal`), { project_ids: null })).status).toBe(403);
+      expect((await rita.put(o(`/clients/${clientId}/portal`), { project_ids: [siteId, appId] })).status).toBe(403);
+      expect((await rita.put(o(`/clients/${clientId}/portal`), { project_ids: [siteId] })).status).toBe(200);
+    });
+
+    it('sees the preview with screenshots masked, and cannot open preview screenshots', async () => {
+      const p = await rita.get(o(`/clients/${clientId}/portal/preview${month}`));
+      expect(p.status).toBe(200);
+      expect(p.body.sections).toMatchObject({ screenshots: false, activity: false });
+      expect((await rita.get(o(`/clients/${clientId}/portal/preview/screenshots${month}`))).status).toBe(403);
+      // An admin with org-wide grants still previews them.
+      const a = await admin.get(o(`/clients/${clientId}/portal/preview${month}`));
+      expect(a.body.sections.screenshots).toBe(true);
+      expect((await admin.get(o(`/clients/${clientId}/portal/preview/screenshots${month}`))).status).toBe(200);
+    });
+
+    it('can always switch monitoring off, after which widening and inviting are allowed', async () => {
+      expect((await rita.put(o(`/clients/${clientId}/portal`), { sections: { screenshots: false } })).status).toBe(200);
+      expect((await rita.put(o(`/clients/${clientId}/portal`), { project_ids: null })).status).toBe(200);
+      expect((await rita.post(o(`/clients/${clientId}/portal/invitations`), { email: 'jo@acme.test' })).status).toBe(201);
+    });
   });
 });

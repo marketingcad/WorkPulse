@@ -43,23 +43,38 @@ export async function acceptPortalInvitation(deps: Deps, input: z.infer<typeof c
   });
   if (!inv) throw invalid;
 
-  let userId = currentUserId;
-  let created = false;
-  if (userId) {
-    const [me] = await deps.db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+  let newAccount: { name: string; email: string; password: string } | null = null;
+  if (currentUserId) {
+    const [me] = await deps.db.select({ email: users.email }).from(users).where(eq(users.id, currentUserId)).limit(1);
     if (!me || me.email.toLowerCase() !== inv.email) throw businessRule('invitation_email_mismatch', `This invitation was sent to ${inv.email}`);
   } else if (await findUserByEmail(deps.db, inv.email)) {
     throw businessRule('login_required', 'Sign in with your existing account to open this dashboard');
   } else {
     if (!input.password) throw businessRule('password_required', 'Choose a password to create your account');
-    // The emailed link proves the address, so the account starts verified.
-    userId = await createUser(deps.db, { name: input.name ?? inv.name ?? inv.email.split('@')[0]!, email: inv.email, password: input.password, verified: true });
-    created = true;
+    newAccount = { name: input.name ?? inv.name ?? inv.email.split('@')[0]!, email: inv.email, password: input.password };
   }
-  await withSystem(deps.db, (tx) =>
-    tx.update(clientPortalAccess).set({ status: 'ACTIVE', userId, acceptedAt: deps.now(), inviteTokenHash: null, inviteExpiresAt: null }).where(eq(clientPortalAccess.id, inv.id)),
-  );
-  return { accessId: inv.id, userId: userId!, created };
+  // One transaction: create the account (if any) and claim the invitation only while it is still the same
+  // pending, unexpired invite. A concurrent accept, a revoke or a re-issue in between makes the conditional
+  // UPDATE match nothing, which throws and rolls the new account back, so no orphan user is left behind.
+  const userId = await withSystem(deps.db, async (tx) => {
+    // The emailed link proves the address, so the account starts verified.
+    const uid = newAccount ? await createUser(tx, { ...newAccount, verified: true }) : currentUserId!;
+    const claimed = await tx
+      .update(clientPortalAccess)
+      .set({ status: 'ACTIVE', userId: uid, acceptedAt: deps.now(), inviteTokenHash: null, inviteExpiresAt: null })
+      .where(
+        and(
+          eq(clientPortalAccess.id, inv.id),
+          eq(clientPortalAccess.status, 'INVITED'),
+          eq(clientPortalAccess.inviteTokenHash, sha256(input.token)),
+          gt(clientPortalAccess.inviteExpiresAt, deps.now()),
+        ),
+      )
+      .returning({ id: clientPortalAccess.id });
+    if (!claimed.length) throw invalid;
+    return uid;
+  });
+  return { accessId: inv.id, userId, created: newAccount !== null };
 }
 
 export interface PortalAccess {
@@ -68,6 +83,14 @@ export interface PortalAccess {
   clientId: string;
   sections: ClientPortalSections;
   projectIds: string[];
+  /** This request's context for the client audit row (set by the viewer routes; absent for previews). */
+  request?: PortalRequestMeta;
+}
+
+export interface PortalRequestMeta {
+  ip: string | null;
+  userAgent: string | null;
+  requestId: string | null;
 }
 
 /** The included projects: the selection, limited to projects the client still owns. */
@@ -124,7 +147,21 @@ export async function loadPortalAccess(deps: Deps, userId: string, accessId: str
 
 export async function logPortalView(tx: Tx, access: PortalAccess, action: string, metadata: Record<string, unknown> = {}) {
   if (!access.accessId) return; // admin preview: no client viewed it, so there is nothing to write a client audit row for
-  await tx.insert(auditLogs).values({ id: newId(), organizationId: access.organizationId, actorType: 'client', actorId: access.accessId, action, targetType: 'client', targetId: access.clientId, metadata });
+  const r = access.request;
+  await tx.insert(auditLogs).values({
+    id: newId(),
+    organizationId: access.organizationId,
+    actorType: 'client',
+    actorId: access.accessId,
+    action,
+    targetType: 'client',
+    targetId: access.clientId,
+    metadata,
+    // Same request context the `audit()` helper records (services/events.ts).
+    ipAddress: r?.ip ?? null,
+    userAgent: r?.userAgent?.slice(0, 300) ?? null,
+    requestId: r?.requestId ?? null,
+  });
   // `new Date()` here (not `deps.now()`): this is reached via `portalSummaryTx(tx, ...)`, which only has `tx`,
   // not `deps` — the admin-preview caller (routes/org.ts) reuses its open tx and never threads deps through.
   // Matches the existing `audit()` helper (services/events.ts), which also stamps with `new Date()`.

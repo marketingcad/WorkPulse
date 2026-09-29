@@ -4,8 +4,9 @@ import { DomainError, isUuid, notFound } from '@tallywork/domain';
 import type { AppEnv } from '../context';
 import { body, query } from '../lib/http';
 import { rateLimit } from '../middleware/rate-limit';
+import { clientIp } from '../lib/cidr';
 import { startUserSession } from './auth';
-import { acceptPortalInvitation, listMyPortals, loadPortalAccess, portalScreenshots, portalSummary } from '../services/portal';
+import { acceptPortalInvitation, listMyPortals, loadPortalAccess, portalScreenshots, portalSummary, type PortalAccess } from '../services/portal';
 
 function viewer(c: Context<AppEnv>): string {
   const p = c.var.principal;
@@ -21,6 +22,12 @@ function accessIdParam(c: Context<AppEnv>): string {
   return id;
 }
 
+/** The viewer's own access, plus this request's context so the client audit row records ip / user agent / request id. */
+async function viewerAccess(c: Context<AppEnv>): Promise<PortalAccess> {
+  const access = await loadPortalAccess(c.var.deps, viewer(c), accessIdParam(c));
+  return { ...access, request: { ip: clientIp((h) => c.req.header(h)), userAgent: c.req.header('user-agent') ?? null, requestId: c.var.requestId ?? null } };
+}
+
 /** Client portal: read-only dashboards for an organization's clients (never members; see services/portal.ts). */
 export const portalRoutes = new Hono<AppEnv>()
   .post('/invitations/accept', rateLimit('portal-accept', 20, 3600), async (c) => {
@@ -31,11 +38,5 @@ export const portalRoutes = new Hono<AppEnv>()
   })
   .use(rateLimit('portal', 120, 60))
   .get('/', async (c) => c.json(await listMyPortals(c.var.deps, viewer(c))))
-  .get('/:accessId/summary', async (c) => {
-    const access = await loadPortalAccess(c.var.deps, viewer(c), accessIdParam(c));
-    return c.json(await portalSummary(c.var.deps, access, query(c, portalRangeInput)));
-  })
-  .get('/:accessId/screenshots', async (c) => {
-    const access = await loadPortalAccess(c.var.deps, viewer(c), accessIdParam(c));
-    return c.json(await portalScreenshots(c.var.deps, access, query(c, portalRangeInput)));
-  });
+  .get('/:accessId/summary', async (c) => c.json(await portalSummary(c.var.deps, await viewerAccess(c), query(c, portalRangeInput))))
+  .get('/:accessId/screenshots', async (c) => c.json(await portalScreenshots(c.var.deps, await viewerAccess(c), query(c, portalRangeInput))));

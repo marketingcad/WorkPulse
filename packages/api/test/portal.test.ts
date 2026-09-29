@@ -212,7 +212,14 @@ describe('portal dashboard', () => {
 
 describe('portal screenshots', () => {
   let shotOnClient: string;
+  // Pinned to a fixed mid-day New York instant (11:00 EDT) instead of the real wall clock: the org
+  // timezone is America/New_York, and `time_entries.local_date` is computed in that zone, while a
+  // real-clock run near 00:00–04:00 UTC (or one that straddles New York midnight mid-test) would
+  // put the derived time entry on a different calendar date than a UTC-sliced `today()`, or split
+  // the session across two local dates. A fixed instant makes the local date deterministic.
+  const localDate = '2026-10-06';
   beforeAll(async () => {
+    t.clock.set(new Date('2026-10-06T15:00:00Z')); // 11:00 America/New_York (EDT)
     await admin.put(o(`/policies/ORG/${orgId}`), { screenshots: { enabled: true, perTenMinutes: 1 } });
     const { verifier, challenge } = pkce();
     const code = await walt.client.post('/agent/authorize', { code_challenge: challenge, organization_id: orgId });
@@ -237,35 +244,46 @@ describe('portal screenshots', () => {
     await t.flush();
   });
 
-  const today = () => t.clock.now.toISOString().slice(0, 10);
-
   it('is refused while the section is off', async () => {
-    expect((await dora.get(`/portal/${doraAccessId}/screenshots?from=${today()}&to=${today()}`)).status).toBe(403);
+    expect((await dora.get(`/portal/${doraAccessId}/screenshots?from=${localDate}&to=${localDate}`)).status).toBe(403);
   });
 
   it('shows screenshots from time on the client’s projects, with signed media links, and logs the view', async () => {
     await admin.put(o(`/clients/${clientId}/portal`), { sections: { screenshots: true } });
-    const r = await dora.get(`/portal/${doraAccessId}/screenshots?from=${today()}&to=${today()}`);
+    const r = await dora.get(`/portal/${doraAccessId}/screenshots?from=${localDate}&to=${localDate}`);
     expect(r.status).toBe(200);
     expect(r.body).toEqual([expect.objectContaining({ id: shotOnClient, worker_name: 'Walt', project_id: siteId, full_url: expect.stringMatching(/\/api\/v1\/media\//) })]);
     const log = await admin.get(o('/audit-logs?action=client_portal.screenshots_viewed'));
     expect(log.body[0]).toMatchObject({ actor_type: 'client' });
   });
 
+  it('lets admins preview the same screenshots the client sees, without adding a client audit row', async () => {
+    // Fetch the viewer's copy first (this call itself logs a client audit row — expected and
+    // untested here), then bracket only the preview call with the before/after audit count.
+    const v = await dora.get(`/portal/${doraAccessId}/screenshots?from=${localDate}&to=${localDate}`);
+    const clientViews = async () => (await admin.get(o('/audit-logs?action=client_portal.screenshots_viewed'))).body.filter((a: { actor_type: string }) => a.actor_type === 'client').length;
+    const before = await clientViews();
+    const p = await admin.get(o(`/clients/${clientId}/portal/preview/screenshots?from=${localDate}&to=${localDate}`));
+    expect(p.status).toBe(200);
+    expect(p.body.map((s: { id: string }) => s.id)).toEqual(v.body.map((s: { id: string }) => s.id));
+    expect(await clientViews()).toBe(before);
+  });
+
   it('never shows them when the project is not included', async () => {
     await admin.put(o(`/clients/${clientId}/portal`), { project_ids: [appId] });
-    const r = await dora.get(`/portal/${doraAccessId}/screenshots?from=${today()}&to=${today()}`);
+    const r = await dora.get(`/portal/${doraAccessId}/screenshots?from=${localDate}&to=${localDate}`);
     expect(r.body).toEqual([]);
     await admin.put(o(`/clients/${clientId}/portal`), { project_ids: null, sections: { screenshots: false } });
   });
 
-  it('shows a numeric activity_pct for today’s range once desktop activity minutes exist', async () => {
+  it('shows the exact activity_pct once desktop activity minutes exist', async () => {
     await admin.put(o(`/clients/${clientId}/portal`), { sections: { activity: true } });
-    const r = await dora.get(`/portal/${doraAccessId}/summary?from=${today()}&to=${today()}`);
+    const r = await dora.get(`/portal/${doraAccessId}/summary?from=${localDate}&to=${localDate}`);
     const w = r.body.workers.find((x: { name: string }) => x.name === 'Walt');
-    expect(typeof w.activity_pct).toBe('number');
-    expect(w.activity_pct).toBeGreaterThanOrEqual(0);
-    expect(w.activity_pct).toBeLessThanOrEqual(100);
+    // The fixture sends exactly one activity-minute record (active_seconds: 45, tracked_seconds: 60)
+    // for Walt's only session that day, on his only project that day (siteId) — so the rollup's
+    // active/tracked totals for this worker-day-project row are exactly 45/60, giving round(45/60*100) = 75.
+    expect(w.activity_pct).toBe(75);
     await admin.put(o(`/clients/${clientId}/portal`), { sections: { activity: false } });
   });
 });

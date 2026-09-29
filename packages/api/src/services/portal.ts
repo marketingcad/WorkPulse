@@ -258,7 +258,10 @@ export async function portalScreenshotsTx(tx: Tx, deps: Deps, access: PortalAcce
         eq(timeEntries.sessionId, screenshots.sessionId),
         isNull(timeEntries.deletedAt),
         lte(timeEntries.startedAt, screenshots.capturedAt),
-        gte(timeEntries.endedAt, screenshots.capturedAt),
+        // Exclusive end: a screenshot captured exactly where two adjacent entries of the same
+        // session meet belongs to the entry that starts there, not the one that just ended —
+        // closing both ends would double-count it.
+        gt(timeEntries.endedAt, screenshots.capturedAt),
         inArray(timeEntries.projectId, access.projectIds),
       ),
     )

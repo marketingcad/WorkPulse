@@ -6,6 +6,7 @@ import type { z } from 'zod';
 import { randomToken, sha256 } from '../lib/crypto';
 import type { Ctx } from './ctx';
 import { audit } from './events';
+import { includedProjects, type PortalAccess } from './portal';
 
 const INVITE_DAYS = 7;
 
@@ -92,4 +93,12 @@ export async function revokePortalViewer(x: Ctx, clientId: string, accessId: str
   if (a.status === 'REVOKED') throw businessRule('already_revoked', 'Access is already revoked');
   await x.tx.update(clientPortalAccess).set({ status: 'REVOKED', revokedAt: new Date(), inviteTokenHash: null }).where(eq(clientPortalAccess.id, accessId));
   await audit(x, { action: 'client_portal.viewer_revoked', targetType: 'client', targetId: clientId, before: { email: a.email, status: a.status } });
+}
+
+/** The access object the client would get, for "Preview as client" (no viewer, so no client audit row). */
+export async function previewAccess(x: Ctx, clientId: string): Promise<PortalAccess> {
+  assertManager(x);
+  await loadClient(x, clientId);
+  const s = await settingsRow(x, clientId);
+  return { accessId: null, organizationId: x.org.id, clientId, sections: { ...DEFAULT_PORTAL_SECTIONS, ...s.sections }, projectIds: await includedProjects(x.tx, clientId, s.projectIds) };
 }

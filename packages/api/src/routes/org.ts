@@ -6,6 +6,7 @@ import {
   clientPortalSettingsInput,
   inviteInput,
   policyDocInput,
+  portalRangeInput,
   projectInput,
   roleInput,
   taskInput,
@@ -51,7 +52,8 @@ import {
 } from '../services/work';
 import { getEffectivePolicy, getPolicyLayer, listDevices, putPolicyLayer, setDeviceStatus } from '../services/platform';
 import { myAssignments } from '../services/timer';
-import { getPortalSettings, invitePortalViewer, revokePortalViewer, updatePortalSettings } from '../services/portal-admin';
+import { getPortalSettings, invitePortalViewer, previewAccess, revokePortalViewer, updatePortalSettings } from '../services/portal-admin';
+import { portalSummaryTx } from '../services/portal';
 
 const bool = z.enum(['true', 'false']).optional().transform((v) => v === 'true');
 const scopeType = z.enum(['ORG', 'TEAM', 'WORKER']);
@@ -131,6 +133,11 @@ export const orgRoutes = new Hono<AppEnv>()
   .delete('/clients/:id/portal/access/:accessId', requirePermission('clients:manage'), async (c) => {
     await revokePortalViewer(ctx(c), c.req.param('id'), c.req.param('accessId'));
     return c.body(null, 204);
+  })
+  .get('/clients/:id/portal/preview', requirePermission('clients:manage'), async (c) => {
+    const x = ctx(c);
+    // Reuses this request's already-open tenant transaction (portalSummary would open a second one).
+    return c.json(await portalSummaryTx(x.tx, await previewAccess(x, c.req.param('id')), query(c, portalRangeInput)));
   })
 
   // Projects & tasks

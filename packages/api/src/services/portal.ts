@@ -1,11 +1,31 @@
-import { and, eq, gt } from 'drizzle-orm';
-import { clientPortalAccess, users, withSystem } from '@tallywork/db';
-import { businessRule } from '@tallywork/domain';
-import type { clientPortalAcceptInput } from '@tallywork/contracts';
+import { and, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import {
+  auditLogs,
+  clientPortalAccess,
+  clientPortalSettings,
+  clients,
+  DEFAULT_PORTAL_SECTIONS,
+  memberships,
+  organizations,
+  projects,
+  rollupWorkerDay,
+  taskAssignees,
+  tasks,
+  timeEntries,
+  users,
+  withSystem,
+  withTenant,
+  workerProfiles,
+  type ClientPortalSections,
+  type Tx,
+} from '@tallywork/db';
+import { businessRule, newId, notFound } from '@tallywork/domain';
+import type { clientPortalAcceptInput, PortalListItemDto, PortalSummaryDto } from '@tallywork/contracts';
 import type { z } from 'zod';
 import type { Deps } from '../context';
 import { sha256 } from '../lib/crypto';
 import { createUser, findUserByEmail } from './identity';
+import { budgetStatuses } from './finance';
 
 /** Accept a client portal invitation: links (or creates) the viewer's account. Never a membership. */
 export async function acceptPortalInvitation(deps: Deps, input: z.infer<typeof clientPortalAcceptInput>, currentUserId: string | null) {
@@ -37,4 +57,171 @@ export async function acceptPortalInvitation(deps: Deps, input: z.infer<typeof c
     tx.update(clientPortalAccess).set({ status: 'ACTIVE', userId, acceptedAt: deps.now(), inviteTokenHash: null, inviteExpiresAt: null }).where(eq(clientPortalAccess.id, inv.id)),
   );
   return { accessId: inv.id, userId: userId!, created };
+}
+
+export interface PortalAccess {
+  accessId: string | null;
+  organizationId: string;
+  clientId: string;
+  sections: ClientPortalSections;
+  projectIds: string[];
+}
+
+/** The included projects: the selection, limited to projects the client still owns. */
+export async function includedProjects(tx: Tx, clientId: string, selected: string[] | null): Promise<string[]> {
+  const own = (await tx.select({ id: projects.id }).from(projects).where(eq(projects.clientId, clientId))).map((p) => p.id);
+  return selected ? own.filter((id) => selected.includes(id)) : own;
+}
+
+export async function listMyPortals(deps: Deps, userId: string): Promise<PortalListItemDto[]> {
+  const rows = await withSystem(deps.db, (tx) =>
+    tx
+      .select({ accessId: clientPortalAccess.id, organizationName: organizations.name, clientName: clients.name })
+      .from(clientPortalAccess)
+      .innerJoin(organizations, eq(organizations.id, clientPortalAccess.organizationId))
+      .innerJoin(clients, eq(clients.id, clientPortalAccess.clientId))
+      .innerJoin(clientPortalSettings, and(eq(clientPortalSettings.organizationId, clientPortalAccess.organizationId), eq(clientPortalSettings.clientId, clientPortalAccess.clientId)))
+      .where(and(eq(clientPortalAccess.userId, userId), eq(clientPortalAccess.status, 'ACTIVE'), eq(clientPortalSettings.enabled, true), isNull(clients.archivedAt))),
+  );
+  return rows.map((r) => ({ access_id: r.accessId, organization_name: r.organizationName, client_name: r.clientName }));
+}
+
+/** Only the viewer's own ACTIVE access to an enabled portal of a non-archived client; anything else is 404. */
+export async function loadPortalAccess(deps: Deps, userId: string, accessId: string): Promise<PortalAccess> {
+  const [a] = await withSystem(deps.db, (tx) =>
+    tx.select().from(clientPortalAccess).where(and(eq(clientPortalAccess.id, accessId), eq(clientPortalAccess.userId, userId), eq(clientPortalAccess.status, 'ACTIVE'))).limit(1),
+  );
+  if (!a) throw notFound('dashboard');
+  return withTenant(deps.db, a.organizationId, async (tx) => {
+    const [s] = await tx.select().from(clientPortalSettings).where(eq(clientPortalSettings.clientId, a.clientId));
+    const [c] = await tx.select({ archivedAt: clients.archivedAt }).from(clients).where(eq(clients.id, a.clientId));
+    if (!s?.enabled || !c || c.archivedAt) throw notFound('dashboard');
+    return { accessId: a.id, organizationId: a.organizationId, clientId: a.clientId, sections: { ...DEFAULT_PORTAL_SECTIONS, ...s.sections }, projectIds: await includedProjects(tx, a.clientId, s.projectIds) };
+  });
+}
+
+export async function logPortalView(tx: Tx, access: PortalAccess, action: string, metadata: Record<string, unknown> = {}) {
+  if (!access.accessId) return; // admin preview: the admin's own request is already audited
+  await tx.insert(auditLogs).values({ id: newId(), organizationId: access.organizationId, actorType: 'client', actorId: access.accessId, action, targetType: 'client', targetId: access.clientId, metadata });
+  await tx.update(clientPortalAccess).set({ lastViewedAt: new Date() }).where(eq(clientPortalAccess.id, access.accessId));
+}
+
+/**
+ * `portalSummary` is called both from the viewer route (no transaction open yet) and from the
+ * admin preview route (already inside the org route's tenant transaction, via `ctx(c).tx`).
+ * Opening a second `withTenant` transaction from inside the first deadlocks on the single-connection
+ * PGlite test driver, so the summary logic runs against a supplied `tx` and `portalSummary` only
+ * wraps one for callers that do not already have one.
+ */
+export async function portalSummary(deps: Deps, access: PortalAccess, range: { from: string; to: string }): Promise<PortalSummaryDto> {
+  return withTenant(deps.db, access.organizationId, (tx) => portalSummaryTx(tx, access, range));
+}
+
+export async function portalSummaryTx(tx: Tx, access: PortalAccess, range: { from: string; to: string }): Promise<PortalSummaryDto> {
+    const [org] = await tx.select({ id: organizations.id, name: organizations.name, currency: organizations.currency }).from(organizations).where(eq(organizations.id, access.organizationId));
+    const [client] = await tx.select({ id: clients.id, name: clients.name }).from(clients).where(eq(clients.id, access.clientId));
+    const ids = access.projectIds;
+    const none = ids.length === 0;
+    const projectRows = none ? [] : await tx.select({ id: projects.id, name: projects.name, color: projects.color, status: projects.status }).from(projects).where(inArray(projects.id, ids)).orderBy(projects.name);
+    const rollups = none
+      ? []
+      : await tx
+          .select()
+          .from(rollupWorkerDay)
+          .where(and(inArray(rollupWorkerDay.projectId, ids), gte(rollupWorkerDay.localDate, range.from), lte(rollupWorkerDay.localDate, range.to)));
+
+    const byProject = new Map<string, number>();
+    const byDay = new Map<string, number>();
+    const byWorker = new Map<string, { tracked: number; manual: number; active: number; activityTracked: number; tasks: Map<string, number> }>();
+    const totals = { tracked_seconds: 0, manual_seconds: 0, billable_seconds: 0 };
+    for (const r of rollups) {
+      const secs = r.trackedSeconds + r.manualSeconds;
+      totals.tracked_seconds += r.trackedSeconds;
+      totals.manual_seconds += r.manualSeconds;
+      if (r.billable) totals.billable_seconds += secs;
+      byProject.set(r.projectId, (byProject.get(r.projectId) ?? 0) + secs);
+      byDay.set(r.localDate, (byDay.get(r.localDate) ?? 0) + secs);
+      const w = byWorker.get(r.membershipId) ?? { tracked: 0, manual: 0, active: 0, activityTracked: 0, tasks: new Map() };
+      w.tracked += r.trackedSeconds;
+      w.manual += r.manualSeconds;
+      w.active += r.activeSeconds;
+      w.activityTracked += r.activityTrackedSeconds;
+      w.tasks.set(r.taskKey, (w.tasks.get(r.taskKey) ?? 0) + secs);
+      byWorker.set(r.membershipId, w);
+    }
+
+    const taskRows = none
+      ? []
+      : await tx
+          .select({ id: tasks.id, projectId: tasks.projectId, title: tasks.title, status: tasks.status, priority: tasks.priority, dueDate: tasks.dueDate, estimateSeconds: tasks.estimateSeconds })
+          .from(tasks)
+          .where(and(inArray(tasks.projectId, ids), isNull(tasks.archivedAt)))
+          .orderBy(tasks.status, tasks.dueDate);
+    const taskTitle = new Map(taskRows.map((t) => [t.id, t.title]));
+
+    const assigneeRows = taskRows.length
+      ? await tx.select({ taskId: taskAssignees.taskId, membershipId: taskAssignees.membershipId }).from(taskAssignees).where(inArray(taskAssignees.taskId, taskRows.map((t) => t.id)))
+      : [];
+    const people = [...new Set([...byWorker.keys(), ...assigneeRows.map((a) => a.membershipId)])];
+    const names = people.length
+      ? await tx
+          .select({ id: memberships.id, name: users.name, title: workerProfiles.title })
+          .from(memberships)
+          .innerJoin(users, eq(users.id, memberships.userId))
+          .leftJoin(workerProfiles, eq(workerProfiles.membershipId, memberships.id))
+          .where(inArray(memberships.id, people))
+      : [];
+    const person = new Map(names.map((n) => [n.id, n]));
+
+    // Time per task over the whole project history (progress vs estimate), not only the range.
+    const taskTime = taskRows.length
+      ? await tx
+          .select({ taskId: timeEntries.taskId, secs: sql<number>`coalesce(sum(${timeEntries.durationSeconds}), 0)::int` })
+          .from(timeEntries)
+          .where(and(inArray(timeEntries.taskId, taskRows.map((t) => t.id)), isNull(timeEntries.deletedAt)))
+          .groupBy(timeEntries.taskId)
+      : [];
+    const trackedByTask = new Map(taskTime.map((t) => [t.taskId, t.secs]));
+
+    const budgets = (await budgetStatuses(tx, org!.currency, range.to, { subjectIds: ids })).filter((b) => b.kind === 'HOURS' && b.subject_type === 'PROJECT');
+    const budgetOf = new Map(budgets.map((b) => [b.subject_id, { amount_seconds: b.amount, used_seconds: b.spent, pct_used: b.pct_used }]));
+
+    const s = access.sections;
+    await logPortalView(tx, access, 'client_portal.viewed', { from: range.from, to: range.to });
+    return {
+      access_id: access.accessId,
+      organization: { id: org!.id, name: org!.name },
+      client: { id: client!.id, name: client!.name },
+      sections: s,
+      range,
+      totals,
+      projects: projectRows.map((p) => ({ id: p.id, name: p.name, color: p.color, status: p.status, tracked_seconds: byProject.get(p.id) ?? 0, budget: s.tasks ? (budgetOf.get(p.id) ?? null) : null })),
+      workers: s.hours
+        ? [...byWorker.entries()]
+            .map(([id, w]) => ({
+              membership_id: id,
+              name: person.get(id)?.name ?? 'Former member',
+              title: person.get(id)?.title ?? null,
+              tracked_seconds: w.tracked,
+              manual_seconds: w.manual,
+              activity_pct: s.activity && w.activityTracked > 0 ? Math.round((w.active / w.activityTracked) * 100) : null,
+              tasks: [...w.tasks.entries()].map(([key, seconds]) => ({ task_id: key || null, title: key ? (taskTitle.get(key) ?? 'Archived task') : 'No task', seconds })).sort((a, b) => b.seconds - a.seconds),
+            }))
+            .sort((a, b) => b.tracked_seconds + b.manual_seconds - (a.tracked_seconds + a.manual_seconds))
+        : null,
+      days: s.hours ? [...byDay.entries()].map(([date, seconds]) => ({ date, seconds })).sort((a, b) => a.date.localeCompare(b.date)) : null,
+      tasks: s.tasks
+        ? taskRows.map((t) => ({
+            id: t.id,
+            project_id: t.projectId,
+            title: t.title,
+            status: t.status,
+            priority: t.priority,
+            due_date: t.dueDate,
+            estimate_seconds: t.estimateSeconds,
+            tracked_seconds: trackedByTask.get(t.id) ?? 0,
+            assignees: assigneeRows.filter((a) => a.taskId === t.id).map((a) => person.get(a.membershipId)?.name ?? 'Former member'),
+          }))
+        : null,
+    };
 }

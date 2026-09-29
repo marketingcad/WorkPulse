@@ -1,10 +1,19 @@
-import { Hono } from 'hono';
-import { clientPortalAcceptInput } from '@tallywork/contracts';
+import { Hono, type Context } from 'hono';
+import { z } from 'zod';
+import { clientPortalAcceptInput, portalRangeInput } from '@tallywork/contracts';
+import { DomainError } from '@tallywork/domain';
 import type { AppEnv } from '../context';
-import { body } from '../lib/http';
+import { body, query } from '../lib/http';
 import { rateLimit } from '../middleware/rate-limit';
 import { startUserSession } from './auth';
-import { acceptPortalInvitation } from '../services/portal';
+import { acceptPortalInvitation, listMyPortals, loadPortalAccess, portalSummary } from '../services/portal';
+
+function viewer(c: Context<AppEnv>): string {
+  const p = c.var.principal;
+  // MFA-pending sessions are already limited to the two MFA paths by middleware/auth.ts.
+  if (!p || p.type !== 'user') throw new DomainError('unauthenticated', 'unauthenticated', 'Please sign in to continue');
+  return p.userId;
+}
 
 /** Client portal: read-only dashboards for an organization's clients (never members; see services/portal.ts). */
 export const portalRoutes = new Hono<AppEnv>()
@@ -13,4 +22,10 @@ export const portalRoutes = new Hono<AppEnv>()
     const r = await acceptPortalInvitation(c.var.deps, await body(c, clientPortalAcceptInput), p?.type === 'user' ? p.userId : null);
     if (r.created) await startUserSession(c, r.userId);
     return c.json({ access_id: r.accessId });
+  })
+  .use(rateLimit('portal', 120, 60))
+  .get('/', async (c) => c.json(await listMyPortals(c.var.deps, viewer(c))))
+  .get('/:accessId/summary', async (c) => {
+    const access = await loadPortalAccess(c.var.deps, viewer(c), z.uuid().parse(c.req.param('accessId')));
+    return c.json(await portalSummary(c.var.deps, access, query(c, portalRangeInput)));
   });

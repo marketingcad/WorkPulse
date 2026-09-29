@@ -2,16 +2,18 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import type { PortalListItemDto } from '@tallywork/contracts';
-import { Spinner } from '@tallywork/ui';
+import { ErrorState, Spinner } from '@tallywork/ui';
 import { AuthShell } from '@/components/auth-shell';
 import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
 
 export default function PortalListPage() {
-  const { data } = useQuery({ queryKey: ['portal', 'list'], queryFn: () => api<PortalListItemDto[]>('/portal') });
+  const { data, error, refetch } = useQuery({ queryKey: ['portal', 'list'], queryFn: () => api<PortalListItemDto[]>('/portal') });
   return (
     <AuthShell title={t('portal.list.title')}>
-      {!data ? (
+      {error ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
+      ) : !data ? (
         <Spinner />
       ) : data.length === 0 ? (
         <p className="text-sm text-text-muted">{t('portal.list.empty')}</p>

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { newId } from '@tallywork/domain';
 import { Client, addMember, createHarness, signup, type Harness } from './harness';
 
 let t: Harness;
@@ -110,6 +111,12 @@ describe('portal dashboard', () => {
     await add(walt.membershipId, appId, 3, '2026-09-15T15:00:00Z');
     await add(bea.membershipId, otherProjectId, 5, '2026-09-15T14:00:00Z'); // another client's project: never shown
     await admin.put(o('/budgets'), { subject_type: 'PROJECT', subject_id: siteId, kind: 'HOURS', amount: 10 * 3600 });
+    // A budget row is one-per-subject (unique on org+subject_type+subject_id, independent of kind), so a
+    // MONEY budget "on siteId" would replace — not join — the HOURS budget above. To prove `portalSummaryTx`
+    // really filters budgets to `kind === 'HOURS'` (and not merely that money never gets fetched), the MONEY
+    // budget goes on the other included project (`appId`), which still has no budget of its own.
+    await admin.put(o('/budgets'), { subject_type: 'PROJECT', subject_id: appId, kind: 'MONEY', amount: 100_000_00 });
+    await admin.post(o('/rates'), { kind: 'BILL', scope: 'PROJECT', scope_id: siteId, amount_minor: 5000, currency: 'USD', effective_from: '2020-01-01' });
     await admin.put(o(`/clients/${clientId}/portal`), { enabled: true, project_ids: null, sections: { activity: false } });
     await t.flush();
   });
@@ -128,8 +135,13 @@ describe('portal dashboard', () => {
 
   it('never includes money, and activity stays hidden while that section is off', async () => {
     const r = await dora.get(`/portal/${doraAccessId}/summary${range}`);
+    // Website has an HOURS budget and Mobile app has a MONEY budget (plus a BILL rate on Website) —
+    // none of that should be able to leak into the client-facing JSON.
     expect(JSON.stringify(r.body)).not.toMatch(/amount_minor|rate|invoice|bill_|pay_|currency/);
     expect(r.body.workers.every((x: { activity_pct: number | null }) => x.activity_pct === null)).toBe(true);
+    // The only budget shown for Website is the HOURS one; Mobile app's MONEY budget is filtered out entirely.
+    expect(r.body.projects.find((p: { name: string }) => p.name === 'Website').budget).toEqual({ amount_seconds: 36000, used_seconds: 3 * 3600, pct_used: 30 });
+    expect(r.body.projects.find((p: { name: string }) => p.name === 'Mobile app').budget).toBeNull();
   });
 
   it('respects the project selection and hides sections that are off', async () => {
@@ -150,9 +162,50 @@ describe('portal dashboard', () => {
     expect(audit.body.some((a: { actor_type: string }) => a.actor_type === 'client')).toBe(true);
   });
 
+  it('answers a malformed accessId exactly like an unknown one (404, not a 500)', async () => {
+    expect((await dora.get(`/portal/not-a-uuid/summary${range}`)).status).toBe(404);
+  });
+
+  it('closes access immediately when a viewer is revoked', async () => {
+    const inv = await admin.post(o(`/clients/${clientId}/portal/invitations`), { email: 'ed@acme.test', name: 'Ed' });
+    const ed = new Client(t);
+    const acc = await ed.post('/portal/invitations/accept', { token: tokenOf(inv.body.invite_url), name: 'Ed', password: PASSWORD });
+    expect(acc.status).toBe(200);
+    const edAccessId = acc.body.access_id;
+    expect((await ed.get(`/portal/${edAccessId}/summary${range}`)).status).toBe(200);
+    expect((await admin.del(o(`/clients/${clientId}/portal/access/${edAccessId}`))).status).toBe(204);
+    expect((await ed.get(`/portal/${edAccessId}/summary${range}`)).status).toBe(404);
+    expect((await ed.get('/me')).body.client_portals).toEqual([]);
+  });
+
   it('lets admins preview exactly what the client sees', async () => {
     const p = await admin.get(o(`/clients/${clientId}/portal/preview${range}`));
     const v = await dora.get(`/portal/${doraAccessId}/summary${range}`);
     expect({ ...p.body, access_id: null }).toEqual({ ...v.body, access_id: null });
+  });
+
+  it('writes no client audit row for an admin preview', async () => {
+    const clientViews = async () => (await admin.get(o('/audit-logs?action=client_portal.viewed'))).body.filter((a: { actor_type: string }) => a.actor_type === 'client').length;
+    const before = await clientViews();
+    expect((await admin.get(o(`/clients/${clientId}/portal/preview${range}`))).status).toBe(200);
+    expect(await clientViews()).toBe(before);
+  });
+
+  it('reflects the activity section flag', async () => {
+    await admin.put(o(`/clients/${clientId}/portal`), { sections: { activity: true } });
+    const r = await dora.get(`/portal/${doraAccessId}/summary${range}`);
+    expect(r.body.sections.activity).toBe(true);
+    // The fixture only has manual time (no desktop activity tracking), so every worker's
+    // activityTrackedSeconds is 0 and activity_pct stays null even with the section on.
+    // A numeric activity_pct needs tracked desktop activity minutes, which Task 6 adds —
+    // a later test should cover the on-and-populated case once that data exists.
+    expect(r.body.workers.every((x: { activity_pct: number | null }) => x.activity_pct === null)).toBe(true);
+    await admin.put(o(`/clients/${clientId}/portal`), { sections: { activity: false } });
+  });
+
+  it('is isolated across organizations', async () => {
+    const { client: zedAdmin, orgId: zedOrg } = await signup(t, 'Zed', 'zed@portal.test');
+    expect((await dora.get(`/portal/${newId()}/summary${range}`)).status).toBe(404);
+    expect((await zedAdmin.get(`/orgs/${zedOrg}/clients/${clientId}/portal`)).status).toBe(404);
   });
 });

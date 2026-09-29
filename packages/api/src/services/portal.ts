@@ -101,8 +101,11 @@ export async function loadPortalAccess(deps: Deps, userId: string, accessId: str
 }
 
 export async function logPortalView(tx: Tx, access: PortalAccess, action: string, metadata: Record<string, unknown> = {}) {
-  if (!access.accessId) return; // admin preview: the admin's own request is already audited
+  if (!access.accessId) return; // admin preview: no client viewed it, so there is nothing to write a client audit row for
   await tx.insert(auditLogs).values({ id: newId(), organizationId: access.organizationId, actorType: 'client', actorId: access.accessId, action, targetType: 'client', targetId: access.clientId, metadata });
+  // `new Date()` here (not `deps.now()`): this is reached via `portalSummaryTx(tx, ...)`, which only has `tx`,
+  // not `deps` — the admin-preview caller (routes/org.ts) reuses its open tx and never threads deps through.
+  // Matches the existing `audit()` helper (services/events.ts), which also stamps with `new Date()`.
   await tx.update(clientPortalAccess).set({ lastViewedAt: new Date() }).where(eq(clientPortalAccess.id, access.accessId));
 }
 

@@ -1,7 +1,6 @@
 import { Hono, type Context } from 'hono';
-import { z } from 'zod';
 import { clientPortalAcceptInput, portalRangeInput } from '@tallywork/contracts';
-import { DomainError } from '@tallywork/domain';
+import { DomainError, isUuid, notFound } from '@tallywork/domain';
 import type { AppEnv } from '../context';
 import { body, query } from '../lib/http';
 import { rateLimit } from '../middleware/rate-limit';
@@ -15,6 +14,13 @@ function viewer(c: Context<AppEnv>): string {
   return p.userId;
 }
 
+/** A malformed :accessId must read exactly like an unknown one — 404, not a 500 from an uncaught ZodError. */
+function accessIdParam(c: Context<AppEnv>): string {
+  const id = c.req.param('accessId');
+  if (!id || !isUuid(id)) throw notFound('dashboard');
+  return id;
+}
+
 /** Client portal: read-only dashboards for an organization's clients (never members; see services/portal.ts). */
 export const portalRoutes = new Hono<AppEnv>()
   .post('/invitations/accept', rateLimit('portal-accept', 20, 3600), async (c) => {
@@ -26,6 +32,6 @@ export const portalRoutes = new Hono<AppEnv>()
   .use(rateLimit('portal', 120, 60))
   .get('/', async (c) => c.json(await listMyPortals(c.var.deps, viewer(c))))
   .get('/:accessId/summary', async (c) => {
-    const access = await loadPortalAccess(c.var.deps, viewer(c), z.uuid().parse(c.req.param('accessId')));
+    const access = await loadPortalAccess(c.var.deps, viewer(c), accessIdParam(c));
     return c.json(await portalSummary(c.var.deps, access, query(c, portalRangeInput)));
   });

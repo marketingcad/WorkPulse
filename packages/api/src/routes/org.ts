@@ -53,7 +53,7 @@ import {
 import { getEffectivePolicy, getPolicyLayer, listDevices, putPolicyLayer, setDeviceStatus } from '../services/platform';
 import { myAssignments } from '../services/timer';
 import { getPortalSettings, invitePortalViewer, previewAccess, revokePortalViewer, updatePortalSettings } from '../services/portal-admin';
-import { portalScreenshotsTx, portalSummaryTx } from '../services/portal';
+import { clientVisibilityFor, portalScreenshotsTx, portalSummaryTx } from '../services/portal';
 
 const bool = z.enum(['true', 'false']).optional().transform((v) => v === 'true');
 const scopeType = z.enum(['ORG', 'TEAM', 'WORKER']);
@@ -177,6 +177,7 @@ export const orgRoutes = new Hono<AppEnv>()
     return c.body(null, 204);
   })
   .get('/me/assignments', async (c) => c.json(await myAssignments(ctx(c))))
+  .get('/me/client-visibility', async (c) => c.json(await clientVisibilityFor(c.var.tx, c.var.actor.membershipId)))
 
   // Policies & devices
   .get('/policies/:scopeType/:scopeId', async (c) => c.json(await getPolicyLayer(ctx(c), scopeType.parse(c.req.param('scopeType')), c.req.param('scopeId'))))

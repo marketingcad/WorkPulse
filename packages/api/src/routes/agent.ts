@@ -7,7 +7,7 @@ import { body, query } from '../lib/http';
 import { rateLimit } from '../middleware/rate-limit';
 import { requireUser, userId } from '../middleware/auth';
 import { runInTenantTx } from '../middleware/tenant';
-import { myActivity, myNotifications, mySchedule, mySessions, mySummary, myTasks, myTimeOff, myTimesheet, readMyNotifications, requestMyTimeOff, submitMyTimesheet } from '../services/agent-me';
+import { myActivity, myClientVisibility, myNotifications, mySchedule, mySessions, mySummary, myTasks, myTimeOff, myTimesheet, readMyNotifications, requestMyTimeOff, submitMyTimesheet } from '../services/agent-me';
 import { acknowledgePolicy, bootstrap, createDeviceAuthCode, heartbeat, ingestBatch, loadAgentCtx, loginDevice, refreshDeviceToken, registerDevice, screenshotKeyPrefix, type AgentCtx } from '../services/agent';
 
 type AgentEnv = AppEnv & { Variables: AppEnv['Variables'] & { agent: AgentCtx } };
@@ -66,6 +66,7 @@ agentOnly
   .get('/me/time-off', rateLimit('agent-me', 240, 60), async (c) => c.json(await myTimeOff(c.var.agent)))
   .post('/me/time-off', rateLimit('agent-me-write', 30, 60), async (c) => c.json(await requestMyTimeOff(c.var.agent, await body(c, timeOffRequestInput)), 201))
   .get('/me/notifications', rateLimit('agent-me', 240, 60), async (c) => c.json(await myNotifications(c.var.agent)))
+  .get('/me/client-visibility', rateLimit('agent-me', 240, 60), async (c) => c.json(await myClientVisibility(c.var.agent)))
   .post('/me/notifications/read', rateLimit('agent-me-write', 60, 60), async (c) => {
     const { ids } = await body(c, z.object({ ids: z.union([z.literal('all'), z.array(z.uuid()).max(200)]) }));
     await readMyNotifications(c.var.agent, ids);

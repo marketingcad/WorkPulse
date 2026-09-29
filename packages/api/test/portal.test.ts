@@ -287,3 +287,24 @@ describe('portal screenshots', () => {
     await admin.put(o(`/clients/${clientId}/portal`), { sections: { activity: false } });
   });
 });
+
+describe('worker transparency', () => {
+  it('tells a worker which clients can see their activity or screenshots', async () => {
+    await admin.put(o(`/clients/${clientId}/portal`), { enabled: true, sections: { activity: true, screenshots: false } });
+    const r = await walt.client.get(o('/me/client-visibility'));
+    expect(r.body).toEqual({ clients: [{ client_name: 'Acme', activity: true, screenshots: false }] });
+    const none = await admin.get(o('/me/client-visibility'));
+    expect(none.body).toEqual({ clients: [] });
+  });
+
+  it("gives a worker's desktop device the same answer as their web login", async () => {
+    const { verifier, challenge } = pkce();
+    const code = await walt.client.post('/agent/authorize', { code_challenge: challenge, organization_id: orgId });
+    const device = new Client(t);
+    device.bearer = (await device.post('/agent/register', { code: code.body.code, code_verifier: verifier, device: { name: 'Walt-Laptop', platform: 'windows', agent_version: '0.1.0' } })).body.access_token;
+    const web = await walt.client.get(o('/me/client-visibility'));
+    const dev = await device.get('/agent/me/client-visibility');
+    expect(dev.status).toBe(200);
+    expect(dev.body).toEqual(web.body);
+  });
+});

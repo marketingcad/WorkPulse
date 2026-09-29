@@ -9,6 +9,7 @@ import type { Ctx } from './ctx';
 import { activityDay } from './activity';
 import { balances, listShifts, listTimeOffRequests, requestTimeOff } from './operations';
 import { listNotifications, markNotificationsRead } from './platform';
+import { clientVisibilityFor } from './portal';
 import { getTimesheet, submitTimesheet } from './timesheets';
 import { listSessions } from './timer';
 import { workerTimezone } from './tracking';
@@ -145,6 +146,11 @@ export async function mySummary(a: AgentCtx, q: { from?: string; to?: string }) 
     days,
     projects: [...byProject.values()].sort((p, q2) => q2.seconds - p.seconds),
   };
+}
+
+/** Clients whose enabled portal shares this worker's activity or screenshots. */
+export async function myClientVisibility(a: AgentCtx) {
+  return clientVisibilityFor(a.tx, a.membershipId);
 }
 
 // ─── Worker actions ──────────────────────────────────────────────────────────

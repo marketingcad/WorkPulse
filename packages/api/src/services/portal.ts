@@ -21,7 +21,7 @@ import {
   type Tx,
 } from '@tallywork/db';
 import { businessRule, forbidden, newId, notFound } from '@tallywork/domain';
-import type { clientPortalAcceptInput, PortalListItemDto, PortalScreenshotDto, PortalSummaryDto } from '@tallywork/contracts';
+import type { clientPortalAcceptInput, ClientVisibilityDto, PortalListItemDto, PortalScreenshotDto, PortalSummaryDto } from '@tallywork/contracts';
 import type { z } from 'zod';
 import type { Deps } from '../context';
 import { sha256 } from '../lib/crypto';
@@ -74,6 +74,25 @@ export interface PortalAccess {
 export async function includedProjects(tx: Tx, clientId: string, selected: string[] | null): Promise<string[]> {
   const own = (await tx.select({ id: projects.id }).from(projects).where(eq(projects.clientId, clientId))).map((p) => p.id);
   return selected ? own.filter((id) => selected.includes(id)) : own;
+}
+
+/** Clients whose enabled portal shares activity or screenshots from projects this worker has time on. */
+export async function clientVisibilityFor(tx: Tx, membershipId: string): Promise<ClientVisibilityDto> {
+  const rows = await tx
+    .selectDistinct({ clientId: clients.id, clientName: clients.name, sections: clientPortalSettings.sections, projectIds: clientPortalSettings.projectIds, projectId: rollupWorkerDay.projectId })
+    .from(rollupWorkerDay)
+    .innerJoin(projects, eq(projects.id, rollupWorkerDay.projectId))
+    .innerJoin(clients, eq(clients.id, projects.clientId))
+    .innerJoin(clientPortalSettings, eq(clientPortalSettings.clientId, clients.id))
+    .where(and(eq(rollupWorkerDay.membershipId, membershipId), eq(clientPortalSettings.enabled, true), isNull(clients.archivedAt)));
+  const out = new Map<string, { client_name: string; activity: boolean; screenshots: boolean }>();
+  for (const r of rows) {
+    if (r.projectIds && !r.projectIds.includes(r.projectId)) continue;
+    const s = { ...DEFAULT_PORTAL_SECTIONS, ...r.sections };
+    if (!s.activity && !s.screenshots) continue;
+    out.set(r.clientId, { client_name: r.clientName, activity: s.activity, screenshots: s.screenshots });
+  }
+  return { clients: [...out.values()].sort((a, b) => a.client_name.localeCompare(b.client_name)) };
 }
 
 export async function listMyPortals(deps: Deps, userId: string): Promise<PortalListItemDto[]> {

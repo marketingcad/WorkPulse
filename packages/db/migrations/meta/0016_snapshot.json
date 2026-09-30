@@ -1,6 +1,6 @@
 {
-  "id": "f055f015-7179-4c59-bf69-b0b94b4699d9",
-  "prevId": "512f529c-4aca-4c35-b1f0-64aeefad27c1",
+  "id": "5a9f9769-7658-47b6-bb9f-1b7cff05e5ae",
+  "prevId": "f055f015-7179-4c59-bf69-b0b94b4699d9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4208,6 +4208,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "duration_only": {
+          "name": "duration_only",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "edited": {
           "name": "edited",
           "type": "boolean",
@@ -5263,6 +5270,19 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "billable_seconds": {
+          "name": "billable_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_only": {
+          "name": "duration_only",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "status": {
           "name": "status",

@@ -1,6 +1,6 @@
 {
-  "id": "512f529c-4aca-4c35-b1f0-64aeefad27c1",
-  "prevId": "0af94388-40b3-4884-b88a-b975f84eaaf3",
+  "id": "f055f015-7179-4c59-bf69-b0b94b4699d9",
+  "prevId": "512f529c-4aca-4c35-b1f0-64aeefad27c1",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1892,6 +1892,96 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.project_documents": {
+      "name": "project_documents",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "file_id": {
+          "name": "file_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bytes": {
+          "name": "bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "uploaded_by": {
+          "name": "uploaded_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "project_documents_organization_id_project_id_index": {
+          "name": "project_documents_organization_id_project_id_index",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.project_members": {
       "name": "project_members",
       "schema": "",
@@ -2116,6 +2206,37 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
+        },
+        "short_name": {
+          "name": "short_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estimate_seconds": {
+          "name": "estimate_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "estimate_unit": {
+          "name": "estimate_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'HOURS'"
         },
         "archived_at": {
           "name": "archived_at",

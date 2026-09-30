@@ -1,6 +1,6 @@
 {
-  "id": "112ea13d-0461-4640-b6f5-ee3f621deb58",
-  "prevId": "6ab15dff-67eb-4a94-8b13-f769b7f0b399",
+  "id": "0af94388-40b3-4884-b88a-b975f84eaaf3",
+  "prevId": "112ea13d-0461-4640-b6f5-ee3f621deb58",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3610,6 +3610,20 @@
           "notNull": true,
           "default": 0
         },
+        "pay_weighted_seconds": {
+          "name": "pay_weighted_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "bill_weighted_seconds": {
+          "name": "bill_weighted_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
@@ -4064,6 +4078,12 @@
         "note": {
           "name": "note",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "time_type_id": {
+          "name": "time_type_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -5117,6 +5137,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "time_type_id": {
+          "name": "time_type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -5226,6 +5252,98 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.time_types": {
+      "name": "time_types",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "short_name": {
+          "name": "short_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#475569'"
+        },
+        "pay_coefficient": {
+          "name": "pay_coefficient",
+          "type": "numeric(6, 3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "bill_coefficient": {
+          "name": "bill_coefficient",
+          "type": "numeric(6, 3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "not_billable": {
+          "name": "not_billable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "is_default": {
+          "name": "is_default",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.timesheet_entries": {
       "name": "timesheet_entries",
       "schema": "",
@@ -5295,6 +5413,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "time_type_id": {
+          "name": "time_type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "snapshot_at": {
           "name": "snapshot_at",
@@ -8748,6 +8872,59 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.reminder_sends": {
+      "name": "reminder_sends",
+      "schema": "",
+      "columns": {
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "membership_id": {
+          "name": "membership_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reminder_date": {
+          "name": "reminder_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "reminder_sends_membership_id_kind_reminder_date_pk": {
+          "name": "reminder_sends_membership_id_kind_reminder_date_pk",
+          "columns": [
+            "membership_id",
+            "kind",
+            "reminder_date"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

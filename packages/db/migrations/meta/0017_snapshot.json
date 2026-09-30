@@ -1,6 +1,6 @@
 {
-  "id": "5a9f9769-7658-47b6-bb9f-1b7cff05e5ae",
-  "prevId": "f055f015-7179-4c59-bf69-b0b94b4699d9",
+  "id": "b20f1ffd-5ecc-4329-a3b4-f3c319d6f8fa",
+  "prevId": "5a9f9769-7658-47b6-bb9f-1b7cff05e5ae",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -118,6 +118,20 @@
         },
         "team_ids": {
           "name": "team_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "team_role": {
+          "name": "team_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'MEMBER'"
+        },
+        "project_ids": {
+          "name": "project_ids",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true,

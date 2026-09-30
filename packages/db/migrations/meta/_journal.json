@@ -85,6 +85,55 @@
       "when": 1790689312801,
       "tag": "0011_client_portal",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790695545445,
+      "tag": "0012_client_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790696925578,
+      "tag": "0013_staff_company_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790698339681,
+      "tag": "0014_timesheet_rules_time_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1790699102515,
+      "tag": "0015_payroll",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790708437796,
+      "tag": "0016_project_details_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790711316495,
+      "tag": "0017_duration_entries",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790718262270,
+      "tag": "0018_invite_projects_team_role",
+      "breakpoints": true
     }
   ]
 }

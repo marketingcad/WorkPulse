@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   billingEntries,
@@ -11,6 +11,7 @@ import {
   invoiceSequences,
   invoices,
   memberships,
+  organizations,
   paymentAllocations,
   payments,
   projects,
@@ -35,8 +36,10 @@ import {
   resolveRate,
   validation,
   type Rate,
+  type RateKind,
+  type RateScope,
 } from '@tallywork/domain';
-import type { BudgetStatusDto, budgetInput, expenseInput, invoiceCreateInput, paymentInput, rateInput } from '@tallywork/contracts';
+import type { BudgetStatusDto, budgetInput, expenseInput, invoiceCreateInput, invoiceDraftUpdateInput, paymentInput, rateInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
 import { audit, emit, emitFrom } from './events';
@@ -44,10 +47,26 @@ import { narrowMemberships } from './scope';
 import { memberNames } from './timer';
 import { membersWith, notify } from './notify';
 
+/** The issuing company as printed on invoices. */
+export async function companyProfile(x: Ctx) {
+  const [o] = await x.tx
+    .select({ name: organizations.name, logo: organizations.logo, brief: organizations.brief, taxId: organizations.taxId, address: organizations.address, phone: organizations.phone, email: organizations.email })
+    .from(organizations)
+    .where(eq(organizations.id, x.org.id));
+  return o ?? { name: x.org.name };
+}
+
 // ─── Rates ───────────────────────────────────────────────────────────────────
 export async function loadRates(tx: Tx): Promise<Rate[]> {
   const rows = await tx.select().from(billingRates);
   return rows.map((r) => ({ id: r.id, kind: r.kind, scope: r.scope, scopeId: r.scopeId, amountMinor: r.amountMinor, currency: r.currency, effectiveFrom: r.effectiveFrom, effectiveTo: r.effectiveTo }));
+}
+
+/** project id → client id, for rate resolution. */
+export async function projectClients(tx: Tx, projectIds: string[]) {
+  const ids = [...new Set(projectIds)];
+  const rows = ids.length ? await tx.select({ id: projects.id, clientId: projects.clientId }).from(projects).where(inArray(projects.id, ids)) : [];
+  return new Map(rows.map((p) => [p.id, p.clientId]));
 }
 
 export async function listRates(x: Ctx) {
@@ -66,24 +85,67 @@ async function rateInUse(tx: Tx, rateId: string): Promise<boolean> {
 }
 
 /** New rate version: closes the previous open-ended rate for the same scope (history kept). */
-export async function setRate(x: Ctx, input: z.infer<typeof rateInput>) {
-  if (!x.actor.grants['rates:manage']) throw forbidden();
-  const scopeId = input.scope === 'ORG' ? null : (input.scope_id ?? null);
-  if (input.scope !== 'ORG' && !scopeId) throw validation('scope_id is required for this scope');
+/** Ends the open-ended rate(s) for one kind + scope at `from` (history kept). Returns what was closed. */
+export async function closeOpenRates(x: Ctx, kind: RateKind, scope: RateScope, scopeId: string | null, from: string) {
   const prev = await x.tx
     .select()
     .from(billingRates)
-    .where(and(eq(billingRates.kind, input.kind), eq(billingRates.scope, input.scope), scopeId ? eq(billingRates.scopeId, scopeId) : isNull(billingRates.scopeId), isNull(billingRates.effectiveTo)));
+    .where(and(eq(billingRates.kind, kind), eq(billingRates.scope, scope), scopeId ? eq(billingRates.scopeId, scopeId) : isNull(billingRates.scopeId), isNull(billingRates.effectiveTo)));
   for (const p of prev) {
-    if (p.effectiveFrom >= input.effective_from) {
+    if (p.effectiveFrom >= from) {
       // Superseded before it started. A rate that already priced approved time is kept (as an
       // empty window) so billing history still points at it; approved amounts never change.
       if (await rateInUse(x.tx, p.id)) await x.tx.update(billingRates).set({ effectiveTo: p.effectiveFrom, updatedAt: new Date() }).where(eq(billingRates.id, p.id));
       else await x.tx.delete(billingRates).where(eq(billingRates.id, p.id));
     } else {
-      await x.tx.update(billingRates).set({ effectiveTo: input.effective_from, updatedAt: new Date() }).where(eq(billingRates.id, p.id));
+      await x.tx.update(billingRates).set({ effectiveTo: from, updatedAt: new Date() }).where(eq(billingRates.id, p.id));
     }
   }
+  return prev;
+}
+
+/** Rates of one scope effective today, keyed `${kind}:${scopeId}`. */
+export async function currentScopedRates(x: Ctx, scope: RateScope) {
+  const today = localDate(x.deps.now(), x.org.timezone);
+  const rows = await x.tx
+    .select()
+    .from(billingRates)
+    .where(and(eq(billingRates.scope, scope), lte(billingRates.effectiveFrom, today), or(isNull(billingRates.effectiveTo), gt(billingRates.effectiveTo, today))))
+    .orderBy(asc(billingRates.effectiveFrom));
+  return new Map(rows.map((r) => [`${r.kind}:${r.scopeId}`, r]));
+}
+
+export type RateChange = [RateKind, number | null];
+
+/** Collects the pay/bill amounts a form sent (undefined = untouched, null = clear). */
+export function rateChanges(input: { pay_rate_minor?: number | null; bill_rate_minor?: number | null }): RateChange[] {
+  const out: RateChange[] = [];
+  if (input.bill_rate_minor !== undefined) out.push(['BILL', input.bill_rate_minor]);
+  if (input.pay_rate_minor !== undefined) out.push(['PAY', input.pay_rate_minor]);
+  return out;
+}
+
+/** Applies form rate edits for one scope from today: unchanged amounts create no new version, null ends the rate. */
+export async function applyScopedRates(x: Ctx, scope: RateScope, scopeId: string, changes: RateChange[], currency: string) {
+  if (!changes.length) return;
+  if (!x.actor.grants['rates:manage']) throw forbidden();
+  const current = await currentScopedRates(x, scope);
+  const today = localDate(x.deps.now(), x.org.timezone);
+  for (const [kind, amount] of changes) {
+    const cur = current.get(`${kind}:${scopeId}`);
+    if (amount === null) {
+      if (cur) await closeOpenRates(x, kind, scope, scopeId, today);
+    } else if (!cur || cur.amountMinor !== amount || cur.currency !== currency) {
+      await setRate(x, { kind, scope, scope_id: scopeId, amount_minor: amount, currency, effective_from: today });
+    }
+  }
+}
+
+export async function setRate(x: Ctx, input: z.infer<typeof rateInput>) {
+  if (!x.actor.grants['rates:manage']) throw forbidden();
+  const scopeId = input.scope === 'ORG' ? null : (input.scope_id ?? null);
+  if (input.scope !== 'ORG' && !scopeId) throw validation('scope_id is required for this scope');
+  const prev = await closeOpenRates(x, input.kind, input.scope, scopeId, input.effective_from);
   const id = newId();
   await x.tx.insert(billingRates).values({ id, organizationId: x.org.id, kind: input.kind, scope: input.scope, scopeId, amountMinor: input.amount_minor, currency: input.currency, effectiveFrom: input.effective_from, createdBy: x.actor.membershipId });
   await audit(x, { action: 'rate.set', targetType: 'rate', targetId: id, before: prev, after: input });
@@ -146,9 +208,12 @@ async function budgetSpent(tx: Tx, b: typeof budgets.$inferSelect, rates: Rate[]
     const clientOf = new Map((await tx.select({ id: projects.id, c: projects.clientId }).from(projects).where(inArray(projects.id, projectIds))).map((p) => [p.id, p.c]));
     for (const r of rows) {
       const a = byKey.get(`${r.membershipId}|${r.projectId}|${r.localDate}|${r.billable}`);
-      const rest = Math.max(0, r.trackedSeconds + r.manualSeconds - (a?.secs ?? 0));
+      const total = r.trackedSeconds + r.manualSeconds;
+      const rest = Math.max(0, total - (a?.secs ?? 0));
       const rate = rest > 0 ? resolveRate(rates, 'BILL', { date: r.localDate, membershipId: r.membershipId, projectId: r.projectId, clientId: clientOf.get(r.projectId) ?? null }) : null;
-      spent += (rate ? amountForSeconds(rest, rate.amountMinor) : 0) + Number(a?.amount ?? 0);
+      // Unapproved time carries the row's time-type bill weighting.
+      const weighted = total ? Math.round((rest * r.billWeightedSeconds) / total) : rest;
+      spent += (rate ? amountForSeconds(weighted, rate.amountMinor) : 0) + Number(a?.amount ?? 0);
       byKey.delete(`${r.membershipId}|${r.projectId}|${r.localDate}|${r.billable}`);
     }
     for (const a of byKey.values()) spent += Number(a.amount);
@@ -194,13 +259,18 @@ export async function budgetStatuses(tx: Tx, orgCurrency: string, today: string,
   return out.sort((a, b) => b.pct_used - a.pct_used);
 }
 
+/** Money budgets are measured in billed value, which only billing/rate viewers may see. */
+export function redactBudgetMoney(x: Pick<Ctx, 'actor'>, list: BudgetStatusDto[]): BudgetStatusDto[] {
+  if (x.actor.grants['billing:read'] || x.actor.grants['rates:read']) return list;
+  return list.map((b) => (b.kind === 'MONEY' ? { ...b, amount: 0, spent: 0, remaining: 0, projected: null, amounts_hidden: true } : b));
+}
+
 export async function listBudgets(x: Ctx) {
   const scope = x.actor.grants['budgets:read'];
   if (!scope) throw forbidden();
   const today = localDate(x.deps.now(), x.org.timezone);
   const all = await budgetStatuses(x.tx, x.org.currency, today);
-  if (scope === 'org') return all;
-  return all.filter((b) => b.subject_type === 'PROJECT' && x.actor.assignedProjectIds.has(b.subject_id));
+  return redactBudgetMoney(x, scope === 'org' ? all : all.filter((b) => b.subject_type === 'PROJECT' && x.actor.assignedProjectIds.has(b.subject_id)));
 }
 
 export async function upsertBudget(x: Ctx, input: z.infer<typeof budgetInput>) {
@@ -270,13 +340,14 @@ export async function amountsOwed(x: Ctx, from: string, to: string) {
     .where(and(isNull(billingEntries.voidedAt), gte(billingEntries.localDate, from), lte(billingEntries.localDate, to)))
     .groupBy(billingEntries.membershipId);
   const rates = await loadRates(x.tx);
+  const clientOf = await projectClients(x.tx, rows.map((r) => r.projectId));
   const byWorker = new Map<string, { seconds: number; estimated: number }>();
   for (const r of rows) {
     const secs = r.trackedSeconds + r.manualSeconds;
-    const rate = resolveRate(rates, 'PAY', { date: r.localDate, membershipId: r.membershipId, projectId: r.projectId, clientId: null });
+    const rate = resolveRate(rates, 'PAY', { date: r.localDate, membershipId: r.membershipId, projectId: r.projectId, clientId: clientOf.get(r.projectId) ?? null });
     const w = byWorker.get(r.membershipId) ?? { seconds: 0, estimated: 0 };
     w.seconds += secs;
-    w.estimated += rate ? amountForSeconds(secs, rate.amountMinor) : 0;
+    w.estimated += rate ? amountForSeconds(r.payWeightedSeconds, rate.amountMinor) : 0;
     byWorker.set(r.membershipId, w);
   }
   const names = await memberNames(x, [...byWorker.keys()]);
@@ -560,7 +631,7 @@ export async function getInvoice(x: Ctx, id: string) {
     ...inv,
     notes: raw?.notes ?? null,
     sent_at: raw?.sentAt?.toISOString() ?? null,
-    client: { name: client?.name ?? '', email: client?.email ?? null, address: client?.address ?? null },
+    client: { name: client?.name ?? '', email: client?.email ?? null, address: client?.address ?? null, contact_name: client?.contactName ?? null },
     lines: lines.map((l) => ({ id: l.id, kind: l.kind, description: l.description, quantity: l.quantity, unit_price_minor: l.unitPriceMinor, tax_rate_bps: l.taxRateBps, amount_minor: l.amountMinor, tax_minor: l.taxMinor })),
     payments: allocs.map(({ a, p }) => ({ payment_id: p.id, amount_minor: a.amountMinor, received_on: p.receivedOn, provider: p.provider, provider_ref: p.providerRef })),
   };
@@ -658,6 +729,22 @@ export async function deletePayment(x: Ctx, id: string) {
   }
   await x.tx.delete(payments).where(eq(payments.id, id));
   await audit(x, { action: 'payment.deleted', targetType: 'payment', targetId: id, before: { ...p, allocations: allocs } });
+}
+
+export async function updateDraftInvoice(x: Ctx, id: string, input: z.infer<typeof invoiceDraftUpdateInput>) {
+  if (!x.actor.grants['invoices:manage']) throw forbidden();
+  const [inv] = await x.tx.select().from(invoices).where(eq(invoices.id, id));
+  if (!inv) throw notFound('invoice');
+  if (inv.status !== 'DRAFT') throw businessRule('invoice_not_draft', 'Only draft invoices can be edited');
+  const issue = input.issue_date ?? inv.issueDate;
+  const due = input.due_date ?? inv.dueDate;
+  if (due < issue) throw validation('The due date cannot be before the issue date', { errors: [{ field: 'due_date', message: 'The due date cannot be before the issue date' }] });
+  await x.tx
+    .update(invoices)
+    .set({ issueDate: issue, dueDate: due, ...(input.notes !== undefined ? { notes: input.notes } : {}), updatedAt: new Date() })
+    .where(eq(invoices.id, id));
+  await audit(x, { action: 'invoice.updated', targetType: 'invoice', targetId: id, before: { issue_date: inv.issueDate, due_date: inv.dueDate }, after: { issue_date: issue, due_date: due } });
+  return getInvoice(x, id);
 }
 
 /** Draft invoices can be deleted outright (their time and expenses become invoiceable again). */

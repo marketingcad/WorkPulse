@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Activity, ArrowRight, Check, Clock, Eraser, Lock, Pencil, UserX, X } from 'lucide-react';
-import type { DeviceDto, EffectivePolicyDto, ProjectDto, TeamDto, TimeEntryDto, WorkerDto } from '@tallywork/contracts';
+import type { DeviceDto, EffectivePolicyDto, MemberDetailsDto, ProjectDto, TeamDto, TimeEntryDto, WorkerDto } from '@tallywork/contracts';
 import {
   Avatar,
   Badge,
@@ -25,7 +25,9 @@ import {
   Tabs,
   fmtDate,
   fmtDateTime,
+  fmtMoney,
   fmtRelative,
+  Textarea,
   fmtTime,
   useToast,
   type Column,
@@ -35,6 +37,7 @@ import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
 import { ColorDot, ProjectStatusBadge, hoursToSeconds, secondsToHours, useOrgAction, type RoleDto } from '@/components/workspace/shared';
 import { AnonymizeDialog } from '@/components/security/anonymize-dialog';
 import { DataExportAction } from '@/components/security/data-export';
+import { fromMinor, toMinor } from '@/components/finance/types';
 
 export default function WorkerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -56,6 +59,7 @@ export default function WorkerDetailPage() {
   const teamNames = w.team_ids.map((t) => teamsQ.data?.find((x) => x.id === t)?.name).filter(Boolean) as string[];
   const items = [
     { value: 'overview', label: 'Overview' },
+    ...(org.can('members:manage') || isSelf ? [{ value: 'personal', label: 'Personal info' }] : []),
     ...(org.can('time:read') ? [{ value: 'time', label: 'Time' }] : []),
     ...(org.can('activity:read') ? [{ value: 'activity', label: 'Activity' }] : []),
     { value: 'projects', label: 'Projects' },
@@ -90,6 +94,7 @@ export default function WorkerDetailPage() {
       />
       <Tabs value={tab} onValueChange={setTab} items={items} className="mb-4" />
       {tab === 'overview' && <OverviewTab w={w} teamNames={teamNames} />}
+      {tab === 'personal' && <PersonalTab w={w} />}
       {tab === 'time' && <TimeTab w={w} />}
       {tab === 'activity' && <ActivityTab w={w} />}
       {tab === 'projects' && <ProjectsTab w={w} teams={teamsQ.data ?? []} />}
@@ -157,6 +162,9 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
             <Stat label="Employment" value={w.employment_type === 'CONTRACTOR' ? 'Contractor' : 'Employee'} />
             <Stat label="Expected per week" value={w.weekly_expected_seconds === null ? 'Not set' : org.fmtDuration(w.weekly_expected_seconds)} />
             <Stat label="Start date" value={w.start_date ? fmtDate(w.start_date) : 'Not set'} />
+            {w.end_date && <Stat label="Date left" value={fmtDate(w.end_date)} />}
+            {w.pay_rate_minor !== undefined && <Stat label="Pay rate" value={w.pay_rate_minor === null ? 'Not set' : `${fmtMoney(w.pay_rate_minor, org.organization.currency)} / h`} />}
+            {w.bill_rate_minor !== undefined && <Stat label="Bill rate" value={w.bill_rate_minor === null ? 'Not set' : `${fmtMoney(w.bill_rate_minor, org.organization.currency)} / h`} />}
             <Stat
               label="Time tracking"
               value={
@@ -289,6 +297,7 @@ function QuickLink({ href, icon, label }: { href: string; icon: ReactNode; label
 }
 
 function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto[]; admin: boolean; onDone: () => void }) {
+  const org = useOrg();
   const run = useOrgAction();
   const toast = useToast();
   const [f, setF] = useState({
@@ -299,7 +308,11 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
     employment_type: w.employment_type,
     weekly: secondsToHours(w.weekly_expected_seconds),
     start_date: w.start_date ?? '',
+    end_date: w.end_date ?? '',
+    pay_rate: w.pay_rate_minor != null ? fromMinor(w.pay_rate_minor) : '',
+    bill_rate: w.bill_rate_minor != null ? fromMinor(w.bill_rate_minor) : '',
   });
+  const canRates = org.can('rates:manage');
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const zones = useMemo(() => {
@@ -319,9 +332,19 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
       body.employment_type = f.employment_type;
       body.weekly_expected_seconds = hoursToSeconds(f.weekly);
       body.start_date = f.start_date || null;
+      body.end_date = f.end_date || null;
       if (!w.is_owner && f.role_id !== w.role_id) body.role_id = f.role_id;
     }
     try {
+      if (canRates) {
+        for (const [key, field, cur] of [['pay_rate', 'pay_rate_minor', w.pay_rate_minor], ['bill_rate', 'bill_rate_minor', w.bill_rate_minor]] as const) {
+          const v = f[key].trim();
+          if (v === (cur != null ? fromMinor(cur) : '')) continue;
+          const minor = v ? toMinor(v) : null;
+          if (v && minor === null) throw new ApiError(422, 'validation', 'Enter a valid amount', undefined, [{ field, message: 'Enter an amount like 25 or 25.50' }]);
+          body[field] = minor;
+        }
+      }
       await run('PATCH', `/workers/${w.id}`, body);
       toast.success('Profile saved');
       onDone();
@@ -378,6 +401,19 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
           <Field label="Start date" htmlFor="wk-start" hint="Employment start. Time-off accruals are pro-rated from it." error={err?.field('start_date')}>
             <Input id="wk-start" type="date" value={f.start_date} onChange={(e) => setF({ ...f, start_date: e.target.value })} />
           </Field>
+          <Field label="Date left" htmlFor="wk-end" hint="Set automatically when the member is removed." error={err?.field('end_date')}>
+            <Input id="wk-end" type="date" value={f.end_date} min={f.start_date || undefined} onChange={(e) => setF({ ...f, end_date: e.target.value })} />
+          </Field>
+          {canRates && (
+            <>
+              <Field label="Pay rate per hour" htmlFor="wk-pay" hint={`${org.organization.currency}. What you pay this member. Overrides client and workspace rates.`} error={err?.field('pay_rate_minor')}>
+                <Input id="wk-pay" inputMode="decimal" className="tabular" placeholder="0.00" value={f.pay_rate} onChange={(e) => setF({ ...f, pay_rate: e.target.value })} />
+              </Field>
+              <Field label="Bill rate per hour" htmlFor="wk-bill" hint={`${org.organization.currency}. What you charge for their time. A project rate still wins.`} error={err?.field('bill_rate_minor')}>
+                <Input id="wk-bill" inputMode="decimal" className="tabular" placeholder="0.00" value={f.bill_rate} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} />
+              </Field>
+            </>
+          )}
           <div className="sm:col-span-2">
             <Switch checked={f.tracking_enabled} onCheckedChange={(v) => setF({ ...f, tracking_enabled: v })} label="Time tracking" description="When off, this member cannot start timers on the web or desktop app." />
           </div>
@@ -390,6 +426,143 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
         </Button>
       </div>
     </form>
+  );
+}
+
+// ─── Personal info ───────────────────────────────────────────────────────────
+type DetailKey = keyof MemberDetailsDto;
+const DETAIL_SECTIONS: Array<{ title: string; fields: Array<{ key: DetailKey; label: string; type?: string; wide?: boolean; long?: boolean; max: number }> }> = [
+  {
+    title: 'Identity',
+    fields: [
+      { key: 'first_name', label: 'First name', max: 100 },
+      { key: 'last_name', label: 'Last name', max: 100 },
+      { key: 'birth_date', label: 'Birth date', type: 'date', max: 10 },
+    ],
+  },
+  {
+    title: 'Contact',
+    fields: [
+      { key: 'personal_email', label: 'Personal email', type: 'email', max: 254 },
+      { key: 'phone', label: 'Phone number', type: 'tel', max: 50 },
+      { key: 'address', label: 'Address', wide: true, max: 500 },
+      { key: 'city', label: 'City', max: 100 },
+      { key: 'region', label: 'State / region', max: 100 },
+      { key: 'postal_code', label: 'Postal code', max: 20 },
+      { key: 'country', label: 'Country', max: 100 },
+    ],
+  },
+  {
+    title: 'Emergency contact',
+    fields: [
+      { key: 'emergency_contact_name', label: 'Name', max: 150 },
+      { key: 'emergency_contact_phone', label: 'Phone number', type: 'tel', max: 50 },
+    ],
+  },
+  {
+    title: 'Background',
+    fields: [
+      { key: 'education', label: 'Education', wide: true, long: true, max: 1000 },
+      { key: 'notes', label: 'HR notes', wide: true, long: true, max: 5000 },
+    ],
+  },
+];
+
+function PersonalTab({ w }: { w: WorkerDto }) {
+  const q = useOrgQuery<MemberDetailsDto>(`/workers/${w.id}/details`);
+  const run = useOrgAction();
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const [f, setF] = useState<Record<string, string>>({});
+  const [err, setErr] = useState<ApiError | null>(null);
+  const [busy, setBusy] = useState(false);
+  const d = q.data;
+
+  if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
+  if (!d)
+    return (
+      <Panel>
+        <SkeletonRows rows={5} cols={2} />
+      </Panel>
+    );
+
+  // `notes` is only returned to admins, so the member never sees an HR notes field.
+  const sections = DETAIL_SECTIONS.map((s) => ({ ...s, fields: s.fields.filter((x) => x.key in d) })).filter((s) => s.fields.length);
+  const start = () => {
+    setF(Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v ?? ''])));
+    setErr(null);
+    setEditing(true);
+  };
+  const save = async () => {
+    setBusy(true);
+    setErr(null);
+    const body = Object.fromEntries(Object.entries(f).filter(([k, v]) => v !== (d[k as DetailKey] ?? '')).map(([k, v]) => [k, v.trim() || null]));
+    try {
+      await run('PATCH', `/workers/${w.id}/details`, body);
+      toast.success('Personal info saved');
+      setEditing(false);
+    } catch (e) {
+      if (e instanceof ApiError) setErr(e);
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Panel
+      title="Personal info"
+      actions={
+        !editing && (
+          <Button size="xs" icon={<Pencil className="size-3" />} onClick={start}>
+            Edit
+          </Button>
+        )
+      }
+    >
+      <p className="flex items-start gap-2 px-4 pt-4 text-xs text-text-muted">
+        <Lock className="mt-0.5 size-3 shrink-0" />
+        Only this member and workspace admins can see these details. They are deleted if the member’s data is erased.
+      </p>
+      <form
+        className="flex flex-col gap-5 p-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        {sections.map((s) => (
+          <section key={s.title} className="flex flex-col gap-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">{s.title}</h3>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {s.fields.map((x) =>
+                editing ? (
+                  <Field key={x.key} label={x.label} htmlFor={`pd-${x.key}`} error={err?.field(x.key)} className={x.wide ? 'sm:col-span-3' : undefined}>
+                    {x.long ? (
+                      <Textarea id={`pd-${x.key}`} value={f[x.key] ?? ''} maxLength={x.max} onChange={(e) => setF({ ...f, [x.key]: e.target.value })} className="min-h-16" />
+                    ) : (
+                      <Input id={`pd-${x.key}`} type={x.type ?? 'text'} value={f[x.key] ?? ''} maxLength={x.max} onChange={(e) => setF({ ...f, [x.key]: e.target.value })} />
+                    )}
+                  </Field>
+                ) : (
+                  <div key={x.key} className={x.wide ? 'sm:col-span-3' : undefined}>
+                    <Stat label={x.label} value={<span className={x.long ? 'whitespace-pre-wrap' : undefined}>{x.type === 'date' && d[x.key] ? fmtDate(d[x.key]!) : (d[x.key] ?? '—')}</span>} />
+                  </div>
+                ),
+              )}
+            </div>
+          </section>
+        ))}
+        {editing && (
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => setEditing(false)}>Cancel</Button>
+            <Button type="submit" variant="primary" loading={busy}>
+              Save personal info
+            </Button>
+          </div>
+        )}
+      </form>
+    </Panel>
   );
 }
 

@@ -7,6 +7,7 @@ import {
   expenseInput,
   holidayInput,
   invoiceCreateInput,
+  invoiceDraftUpdateInput,
   paymentInput,
   rateInput,
   scheduleInput,
@@ -15,6 +16,10 @@ import {
   timeOffRequestInput,
   breakTypeInput,
   overtimeRulesInput,
+  bankDetailsInput,
+  payAdjustmentsInput,
+  payrollProfileInput,
+  payrollRunInput,
 } from '@tallywork/contracts';
 import type { AppEnv } from '../context';
 import { body, idList, query } from '../lib/http';
@@ -64,8 +69,29 @@ import {
   voidInvoice,
   deletePayment,
   deleteDraftInvoice,
+  updateDraftInvoice,
+  companyProfile,
 } from '../services/finance';
 import { renderInvoicePdf } from '../lib/invoice-pdf';
+import { renderPayStubPdf } from '../lib/pay-stub-pdf';
+import {
+  archivePayrollProfile,
+  createPayrollRun,
+  deletePayrollRun,
+  finalizePayrollRun,
+  getBankDetails,
+  getPayStub,
+  getPayrollRun,
+  listPayrollProfiles,
+  listPayrollRuns,
+  markPayrollPaid,
+  myPayStubs,
+  myPayrollProfiles,
+  recalculatePayrollRun,
+  setBankDetails,
+  setPayAdjustments,
+  upsertPayrollProfile,
+} from '../services/payroll';
 
 const range = dateRangeQuery.and(z.object({ membership_ids: idList }));
 
@@ -153,11 +179,46 @@ export const financeRoutes = new Hono<AppEnv>()
   .get('/invoices/:id/pdf', async (c) => {
     const x = ctx(c);
     const inv = await getInvoice(x, c.req.param('id'));
-    const pdf = await renderInvoicePdf(inv, x.org);
+    const pdf = await renderInvoicePdf(inv, await companyProfile(x));
     return new Response(new Uint8Array(pdf), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${inv.number}.pdf"`, 'Cache-Control': 'private, no-store' } });
   })
+  .patch('/invoices/:id', async (c) => c.json(await updateDraftInvoice(ctx(c), c.req.param('id'), await body(c, invoiceDraftUpdateInput))))
   .post('/invoices/:id/send', async (c) => c.json(await sendInvoice(ctx(c), c.req.param('id'))))
   .post('/invoices/:id/void', async (c) => c.json(await voidInvoice(ctx(c), c.req.param('id'))))
+
+  // Payroll
+  .get('/payroll/profiles', async (c) => c.json(await listPayrollProfiles(ctx(c), { includeArchived: c.req.query('include_archived') === 'true' })))
+  .post('/payroll/profiles', async (c) => c.json(await upsertPayrollProfile(ctx(c), null, await body(c, payrollProfileInput)), 201))
+  .patch('/payroll/profiles/:id', async (c) => c.json(await upsertPayrollProfile(ctx(c), c.req.param('id'), await body(c, payrollProfileInput))))
+  .delete('/payroll/profiles/:id', async (c) => {
+    await archivePayrollProfile(ctx(c), c.req.param('id'));
+    return c.body(null, 204);
+  })
+  .get('/payroll/profiles/:id/members/:mid/bank', async (c) => c.json(await getBankDetails(ctx(c), c.req.param('id'), c.req.param('mid'))))
+  .put('/payroll/profiles/:id/members/:mid/bank', async (c) => c.json(await setBankDetails(ctx(c), c.req.param('id'), c.req.param('mid'), await body(c, bankDetailsInput))))
+  .get('/payroll/runs', async (c) => {
+    const q = query(c, z.object({ year: z.coerce.number().int().min(2000).max(2100).optional() }));
+    return c.json(await listPayrollRuns(ctx(c), { year: q.year }));
+  })
+  .post('/payroll/runs', async (c) => c.json(await createPayrollRun(ctx(c), await body(c, payrollRunInput)), 201))
+  .get('/payroll/runs/:id', async (c) => c.json(await getPayrollRun(ctx(c), c.req.param('id'))))
+  .post('/payroll/runs/:id/recalculate', async (c) => c.json(await recalculatePayrollRun(ctx(c), c.req.param('id'))))
+  .post('/payroll/runs/:id/finalize', async (c) => c.json(await finalizePayrollRun(ctx(c), c.req.param('id'))))
+  .post('/payroll/runs/:id/paid', async (c) => c.json(await markPayrollPaid(ctx(c), c.req.param('id'))))
+  .put('/payroll/runs/:id/lines/:lineId/adjustments', async (c) => c.json(await setPayAdjustments(ctx(c), c.req.param('id'), c.req.param('lineId'), await body(c, payAdjustmentsInput))))
+  .delete('/payroll/runs/:id', async (c) => {
+    await deletePayrollRun(ctx(c), c.req.param('id'));
+    return c.body(null, 204);
+  })
+  .get('/me/pay-stubs', async (c) => c.json(await myPayStubs(ctx(c))))
+  .get('/me/payroll-profiles', async (c) => c.json(await myPayrollProfiles(ctx(c))))
+  .get('/pay-stubs/:id', async (c) => c.json(await getPayStub(ctx(c), c.req.param('id'))))
+  .get('/pay-stubs/:id/pdf', async (c) => {
+    const x = ctx(c);
+    const stub = await getPayStub(x, c.req.param('id'));
+    const pdf = await renderPayStubPdf(stub, await companyProfile(x));
+    return new Response(new Uint8Array(pdf), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="pay-stub-${stub.period_start}.pdf"`, 'Cache-Control': 'private, no-store' } });
+  })
   .get('/payments', async (c) => c.json(await listPayments(ctx(c))))
   .post('/payments', async (c) => c.json(await recordPayment(ctx(c), await body(c, paymentInput)), 201))
   .delete('/payments/:id', async (c) => {

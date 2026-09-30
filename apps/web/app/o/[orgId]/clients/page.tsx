@@ -1,33 +1,15 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Archive, ArchiveRestore, FolderKanban, LayoutDashboard, MoreHorizontal, Pencil, Plus } from 'lucide-react';
+import { Archive, ArchiveRestore, FileText, FolderKanban, LayoutDashboard, MoreHorizontal, Pencil, Plus } from 'lucide-react';
 import type { ClientDto } from '@tallywork/contracts';
-import {
-  Button,
-  Checkbox,
-  ConfirmDialog,
-  DataTable,
-  Dialog,
-  EmptyState,
-  ErrorState,
-  Field,
-  IconButton,
-  Input,
-  Menu,
-  MenuItem,
-  PageHeader,
-  Panel,
-  PermissionState,
-  StatusBadge,
-  Textarea,
-  useToast,
-  type Column,
-} from '@tallywork/ui';
-import { ApiError, errorMessage, qs, useOrgQuery } from '@/lib/api';
+import { Button, Checkbox, ConfirmDialog, DataTable, EmptyState, ErrorState, IconButton, Menu, MenuItem, PageHeader, Panel, PermissionState, StatusBadge, useToast, type Column } from '@tallywork/ui';
+import { errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
 import { useOrgAction } from '@/components/workspace/shared';
+import { LogoAvatar } from '@/components/workspace/logo-editor';
+import { ClientDialog } from '@/components/workspace/client-dialog';
 
 export default function ClientsPage() {
   const org = useOrg();
@@ -60,6 +42,7 @@ export default function ClientsPage() {
       value: (c) => c.name,
       cell: (c) => (
         <span className="flex items-center gap-2">
+          <LogoAvatar name={c.name} logo={c.logo} color={c.color} className="size-6 text-2xs" />
           <span className="truncate font-medium">{c.name}</span>
           {c.archived_at && <StatusBadge status="ARCHIVED" />}
         </span>
@@ -93,6 +76,11 @@ export default function ClientsPage() {
                   <MenuItem icon={<LayoutDashboard className="size-3.5" />} onSelect={() => router.push(`${org.base}/clients/${c.id}/portal`)}>
                     {t('portal.admin.title')}
                   </MenuItem>
+                  {org.can('invoices:manage') && !c.archived_at && (
+                    <MenuItem icon={<FileText className="size-3.5" />} onSelect={() => router.push(`${org.base}/finance/invoices/new?client=${c.id}`)}>
+                      New invoice
+                    </MenuItem>
+                  )}
                   {c.archived_at ? (
                     <MenuItem icon={<ArchiveRestore className="size-3.5" />} onSelect={() => restore(c)}>
                       Restore
@@ -177,86 +165,3 @@ export default function ClientsPage() {
   );
 }
 
-function ClientDialog({ client, open, onOpenChange }: { client: ClientDto | null; open: boolean; onOpenChange: (o: boolean) => void }) {
-  const run = useOrgAction();
-  const toast = useToast();
-  const empty = { name: '', email: '', phone: '', address: '', currency: '', notes: '' };
-  const [f, setF] = useState(empty);
-  const [err, setErr] = useState<ApiError | null>(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    setErr(null);
-    setF(client ? { name: client.name, email: client.email ?? '', phone: client.phone ?? '', address: client.address ?? '', currency: client.currency ?? '', notes: client.notes ?? '' } : empty);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, client]);
-
-  const save = async () => {
-    setBusy(true);
-    setErr(null);
-    const body = {
-      name: f.name,
-      email: f.email.trim() || null,
-      phone: f.phone || null,
-      address: f.address || null,
-      currency: f.currency.trim().toUpperCase() || null,
-      notes: f.notes || null,
-    };
-    try {
-      if (client) await run('PATCH', `/clients/${client.id}`, body);
-      else await run('POST', '/clients', body);
-      toast.success(client ? 'Client updated' : 'Client created');
-      onOpenChange(false);
-    } catch (e) {
-      if (e instanceof ApiError) setErr(e);
-      toast.error(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={client ? 'Edit client' : 'New client'}
-      width={560}
-      footer={
-        <>
-          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" loading={busy} disabled={!f.name.trim()} onClick={save}>
-            {client ? 'Save client' : 'Create client'}
-          </Button>
-        </>
-      }
-    >
-      <form
-        className="grid grid-cols-1 gap-3 sm:grid-cols-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        <Field label="Name" htmlFor="cl-name" required error={err?.field('name')} className="sm:col-span-2">
-          <Input id="cl-name" autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={150} />
-        </Field>
-        <Field label="Email" htmlFor="cl-email" error={err?.field('email')}>
-          <Input id="cl-email" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="billing@client.com" />
-        </Field>
-        <Field label="Phone" htmlFor="cl-phone" error={err?.field('phone')}>
-          <Input id="cl-phone" type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} maxLength={50} />
-        </Field>
-        <Field label="Address" htmlFor="cl-address" error={err?.field('address')} className="sm:col-span-2">
-          <Textarea id="cl-address" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} maxLength={500} className="min-h-16" />
-        </Field>
-        <Field label="Currency" htmlFor="cl-currency" hint="ISO code, e.g. EUR. Empty uses the workspace currency." error={err?.field('currency')}>
-          <Input id="cl-currency" value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value.toUpperCase() })} maxLength={3} className="tabular uppercase" placeholder="USD" />
-        </Field>
-        <Field label="Notes" htmlFor="cl-notes" error={err?.field('notes')} className="sm:col-span-2">
-          <Textarea id="cl-notes" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} maxLength={2000} />
-        </Field>
-        <button type="submit" hidden />
-      </form>
-    </Dialog>
-  );
-}

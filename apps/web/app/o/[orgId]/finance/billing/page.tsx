@@ -39,7 +39,7 @@ const SCOPE_LABEL: Record<RateScope, string> = {
 };
 const PRECEDENCE: Record<RateKind, RateScope[]> = {
   BILL: ['PROJECT_WORKER', 'PROJECT', 'WORKER', 'CLIENT', 'ORG'],
-  PAY: ['PROJECT_WORKER', 'WORKER', 'PROJECT', 'ORG'],
+  PAY: ['PROJECT_WORKER', 'WORKER', 'PROJECT', 'CLIENT', 'ORG'],
 };
 
 export default function BillingPage() {

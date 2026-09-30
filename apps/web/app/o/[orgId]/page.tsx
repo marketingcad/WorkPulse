@@ -62,6 +62,8 @@ const TITLES: Record<string, string> = {
   assigned_tasks: 'My tasks',
   weekly_limits: 'Weekly limits',
   devices_offline: 'Devices needing attention',
+  month_summary: 'This month',
+  hours_by_client: 'Hours by client this month',
 };
 const SPAN: Record<Size, string> = { S: 'lg:col-span-4', M: 'lg:col-span-6', L: 'lg:col-span-12' };
 
@@ -275,6 +277,34 @@ function Widget({ k, data }: { k: string; data: any }) {
           </div>
         </div>
       );
+    case 'month_summary': {
+      const t = data.totals;
+      const money = (m: number | null) => (m === null ? '—' : fmtMoney(m, data.currency));
+      return (
+        <div>
+          <KpiStrip
+            className="rounded-none border-0"
+            items={[
+              { label: 'Time logged', value: d(t.logged_seconds), hint: `${t.people_with_time} ${t.people_with_time === 1 ? 'person' : 'people'}` },
+              ...(data.money_visible ? [{ label: 'Est. pay', value: money(t.pay_minor), hint: 'From pay rates; final after approval' }] : []),
+              { label: 'Billable time', value: d(t.billable_seconds), hint: `${t.billable_clients} ${t.billable_clients === 1 ? 'client' : 'clients'}, ${t.billable_projects} ${t.billable_projects === 1 ? 'project' : 'projects'}` },
+              ...(data.money_visible ? [{ label: 'Est. billable', value: money(t.bill_minor), hint: 'From bill rates; final after approval' }] : []),
+            ]}
+          />
+          <Link href={`${b}/insights`} className="block border-t border-border px-4 py-2 text-xs font-medium text-interactive hover:underline">
+            Open insights →
+          </Link>
+        </div>
+      );
+    }
+    case 'hours_by_client':
+      return data.length ? (
+        <div className="p-4">
+          <StackedBars rows={data.map((c: { name: string; seconds: number }) => ({ label: c.name, value: c.seconds }))} format={d} />
+        </div>
+      ) : (
+        <EmptyState title="No time tracked this month" />
+      );
     case 'hours_by_project':
       return data.length ? (
         <div className="p-4">
@@ -346,7 +376,7 @@ function Widget({ k, data }: { k: string; data: any }) {
               <div className="mb-1.5 flex items-center justify-between gap-2 text-sm">
                 <span className="truncate font-medium">{x.subject_name}</span>
                 <span className="tabular shrink-0 text-xs text-text-muted">
-                  {x.kind === 'HOURS' ? `${d(x.spent)} / ${d(x.amount)}` : `${fmtMoney(x.spent, x.currency)} / ${fmtMoney(x.amount, x.currency)}`} · {Math.round(x.pct_used)}%
+                  {x.kind === 'HOURS' ? `${d(x.spent)} / ${d(x.amount)}` : x.amounts_hidden ? 'Money budget' : `${fmtMoney(x.spent, x.currency)} billed / ${fmtMoney(x.amount, x.currency)}`} · {Math.round(x.pct_used)}%
                 </span>
               </div>
               <BudgetProgress pct={x.pct_used} state={x.state} projectedPct={x.projected ? (x.projected / x.amount) * 100 : null} />
@@ -497,7 +527,7 @@ function CurrentTimerWidget() {
         {s && <span className="text-xs text-text-muted">{s.source === 'DESKTOP' ? 'Desktop app' : 'Web timer'}</span>}
       </div>
       <div className="tabular mt-3 font-mono text-4xl font-medium tracking-tight">{new Date((s ? live.session : 0) * 1000).toISOString().slice(11, 19)}</div>
-      <div className="mt-1 truncate text-sm text-text-muted">{s ? `${s.project_name}${s.task_title ? ` / ${s.task_title}` : ''}` : 'Use the timer in the top bar to start tracking.'}</div>
+      <div className="mt-1 truncate text-sm text-text-muted">{s ? `${s.project_name}${s.task_title ? ` / ${s.task_title}` : ''}` : 'No timer running.'}</div>
       <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3 text-sm">
         <div>
           <div className="text-xs text-text-muted">Today</div>

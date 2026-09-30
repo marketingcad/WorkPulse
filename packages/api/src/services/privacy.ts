@@ -29,6 +29,7 @@ import {
   userSessions,
   users,
   workerProfiles,
+  memberDetails,
   type Tx,
 } from '@tallywork/db';
 import { businessRule, can, forbidden, newId, notFound } from '@tallywork/domain';
@@ -70,6 +71,7 @@ export async function collectMemberData(tx: Tx, membershipId: string) {
     account: u,
     membership: { id: m.m.id, role: m.role, status: m.m.status, joined_at: m.m.createdAt },
     profile: (await tx.select().from(workerProfiles).where(eq(workerProfiles.membershipId, membershipId)))[0] ?? null,
+    personal_details: (await tx.select().from(memberDetails).where(eq(memberDetails.membershipId, membershipId)))[0] ?? null,
     time_entries: await tx.select().from(timeEntries).where(by(timeEntries)).orderBy(asc(timeEntries.startedAt)),
     tracking_sessions: sessions,
     activity_minutes: await tx.select().from(activityMinutes).where(inArray(activityMinutes.sessionId, sessions.length ? sessions.map((s) => s.id) : ['00000000-0000-7000-8000-000000000000'])),
@@ -121,6 +123,7 @@ export async function anonymizeMember(x: Ctx, membershipId: string) {
     await x.tx.update(devices).set({ name: 'Removed device', status: 'REVOKED' }).where(inArray(devices.id, deviceIds));
   }
   await x.tx.update(workerProfiles).set({ title: null, updatedAt: new Date() }).where(eq(workerProfiles.membershipId, membershipId));
+  await x.tx.delete(memberDetails).where(eq(memberDetails.membershipId, membershipId));
   await x.tx.delete(teamMembers).where(eq(teamMembers.membershipId, membershipId));
   await x.tx.update(memberships).set({ status: 'REMOVED', updatedAt: new Date() }).where(eq(memberships.id, membershipId));
   await x.tx.update(apiKeys).set({ revokedAt: new Date() }).where(and(eq(apiKeys.createdBy, m.userId), eq(apiKeys.organizationId, x.org.id), isNull(apiKeys.revokedAt)));

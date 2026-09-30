@@ -15,12 +15,22 @@ interface InvoiceView {
   paid_minor: number;
   balance_minor: number;
   notes: string | null;
-  client: { name: string; email: string | null; address: string | null };
+  client: { name: string; email: string | null; address: string | null; contact_name?: string | null };
   lines: Array<{ description: string; quantity: number; unit_price_minor: number; amount_minor: number; tax_minor: number }>;
 }
 
+/** The issuing company as printed on documents. */
+export interface CompanyProfile extends Pick<OrgInfo, 'name'> {
+  logo?: string | null;
+  brief?: string | null;
+  taxId?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
 /** Deterministic, dependency-light invoice PDF (A4 portrait). */
-export async function renderInvoicePdf(inv: InvoiceView, org: Pick<OrgInfo, 'name'>): Promise<Buffer> {
+export async function renderInvoicePdf(inv: InvoiceView, org: CompanyProfile): Promise<Buffer> {
   const doc = await PDFDocument.create();
   doc.setTitle(`Invoice ${inv.number}`);
   doc.setProducer('Tallywork');
@@ -34,18 +44,32 @@ export async function renderInvoicePdf(inv: InvoiceView, org: Pick<OrgInfo, 'nam
   let page = doc.addPage(size);
   const M = 48;
   let y = size[1] - M;
-  const draw = (s: string, x: number, yy: number, o: { size?: number; f?: typeof font; color?: typeof ink; right?: boolean } = {}) => {
+  const draw = (raw: string, x: number, yy: number, o: { size?: number; f?: typeof font; color?: typeof ink; right?: boolean } = {}) => {
     const sz = o.size ?? 10;
     const f = o.f ?? font;
+    const s = winAnsi(raw);
     const w = f.widthOfTextAtSize(s, sz);
     page.drawText(s, { x: o.right ? x - w : x, y: yy, size: sz, font: f, color: o.color ?? ink });
   };
 
-  draw(org.name, M, y, { size: 16, f: bold, color: navy });
+  const logoSize = 44;
+  const logo = await embedLogo(doc, org.logo);
+  const textX = logo ? M + logoSize + 12 : M;
+  if (logo) page.drawImage(logo, { x: M, y: y - logoSize + 14, width: logoSize, height: logoSize });
+  draw(org.name, textX, y, { size: 16, f: bold, color: navy });
   draw('INVOICE', size[0] - M, y, { size: 20, f: bold, color: navy, right: true });
   y -= 22;
   draw(inv.number, size[0] - M, y, { size: 11, right: true, color: muted });
-  y -= 30;
+  const company = [org.brief, ...(org.address ?? '').split('\n'), [org.phone, org.email].filter(Boolean).join('  ·  '), org.taxId ? `Tax ID: ${org.taxId}` : null]
+    .map((s) => s?.trim())
+    .filter((s): s is string => !!s)
+    .slice(0, 6);
+  let cy = y + 4;
+  for (const line of company) {
+    draw(line.length > 70 ? `${line.slice(0, 69)}…` : line, textX, cy, { size: 8.5, color: muted });
+    cy -= 11;
+  }
+  y = Math.min(y, cy, logo ? y - logoSize + 14 - 4 : y) - 22;
   draw('Bill to', M, y, { size: 9, color: muted });
   draw('Issued', 360, y, { size: 9, color: muted });
   draw(inv.issue_date, size[0] - M, y, { right: true });
@@ -54,6 +78,10 @@ export async function renderInvoicePdf(inv: InvoiceView, org: Pick<OrgInfo, 'nam
   draw('Due', 360, y, { size: 9, color: muted });
   draw(inv.due_date, size[0] - M, y, { right: true });
   y -= 14;
+  if (inv.client.contact_name) {
+    draw(`Attn: ${inv.client.contact_name}`, M, y, { color: muted });
+    y -= 14;
+  }
   if (inv.client.email) draw(inv.client.email, M, y, { color: muted });
   if (inv.period_start) {
     draw('Period', 360, y, { size: 9, color: muted });
@@ -99,7 +127,7 @@ export async function renderInvoicePdf(inv: InvoiceView, org: Pick<OrgInfo, 'nam
   totalRow('Subtotal', money(inv.subtotal_minor));
   if (inv.tax_minor) totalRow('Tax', money(inv.tax_minor));
   totalRow('Total', money(inv.total_minor), true);
-  if (inv.paid_minor) totalRow('Paid', `−${money(inv.paid_minor)}`);
+  if (inv.paid_minor) totalRow('Paid', `-${money(inv.paid_minor)}`);
   totalRow('Balance due', money(inv.balance_minor), true);
   if (inv.notes) {
     y -= 16;
@@ -112,4 +140,24 @@ export async function renderInvoicePdf(inv: InvoiceView, org: Pick<OrgInfo, 'nam
   }
   if (inv.status === 'VOID') draw('VOID', size[0] / 2, size[1] / 2, { size: 80, f: bold, color: rgb(0.9, 0.3, 0.3) });
   return Buffer.from(await doc.save());
+}
+
+/**
+ * The standard PDF fonts only encode WinAnsi (Latin-1 plus a few typographic marks). Anything
+ * else (a minus sign, Polish ł, CJK in a client name) would make pdf-lib throw, so it is replaced.
+ */
+export function winAnsi(s: string): string {
+  return s.replace(/−/g, '-').replace(/[^\x20-\x7E -ÿ–—‘’“”•…€]/g, '?');
+}
+
+/** PNG/JPEG data URLs only; anything unreadable is skipped rather than failing the invoice. */
+async function embedLogo(doc: PDFDocument, dataUrl: string | null | undefined) {
+  const m = dataUrl?.match(/^data:image\/(png|jpeg);base64,(.+)$/);
+  if (!m) return null;
+  try {
+    const bytes = Buffer.from(m[2]!, 'base64');
+    return m[1] === 'png' ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+  } catch {
+    return null;
+  }
 }

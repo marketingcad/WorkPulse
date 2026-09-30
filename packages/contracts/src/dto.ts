@@ -22,6 +22,13 @@ export interface OrgContextDto {
     pay_period: unknown;
     settings: Record<string, unknown>;
     is_demo: boolean;
+    logo: string | null;
+    brief: string | null;
+    tax_id: string | null;
+    address: string | null;
+    phone: string | null;
+    email: string | null;
+    document_language: string | null;
   };
   membership: { id: string; role_key: string; role_name: string; is_owner: boolean; timezone: string; tracking_enabled: boolean };
   grants: Grants;
@@ -44,8 +51,69 @@ export interface WorkerDto {
   employment_type: string;
   weekly_expected_seconds: number | null;
   start_date: string | null;
+  end_date: string | null;
+  /** current personal hourly rates (minor units, workspace currency); absent without rates:read */
+  pay_rate_minor?: number | null;
+  bill_rate_minor?: number | null;
   team_ids: string[];
   created_at: string;
+}
+
+/** Time and money for a date range. Money fields are null without rates:read / billing:read. */
+export interface InsightsDto {
+  from: string;
+  to: string;
+  currency: string;
+  money_visible: boolean;
+  /** some time was priced in another currency and is left out of the money sums */
+  other_currency: boolean;
+  totals: {
+    logged_seconds: number;
+    billable_seconds: number;
+    activity_pct: number | null;
+    pay_minor: number | null;
+    bill_minor: number | null;
+    days_off: number;
+    people_with_time: number;
+    clients_with_time: number;
+    projects_with_time: number;
+    billable_clients: number;
+    billable_projects: number;
+    paid_people: number;
+  };
+  members: Array<{
+    membership_id: string;
+    name: string;
+    title: string | null;
+    logged_seconds: number;
+    billable_seconds: number;
+    activity_pct: number | null;
+    pay_minor: number | null;
+    bill_minor: number | null;
+    days_off: number;
+  }>;
+  by_client: Array<{ client_id: string | null; name: string; seconds: number; billable_seconds: number; bill_minor: number | null }>;
+  by_project: Array<{ project_id: string; name: string; color: string; client_name: string | null; seconds: number; billable_seconds: number; bill_minor: number | null }>;
+  by_day: Array<{ date: string; seconds: number; billable_seconds: number; pay_minor: number | null; bill_minor: number | null }>;
+}
+
+/** Personal data; readable by the member and by admins with members:manage. */
+export interface MemberDetailsDto {
+  first_name: string | null;
+  last_name: string | null;
+  birth_date: string | null;
+  personal_email: string | null;
+  phone: string | null;
+  country: string | null;
+  region: string | null;
+  city: string | null;
+  postal_code: string | null;
+  address: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  education: string | null;
+  /** admin-only; omitted for the member themselves */
+  notes?: string | null;
 }
 
 export interface TeamDto {
@@ -65,6 +133,13 @@ export interface ClientDto {
   address: string | null;
   currency: string | null;
   notes: string | null;
+  contact_name: string | null;
+  document_language: string | null;
+  color: string | null;
+  logo: string | null;
+  /** current client-level hourly rates (minor units); absent without rates:read */
+  bill_rate_minor?: number | null;
+  pay_rate_minor?: number | null;
   project_count: number;
   archived_at: string | null;
   created_at: string;
@@ -83,7 +158,27 @@ export interface ProjectDto {
   team_ids: string[];
   archived_at: string | null;
   tracked_seconds?: number;
+  billable_seconds?: number;
   budget?: BudgetStatusDto | null;
+  short_name: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  estimate_seconds: number | null;
+  estimate_unit: 'HOURS' | 'DAYS';
+  /** rates currency: the client's, else the workspace's */
+  currency: string;
+  /** current project-level hourly rates (minor units); absent without rates:read */
+  pay_rate_minor?: number | null;
+  bill_rate_minor?: number | null;
+  created_at: string;
+}
+
+export interface ProjectDocumentDto {
+  id: string;
+  name: string;
+  content_type: string;
+  bytes: number;
+  uploaded_by_name: string | null;
   created_at: string;
 }
 
@@ -162,9 +257,91 @@ export interface TimeEntryDto {
   local_date: string;
   billable: boolean;
   note: string | null;
+  time_type_id?: string | null;
+  /** entered as a duration: started_at/ended_at are a placeholder slot, show the duration only */
+  duration_only?: boolean;
+  client_id?: string | null;
+  client_name?: string | null;
   edited: boolean;
   locked: boolean;
   activity_pct: number | null;
+}
+
+export interface PayrollProfileDto {
+  id: string;
+  name: string;
+  period: { type: 'weekly' } | { type: 'biweekly'; anchorDate: string } | { type: 'semimonthly' } | { type: 'monthly' };
+  currency: string;
+  is_default: boolean;
+  archived_at: string | null;
+  members: Array<{ membership_id: string; name: string; bank: { type: string; bank_name: string | null; account_last4: string | null } | null }>;
+}
+
+export interface BankDetailsDto {
+  type: 'bank' | 'paypal' | 'wise' | 'other';
+  bank_name: string | null;
+  account_name: string | null;
+  account_number: string | null;
+  routing_number: string | null;
+  iban: string | null;
+  swift: string | null;
+  notes: string | null;
+}
+
+export interface PayStubDto {
+  id: string;
+  run_id: string;
+  membership_id: string;
+  name: string;
+  profile_name: string;
+  period_start: string;
+  period_end: string;
+  currency: string;
+  status: 'DRAFT' | 'FINALIZED' | 'PAID';
+  approved_seconds: number;
+  unapproved_seconds: number;
+  regular_seconds: number;
+  overtime_seconds: number;
+  time_pay_minor: number;
+  time_off_hours: number;
+  time_off_pay_minor: number;
+  gross_minor: number;
+  adjustments: Array<{ label: string; amount_minor: number }>;
+  net_minor: number;
+  paid_at: string | null;
+}
+
+export interface PayrollRunDto {
+  id: string;
+  profile_id: string;
+  profile_name: string;
+  period_start: string;
+  period_end: string;
+  currency: string;
+  status: 'DRAFT' | 'FINALIZED' | 'PAID';
+  gross_minor: number;
+  adjustments_minor: number;
+  net_minor: number;
+  notes: string | null;
+  member_count: number;
+  created_at: string;
+  finalized_at: string | null;
+  paid_at: string | null;
+  /** some time was priced in another currency and is not part of this run */
+  other_currency: boolean;
+  lines?: PayStubDto[];
+}
+
+export interface TimeTypeDto {
+  id: string;
+  name: string;
+  short_name: string;
+  color: string;
+  pay_coefficient: number;
+  bill_coefficient: number;
+  not_billable: boolean;
+  is_default: boolean;
+  archived_at: string | null;
 }
 
 export interface ActivityBlockDto {
@@ -273,6 +450,8 @@ export interface BudgetStatusDto {
   state: 'healthy' | 'warning' | 'exceeded';
   projected: number | null;
   currency: string;
+  /** Money budget shown to someone without billing access: only the percentage and state are real. */
+  amounts_hidden?: boolean;
 }
 
 export interface DeviceDto {

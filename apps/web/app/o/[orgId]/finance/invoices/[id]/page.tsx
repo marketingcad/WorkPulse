@@ -1,25 +1,30 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { Ban, CreditCard, Download, Send } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { Ban, CreditCard, Download, Pencil, Send, Trash2, X } from 'lucide-react';
 import {
   Badge,
   Button,
   ConfirmDialog,
+  Dialog,
   EmptyState,
   ErrorState,
+  Field,
+  IconButton,
+  Input,
   PageHeader,
   Panel,
   PermissionState,
   SkeletonRows,
   StatusBadge,
+  Textarea,
   fmtDate,
   fmtDateTime,
   fmtMoney,
   useToast,
 } from '@tallywork/ui';
-import { errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
+import { ApiError, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { RecordPaymentDialog } from '@/components/finance/record-payment-dialog';
 import { methodLabel, type InvoiceDetail } from '@/components/finance/types';
@@ -32,7 +37,14 @@ export default function InvoiceDetailPage() {
   const q = useOrgQuery<InvoiceDetail>(allowed ? `/invoices/${id}` : null);
   const send = useOrgMutation<Record<string, never>, InvoiceDetail>('POST', `/invoices/${id}/send`);
   const voidM = useOrgMutation<Record<string, never>, InvoiceDetail>('POST', `/invoices/${id}/void`);
+  const del = useOrgMutation<undefined>('DELETE', `/invoices/${id}`, { invalidate: false });
+  const removePay = useOrgMutation<{ id: string }>('DELETE', (b) => `/payments/${b.id}`);
+  const router = useRouter();
   const [confirmVoid, setConfirmVoid] = useState(false);
+  const [confirmSend, setConfirmSend] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [removing, setRemoving] = useState<{ payment_id: string; amount_minor: number; received_on: string } | null>(null);
   const [paying, setPaying] = useState(false);
 
   if (!allowed) return <PermissionState />;
@@ -73,6 +85,7 @@ export default function InvoiceDetailPage() {
     try {
       await send.mutateAsync({});
       toast.success(inv.client.email ? `Invoice sent to ${inv.client.email}` : 'Invoice marked as sent (client has no email address)');
+      setConfirmSend(false);
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -96,17 +109,27 @@ export default function InvoiceDetailPage() {
               Download PDF
             </a>
             {canManage && inv.status === 'DRAFT' && (
-              <Button variant="primary" icon={<Send className="size-3.5" />} loading={send.isPending} onClick={doSend}>
-                Send
-              </Button>
+              <>
+                <Button icon={<Pencil className="size-3.5" />} onClick={() => setEditing(true)}>
+                  Edit details
+                </Button>
+                <Button variant="primary" icon={<Send className="size-3.5" />} onClick={() => setConfirmSend(true)}>
+                  Send
+                </Button>
+              </>
             )}
             {canPay && (
               <Button variant={inv.status === 'DRAFT' ? 'secondary' : 'primary'} icon={<CreditCard className="size-3.5" />} onClick={() => setPaying(true)}>
                 Record payment
               </Button>
             )}
-            {canManage && inv.status !== 'VOID' && (
-              <Button variant="ghost" icon={<Ban className="size-3.5" />} onClick={() => setConfirmVoid(true)} disabled={inv.paid_minor > 0} title={inv.paid_minor > 0 ? 'Remove payments before voiding' : undefined}>
+            {canManage && inv.status === 'DRAFT' && (
+              <Button variant="ghost" icon={<Trash2 className="size-3.5" />} onClick={() => setConfirmDelete(true)}>
+                Delete draft
+              </Button>
+            )}
+            {canManage && inv.status !== 'VOID' && inv.status !== 'DRAFT' && (
+              <Button variant="ghost" icon={<Ban className="size-3.5" />} onClick={() => setConfirmVoid(true)} disabled={inv.paid_minor > 0} title={inv.paid_minor > 0 ? 'Remove the payments applied to this invoice before voiding it' : undefined}>
                 Void
               </Button>
             )}
@@ -219,7 +242,14 @@ export default function InvoiceDetailPage() {
                       {p.provider_ref ? ` · ${p.provider_ref}` : ''}
                     </div>
                   </div>
-                  <span className="tabular font-medium">{money(p.amount_minor)}</span>
+                  <span className="flex items-center gap-1">
+                    <span className="tabular font-medium">{money(p.amount_minor)}</span>
+                    {org.can('payments:manage') && (
+                      <IconButton label="Remove payment" size="xs" onClick={() => setRemoving(p)}>
+                        <X className="size-3.5" />
+                      </IconButton>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -228,6 +258,57 @@ export default function InvoiceDetailPage() {
       </div>
 
       <RecordPaymentDialog open={paying} onOpenChange={setPaying} invoice={inv} />
+      {editing && <EditDraftDialog invoice={inv} onClose={() => setEditing(false)} />}
+      <ConfirmDialog
+        open={confirmSend}
+        onOpenChange={setConfirmSend}
+        title={`Send invoice ${inv.number}?`}
+        description={
+          inv.client.email
+            ? `We email ${inv.client.email} the amount due (${money(inv.total_minor)}), the due date and the lines. The invoice can no longer be edited or deleted afterwards, only voided.`
+            : 'This client has no email address, so nothing is emailed. The invoice is marked as sent and can no longer be edited or deleted, only voided.'
+        }
+        confirmLabel={inv.client.email ? 'Send invoice' : 'Mark as sent'}
+        loading={send.isPending}
+        onConfirm={doSend}
+      />
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={`Delete draft ${inv.number}?`}
+        description="The draft is removed. Its time and expenses become available for a new invoice."
+        confirmLabel="Delete draft"
+        danger
+        loading={del.isPending}
+        onConfirm={async () => {
+          try {
+            await del.mutateAsync(undefined);
+            toast.success(`Draft ${inv.number} deleted`);
+            router.replace(`${org.base}/finance/invoices`);
+          } catch (e) {
+            toast.error(errorMessage(e));
+          }
+        }}
+      />
+      <ConfirmDialog
+        open={!!removing}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title="Remove this payment?"
+        description={removing ? `The payment of ${money(removing.amount_minor)} received ${fmtDate(removing.received_on)} is deleted everywhere it was applied, and the invoice balance goes back up. Use this for payments recorded by mistake.` : undefined}
+        confirmLabel="Remove payment"
+        danger
+        loading={removePay.isPending}
+        onConfirm={async () => {
+          if (!removing) return;
+          try {
+            await removePay.mutateAsync({ id: removing.payment_id });
+            toast.success('Payment removed');
+            setRemoving(null);
+          } catch (e) {
+            toast.error(errorMessage(e));
+          }
+        }}
+      />
       <ConfirmDialog
         open={confirmVoid}
         onOpenChange={setConfirmVoid}
@@ -247,5 +328,59 @@ export default function InvoiceDetailPage() {
         }}
       />
     </>
+  );
+}
+
+function EditDraftDialog({ invoice, onClose }: { invoice: InvoiceDetail; onClose: () => void }) {
+  const toast = useToast();
+  const [issue, setIssue] = useState(invoice.issue_date);
+  const [due, setDue] = useState(invoice.due_date);
+  const [notes, setNotes] = useState(invoice.notes ?? '');
+  const [err, setErr] = useState<ApiError | null>(null);
+  const m = useOrgMutation<{ issue_date: string; due_date: string; notes: string | null }, InvoiceDetail>('PATCH', `/invoices/${invoice.id}`);
+  const save = async () => {
+    setErr(null);
+    try {
+      await m.mutateAsync({ issue_date: issue, due_date: due, notes: notes.trim() || null });
+      toast.success('Invoice updated');
+      onClose();
+    } catch (e) {
+      if (e instanceof ApiError) setErr(e);
+      else toast.error(errorMessage(e));
+    }
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Edit ${invoice.number}`}
+      description="Lines come from approved time and expenses. To change them, delete the draft and create it again."
+      width={440}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={m.isPending} onClick={save}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Issue date" htmlFor="inv-issue" error={err?.field('issue_date')}>
+          <Input id="inv-issue" type="date" value={issue} onChange={(e) => setIssue(e.target.value)} />
+        </Field>
+        <Field label="Due date" htmlFor="inv-due" error={err?.field('due_date')}>
+          <Input id="inv-due" type="date" value={due} min={issue} onChange={(e) => setDue(e.target.value)} />
+        </Field>
+        <Field label="Notes" htmlFor="inv-notes" hint="Shown on the invoice." className="col-span-2" error={err?.field('notes')}>
+          <Textarea id="inv-notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} className="min-h-24" />
+        </Field>
+      </div>
+      {err && !err.errors?.length && (
+        <p role="alert" className="mt-3 text-sm text-danger">
+          {err.title}
+        </p>
+      )}
+    </Dialog>
   );
 }

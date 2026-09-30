@@ -42,7 +42,7 @@ export default function MonitoringPage() {
         <ShieldCheck className="mt-0.5 size-5 shrink-0 text-success" aria-hidden />
         <div className="text-sm">
           <p className="font-semibold">When tracking is stopped, nothing is collected.</p>
-          <p className="text-text-muted">Monitoring only happens while your timer is running. The desktop app always shows when it is tracking, and you are notified before any change to these settings takes effect.</p>
+          <p className="text-text-muted">Monitoring only happens while your timer is running. The desktop app always shows when it is tracking, and you are notified when these settings change. The desktop app asks you to review changes before it tracks again.</p>
         </div>
       </div>
       {q.error ? (

@@ -24,6 +24,18 @@ export function MyTimeOff() {
   const [toCancel, setToCancel] = useState<TimeOffRequest | null>(null);
   const cancel = useOrgMutation<{ id: string }>('POST', (b) => `/time-off/requests/${b.id}/cancel`);
   const canRequest = org.can('time_off:request');
+  // New workspaces have no policies, which leaves Request disabled; offer a one-click starter to admins.
+  const policiesQ = useOrgQuery<unknown[]>(org.can('time_off:manage') ? '/time-off/policies' : null);
+  const noPolicies = policiesQ.data?.length === 0;
+  const starter = useOrgMutation('POST', '/time-off/policies');
+  const createStarter = async () => {
+    try {
+      await starter.mutateAsync({ name: 'Paid time off', paid: true, requires_approval: true, hours_per_day: 8, accrual: { type: 'none', amountHours: 0, maxBalanceHours: null, carryOverHours: null }, applies_to_all: true });
+      toast.success('“Paid time off” created. Adjust it under Policies & holidays.');
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
 
   const doCancel = async () => {
     if (!toCancel) return;
@@ -89,7 +101,21 @@ export function MyTimeOff() {
             loading={balancesQ.isLoading}
             rowKey={(b) => b.policy_id}
             caption="Time off balances"
-            empty={<EmptyState title="No time off policies apply to you" description="An admin needs to add you to a time off policy before you can request leave." />}
+            empty={
+              noPolicies ? (
+                <EmptyState
+                  title="No time off policies yet"
+                  description="Start with a paid time off policy for everyone (no accrual, 8 h days). You can change it or add more under Policies & holidays."
+                  action={
+                    <Button variant="primary" size="sm" loading={starter.isPending} onClick={createStarter}>
+                      Create “Paid time off”
+                    </Button>
+                  }
+                />
+              ) : (
+                <EmptyState title="No time off policies apply to you" description="An admin needs to add you to a time off policy before you can request leave." />
+              )
+            }
             columns={[
               {
                 key: 'policy',

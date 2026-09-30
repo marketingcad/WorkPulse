@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, foreignKey, index, integer, pgTable, text, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, foreignKey, index, integer, numeric, pgTable, text, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import type { TimesheetStatus } from '@tallywork/domain';
 import { orgId, pk, timestamps, tstz } from './_helpers';
 import { memberships } from './identity';
@@ -31,6 +31,25 @@ export const timesheets = pgTable(
   ],
 );
 
+/**
+ * Kinds of time (Normal, Overtime, …). Coefficients multiply the pay and bill rate for time of
+ * this type; time with no type uses the default type, or 1× when there is none.
+ */
+export const timeTypes = pgTable('time_types', {
+  id: pk(),
+  organizationId: orgId(),
+  name: text().notNull(),
+  shortName: text().notNull(),
+  color: text().notNull().default('#475569'),
+  payCoefficient: numeric({ precision: 6, scale: 3, mode: 'number' }).notNull().default(1),
+  billCoefficient: numeric({ precision: 6, scale: 3, mode: 'number' }).notNull().default(1),
+  /** time of this type is never billable */
+  notBillable: boolean().notNull().default(false),
+  isDefault: boolean().notNull().default(false),
+  archivedAt: tstz(),
+  ...timestamps,
+});
+
 /** Snapshot of what was submitted/approved; immutable once written. */
 export const timesheetEntries = pgTable(
   'timesheet_entries',
@@ -46,6 +65,7 @@ export const timesheetEntries = pgTable(
     durationSeconds: integer().notNull(),
     billable: boolean().notNull(),
     source: text().notNull(),
+    timeTypeId: uuid(),
     snapshotAt: tstz().notNull().default(sql`now()`),
     /** Set when a later submission replaces this snapshot; the row itself is never changed otherwise. */
     supersededAt: tstz(),
@@ -87,6 +107,10 @@ export const manualTimeRequests = pgTable(
     reason: text(),
     note: text(),
     billable: boolean().notNull(),
+    timeTypeId: uuid(),
+    /** only this part of the time is billable (the rest becomes a separate non-billable entry); null = all of it */
+    billableSeconds: integer(),
+    durationOnly: boolean().notNull().default(false),
     status: text().$type<'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'>().notNull().default('PENDING'),
     createdBy: uuid().notNull(),
     decidedBy: uuid(),

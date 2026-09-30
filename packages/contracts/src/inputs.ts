@@ -2,6 +2,14 @@ import { z } from 'zod';
 import { PERMISSIONS, SCOPES, API_KEY_SCOPES } from '@tallywork/domain';
 import { currency, hhmm, id, isoDate, isoDateTime, nonEmpty, optionalText, timeZone } from './common';
 
+export const DOCUMENT_LANGUAGES = ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl'] as const;
+
+/** square PNG/JPEG image as a data: URL (PNG/JPEG so it can be embedded in PDFs) */
+const pdfSafeLogo = z
+  .string()
+  .max(140_000, 'Use a smaller image')
+  .regex(/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+=*$/, 'Use a PNG or JPEG image');
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const password = z.string().min(10, 'Use at least 10 characters').max(200);
 
@@ -43,9 +51,26 @@ export const updateOrgInput = z.object({
       sessionTtlHours: z.number().int().min(1).max(24 * 90),
       /** CIDR ranges allowed to use this organization; empty = anywhere */
       ipAllowlist: z.array(z.string().trim().max(50)).max(50),
+      /** members cannot change their own time older than this many days (null = no lock) */
+      lockAfterDays: z.number().int().min(0).max(3650).nullable(),
+      /** members cannot change their own time before this date (null = no lock) */
+      lockBeforeDate: isoDate.nullable(),
+      minDailySeconds: z.number().int().min(0).max(24 * 3600).nullable(),
+      minWeeklySeconds: z.number().int().min(0).max(7 * 24 * 3600).nullable(),
+      missingTimeReminder: z.boolean(),
+      missingTimeCheckAt: hhmm,
+      /** converts hours and days, e.g. for project estimates */
+      workingHoursPerDay: z.number().min(1).max(24),
     })
     .partial()
     .optional(),
+  logo: pdfSafeLogo.nullable().optional(),
+  brief: optionalText(300),
+  tax_id: optionalText(50),
+  address: optionalText(500),
+  phone: optionalText(50),
+  email: z.email().max(254).optional().nullable(),
+  document_language: z.enum(DOCUMENT_LANGUAGES).optional().nullable(),
 });
 
 export const inviteInput = z.object({
@@ -53,6 +78,8 @@ export const inviteInput = z.object({
   name: nonEmpty(100).optional(),
   role_id: id,
   team_ids: z.array(id).max(50).default([]),
+  team_role: z.enum(['MEMBER', 'MANAGER']).default('MEMBER'),
+  project_ids: z.array(id).max(100).default([]),
 });
 export const acceptInviteInput = z.object({ token: z.string().min(20).max(200), name: nonEmpty(100).optional(), password: password.optional() });
 
@@ -66,6 +93,29 @@ export const updateWorkerInput = z.object({
   weekly_expected_seconds: z.number().int().min(0).max(7 * 24 * 3600).nullable().optional(),
   /** employment start date; used for pro-rata time-off accruals */
   start_date: isoDate.nullable().optional(),
+  /** employment end ("date left") */
+  end_date: isoDate.nullable().optional(),
+  /** personal hourly rates in minor units (workspace currency); requires rates:manage. null clears, omitted leaves unchanged. */
+  pay_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
+  bill_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
+});
+
+export const memberDetailsInput = z.object({
+  first_name: optionalText(100),
+  last_name: optionalText(100),
+  birth_date: isoDate.nullable().optional(),
+  personal_email: z.email().max(254).optional().nullable(),
+  phone: optionalText(50),
+  country: optionalText(100),
+  region: optionalText(100),
+  city: optionalText(100),
+  postal_code: optionalText(20),
+  address: optionalText(500),
+  emergency_contact_name: optionalText(150),
+  emergency_contact_phone: optionalText(50),
+  education: optionalText(1000),
+  /** admin-only */
+  notes: optionalText(5000),
 });
 
 export const roleInput = z.object({
@@ -84,6 +134,19 @@ export const clientInput = z.object({
   address: optionalText(500),
   currency: currency.optional().nullable(),
   notes: optionalText(2000),
+  contact_name: optionalText(150),
+  document_language: z.enum(DOCUMENT_LANGUAGES).optional().nullable(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),
+  /** square PNG/JPEG/WebP as a data: URL, at most ~70 KB (it is included in every client list) */
+  logo: z
+    .string()
+    .max(100_000, 'Use a smaller image')
+    .regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/, 'Use a PNG, JPEG or WebP image')
+    .optional()
+    .nullable(),
+  /** client-level hourly rates in minor units; requires rates:manage. null clears, omitted leaves unchanged. */
+  bill_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
+  pay_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
 });
 
 export const projectInput = z.object({
@@ -95,6 +158,15 @@ export const projectInput = z.object({
   billable_default: z.boolean().optional(),
   member_ids: z.array(id).max(1000).optional(),
   team_ids: z.array(id).max(100).optional(),
+  short_name: optionalText(20),
+  start_date: isoDate.nullable().optional(),
+  end_date: isoDate.nullable().optional(),
+  /** planned effort in seconds (entered in hours or days) */
+  estimate_seconds: z.number().int().min(0).max(100_000 * 3600).nullable().optional(),
+  estimate_unit: z.enum(['HOURS', 'DAYS']).optional(),
+  /** project-level hourly rates in minor units; requires rates:manage. null clears, omitted leaves unchanged. */
+  pay_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
+  bill_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
 });
 
 export const taskInput = z.object({
@@ -202,22 +274,83 @@ export const timeEntryUpdateInput = z.object({
   task_id: id.nullable().optional(),
   billable: z.boolean().optional(),
   note: optionalText(1000),
+  time_type_id: id.nullable().optional(),
   reason: optionalText(500),
 });
 export const timeEntrySplitInput = z.object({ at: isoDateTime, reason: optionalText(500) });
 export const timeEntryDeleteInput = z.object({ reason: optionalText(500) });
 
-export const manualTimeInput = z.object({
-  membership_id: id.optional(), // managers may add for team members
-  project_id: id,
-  task_id: id.nullable().optional(),
-  started_at: isoDateTime,
-  ended_at: isoDateTime,
+export const manualTimeInput = z
+  .object({
+    membership_id: id.optional(), // managers may add for team members
+    project_id: id,
+    task_id: id.nullable().optional(),
+    /** either a start and end … */
+    started_at: isoDateTime.optional(),
+    ended_at: isoDateTime.optional(),
+    /** … or a day and a duration (placed in the first free slot that day) */
+    local_date: isoDate.optional(),
+    duration_seconds: z.number().int().min(60).max(24 * 3600).optional(),
+    /** only this much of the time is billable; the rest is recorded as a separate non-billable entry */
+    billable_seconds: z.number().int().min(0).max(24 * 3600).optional(),
+    reason: optionalText(500),
+    note: optionalText(1000),
+    billable: z.boolean().optional(),
+    time_type_id: id.nullable().optional(),
+  })
+  .refine((v) => (v.started_at && v.ended_at) || (v.local_date && v.duration_seconds), { message: 'Give a start and end, or a date and a duration', path: ['duration_seconds'] });
+
+export const timeEntryBulkInput = z.object({
+  ids: z.array(id).min(1).max(200),
+  action: z.enum(['delete', 'set_billable', 'set_non_billable']),
   reason: optionalText(500),
-  note: optionalText(1000),
-  billable: z.boolean().optional(),
 });
 export const decisionInput = z.object({ comment: optionalText(1000) });
+
+// ─── Payroll ─────────────────────────────────────────────────────────────────
+export const payPeriodConfig = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('weekly') }),
+  z.object({ type: z.literal('biweekly'), anchorDate: isoDate }),
+  z.object({ type: z.literal('semimonthly') }),
+  z.object({ type: z.literal('monthly') }),
+]);
+export const payrollProfileInput = z.object({
+  name: nonEmpty(100),
+  period: payPeriodConfig,
+  currency,
+  is_default: z.boolean().optional(),
+  member_ids: z.array(id).max(2000).default([]),
+});
+export const bankDetailsInput = z.object({
+  type: z.enum(['bank', 'paypal', 'wise', 'other']),
+  bank_name: optionalText(150),
+  account_name: optionalText(150),
+  account_number: optionalText(64),
+  routing_number: optionalText(64),
+  iban: optionalText(64),
+  swift: optionalText(20),
+  notes: optionalText(500),
+});
+export const payrollRunInput = z.object({
+  profile_id: id,
+  /** any date in the period to pay; defaults to the last completed period */
+  date: isoDate.optional(),
+  notes: optionalText(1000),
+});
+export const payAdjustmentsInput = z.object({
+  adjustments: z.array(z.object({ label: nonEmpty(100), amount_minor: z.number().int().min(-1_000_000_000).max(1_000_000_000) })).max(20),
+});
+
+export const timeTypeInput = z.object({
+  name: nonEmpty(60),
+  short_name: nonEmpty(4),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  /** multiplies the pay rate for time of this type (e.g. 1.5 for overtime) */
+  pay_coefficient: z.number().min(0).max(10),
+  bill_coefficient: z.number().min(0).max(10),
+  not_billable: z.boolean().optional(),
+  is_default: z.boolean().optional(),
+});
 
 // ─── Idle / screenshots ──────────────────────────────────────────────────────
 export const idleResolveInput = z.object({
@@ -304,6 +437,8 @@ export const invoiceCreateInput = z.object({
     .max(100)
     .default([]),
 });
+/** Draft invoices only: fix dates or notes without recreating the invoice. */
+export const invoiceDraftUpdateInput = z.object({ issue_date: isoDate.optional(), due_date: isoDate.optional(), notes: optionalText(2000) });
 export const paymentInput = z.object({
   client_id: id.nullable().optional(),
   amount_minor: z.number().int().min(1),

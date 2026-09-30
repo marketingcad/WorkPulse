@@ -8,14 +8,19 @@ import { rollupAppDay, rollupWorkerDay, type Tx } from '@tallywork/db';
 export async function recomputeWorkerDays(tx: Tx, organizationId: string, membershipId: string, dates: string[]): Promise<void> {
   if (!dates.length) return;
   await tx.delete(rollupWorkerDay).where(and(eq(rollupWorkerDay.membershipId, membershipId), inArray(rollupWorkerDay.localDate, dates)));
+  // Weighted seconds apply each entry's time-type coefficients (no type: the default type, else 1×).
   await tx.execute(sql`
-    insert into rollup_worker_day (organization_id, membership_id, local_date, project_id, task_key, billable, tracked_seconds, manual_seconds)
-    select organization_id, membership_id, local_date, project_id, coalesce(task_id::text, ''), billable,
-           coalesce(sum(duration_seconds) filter (where source = 'TRACKED'), 0)::int,
-           coalesce(sum(duration_seconds) filter (where source = 'MANUAL'), 0)::int
-      from time_entries
-     where membership_id = ${membershipId} and deleted_at is null and local_date in ${sql.raw(`(${dates.map((d) => `'${d.replace(/[^0-9-]/g, '')}'`).join(',')})`)}
-     group by organization_id, membership_id, local_date, project_id, coalesce(task_id::text, ''), billable
+    insert into rollup_worker_day (organization_id, membership_id, local_date, project_id, task_key, billable, tracked_seconds, manual_seconds, pay_weighted_seconds, bill_weighted_seconds)
+    select e.organization_id, e.membership_id, e.local_date, e.project_id, coalesce(e.task_id::text, ''), e.billable,
+           coalesce(sum(e.duration_seconds) filter (where e.source = 'TRACKED'), 0)::int,
+           coalesce(sum(e.duration_seconds) filter (where e.source = 'MANUAL'), 0)::int,
+           round(coalesce(sum(e.duration_seconds * coalesce(tt.pay_coefficient, d.pay_coefficient, 1)), 0))::int,
+           round(coalesce(sum(e.duration_seconds * coalesce(tt.bill_coefficient, d.bill_coefficient, 1)), 0))::int
+      from time_entries e
+      left join time_types tt on tt.id = e.time_type_id
+      left join lateral (select pay_coefficient, bill_coefficient from time_types where is_default and archived_at is null and organization_id = e.organization_id limit 1) d on true
+     where e.membership_id = ${membershipId} and e.deleted_at is null and e.local_date in ${sql.raw(`(${dates.map((d) => `'${d.replace(/[^0-9-]/g, '')}'`).join(',')})`)}
+     group by e.organization_id, e.membership_id, e.local_date, e.project_id, coalesce(e.task_id::text, ''), e.billable
   `);
   // Activity windows are per project/task, but a day can have a billable and a non-billable row
   // for the same task: put the activity on one row (the larger one) so it is never counted twice.

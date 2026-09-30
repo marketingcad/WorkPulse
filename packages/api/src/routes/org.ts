@@ -5,6 +5,7 @@ import {
   clientPortalInviteInput,
   clientPortalSettingsInput,
   inviteInput,
+  memberDetailsInput,
   policyDocInput,
   portalRangeInput,
   projectInput,
@@ -12,6 +13,7 @@ import {
   taskInput,
   teamInput,
   teamMemberInput,
+  timeTypeInput,
   updateOrgInput,
   updateWorkerInput,
 } from '@tallywork/contracts';
@@ -21,6 +23,7 @@ import { requirePermission } from '../middleware/tenant';
 import { ctx } from '../services/ctx';
 import {
   deleteRole,
+  getMemberDetails,
   getWorker,
   inviteWorker,
   listInvitations,
@@ -29,6 +32,7 @@ import {
   orgContext,
   removeWorker,
   revokeInvitation,
+  updateMemberDetails,
   updateOrg,
   updateWorker,
   upsertRole,
@@ -54,6 +58,9 @@ import { getEffectivePolicy, getPolicyLayer, listDevices, putPolicyLayer, setDev
 import { myAssignments } from '../services/timer';
 import { getPortalSettings, invitePortalViewer, previewAccess, previewScreenshots, revokePortalViewer, updatePortalSettings } from '../services/portal-admin';
 import { clientVisibilityFor, portalSummaryTx } from '../services/portal';
+import { archiveTimeType, listTimeTypes, upsertTimeType } from '../services/time-types';
+import { INLINE_TYPES, deleteProjectDocument, listProjectDocuments, projectDocumentForDownload, uploadProjectDocument } from '../services/project-documents';
+import { notFound, validation } from '@tallywork/domain';
 
 const bool = z.enum(['true', 'false']).optional().transform((v) => v === 'true');
 const scopeType = z.enum(['ORG', 'TEAM', 'WORKER']);
@@ -63,7 +70,7 @@ export const orgRoutes = new Hono<AppEnv>()
   .patch('/', async (c) => c.json(await updateOrg(ctx(c), await body(c, updateOrgInput))))
 
   // Roles
-  .get('/roles', async (c) => c.json(await listRoles(ctx(c))))
+  .get('/roles', requirePermission('members:read', 'roles:manage'), async (c) => c.json(await listRoles(ctx(c))))
   .post('/roles', async (c) => c.json(await upsertRole(ctx(c), null, await body(c, roleInput)), 201))
   .put('/roles/:id', async (c) => c.json(await upsertRole(ctx(c), c.req.param('id'), await body(c, roleInput))))
   .delete('/roles/:id', async (c) => {
@@ -78,6 +85,15 @@ export const orgRoutes = new Hono<AppEnv>()
   })
   .get('/workers/:id', requirePermission('members:read'), async (c) => c.json(await getWorker(ctx(c), c.req.param('id'))))
   .patch('/workers/:id', async (c) => c.json(await updateWorker(ctx(c), c.req.param('id'), await body(c, updateWorkerInput))))
+  .get('/time-types', async (c) => c.json(await listTimeTypes(ctx(c), { includeArchived: query(c, z.object({ include_archived: bool })).include_archived })))
+  .post('/time-types', async (c) => c.json(await upsertTimeType(ctx(c), null, await body(c, timeTypeInput)), 201))
+  .patch('/time-types/:id', async (c) => c.json(await upsertTimeType(ctx(c), c.req.param('id'), await body(c, timeTypeInput))))
+  .delete('/time-types/:id', async (c) => {
+    await archiveTimeType(ctx(c), c.req.param('id'));
+    return c.body(null, 204);
+  })
+  .get('/workers/:id/details', async (c) => c.json(await getMemberDetails(ctx(c), c.req.param('id'))))
+  .patch('/workers/:id/details', async (c) => c.json(await updateMemberDetails(ctx(c), c.req.param('id'), await body(c, memberDetailsInput))))
   .delete('/workers/:id', async (c) => {
     await removeWorker(ctx(c), c.req.param('id'));
     return c.body(null, 204);
@@ -155,6 +171,33 @@ export const orgRoutes = new Hono<AppEnv>()
   })
   .post('/projects/:id/restore', async (c) => {
     await setProjectArchived(ctx(c), c.req.param('id'), false);
+    return c.body(null, 204);
+  })
+  .get('/projects/:id/documents', async (c) => c.json(await listProjectDocuments(ctx(c), c.req.param('id'))))
+  .post('/projects/:id/documents', async (c) => {
+    const form = await c.req.formData();
+    const file = form.get('file');
+    if (!(file instanceof File)) throw validation('Attach a file', { errors: [{ field: 'file', message: 'Choose a file' }] });
+    return c.json(await uploadProjectDocument(ctx(c), c.req.param('id'), file), 201);
+  })
+  .get('/projects/:id/documents/:docId', async (c) => {
+    const x = ctx(c);
+    const doc = await projectDocumentForDownload(x, c.req.param('id'), c.req.param('docId'));
+    const obj = await x.deps.storage.get(doc.storageKey);
+    if (!obj) throw notFound('document');
+    const disposition = INLINE_TYPES.has(doc.contentType) && c.req.query('download') !== '1' ? 'inline' : 'attachment';
+    const ascii = doc.name.replace(/[^\x20-\x7e]/g, '_');
+    return new Response(obj.body, {
+      headers: {
+        'Content-Type': doc.contentType,
+        'Content-Disposition': `${disposition}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(doc.name)}`,
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  })
+  .delete('/projects/:id/documents/:docId', async (c) => {
+    await deleteProjectDocument(ctx(c), c.req.param('id'), c.req.param('docId'));
     return c.body(null, 204);
   })
   .get('/projects/:id/tasks', async (c) => c.json(await listTasks(ctx(c), { projectId: c.req.param('id') })))

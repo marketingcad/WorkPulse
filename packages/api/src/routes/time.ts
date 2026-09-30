@@ -12,6 +12,7 @@ import {
   timeEntryDeleteInput,
   timeEntrySplitInput,
   timeEntryUpdateInput,
+  timeEntryBulkInput,
   pauseInput,
 } from '@tallywork/contracts';
 import { localDate } from '@tallywork/domain';
@@ -31,6 +32,7 @@ import {
   getTimesheet,
   listManualTime,
   listTimeEntries,
+  bulkTimeEntries,
   requestManualTime,
   splitTimeEntry,
   submitTimesheet,
@@ -38,7 +40,7 @@ import {
   updateTimeEntry,
 } from '../services/timesheets';
 
-const rangeWithMembers = dateRangeQuery.and(z.object({ membership_ids: idList, project_id: z.uuid().optional() }));
+const rangeWithMembers = dateRangeQuery.and(z.object({ membership_ids: idList, project_id: z.uuid().optional(), project_ids: idList, client_id: z.uuid().optional(), task_id: z.uuid().optional() }));
 
 export const timeRoutes = new Hono<AppEnv>()
   // Timer (web / API)
@@ -70,8 +72,9 @@ export const timeRoutes = new Hono<AppEnv>()
   // Time entries
   .get('/time-entries', requirePermission('time:read'), async (c) => {
     const q = query(c, rangeWithMembers);
-    return c.json(await listTimeEntries(ctx(c), { from: q.from, to: q.to, membershipIds: q.membership_ids, projectId: q.project_id }));
+    return c.json(await listTimeEntries(ctx(c), { from: q.from, to: q.to, membershipIds: q.membership_ids, projectId: q.project_id, projectIds: q.project_ids, clientId: q.client_id, taskId: q.task_id }));
   })
+  .post('/time-entries/bulk', async (c) => c.json(await bulkTimeEntries(ctx(c), await body(c, timeEntryBulkInput))))
   .patch('/time-entries/:id', async (c) => c.json(await updateTimeEntry(ctx(c), c.req.param('id'), await body(c, timeEntryUpdateInput))))
   .post('/time-entries/:id/split', async (c) => {
     const i = await body(c, timeEntrySplitInput);

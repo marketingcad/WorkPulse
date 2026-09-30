@@ -336,6 +336,7 @@ describe('money (Phase 9 gate)', () => {
     expect(resolveRate(rates, 'BILL', { date: '2026-03-01', membershipId: 'x', projectId: 'q', clientId: 'c' })!.id).toBe('client');
     expect(resolveRate(rates, 'BILL', { date: '2026-03-01', membershipId: 'x', projectId: 'q', clientId: null })!.id).toBe('org');
     expect(resolveRate(rates, 'PAY', ctx('2026-03-01'))!.id).toBe('pay-worker'); // pay: worker before project
+    expect(resolveRate([r('pay-client', 'PAY', 'CLIENT', 'c'), r('pay-org', 'PAY', 'ORG', null)], 'PAY', ctx('2026-03-01'))!.id).toBe('pay-client'); // pay: client before org
     expect(resolveRate(rates, 'BILL', ctx('2025-12-31'))).toBeNull();
   });
 

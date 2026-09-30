@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, Coffee, Pause, Play, Square } from 'lucide-react';
 import type { CurrentTrackingDto } from '@tallywork/contracts';
 import { Button, Menu, MenuItem, MenuLabel, MenuSeparator, StatusBadge, Tooltip, cx, fmtClock } from '@tallywork/ui';
-import { api, errorMessage, useOrgQuery } from '@/lib/api';
+import { api, errorMessage, invalidateOrg, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
 import { useToast } from '@tallywork/ui';
@@ -34,6 +34,8 @@ export function useCurrentTracking() {
   return { ...q, fetchedAt: q.dataUpdatedAt };
 }
 
+const TIMER_AFFECTS = ['/tracking', '/time-entries', '/timesheets', '/dashboard', '/insights', '/activity', '/sessions', '/attendance', '/apps', '/urls'];
+
 /** Persistent timer in the top bar: visible on every page (web tracking). */
 export function TimerBar() {
   const org = useOrg();
@@ -55,7 +57,8 @@ export function TimerBar() {
     try {
       const r = await api<CurrentTrackingDto>(`/orgs/${org.organization.id}/tracking/${path}`, { method: 'POST', body: body ?? {} });
       qc.setQueryData(['org', org.organization.id, '/tracking/current'], r);
-      void qc.invalidateQueries({ queryKey: ['org', org.organization.id] });
+      // Only what a start/stop/pause changes; the rest of the app keeps its cached data.
+      void invalidateOrg(qc, org.organization.id, TIMER_AFFECTS);
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {

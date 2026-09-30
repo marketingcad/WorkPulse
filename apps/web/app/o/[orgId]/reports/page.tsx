@@ -75,7 +75,7 @@ function ReportsCatalog() {
             </Panel>
           ) : (
             CATEGORIES.map((cat) => {
-              const items = catalogQ.data!.filter((r) => r.category === cat.key);
+              const items = catalogQ.data!.filter((r) => r.category === cat.key && !r.hidden);
               if (!items.length) return null;
               const Icon = cat.icon;
               return (

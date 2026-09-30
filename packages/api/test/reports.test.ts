@@ -114,10 +114,11 @@ describe('scope on every report', () => {
     expect((await ben.post(o('/reports/payroll/query'), RANGE)).status).toBe(403);
   });
 
-  it('all 18 reports are available to an admin', async () => {
-    const keys = ((await admin.get(o('/reports'))).body as Array<{ key: string }>).map((r) => r.key);
-    expect(keys).toHaveLength(18);
-    for (const key of keys) await run(admin, key);
+  it('all 19 reports run for an admin; 14 are offered (5 are covered by another report)', async () => {
+    const catalog = (await admin.get(o('/reports'))).body as Array<{ key: string; hidden: boolean }>;
+    expect(catalog).toHaveLength(19);
+    expect(catalog.filter((r) => !r.hidden)).toHaveLength(14);
+    for (const { key } of catalog) await run(admin, key);
   });
 });
 

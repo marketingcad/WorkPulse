@@ -284,7 +284,7 @@ function Monitoring({ s, onBack }: { s: AgentState; onBack?: () => void }) {
             {p.limits.weeklySeconds ? `${fmtHm(p.limits.weeklySeconds)} per week` : ''}
           </p>
         )}
-        <p className="mb-4 text-xs text-text-muted">Your managers and organization admins can see this data. You can review your own activity and screenshots on the web.</p>
+        <p className="mb-4 text-xs text-text-muted">Your managers and organization admins can see this data. Ask them if you want to review or remove something.</p>
       </div>
       {!s.policyAcknowledged && (
         <footer className="border-t border-border p-4">

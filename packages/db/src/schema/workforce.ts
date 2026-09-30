@@ -45,6 +45,12 @@ export const clients = pgTable(
     address: text(),
     currency: text(),
     notes: text(),
+    contactName: text(),
+    /** BCP 47 language for invoices and other documents sent to the client */
+    documentLanguage: text(),
+    color: text(),
+    /** small square image as a data: URL (resized client-side before upload) */
+    logo: text(),
     archivedAt: tstz(),
     ...timestamps,
   },
@@ -74,6 +80,13 @@ export const projects = pgTable(
     color: text().notNull().default('#4B4FC4'),
     status: text().$type<'ACTIVE' | 'ON_HOLD' | 'COMPLETED'>().notNull().default('ACTIVE'),
     billableDefault: boolean().notNull().default(true),
+    /** short code shown in tight places (timer, reports), e.g. "WEB" */
+    shortName: text(),
+    startDate: text(),
+    endDate: text(),
+    /** planned effort; the unit only changes how it is entered and shown (a day = the org's working hours per day) */
+    estimateSeconds: integer(),
+    estimateUnit: text().$type<'HOURS' | 'DAYS'>().notNull().default('HOURS'),
     archivedAt: tstz(),
     ...timestamps,
   },
@@ -83,6 +96,23 @@ export const projects = pgTable(
     index().on(t.organizationId, t.status),
     index().on(t.organizationId, t.clientId),
   ],
+);
+
+/** Files attached to a project (briefs, contracts, specs). The bytes live in object storage. */
+export const projectDocuments = pgTable(
+  'project_documents',
+  {
+    id: pk(),
+    organizationId: orgId(),
+    projectId: uuid().notNull(),
+    fileId: uuid().notNull(),
+    name: text().notNull(),
+    contentType: text().notNull(),
+    bytes: integer().notNull(),
+    uploadedBy: uuid(),
+    createdAt: tstz().notNull().default(sql`now()`),
+  },
+  (t) => [index().on(t.organizationId, t.projectId)],
 );
 
 export const projectMembers = pgTable(

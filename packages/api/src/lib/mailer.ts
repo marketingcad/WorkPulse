@@ -9,10 +9,13 @@ export interface MailMessage {
 
 export interface Mailer {
   send(msg: MailMessage): Promise<void>;
+  /** False when messages are only kept locally (nothing reaches an inbox). */
+  readonly delivers?: boolean;
 }
 
 /** Development/test mailer: keeps messages in memory and logs a one-line summary. */
 export class MemoryMailer implements Mailer {
+  readonly delivers = false;
   readonly sent: MailMessage[] = [];
   constructor(private readonly log = false) {}
   async send(msg: MailMessage): Promise<void> {

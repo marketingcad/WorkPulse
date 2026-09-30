@@ -128,7 +128,7 @@ export default function LivePage() {
     <>
       <PageHeader
         title="Who is working now"
-        description="Live status of members with tracking enabled. Refreshes every 15 seconds."
+        description="Live status of members with tracking enabled. Updates automatically."
         actions={
           <Button icon={<RefreshCw className={q.isFetching ? 'size-3.5 animate-spin' : 'size-3.5'} />} onClick={() => void q.refetch()}>
             Refresh
@@ -175,7 +175,7 @@ export default function LivePage() {
             caption="Live member status"
             empty={
               filter === 'ALL' ? (
-                <EmptyState title="No members with tracking enabled" description="Enable tracking for members in Workers, then they will appear here while they work." />
+                <EmptyState title="No members with tracking enabled" description="Turn on time tracking for members on their profile (Members → member → Edit), then they appear here while they work." />
               ) : (
                 <EmptyState title={`Nobody is ${filter === 'WORKING' ? 'working' : filter === 'IDLE' ? 'idle' : 'offline'} right now`} />
               )

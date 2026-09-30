@@ -1,5 +1,5 @@
 'use client';
-import { useMutation, useQuery, useQueryClient, type QueryKey, type UseQueryOptions } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey, type UseQueryOptions } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 
 export class ApiError extends Error {
@@ -63,14 +63,26 @@ export function useOrgQuery<T>(path: string | null, opts: Partial<UseQueryOption
   });
 }
 
-/** Mutations against /orgs/:orgId that refresh all org queries on success. */
-export function useOrgMutation<TBody = unknown, TRes = unknown>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string | ((b: TBody) => string), opts: { invalidate?: boolean; onSuccess?: (r: TRes, b: TBody) => void } = {}) {
+/**
+ * Refresh org queries after a change. With `prefixes`, only queries whose path starts with one of
+ * them refetch (e.g. ['/tracking', '/time-entries']); without, every org query does.
+ */
+export function invalidateOrg(qc: QueryClient, orgId: string, prefixes?: string[]) {
+  if (!prefixes) return qc.invalidateQueries({ queryKey: ['org', orgId] });
+  return qc.invalidateQueries({ queryKey: ['org', orgId], predicate: (q) => typeof q.queryKey[2] === 'string' && prefixes.some((p) => (q.queryKey[2] as string).startsWith(p)) });
+}
+
+/**
+ * Mutations against /orgs/:orgId. On success they refresh all org queries, or only the path
+ * prefixes given in `invalidate` (false: none).
+ */
+export function useOrgMutation<TBody = unknown, TRes = unknown>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string | ((b: TBody) => string), opts: { invalidate?: boolean | string[]; onSuccess?: (r: TRes, b: TBody) => void } = {}) {
   const orgId = useOrgId();
   const qc = useQueryClient();
   return useMutation<TRes, ApiError, TBody>({
     mutationFn: (b) => api<TRes>(`/orgs/${orgId}${typeof path === 'function' ? path(b) : path}`, { method, body: method === 'DELETE' && (b === undefined || b === null) ? undefined : (b ?? {}) }),
     onSuccess: (r, b) => {
-      if (opts.invalidate !== false) void qc.invalidateQueries({ queryKey: ['org', orgId] });
+      if (opts.invalidate !== false) void invalidateOrg(qc, orgId, Array.isArray(opts.invalidate) ? opts.invalidate : undefined);
       opts.onSuccess?.(r, b);
     },
   });

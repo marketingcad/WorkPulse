@@ -28,6 +28,10 @@ export interface CatalogItem {
   question: string;
   category: 'Time' | 'Activity' | 'People' | 'Finance' | 'Compliance';
   groupings: string[];
+  /** Filters the report applies (older servers omit it: all). */
+  filters?: Array<'dates' | 'members' | 'teams' | 'projects' | 'clients' | 'billable'>;
+  /** Covered by another report; still opens from saved reports. */
+  hidden?: boolean;
 }
 
 export interface SavedReport {

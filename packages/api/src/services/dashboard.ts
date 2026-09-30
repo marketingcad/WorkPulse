@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   dashboardLayouts,
@@ -19,9 +19,10 @@ import { addDaysToDate, deriveInvoiceStatus, forbidden, localDate, splitAtLocalM
 import type { dashboardLayoutInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { listScreenshots } from './activity';
-import { budgetStatuses } from './finance';
+import { budgetStatuses, redactBudgetMoney } from './finance';
 import { listAttendance } from './operations';
 import { effectivePolicy } from './policies';
+import { insights } from './insights';
 import { narrowMemberships } from './scope';
 import { todayAndWeek, workerTimezone } from './tracking';
 import { currentTracking, liveWorkers, listSessions } from './timer';
@@ -46,6 +47,8 @@ export const WIDGETS = [
   'assigned_tasks',
   'weekly_limits',
   'devices_offline',
+  'month_summary',
+  'hours_by_client',
 ] as const;
 
 type Size = 'S' | 'M' | 'L';
@@ -74,10 +77,12 @@ export function defaultLayout(x: Ctx, scope: 'ALL' | 'ME' | 'WORKER'): Array<{ k
     ];
   }
   return [
+    { key: 'month_summary', size: 'L' },
     { key: 'worked_today', size: 'L' },
     { key: 'timesheets_to_approve', size: 'M' },
     { key: 'project_budgets', size: 'M' },
-    { key: 'hours_by_project', size: 'L' },
+    { key: 'hours_by_project', size: 'M' },
+    { key: 'hours_by_client', size: 'M' },
     { key: 'active_workers', size: 'M' },
     { key: 'invoices', size: 'M' },
     { key: 'time_off_requests', size: 'M' },
@@ -184,7 +189,8 @@ export async function widgetData(x: Ctx, keys: string[], scope: 'ALL' | 'ME' | '
 
   if (want.has('timesheets_to_approve') && g['timesheets:approve']) {
     const visible = narrowMemberships(x.actor, 'timesheets:approve');
-    const [c] = await x.tx.select({ n: count() }).from(timesheets).where(and(eq(timesheets.status, 'SUBMITTED'), visible === 'all' ? undefined : inArray(timesheets.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000'])));
+    // Same rows as the approval queue: your own submitted timesheet is not yours to approve (unless you are the owner).
+    const [c] = await x.tx.select({ n: count() }).from(timesheets).where(and(eq(timesheets.status, 'SUBMITTED'), visible === 'all' ? undefined : inArray(timesheets.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']), x.actor.isOwner ? undefined : ne(timesheets.membershipId, x.actor.membershipId)));
     const [mt] = await x.tx.select({ n: count() }).from(manualTimeRequests).where(and(eq(manualTimeRequests.status, 'PENDING'), visible === 'all' ? undefined : inArray(manualTimeRequests.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000'])));
     out.timesheets_to_approve = { timesheets: c?.n ?? 0, manual_time: mt?.n ?? 0 };
   }
@@ -196,7 +202,7 @@ export async function widgetData(x: Ctx, keys: string[], scope: 'ALL' | 'ME' | '
 
   if (want.has('project_budgets') && g['budgets:read']) {
     const all = await budgetStatuses(x.tx, x.org.currency, today);
-    out.project_budgets = (g['budgets:read'] === 'org' ? all : all.filter((b) => b.subject_type === 'PROJECT' && x.actor.assignedProjectIds.has(b.subject_id))).slice(0, 6);
+    out.project_budgets = redactBudgetMoney(x, (g['budgets:read'] === 'org' ? all : all.filter((b) => b.subject_type === 'PROJECT' && x.actor.assignedProjectIds.has(b.subject_id))).slice(0, 6));
   }
 
   if (want.has('recent_screenshots') && g['screenshots:read']) {
@@ -267,6 +273,15 @@ export async function widgetData(x: Ctx, keys: string[], scope: 'ALL' | 'ME' | '
       };
     }
   }
+  if ((want.has('month_summary') || want.has('hours_by_client')) && g['time:read']) {
+    const monthStart = `${today.slice(0, 8)}01`;
+    const [y, m] = today.split('-').map(Number) as [number, number];
+    const monthEnd = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+    const ins = await insights(x, monthStart, monthEnd, target === 'all' ? undefined : target.length ? target : ['00000000-0000-7000-8000-000000000000']);
+    out.month_summary = { from: ins.from, to: ins.to, currency: ins.currency, money_visible: ins.money_visible, other_currency: ins.other_currency, totals: ins.totals };
+    out.hours_by_client = ins.by_client.slice(0, 8);
+  }
+
   void memberships;
   void trackingSessions;
   if (!Object.keys(out).length && keys.length && !g['org:read']) throw forbidden();

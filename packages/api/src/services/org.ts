@@ -2,20 +2,24 @@ import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   invitations,
+  memberDetails,
   memberships,
   organizations,
+  projects,
   rolePermissions,
   roles,
   teamMembers,
+  teams,
   users,
   workerProfiles,
 } from '@tallywork/db';
-import { businessRule, can, conflict, forbidden, newId, notFound, validation, type Grants } from '@tallywork/domain';
-import type { OrgContextDto, WorkerDto, inviteInput, roleInput, updateOrgInput, updateWorkerInput } from '@tallywork/contracts';
+import { businessRule, can, conflict, forbidden, localDate, newId, notFound, validation, type Grants } from '@tallywork/domain';
+import type { MemberDetailsDto, OrgContextDto, WorkerDto, inviteInput, memberDetailsInput, roleInput, updateOrgInput, updateWorkerInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { ipAllowed, parseCidr } from '../lib/cidr';
 import { audit } from './events';
-import { membershipFilter } from './scope';
+import { applyScopedRates, currentScopedRates, rateChanges } from './finance';
+import { membershipFilter, narrowMemberships } from './scope';
 import { randomToken, sha256 } from '../lib/crypto';
 import { iso } from '../lib/http';
 
@@ -34,6 +38,13 @@ export async function orgContext(x: Ctx): Promise<OrgContextDto> {
       pay_period: o!.payPeriod,
       settings: o!.settings as unknown as Record<string, unknown>,
       is_demo: o!.isDemo,
+      logo: o!.logo,
+      brief: o!.brief,
+      tax_id: o!.taxId,
+      address: o!.address,
+      phone: o!.phone,
+      email: o!.email,
+      document_language: o!.documentLanguage,
     },
     membership: {
       id: x.actor.membershipId,
@@ -57,6 +68,13 @@ export async function updateOrg(x: Ctx, input: z.infer<typeof updateOrgInput>) {
   if (input.week_start !== undefined) patch.weekStart = input.week_start;
   if (input.currency !== undefined) patch.currency = input.currency;
   if (input.pay_period !== undefined) patch.payPeriod = input.pay_period;
+  if (input.logo !== undefined) patch.logo = input.logo;
+  if (input.brief !== undefined) patch.brief = input.brief;
+  if (input.tax_id !== undefined) patch.taxId = input.tax_id;
+  if (input.address !== undefined) patch.address = input.address;
+  if (input.phone !== undefined) patch.phone = input.phone;
+  if (input.email !== undefined) patch.email = input.email;
+  if (input.document_language !== undefined) patch.documentLanguage = input.document_language;
   if (input.settings !== undefined) {
     const security = (['enforceMfa', 'sessionTtlHours', 'requireDeviceApproval', 'ipAllowlist'] as const).filter((k) => k in input.settings!);
     if (security.length && !x.actor.grants['settings:security']) throw forbidden('Changing security settings needs the security settings permission');
@@ -73,7 +91,8 @@ export async function updateOrg(x: Ctx, input: z.infer<typeof updateOrgInput>) {
     patch.settings = { ...before!.settings, ...input.settings };
   }
   await x.tx.update(organizations).set(patch).where(eq(organizations.id, x.org.id));
-  await audit(x, { action: 'organization.updated', targetType: 'organization', targetId: x.org.id, before, after: patch });
+  const shrink = <T extends { logo?: string | null }>(o: T) => ({ ...o, logo: o.logo ? '(image)' : o.logo });
+  await audit(x, { action: 'organization.updated', targetType: 'organization', targetId: x.org.id, before: shrink(before!), after: shrink(patch) });
   return orgContext(x);
 }
 
@@ -147,6 +166,10 @@ export async function listWorkers(x: Ctx, opts: { includeRemoved?: boolean } = {
     .orderBy(asc(users.name));
   const ids = rows.map((r) => r.m.id);
   const tm = ids.length ? await x.tx.select().from(teamMembers).where(inArray(teamMembers.membershipId, ids)) : [];
+  const rates = x.actor.grants['rates:read'] ? await currentScopedRates(x, 'WORKER') : null;
+  const rateVisible = rates ? narrowMemberships(x.actor, 'rates:read') : [];
+  const ratesOf = (id: string) =>
+    rates && (rateVisible === 'all' || rateVisible.includes(id)) ? { pay_rate_minor: rates.get(`PAY:${id}`)?.amountMinor ?? null, bill_rate_minor: rates.get(`BILL:${id}`)?.amountMinor ?? null } : {};
   return rows.map(({ m, u, p, r }) => ({
     id: m.id,
     user_id: u.id,
@@ -163,6 +186,8 @@ export async function listWorkers(x: Ctx, opts: { includeRemoved?: boolean } = {
     employment_type: p?.employmentType ?? 'EMPLOYEE',
     weekly_expected_seconds: p?.weeklyExpectedSeconds ?? null,
     start_date: p?.startDate ?? null,
+    end_date: p?.endDate ?? null,
+    ...ratesOf(m.id),
     team_ids: tm.filter((t) => t.membershipId === m.id).map((t) => t.teamId),
     created_at: m.createdAt.toISOString(),
   }));
@@ -181,9 +206,20 @@ export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<
   const admin = !!x.actor.grants['members:manage'];
   // Workers may only change their own timezone/title.
   if (!admin) {
-    const allowedSelf = isSelf && input.role_id === undefined && input.status === undefined && input.tracking_enabled === undefined && input.employment_type === undefined && input.weekly_expected_seconds === undefined && input.start_date === undefined;
+    const allowedSelf =
+      isSelf &&
+      input.role_id === undefined &&
+      input.status === undefined &&
+      input.tracking_enabled === undefined &&
+      input.employment_type === undefined &&
+      input.weekly_expected_seconds === undefined &&
+      input.start_date === undefined &&
+      input.end_date === undefined;
     if (!allowedSelf) throw forbidden();
   }
+  const changes = rateChanges(input);
+  if (changes.length && !x.actor.grants['rates:manage']) throw forbidden();
+  if (input.start_date && input.end_date && input.end_date < input.start_date) throw validation('The end date is before the start date', { errors: [{ field: 'end_date', message: 'Must be on or after the start date' }] });
   if (input.role_id !== undefined || input.status !== undefined) {
     if (before.is_owner) throw businessRule('owner_protected', 'The organization owner’s role and status cannot be changed');
     if (input.role_id) {
@@ -202,12 +238,14 @@ export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<
   if (input.employment_type !== undefined) profilePatch.employmentType = input.employment_type;
   if (input.weekly_expected_seconds !== undefined) profilePatch.weeklyExpectedSeconds = input.weekly_expected_seconds;
   if (input.start_date !== undefined) profilePatch.startDate = input.start_date;
+  if (input.end_date !== undefined) profilePatch.endDate = input.end_date;
   if (Object.keys(profilePatch).length) {
     await x.tx
       .insert(workerProfiles)
       .values({ membershipId, organizationId: x.org.id, timezone: before.timezone, ...profilePatch })
       .onConflictDoUpdate({ target: workerProfiles.membershipId, set: { ...profilePatch, updatedAt: new Date() } });
   }
+  await applyScopedRates(x, 'WORKER', membershipId, changes, x.org.currency);
   const after = await getWorker(x, membershipId);
   await audit(x, { action: 'worker.updated', targetType: 'membership', targetId: membershipId, before, after });
   return after;
@@ -219,7 +257,83 @@ export async function removeWorker(x: Ctx, membershipId: string) {
   if (w.is_owner) throw businessRule('owner_protected', 'Transfer ownership before removing the owner');
   await x.tx.update(memberships).set({ status: 'REMOVED', updatedAt: new Date() }).where(eq(memberships.id, membershipId));
   await x.tx.delete(teamMembers).where(eq(teamMembers.membershipId, membershipId));
+  if (!w.end_date) {
+    const endDate = localDate(x.deps.now(), x.org.timezone);
+    await x.tx
+      .insert(workerProfiles)
+      .values({ membershipId, organizationId: x.org.id, timezone: w.timezone, endDate })
+      .onConflictDoUpdate({ target: workerProfiles.membershipId, set: { endDate, updatedAt: new Date() } });
+  }
   await audit(x, { action: 'worker.removed', targetType: 'membership', targetId: membershipId, before: w });
+}
+
+// ─── Personal details ────────────────────────────────────────────────────────
+function detailsAccess(x: Ctx, membershipId: string) {
+  const admin = can(x.actor, 'members:manage', { ownerMembershipId: membershipId });
+  const self = membershipId === x.actor.membershipId;
+  if (!admin && !self) throw forbidden();
+  return { admin };
+}
+
+function detailsDto(d: typeof memberDetails.$inferSelect | undefined, admin: boolean): MemberDetailsDto {
+  return {
+    first_name: d?.firstName ?? null,
+    last_name: d?.lastName ?? null,
+    birth_date: d?.birthDate ?? null,
+    personal_email: d?.personalEmail ?? null,
+    phone: d?.phone ?? null,
+    country: d?.country ?? null,
+    region: d?.region ?? null,
+    city: d?.city ?? null,
+    postal_code: d?.postalCode ?? null,
+    address: d?.address ?? null,
+    emergency_contact_name: d?.emergencyContactName ?? null,
+    emergency_contact_phone: d?.emergencyContactPhone ?? null,
+    education: d?.education ?? null,
+    ...(admin && { notes: d?.notes ?? null }),
+  };
+}
+
+export async function getMemberDetails(x: Ctx, membershipId: string): Promise<MemberDetailsDto> {
+  const { admin } = detailsAccess(x, membershipId);
+  await getWorker(x, membershipId);
+  const [d] = await x.tx.select().from(memberDetails).where(eq(memberDetails.membershipId, membershipId));
+  return detailsDto(d, admin);
+}
+
+export async function updateMemberDetails(x: Ctx, membershipId: string, input: z.infer<typeof memberDetailsInput>) {
+  const { admin } = detailsAccess(x, membershipId);
+  if (input.notes !== undefined && !admin) throw forbidden('Only admins can edit HR notes');
+  await getWorker(x, membershipId);
+  const map = {
+    first_name: 'firstName',
+    last_name: 'lastName',
+    birth_date: 'birthDate',
+    personal_email: 'personalEmail',
+    phone: 'phone',
+    country: 'country',
+    region: 'region',
+    city: 'city',
+    postal_code: 'postalCode',
+    address: 'address',
+    emergency_contact_name: 'emergencyContactName',
+    emergency_contact_phone: 'emergencyContactPhone',
+    education: 'education',
+    notes: 'notes',
+  } as const;
+  const patch: Partial<typeof memberDetails.$inferInsert> = {};
+  for (const [k, col] of Object.entries(map) as Array<[keyof typeof map, (typeof map)[keyof typeof map]]>) {
+    if (input[k] !== undefined) patch[col] = input[k] || null;
+  }
+  if (Object.keys(patch).length) {
+    await x.tx
+      .insert(memberDetails)
+      .values({ membershipId, organizationId: x.org.id, ...patch })
+      .onConflictDoUpdate({ target: memberDetails.membershipId, set: { ...patch, updatedAt: new Date() } });
+  }
+  // Personal data stays out of the audit trail: record which fields changed, not their values.
+  await audit(x, { action: 'worker.details_updated', targetType: 'membership', targetId: membershipId, metadata: { fields: Object.keys(input).filter((k) => input[k as keyof typeof input] !== undefined) } });
+  return getMemberDetails(x, membershipId);
 }
 
 export async function inviteWorker(x: Ctx, input: z.infer<typeof inviteInput>) {
@@ -232,6 +346,11 @@ export async function inviteWorker(x: Ctx, input: z.infer<typeof inviteInput>) {
     .innerJoin(users, eq(users.id, memberships.userId))
     .where(and(eq(memberships.organizationId, x.org.id), eq(users.email, input.email.toLowerCase())));
   if (existing.some((e) => e.status === 'ACTIVE')) throw conflict('already_member', 'This person is already a member');
+  const teamIds = [...new Set(input.team_ids)];
+  const projectIds = [...new Set(input.project_ids)];
+  if (teamIds.length && (await x.tx.select({ id: teams.id }).from(teams).where(inArray(teams.id, teamIds))).length !== teamIds.length) throw validation('Choose teams from this workspace', { errors: [{ field: 'team_ids', message: 'Choose teams from this workspace' }] });
+  if (projectIds.length && (await x.tx.select({ id: projects.id }).from(projects).where(and(inArray(projects.id, projectIds), isNull(projects.archivedAt)))).length !== projectIds.length)
+    throw validation('Choose active projects from this workspace', { errors: [{ field: 'project_ids', message: 'Choose active projects from this workspace' }] });
   const token = randomToken(32);
   const id = newId();
   await x.tx
@@ -244,15 +363,21 @@ export async function inviteWorker(x: Ctx, input: z.infer<typeof inviteInput>) {
     email: input.email.toLowerCase(),
     name: input.name ?? null,
     roleId: input.role_id,
-    teamIds: input.team_ids,
+    teamIds,
+    teamRole: teamIds.length ? input.team_role : 'MEMBER',
+    projectIds,
     tokenHash: sha256(token),
     invitedBy: x.actor.membershipId,
     expiresAt: new Date(Date.now() + 7 * 86400_000),
   });
   const url = `${x.deps.config.appUrl}/invite?token=${token}`;
-  await x.deps.mailer.send({ to: input.email, subject: `You're invited to ${x.org.name} on WorkPulse`, text: `${x.org.name} invited you to join their workspace on WorkPulse.\n\nAccept the invitation: ${url}\n\nThis link expires in 7 days.` });
-  await audit(x, { action: 'invitation.created', targetType: 'invitation', targetId: id, after: { email: input.email, role: role.key } });
-  return { id, email: input.email.toLowerCase(), invite_url: url, expires_at: new Date(Date.now() + 7 * 86400_000).toISOString() };
+  // A failed send must not lose the invitation: the admin can still share the link.
+  let emailSent = x.deps.mailer.delivers !== false;
+  await x.deps.mailer.send({ to: input.email, subject: `You're invited to ${x.org.name} on WorkPulse`, text: `${x.org.name} invited you to join their workspace on WorkPulse.\n\nAccept the invitation: ${url}\n\nThis link expires in 7 days.` }).catch(() => {
+    emailSent = false;
+  });
+  await audit(x, { action: 'invitation.created', targetType: 'invitation', targetId: id, after: { email: input.email, role: role.key, teams: teamIds.length, team_role: teamIds.length ? input.team_role : undefined, projects: projectIds.length } });
+  return { id, email: input.email.toLowerCase(), invite_url: url, expires_at: new Date(Date.now() + 7 * 86400_000).toISOString(), email_sent: emailSent };
 }
 
 export async function listInvitations(x: Ctx) {

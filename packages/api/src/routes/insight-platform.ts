@@ -2,10 +2,11 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { reportRuns, savedReports } from '@tallywork/db';
-import { apiKeyInput, dashboardLayoutInput, exportInput, reportQueryInput, retentionInput, savedReportInput, webhookInput } from '@tallywork/contracts';
+import { apiKeyInput, dashboardLayoutInput, dateRangeQuery, exportInput, reportQueryInput, retentionInput, savedReportInput, webhookInput } from '@tallywork/contracts';
 import { newId, notFound } from '@tallywork/domain';
 import type { AppEnv } from '../context';
-import { body, query } from '../lib/http';
+import { body, idList, query } from '../lib/http';
+import { insights } from '../services/insights';
 import { toCsv, toPdf, toXlsx } from '../lib/export';
 import { ctx } from '../services/ctx';
 import { audit } from '../services/events';
@@ -72,6 +73,11 @@ export const insightRoutes = new Hono<AppEnv>()
   .get('/dashboard/widgets', async (c) => {
     const q = query(c, z.object({ keys: z.string().max(1000), scope: scope.default('ALL'), membership_id: z.uuid().optional() }));
     return c.json(await widgetData(ctx(c), q.keys.split(','), q.scope, q.membership_id));
+  })
+
+  .get('/insights', async (c) => {
+    const q = query(c, dateRangeQuery.and(z.object({ membership_ids: idList })));
+    return c.json(await insights(ctx(c), q.from, q.to, q.membership_ids));
   })
 
   .get('/reports', async (c) => c.json(reportCatalog(ctx(c))))

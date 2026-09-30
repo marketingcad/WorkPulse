@@ -60,6 +60,8 @@ export const PERMISSIONS = [
   'invoices:manage',
   'payments:read',
   'payments:manage',
+  'payroll:read',
+  'payroll:manage',
   'reports:read',
   'reports:finance',
   'api_keys:manage',

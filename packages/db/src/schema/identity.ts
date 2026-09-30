@@ -75,6 +75,18 @@ export interface OrgSettings {
   sessionTtlHours: number;
   /** CIDR ranges people and API keys may use this organization from (empty = anywhere) */
   ipAllowlist?: string[];
+  /** members cannot add, edit or delete their own time on days more than this many days ago */
+  lockAfterDays?: number | null;
+  /** members cannot add, edit or delete their own time before this date (YYYY-MM-DD) */
+  lockBeforeDate?: string | null;
+  /** minimum time each tracking member should log per working day / per week */
+  minDailySeconds?: number | null;
+  minWeeklySeconds?: number | null;
+  /** remind members who are under the minimum, at this local time (HH:MM) on working days */
+  missingTimeReminder?: boolean;
+  missingTimeCheckAt?: string;
+  /** converts hours and days, e.g. for project estimates (default 8) */
+  workingHoursPerDay?: number;
 }
 
 export const organizations = pgTable('organizations', {
@@ -88,6 +100,15 @@ export const organizations = pgTable('organizations', {
   payPeriod: jsonb().$type<PayPeriodConfig>().notNull().default({ type: 'weekly' }),
   settings: jsonb().$type<OrgSettings>().notNull(),
   isDemo: boolean().notNull().default(false),
+  /** company profile printed on invoices and reports */
+  logo: text(),
+  brief: text(),
+  taxId: text(),
+  address: text(),
+  phone: text(),
+  email: text(),
+  /** default language for invoices and other documents; a client's own setting wins */
+  documentLanguage: text(),
   ...timestamps,
 });
 
@@ -144,6 +165,33 @@ export const workerProfiles = pgTable('worker_profiles', {
   employmentType: text().$type<'EMPLOYEE' | 'CONTRACTOR'>().notNull().default('EMPLOYEE'),
   weeklyExpectedSeconds: integer(),
   startDate: text(),
+  /** employment end ("date left"); set when the member is removed unless already set */
+  endDate: text(),
+  ...timestamps,
+});
+
+/**
+ * HR contact details. Kept apart from worker_profiles because they are personal data: only the
+ * member and admins with members:manage may read them, and erasure deletes the row.
+ */
+export const memberDetails = pgTable('member_details', {
+  membershipId: uuid().primaryKey().references(() => memberships.id, { onDelete: 'cascade' }),
+  organizationId: orgId(),
+  firstName: text(),
+  lastName: text(),
+  birthDate: text(),
+  personalEmail: text(),
+  phone: text(),
+  country: text(),
+  region: text(),
+  city: text(),
+  postalCode: text(),
+  address: text(),
+  emergencyContactName: text(),
+  emergencyContactPhone: text(),
+  education: text(),
+  /** admin-only HR notes; never shown to the member */
+  notes: text(),
   ...timestamps,
 });
 
@@ -156,6 +204,10 @@ export const invitations = pgTable(
     name: text(),
     roleId: uuid().notNull().references(() => roles.id),
     teamIds: jsonb().$type<string[]>().notNull().default([]),
+    /** Team role given on the teams above (MANAGER makes a Team Manager actually manage them). */
+    teamRole: text().$type<'MANAGER' | 'MEMBER'>().notNull().default('MEMBER'),
+    /** Projects the person joins on accept, so they can track right away. */
+    projectIds: jsonb().$type<string[]>().notNull().default([]),
     tokenHash: text().notNull().unique(),
     invitedBy: uuid().notNull(),
     expiresAt: tstz().notNull(),

@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Archive, MoreHorizontal, Pencil, Plus } from 'lucide-react';
 import type { ProjectDto, TaskDto, WorkerDto } from '@tallywork/contracts';
 import {
   Avatar,
@@ -133,8 +133,8 @@ export default function TasksPage() {
                   <MenuItem icon={<Pencil className="size-3.5" />} onSelect={() => setEdit(t)}>
                     Edit
                   </MenuItem>
-                  <MenuItem icon={<Trash2 className="size-3.5" />} danger onSelect={() => setDel(t)}>
-                    Delete
+                  <MenuItem icon={<Archive className="size-3.5" />} onSelect={() => setDel(t)}>
+                    Archive
                   </MenuItem>
                 </Menu>
               </span>
@@ -215,9 +215,9 @@ export default function TasksPage() {
       <ConfirmDialog
         open={!!del}
         onOpenChange={(o) => !o && setDel(null)}
-        title="Delete task?"
+        title="Archive task?"
         description={del && `“${del.title}” is removed from lists and timers. Time already tracked to it is kept.`}
-        confirmLabel="Delete task"
+        confirmLabel="Archive task"
         danger
         loading={busy}
         onConfirm={async () => {
@@ -225,7 +225,7 @@ export default function TasksPage() {
           setBusy(true);
           try {
             await run('DELETE', `/tasks/${del.id}`);
-            toast.success('Task deleted');
+            toast.success('Task archived');
             setDel(null);
           } catch (e) {
             toast.error(errorMessage(e));

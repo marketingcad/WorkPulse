@@ -2,10 +2,13 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ClientDto, ProjectDto, TaskDto, TeamDto, WorkerDto } from '@tallywork/contracts';
-import { Badge, Button, Checkbox, Dialog, Field, Input, Select, StatusBadge, Textarea, cx, useToast, type Tone } from '@tallywork/ui';
+import { Plus } from 'lucide-react';
+import { Badge, Button, Checkbox, Dialog, Field, IconButton, Input, Select, StatusBadge, Textarea, cx, useToast, type Tone } from '@tallywork/ui';
 import { ApiError, api, errorMessage, useOrgId } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { fromMinor, toMinor } from '@/components/finance/types';
 import { MultiSelect } from './multi-select';
+import { ClientDialog } from './client-dialog';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 /** Project colours are data (stored on the project), so hex values are allowed here. */
@@ -267,9 +270,27 @@ export interface ProjectForm {
   billable_default: boolean;
   member_ids: string[];
   team_ids: string[];
+  short_name: string;
+  start_date: string;
+  end_date: string;
+  /** in `estimate_unit`, as typed */
+  estimate: string;
+  estimate_unit: 'HOURS' | 'DAYS';
+  pay_rate: string;
+  bill_rate: string;
 }
 
-export function projectToForm(p?: ProjectDto | null): ProjectForm {
+/** Working hours in a day, for converting estimates (organization setting, default 8). */
+export function useHoursPerDay(): number {
+  const org = useOrg();
+  const v = (org.organization.settings as { workingHoursPerDay?: number }).workingHoursPerDay;
+  return v && v > 0 ? v : 8;
+}
+
+const unitSeconds = (unit: 'HOURS' | 'DAYS', hoursPerDay: number) => (unit === 'DAYS' ? hoursPerDay * 3600 : 3600);
+
+export function projectToForm(p: ProjectDto | null | undefined, hoursPerDay: number): ProjectForm {
+  const unit = p?.estimate_unit ?? 'HOURS';
   return {
     name: p?.name ?? '',
     client_id: p?.client_id ?? '',
@@ -279,12 +300,19 @@ export function projectToForm(p?: ProjectDto | null): ProjectForm {
     billable_default: p?.billable_default ?? true,
     member_ids: p?.member_ids ?? [],
     team_ids: p?.team_ids ?? [],
+    short_name: p?.short_name ?? '',
+    start_date: p?.start_date ?? '',
+    end_date: p?.end_date ?? '',
+    estimate: p?.estimate_seconds != null ? String(Math.round((p.estimate_seconds / unitSeconds(unit, hoursPerDay)) * 100) / 100) : '',
+    estimate_unit: unit,
+    pay_rate: p?.pay_rate_minor != null ? fromMinor(p.pay_rate_minor) : '',
+    bill_rate: p?.bill_rate_minor != null ? fromMinor(p.bill_rate_minor) : '',
   };
 }
 
-export function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+export function ColorPicker({ value, onChange, label = 'Project colour' }: { value: string; onChange: (c: string) => void; label?: string }) {
   return (
-    <div role="radiogroup" aria-label="Project colour" className="flex flex-wrap gap-1.5">
+    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1.5">
       {PROJECT_COLORS.map((c, i) => (
         <button
           key={c}
@@ -320,60 +348,135 @@ export function ProjectFields({
   teams?: TeamDto[];
   showAssignments?: boolean;
 }) {
+  const org = useOrg();
+  const [newClient, setNewClient] = useState(false);
+  const [created, setCreated] = useState<ClientDto[]>([]);
+  const clientList = [...(clients ?? []), ...created.filter((c) => !(clients ?? []).some((x) => x.id === c.id))];
+  const currency = clientList.find((c) => c.id === f.client_id)?.currency ?? org.organization.currency;
+  const canReadRates = org.can('rates:read');
+  const canManageRates = org.can('rates:manage');
+  const unitLabel = f.estimate_unit === 'DAYS' ? 'days' : 'hours';
+
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <Field label="Name" htmlFor="proj-name" required error={err?.field('name')} className="sm:col-span-2">
-        <Input id="proj-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={150} />
-      </Field>
-      <Field label="Client" htmlFor="proj-client" error={err?.field('client_id')}>
-        <Select id="proj-client" value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })}>
-          <option value="">No client</option>
-          {(clients ?? []).map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Status" htmlFor="proj-status">
-        <Select id="proj-status" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
-          {PROJECT_STATUSES.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Colour" className="sm:col-span-2">
-        <ColorPicker value={f.color} onChange={(color) => setF({ ...f, color })} />
-      </Field>
-      <div className="sm:col-span-2">
-        <Checkbox label="New time on this project is billable by default" checked={f.billable_default} onChange={(e) => setF({ ...f, billable_default: e.target.checked })} />
+    <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-[1fr_240px]">
+      <div className="grid grid-cols-1 content-start gap-3 sm:grid-cols-2">
+        <Field label="Name" htmlFor="proj-name" required error={err?.field('name')} className="sm:col-span-2">
+          <Input id="proj-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={150} />
+        </Field>
+        <Field label="Short name" htmlFor="proj-short" hint="Shown where space is tight, e.g. WEB." error={err?.field('short_name')}>
+          <Input id="proj-short" value={f.short_name} onChange={(e) => setF({ ...f, short_name: e.target.value })} maxLength={20} />
+        </Field>
+        <Field label="Client" htmlFor="proj-client" error={err?.field('client_id')}>
+          <div className="flex gap-1.5">
+            <Select id="proj-client" value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })} className="min-w-0 flex-1">
+              <option value="">No client</option>
+              {clientList.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+            {org.can('clients:manage') && (
+              <IconButton label="New client" variant="secondary" onClick={() => setNewClient(true)}>
+                <Plus className="size-3.5" />
+              </IconButton>
+            )}
+          </div>
+        </Field>
+        <Field label="Start date" htmlFor="proj-start" error={err?.field('start_date')}>
+          <Input id="proj-start" type="date" value={f.start_date} onChange={(e) => setF({ ...f, start_date: e.target.value })} />
+        </Field>
+        <Field label="End date" htmlFor="proj-end" error={err?.field('end_date')}>
+          <Input id="proj-end" type="date" value={f.end_date} min={f.start_date || undefined} onChange={(e) => setF({ ...f, end_date: e.target.value })} />
+        </Field>
+        <Field label={`Estimated ${unitLabel}`} htmlFor="proj-estimate" hint="Planned effort; compared with logged time on the project." error={err?.field('estimate_seconds')}>
+          <Input id="proj-estimate" type="number" min={0} step={f.estimate_unit === 'DAYS' ? 0.5 : 1} inputMode="decimal" className="tabular" value={f.estimate} onChange={(e) => setF({ ...f, estimate: e.target.value })} />
+        </Field>
+        <Field label="Status" htmlFor="proj-status">
+          <Select id="proj-status" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
+            {PROJECT_STATUSES.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Colour" className="sm:col-span-2">
+          <ColorPicker value={f.color} onChange={(color) => setF({ ...f, color })} />
+        </Field>
+        {showAssignments && workers && (
+          <Field label="Members" htmlFor="proj-members" hint="Members can track time to this project." error={err?.field('member_ids')}>
+            <MultiSelect
+              id="proj-members"
+              options={workers.filter((w) => w.status === 'ACTIVE').map((w) => ({ value: w.id, label: w.name, sub: w.email }))}
+              value={f.member_ids}
+              onChange={(member_ids) => setF({ ...f, member_ids })}
+              placeholder="No direct members"
+            />
+          </Field>
+        )}
+        {showAssignments && teams && (
+          <Field label="Teams" htmlFor="proj-teams" hint="Everyone in these teams can track time here." error={err?.field('team_ids')}>
+            <MultiSelect id="proj-teams" options={teams.map((t) => ({ value: t.id, label: t.name, sub: `${t.members.length} members` }))} value={f.team_ids} onChange={(team_ids) => setF({ ...f, team_ids })} placeholder="No teams" />
+          </Field>
+        )}
+        <Field label="Description" htmlFor="proj-desc" className="sm:col-span-2">
+          <Textarea id="proj-desc" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} maxLength={2000} className="min-h-16" />
+        </Field>
       </div>
-      {showAssignments && workers && (
-        <Field label="Members" htmlFor="proj-members" hint="Members can track time to this project." error={err?.field('member_ids')}>
-          <MultiSelect
-            id="proj-members"
-            options={workers.filter((w) => w.status === 'ACTIVE').map((w) => ({ value: w.id, label: w.name, sub: w.email }))}
-            value={f.member_ids}
-            onChange={(member_ids) => setF({ ...f, member_ids })}
-            placeholder="No direct members"
-          />
+
+      <section className="flex flex-col gap-3 md:border-l md:border-border md:pl-6" aria-label="Finance">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Finance</h3>
+        <Field label="Estimate units" htmlFor="proj-unit">
+          <Select id="proj-unit" value={f.estimate_unit} onChange={(e) => setF({ ...f, estimate_unit: e.target.value as 'HOURS' | 'DAYS' })}>
+            <option value="HOURS">Hours</option>
+            <option value="DAYS">Days</option>
+          </Select>
         </Field>
-      )}
-      {showAssignments && teams && (
-        <Field label="Teams" htmlFor="proj-teams" hint="Everyone in these teams can track time here." error={err?.field('team_ids')}>
-          <MultiSelect id="proj-teams" options={teams.map((t) => ({ value: t.id, label: t.name, sub: `${t.members.length} members` }))} value={f.team_ids} onChange={(team_ids) => setF({ ...f, team_ids })} placeholder="No teams" />
+        <Field label="Currency" htmlFor="proj-currency" hint={f.client_id ? 'From the client.' : 'Workspace default. Pick a client to bill in its currency.'}>
+          <Input id="proj-currency" value={currency} readOnly disabled className="tabular" />
         </Field>
-      )}
-      <Field label="Description" htmlFor="proj-desc" className="sm:col-span-2">
-        <Textarea id="proj-desc" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} maxLength={2000} />
-      </Field>
+        {canReadRates && (
+          <>
+            <Field label="Pay rate per hour" htmlFor="proj-pay" hint={`${currency} / hour, what you pay`} error={err?.field('pay_rate_minor')}>
+              <Input id="proj-pay" inputMode="decimal" className="tabular" placeholder="0.00" value={f.pay_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, pay_rate: e.target.value })} />
+            </Field>
+            <Field label="Bill rate per hour" htmlFor="proj-bill" hint={`${currency} / hour, what you charge`} error={err?.field('bill_rate_minor')}>
+              <Input id="proj-bill" inputMode="decimal" className="tabular" placeholder="0.00" value={f.bill_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} />
+            </Field>
+            <p className="text-xs text-text-muted">Rates apply from today. The bill rate overrides client, member and workspace rates; the pay rate overrides client and workspace rates, but a member's own pay rate still wins. Full order: Finance → Billing &amp; rates.</p>
+          </>
+        )}
+        <Checkbox label="Not billable project" checked={!f.billable_default} onChange={(e) => setF({ ...f, billable_default: !e.target.checked })} />
+      </section>
+
+      <ClientDialog
+        client={null}
+        open={newClient}
+        onOpenChange={setNewClient}
+        onSaved={(c) => {
+          setCreated((xs) => [...xs, c]);
+          setF({ ...f, client_id: c.id });
+        }}
+      />
     </div>
   );
 }
 
-export function projectPayload(f: ProjectForm, opts: { workers?: boolean; teams?: boolean } = {}) {
+/**
+ * Request body for the form. Rates are only sent when they changed and the editor may manage
+ * rates; the estimate is converted from hours or days to seconds.
+ */
+export function projectPayload(f: ProjectForm, opts: { workers?: boolean; teams?: boolean; hoursPerDay?: number; initial?: ProjectForm; canManageRates?: boolean } = {}) {
+  const rate = (key: 'pay_rate' | 'bill_rate', field: 'pay_rate_minor' | 'bill_rate_minor') => {
+    if (!opts.canManageRates || (opts.initial && f[key] === opts.initial[key])) return {};
+    if (!f[key].trim()) return opts.initial ? { [field]: null } : {};
+    const minor = toMinor(f[key]);
+    if (minor === null) throw new ApiError(422, 'validation', 'Enter a valid amount', undefined, [{ field, message: 'Enter an amount like 75 or 75.50' }]);
+    return { [field]: minor };
+  };
+  const est = f.estimate.trim() === '' ? null : Number(f.estimate);
+  if (est !== null && !(est >= 0)) throw new ApiError(422, 'validation', 'Enter a valid estimate', undefined, [{ field: 'estimate_seconds', message: 'A number of hours or days' }]);
   return {
     name: f.name,
     client_id: f.client_id || null,
@@ -381,6 +484,13 @@ export function projectPayload(f: ProjectForm, opts: { workers?: boolean; teams?
     color: f.color,
     status: f.status,
     billable_default: f.billable_default,
+    short_name: f.short_name.trim() || null,
+    start_date: f.start_date || null,
+    end_date: f.end_date || null,
+    estimate_seconds: est === null ? null : Math.round(est * unitSeconds(f.estimate_unit, opts.hoursPerDay ?? 8)),
+    estimate_unit: f.estimate_unit,
+    ...rate('pay_rate', 'pay_rate_minor'),
+    ...rate('bill_rate', 'bill_rate_minor'),
     ...(opts.workers ? { member_ids: f.member_ids } : {}),
     ...(opts.teams ? { team_ids: f.team_ids } : {}),
   };
@@ -403,23 +513,25 @@ export function ProjectDialog({
   teams?: TeamDto[];
   onSaved?: (p: ProjectDto) => void;
 }) {
+  const org = useOrg();
   const run = useOrgAction();
   const toast = useToast();
-  const [f, setF] = useState<ProjectForm>(projectToForm(project));
+  const hoursPerDay = useHoursPerDay();
+  const [f, setF] = useState<ProjectForm>(projectToForm(project, hoursPerDay));
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (open) {
-      setF(projectToForm(project));
+      setF(projectToForm(project, hoursPerDay));
       setErr(null);
     }
-  }, [open, project]);
+  }, [open, project, hoursPerDay]);
 
   const save = async () => {
     setBusy(true);
     setErr(null);
     try {
-      const body = projectPayload(f, { workers: !!workers, teams: !!teams });
+      const body = projectPayload(f, { workers: !!workers, teams: !!teams, hoursPerDay, initial: project ? projectToForm(project, hoursPerDay) : undefined, canManageRates: org.can('rates:manage') });
       const p = project ? await run<ProjectDto>('PATCH', `/projects/${project.id}`, body) : await run<ProjectDto>('POST', '/projects', body);
       toast.success(project ? 'Project updated' : 'Project created');
       onOpenChange(false);
@@ -437,7 +549,7 @@ export function ProjectDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={project ? 'Edit project' : 'New project'}
-      width={600}
+      width={820}
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>

@@ -243,10 +243,16 @@ function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
 function Notifications() {
   const org = useOrg();
   const qc = useQueryClient();
-  const { data } = useOrgQuery<{ data: NotificationDto[]; unread: number }>('/notifications', { refetchInterval: 30_000 });
+  const { data, isLoading, isError } = useOrgQuery<{ data: NotificationDto[]; unread: number }>('/notifications', { refetchInterval: 30_000 });
   const markAll = async () => {
     await api(`/orgs/${org.organization.id}/notifications/read`, { body: { ids: 'all' } });
     void qc.invalidateQueries({ queryKey: ['org', org.organization.id, '/notifications'] });
+  };
+  const markOne = (n: NotificationDto) => {
+    if (n.read_at) return;
+    void api(`/orgs/${org.organization.id}/notifications/read`, { body: { ids: [n.id] } })
+      .then(() => qc.invalidateQueries({ queryKey: ['org', org.organization.id, '/notifications'] }))
+      .catch(() => undefined);
   };
   return (
     <Popover
@@ -268,10 +274,12 @@ function Notifications() {
         )}
       </div>
       <ul className="max-h-96 divide-y divide-border overflow-y-auto">
-        {!data?.data.length && <li className="px-4 py-8 text-center text-sm text-text-muted">{t('shell.allCaughtUp')}</li>}
+        {isLoading && <li className="px-4 py-8 text-center text-sm text-text-muted">{t('shell.notificationsLoading')}</li>}
+        {isError && !data && <li className="px-4 py-8 text-center text-sm text-danger">{t('shell.notificationsError')}</li>}
+        {data && !data.data.length && <li className="px-4 py-8 text-center text-sm text-text-muted">{t('shell.allCaughtUp')}</li>}
         {data?.data.map((n) => (
           <li key={n.id}>
-            <Link href={n.link ? `${org.base}${n.link}` : org.base} className={cx('flex gap-3 px-4 py-3 hover:bg-surface-muted', !n.read_at && 'bg-interactive-soft/40')}>
+            <Link href={n.link ? `${org.base}${n.link}` : org.base} onClick={() => markOne(n)} className={cx('flex gap-3 px-4 py-3 hover:bg-surface-muted', !n.read_at && 'bg-interactive-soft/40')}>
               <span className={cx('mt-1.5 size-2 shrink-0 rounded-full', n.read_at ? 'bg-transparent' : 'bg-interactive')} />
               <span className="min-w-0">
                 <span className="block text-sm font-medium">{n.title}</span>

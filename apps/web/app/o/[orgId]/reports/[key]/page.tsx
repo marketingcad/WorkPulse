@@ -14,6 +14,8 @@ import {
   FilterBar,
   KpiStrip,
   Menu,
+  MenuLabel,
+  MenuSeparator,
   MenuItem,
   PageHeader,
   Panel,
@@ -80,6 +82,7 @@ function ReportRunner() {
   const catalogQ = useOrgQuery<CatalogItem[]>('/reports');
   const savedQ = useOrgQuery<SavedReport[]>(savedId ? '/saved-reports' : null);
   const item = catalogQ.data?.find((r) => r.key === key);
+  const has = (f: 'dates' | 'members' | 'teams' | 'projects' | 'clients' | 'billable') => !item?.filters || item.filters.includes(f);
   const manager = org.isManagerView;
   const workersQ = useOrgQuery<WorkerDto[]>(manager ? '/workers' : null);
   const teamsQ = useOrgQuery<TeamDto[]>(manager ? '/teams' : null);
@@ -129,14 +132,16 @@ function ReportRunner() {
   }, [savedQ.error]);
 
   const body = useMemo(() => {
-    const b: Record<string, unknown> = { from: params.from, to: params.to, billable: params.billable };
-    if (params.membership_ids.length) b.membership_ids = params.membership_ids;
-    if (params.team_ids.length) b.team_ids = params.team_ids;
-    if (params.project_ids.length) b.project_ids = params.project_ids;
-    if (params.client_ids.length) b.client_ids = params.client_ids;
+    // Only send filters the report applies, so a saved report never carries a hidden filter.
+    const b: Record<string, unknown> = { from: params.from, to: params.to, billable: has('billable') ? params.billable : 'all' };
+    if (has('members') && params.membership_ids.length) b.membership_ids = params.membership_ids;
+    if (has('teams') && params.team_ids.length) b.team_ids = params.team_ids;
+    if (has('projects') && params.project_ids.length) b.project_ids = params.project_ids;
+    if (has('clients') && params.client_ids.length) b.client_ids = params.client_ids;
     if (item?.groupings.length && params.group_by.length) b.group_by = params.group_by;
     return b;
-  }, [params, item?.groupings.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, item?.groupings.length, item?.filters]);
 
   const validRange = params.from <= params.to && (Date.parse(params.to) - Date.parse(params.from)) / 86_400_000 <= 400;
   const resultQ = useQuery<ReportResult, ApiError>({
@@ -229,36 +234,28 @@ function ReportRunner() {
             </Button>
             <Menu
               trigger={
-                <Button variant="primary" icon={<Download className="size-3.5" />} loading={!!exporting} disabled={!result}>
+                <Button variant="primary" icon={<Download className="size-3.5" />} loading={!!exporting || bg.isPending} disabled={!validRange}>
                   Export
                 </Button>
               }
             >
-              <MenuItem icon={<Sheet className="size-3.5" />} onSelect={() => doExport('CSV')}>
+              <MenuLabel>Download now</MenuLabel>
+              <MenuItem icon={<Sheet className="size-3.5" />} disabled={!result} onSelect={() => doExport('CSV')}>
                 CSV
               </MenuItem>
-              <MenuItem icon={<FileSpreadsheet className="size-3.5" />} onSelect={() => doExport('XLSX')}>
+              <MenuItem icon={<FileSpreadsheet className="size-3.5" />} disabled={!result} onSelect={() => doExport('XLSX')}>
                 Excel (XLSX)
               </MenuItem>
-              <MenuItem icon={<FileText className="size-3.5" />} onSelect={() => doExport('PDF')}>
+              <MenuItem icon={<FileText className="size-3.5" />} disabled={!result} onSelect={() => doExport('PDF')}>
                 PDF
               </MenuItem>
-            </Menu>
-            <Menu
-              trigger={
-                <Button icon={<Hourglass className="size-3.5" />} loading={bg.isPending} disabled={!validRange}>
-                  Export in background
-                </Button>
-              }
-            >
-              <MenuItem icon={<Sheet className="size-3.5" />} onSelect={() => exportInBackground('CSV')}>
-                CSV
+              <MenuSeparator />
+              <MenuLabel>Large report? Prepare it and notify me</MenuLabel>
+              <MenuItem icon={<Hourglass className="size-3.5" />} onSelect={() => exportInBackground('CSV')}>
+                CSV in the background
               </MenuItem>
-              <MenuItem icon={<FileSpreadsheet className="size-3.5" />} onSelect={() => exportInBackground('XLSX')}>
-                Excel (XLSX)
-              </MenuItem>
-              <MenuItem icon={<FileText className="size-3.5" />} onSelect={() => exportInBackground('PDF')}>
-                PDF
+              <MenuItem icon={<Hourglass className="size-3.5" />} onSelect={() => exportInBackground('XLSX')}>
+                Excel in the background
               </MenuItem>
               <MenuItem icon={<History className="size-3.5" />} onSelect={() => router.push(`${org.base}/reports?runs=1`)}>
                 Recent exports
@@ -269,6 +266,7 @@ function ReportRunner() {
       />
 
       <FilterBar>
+        {has('dates') && (
         <DateRangeFilter
           preset={preset}
           from={params.from}
@@ -280,15 +278,18 @@ function ReportRunner() {
             setParams((p) => ({ ...p, from: v.from, to: v.to }));
           }}
         />
-        {manager && <MultiSelect label="Members" options={(workersQ.data ?? []).map((w) => ({ value: w.id, label: w.name }))} value={params.membership_ids} onChange={(v) => set('membership_ids', v)} loading={workersQ.isLoading} />}
-        {manager && (teamsQ.data?.length ?? 0) > 0 && <MultiSelect label="Teams" options={(teamsQ.data ?? []).filter((t) => !t.archived_at).map((t) => ({ value: t.id, label: t.name }))} value={params.team_ids} onChange={(v) => set('team_ids', v)} />}
-        {(projectsQ.data?.length ?? 0) > 0 && <MultiSelect label="Projects" options={(projectsQ.data ?? []).map((p) => ({ value: p.id, label: p.name, sub: p.client_name ?? undefined }))} value={params.project_ids} onChange={(v) => set('project_ids', v)} />}
-        {(clientsQ.data?.length ?? 0) > 0 && <MultiSelect label="Clients" options={(clientsQ.data ?? []).map((c) => ({ value: c.id, label: c.name }))} value={params.client_ids} onChange={(v) => set('client_ids', v)} />}
-        <Select aria-label="Billable" className="w-52" value={params.billable} onChange={(e) => set('billable', e.target.value as Billable)}>
-          <option value="all">Billable + non-billable</option>
-          <option value="billable">Billable only</option>
-          <option value="non_billable">Non-billable only</option>
-        </Select>
+        )}
+        {manager && has('members') && <MultiSelect label="Members" options={(workersQ.data ?? []).map((w) => ({ value: w.id, label: w.name }))} value={params.membership_ids} onChange={(v) => set('membership_ids', v)} loading={workersQ.isLoading} />}
+        {manager && has('teams') && (teamsQ.data?.length ?? 0) > 0 && <MultiSelect label="Teams" options={(teamsQ.data ?? []).filter((t) => !t.archived_at).map((t) => ({ value: t.id, label: t.name }))} value={params.team_ids} onChange={(v) => set('team_ids', v)} />}
+        {has('projects') && (projectsQ.data?.length ?? 0) > 0 && <MultiSelect label="Projects" options={(projectsQ.data ?? []).map((p) => ({ value: p.id, label: p.name, sub: p.client_name ?? undefined }))} value={params.project_ids} onChange={(v) => set('project_ids', v)} />}
+        {has('clients') && (clientsQ.data?.length ?? 0) > 0 && <MultiSelect label="Clients" options={(clientsQ.data ?? []).map((c) => ({ value: c.id, label: c.name }))} value={params.client_ids} onChange={(v) => set('client_ids', v)} />}
+        {has('billable') && (
+          <Select aria-label="Billable" className="w-52" value={params.billable} onChange={(e) => set('billable', e.target.value as Billable)}>
+            <option value="all">Billable + non-billable</option>
+            <option value="billable">Billable only</option>
+            <option value="non_billable">Non-billable only</option>
+          </Select>
+        )}
         {filtersActive && (
           <Button variant="ghost" size="sm" icon={<X className="size-3.5" />} onClick={() => setParams((p) => ({ ...p, membership_ids: [], team_ids: [], project_ids: [], client_ids: [], billable: 'all' }))}>
             Clear filters

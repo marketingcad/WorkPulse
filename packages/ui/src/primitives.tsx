@@ -21,15 +21,23 @@ const SIZE: Record<Size, string> = {
   sm: 'h-8 px-3 text-sm gap-1.5',
   md: 'h-9 px-3.5 text-sm gap-2',
 };
+/** Icon-only buttons: square, no horizontal padding (a padding class cannot be overridden reliably without class merging). */
+const SQUARE: Record<Size, string> = {
+  xs: 'size-6 text-xs',
+  sm: 'size-8 text-sm',
+  md: 'size-9 text-sm',
+};
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
   loading?: boolean;
   icon?: ReactNode;
+  /** square icon-only button (used by IconButton) */
+  square?: boolean;
 }
 
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button({ variant = 'secondary', size = 'sm', loading, icon, className, children, disabled, type = 'button', ...rest }, ref) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button({ variant = 'secondary', size = 'sm', loading, icon, className, children, disabled, square, type = 'button', ...rest }, ref) {
   return (
     <button
       ref={ref}
@@ -38,7 +46,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       className={cx(
         'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap rounded-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
         VARIANT[variant],
-        SIZE[size],
+        square ? SQUARE[size] : SIZE[size],
         className,
       )}
       {...rest}
@@ -51,7 +59,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 
 export const IconButton = forwardRef<HTMLButtonElement, ButtonProps & { label: string }>(function IconButton({ label, className, size = 'sm', variant = 'ghost', children, ...rest }, ref) {
   return (
-    <Button ref={ref} aria-label={label} title={label} variant={variant} size={size} className={cx(size === 'xs' ? 'w-6 px-0' : size === 'sm' ? 'w-8 px-0' : 'w-9 px-0', className)} {...rest}>
+    <Button ref={ref} aria-label={label} title={label} variant={variant} size={size} square className={className} {...rest}>
       {children}
     </Button>
   );

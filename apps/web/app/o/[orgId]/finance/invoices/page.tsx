@@ -1,5 +1,5 @@
 'use client';
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FileText, Plus } from 'lucide-react';
@@ -8,6 +8,7 @@ import { Button, DataTable, EmptyState, ErrorState, FilterBar, KpiStrip, PageHea
 import { qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import type { InvoiceRow, InvoiceStatus } from '@/components/finance/types';
+import { InvoiceSections } from '@/components/finance/invoice-sections';
 
 const TABS: Array<{ value: 'ALL' | InvoiceStatus; label: string }> = [
   { value: 'ALL', label: 'All' },
@@ -39,6 +40,11 @@ function InvoicesInner() {
   const clientsQ = useOrgQuery<ClientDto[]>(allowed ? '/clients?include_archived=true' : null);
   const all = useMemo(() => q.data ?? [], [q.data]);
   const rows = status === 'ALL' ? all : all.filter((i) => i.status === status);
+  // People who only record payments land on their section.
+  const paymentsOnly = !allowed && org.can('payments:read');
+  useEffect(() => {
+    if (paymentsOnly) router.replace(org.base + '/finance/invoices/payments');
+  }, [paymentsOnly, org.base, router]);
 
   if (!allowed) return <PermissionState />;
 
@@ -80,6 +86,7 @@ function InvoicesInner() {
           )
         }
       />
+      <InvoiceSections current="invoices" />
       <KpiStrip
         className="mb-4"
         items={[

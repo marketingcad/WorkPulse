@@ -24,7 +24,7 @@ import type { Ctx } from './ctx';
 import { narrowMemberships } from './scope';
 import { memberNames } from './timer';
 import { listAttendance } from './operations';
-import { amountsOwed, budgetStatuses, listExpenses, listInvoices, listPayments, loadRates } from './finance';
+import { amountsOwed, budgetStatuses, listExpenses, listInvoices, listPayments, loadRates, redactBudgetMoney } from './finance';
 import { listManualTime } from './timesheets';
 import { usage } from './activity';
 import { listTimeOffRequests } from './operations';
@@ -47,12 +47,21 @@ export interface ReportResult {
 
 export type ReportParams = z.infer<typeof reportQueryInput>;
 
+export type ReportFilter = 'dates' | 'members' | 'teams' | 'projects' | 'clients' | 'billable';
+const ALL_FILTERS: ReportFilter[] = ['dates', 'members', 'teams', 'projects', 'clients', 'billable'];
+
 export interface ReportDefinition {
   key: string;
   title: string;
   question: string;
   category: 'Time' | 'Activity' | 'People' | 'Finance' | 'Compliance';
   permission: Permission;
+  /** The data permission the report is scoped by (any of). Listed only when the viewer holds one, so it never 403s on run. */
+  requires?: Permission[];
+  /** Filters the report actually applies; the runner shows only these. Defaults to all. */
+  filters?: ReportFilter[];
+  /** Kept for saved and scheduled reports, but not offered in the catalogue (another report covers it). */
+  hidden?: boolean;
   groupings?: string[];
   run(x: Ctx, p: ReportParams): Promise<ReportResult>;
 }
@@ -312,12 +321,12 @@ async function paymentsReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
   };
 }
 
-function budgetReport(kind: 'PROJECT' | 'CLIENT') {
+function budgetReport(kind: 'PROJECT' | 'CLIENT' | null) {
   return async (x: Ctx): Promise<ReportResult> => {
     const today = localDate(x.deps.now(), x.org.timezone);
-    const rows = (await budgetStatuses(x.tx, x.org.currency, today)).filter((b) => b.subject_type === kind);
+    const rows = redactBudgetMoney(x, (await budgetStatuses(x.tx, x.org.currency, today)).filter((b) => !kind || b.subject_type === kind)).map((b) => ({ ...b, subject: b.subject_type === 'PROJECT' ? 'Project' : 'Client' }));
     return {
-      columns: [{ key: 'subject_name', label: kind === 'PROJECT' ? 'Project' : 'Client', type: 'text' }, { key: 'kind', label: 'Type', type: 'status' }, { key: 'amount', label: 'Budget', type: 'number' }, { key: 'spent', label: 'Spent', type: 'number' }, { key: 'remaining', label: 'Remaining', type: 'number' }, { key: 'pct_used', label: 'Used', type: 'percent' }, { key: 'state', label: 'Status', type: 'status' }],
+      columns: [{ key: 'subject_name', label: kind === 'PROJECT' ? 'Project' : kind === 'CLIENT' ? 'Client' : 'Budget for', type: 'text' }, ...(kind ? [] : [{ key: 'subject', label: 'Subject', type: 'status' as const }]), { key: 'kind', label: 'Type', type: 'status' }, { key: 'amount', label: 'Budget', type: 'number' }, { key: 'spent', label: 'Spent', type: 'number' }, { key: 'remaining', label: 'Remaining', type: 'number' }, { key: 'pct_used', label: 'Used', type: 'percent' }, { key: 'state', label: 'Status', type: 'status' }],
       rows: rows as unknown as ReportResult['rows'],
       summary: [{ label: 'Budgets', value: rows.length, type: 'number' }, { label: 'Warning', value: rows.filter((r) => r.state === 'warning').length, type: 'number' }, { label: 'Exceeded', value: rows.filter((r) => r.state === 'exceeded').length, type: 'number' }],
       currency: x.org.currency,
@@ -399,7 +408,9 @@ async function billingReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
     const covered = Math.min(secs, approvedSecs.get(k) ?? 0);
     approvedSecs.set(k, (approvedSecs.get(k) ?? 0) - covered);
     const rate = secs - covered > 0 ? resolveRate(rates, 'BILL', { date: r.r.localDate, membershipId: r.r.membershipId, projectId: r.r.projectId, clientId: r.clientId }) : null;
-    a.unapproved_estimate += rate ? amountForSeconds(secs - covered, rate.amountMinor) : 0;
+    // Unapproved time carries the row's time-type bill weighting.
+    const weighted = secs ? Math.round(((secs - covered) * r.r.billWeightedSeconds) / secs) : 0;
+    a.unapproved_estimate += rate ? amountForSeconds(weighted, rate.amountMinor) : 0;
   }
   const out = [...agg.values()].sort((a, b) => a.client.localeCompare(b.client) || a.project.localeCompare(b.project));
   const sum = (k: keyof Row) => out.reduce((s, r) => s + (r[k] as number), 0);
@@ -453,7 +464,7 @@ async function auditReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
  * lies inside, otherwise its working days in the range (weekends and holidays excluded) at the
  * policy's hours per day, never more than the request itself.
  */
-function timeOffHoursInRange(t: { startDate: string; endDate: string; hours: number; halfDay: boolean }, from: string, to: string, hols: Set<string>, hoursPerDay: number): number {
+export function timeOffHoursInRange(t: { startDate: string; endDate: string; hours: number; halfDay: boolean }, from: string, to: string, hols: Set<string>, hoursPerDay: number): number {
   if (t.startDate >= from && t.endDate <= to) return t.hours;
   const days = eachDate(t.startDate > from ? t.startDate : from, t.endDate < to ? t.endDate : to).filter((d) => !hols.has(d) && ![0, 6].includes(dayOfWeek(d))).length;
   return Math.min(t.hours, days * hoursPerDay);
@@ -491,8 +502,8 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
     const billable = mine.filter((r) => r.r.billable).reduce((s, r) => s + r.r.trackedSeconds + r.r.manualSeconds, 0);
     const total = mine.reduce((s, r) => s + r.r.trackedSeconds + r.r.manualSeconds, 0);
     const earnings = mine.reduce((s, r) => {
-      const rate = resolveRate(rates, 'PAY', { date: r.r.localDate, membershipId: m, projectId: r.r.projectId, clientId: null });
-      return s + (rate ? amountForSeconds(r.r.trackedSeconds + r.r.manualSeconds, rate.amountMinor) : 0);
+      const rate = resolveRate(rates, 'PAY', { date: r.r.localDate, membershipId: m, projectId: r.r.projectId, clientId: r.clientId });
+      return s + (rate ? amountForSeconds(r.r.payWeightedSeconds, rate.amountMinor) : 0);
     }, 0);
     const statuses = ts.filter((t) => t.membershipId === m).map((t) => t.status);
     return {
@@ -516,34 +527,37 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
 }
 
 export const REPORTS: ReportDefinition[] = [
-  { key: 'time-activity', title: 'Time & Activity', question: 'Where did time go, and how active was it?', category: 'Time', permission: 'reports:read', groupings: ['worker', 'project', 'task', 'client', 'date', 'week'], run: timeAndActivity },
-  { key: 'daily-totals', title: 'Daily Totals', question: 'How much did each person work each day?', category: 'Time', permission: 'reports:read', run: dailyTotals },
-  { key: 'work-sessions', title: 'Work Sessions', question: 'When did people start and stop?', category: 'Time', permission: 'reports:read', run: workSessions },
-  { key: 'manual-time', title: 'Manual Time Edits', question: 'How much time was added manually, and why?', category: 'Time', permission: 'reports:read', run: manualTimeReport },
-  { key: 'work-breaks', title: 'Work Breaks', question: 'How much break and idle time was taken?', category: 'Time', permission: 'reports:read', run: workBreaks },
-  { key: 'apps-urls', title: 'Apps & URLs', question: 'Which tools and sites were used?', category: 'Activity', permission: 'reports:read', run: appsUrls },
-  { key: 'timesheet-approval', title: 'Timesheet Approval', question: 'Which timesheets are approved or pending?', category: 'People', permission: 'reports:read', run: timesheetApproval },
-  { key: 'attendance', title: 'Attendance', question: 'Who was late, absent or in overtime?', category: 'People', permission: 'reports:read', run: attendanceReport },
-  { key: 'time-off', title: 'Time Off', question: 'Who took time off and how much?', category: 'People', permission: 'reports:read', run: timeOffReport },
-  { key: 'payroll', title: 'Payroll Export', question: 'What should payroll pay for this period?', category: 'Finance', permission: 'reports:finance', run: payroll },
-  { key: 'amounts-owed', title: 'Amounts Owed', question: 'What do we owe each member?', category: 'Finance', permission: 'reports:finance', run: amountsOwedReport },
-  { key: 'billing', title: 'Billing', question: 'What is billable per client and project?', category: 'Finance', permission: 'reports:finance', run: billingReport },
-  { key: 'invoices', title: 'Invoices', question: 'What has been invoiced and what is outstanding?', category: 'Finance', permission: 'reports:finance', run: invoicesReport },
-  { key: 'payments', title: 'Payments', question: 'What payments came in?', category: 'Finance', permission: 'reports:finance', run: paymentsReport },
-  { key: 'expenses', title: 'Expenses', question: 'What was spent, and is it billable?', category: 'Finance', permission: 'reports:finance', run: expensesReport },
-  { key: 'project-budgets', title: 'Project Budgets', question: 'Which projects are near or over budget?', category: 'Finance', permission: 'reports:finance', run: budgetReport('PROJECT') },
-  { key: 'client-budgets', title: 'Client Budgets', question: 'Which clients are near or over budget?', category: 'Finance', permission: 'reports:finance', run: budgetReport('CLIENT') },
-  { key: 'audit-log', title: 'Audit Log', question: 'Who changed what, and when?', category: 'Compliance', permission: 'audit:read', run: auditReport },
+  { key: 'time-activity', title: 'Time & Activity', question: 'Where did time go, and how active was it?', category: 'Time', permission: 'reports:read', groupings: ['worker', 'project', 'task', 'client', 'date', 'week'], requires: ['time:read'], run: timeAndActivity },
+  { key: 'daily-totals', title: 'Daily Totals', question: 'How much did each person work each day?', category: 'Time', permission: 'reports:read', requires: ['time:read'], hidden: true, run: dailyTotals },
+  { key: 'work-sessions', title: 'Work Sessions', question: 'When did people start and stop?', category: 'Time', permission: 'reports:read', requires: ['tracking:read'], filters: ['dates', 'members', 'teams', 'projects'], run: workSessions },
+  { key: 'manual-time', title: 'Manual Time Edits', question: 'How much time was added manually, and why?', category: 'Time', permission: 'reports:read', requires: ['time:read'], filters: ['dates', 'members', 'teams'], run: manualTimeReport },
+  { key: 'work-breaks', title: 'Work Breaks', question: 'How much break and idle time was taken?', category: 'Time', permission: 'reports:read', requires: ['tracking:read'], filters: ['dates', 'members', 'teams', 'projects'], hidden: true, run: workBreaks },
+  { key: 'apps-urls', title: 'Apps & URLs', question: 'Which tools and sites were used?', category: 'Activity', permission: 'reports:read', requires: ['apps:read'], filters: ['dates', 'members', 'teams'], run: appsUrls },
+  { key: 'timesheet-approval', title: 'Timesheet Approval', question: 'Which timesheets are approved or pending?', category: 'People', permission: 'reports:read', requires: ['timesheets:read'], filters: ['dates', 'members', 'teams'], run: timesheetApproval },
+  { key: 'attendance', title: 'Attendance', question: 'Who was late, absent or in overtime?', category: 'People', permission: 'reports:read', requires: ['attendance:read'], filters: ['dates', 'members', 'teams'], run: attendanceReport },
+  { key: 'time-off', title: 'Time Off', question: 'Who took time off and how much?', category: 'People', permission: 'reports:read', requires: ['time_off:read'], filters: ['dates', 'members', 'teams'], run: timeOffReport },
+  { key: 'payroll', title: 'Payroll Export', question: 'What should payroll pay for this period?', category: 'Finance', permission: 'reports:finance', requires: ['billing:read'], filters: ['dates', 'members', 'teams'], run: payroll },
+  { key: 'amounts-owed', title: 'Amounts Owed', question: 'What do we owe each member?', category: 'Finance', permission: 'reports:finance', requires: ['billing:read', 'rates:read'], filters: ['dates'], run: amountsOwedReport },
+  { key: 'billing', title: 'Billing', question: 'What is billable per client and project?', category: 'Finance', permission: 'reports:finance', requires: ['time:read'], filters: ['dates', 'members', 'teams', 'projects', 'clients'], run: billingReport },
+  { key: 'invoices', title: 'Invoices', question: 'What has been invoiced and what is outstanding?', category: 'Finance', permission: 'reports:finance', requires: ['invoices:read'], filters: ['dates'], run: invoicesReport },
+  { key: 'payments', title: 'Payments', question: 'What payments came in?', category: 'Finance', permission: 'reports:finance', requires: ['payments:read'], filters: ['dates'], run: paymentsReport },
+  { key: 'expenses', title: 'Expenses', question: 'What was spent, and is it billable?', category: 'Finance', permission: 'reports:finance', requires: ['expenses:read'], filters: ['dates'], run: expensesReport },
+  { key: 'budgets', title: 'Budgets', question: 'Which projects and clients are near or over budget?', category: 'Finance', permission: 'reports:finance', filters: [], run: budgetReport(null) },
+  { key: 'project-budgets', title: 'Project Budgets', question: 'Which projects are near or over budget?', category: 'Finance', permission: 'reports:finance', filters: [], hidden: true, run: budgetReport('PROJECT') },
+  { key: 'client-budgets', title: 'Client Budgets', question: 'Which clients are near or over budget?', category: 'Finance', permission: 'reports:finance', filters: [], hidden: true, run: budgetReport('CLIENT') },
+  { key: 'audit-log', title: 'Audit Log', question: 'Who changed what, and when?', category: 'Compliance', permission: 'audit:read', filters: ['dates'], hidden: true, run: auditReport },
 ];
 
+const mayRun = (x: Ctx, r: ReportDefinition) => !!x.actor.grants[r.permission] && (!r.requires || r.requires.some((q) => x.actor.grants[q]));
+
 export function reportCatalog(x: Ctx) {
-  return REPORTS.filter((r) => x.actor.grants[r.permission]).map((r) => ({ key: r.key, title: r.title, question: r.question, category: r.category, groupings: r.groupings ?? [] }));
+  return REPORTS.filter((r) => mayRun(x, r)).map((r) => ({ key: r.key, title: r.title, question: r.question, category: r.category, groupings: r.groupings ?? [], filters: r.filters ?? ALL_FILTERS, hidden: !!r.hidden }));
 }
 
 export async function runReport(x: Ctx, key: string, params: ReportParams): Promise<ReportResult & { title: string; key: string }> {
   const def = REPORTS.find((r) => r.key === key);
   if (!def) throw notFound('report');
-  if (!x.actor.grants[def.permission]) throw forbidden();
+  if (!mayRun(x, def)) throw forbidden();
   const res = await def.run(x, params);
   return { ...res, title: def.title, key: def.key };
 }

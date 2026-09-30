@@ -22,7 +22,7 @@ The main flow the product covers is **Organization → People → Work structure
 
 ## Project status
 
-Updated 29 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app)
+Updated 30 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.4
 
 ### ✅ Completed
 
@@ -52,8 +52,37 @@ Updated 29 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallyw
 - Support console: WorkPulse support can help customers, but can only see their data when the customer allows it, for a limited time.
 - Company-wide desktop rollout: installers and central settings for IT teams.
 - Client portal: a read-only, no-money dashboard per client (hours, tasks, and optionally activity and screenshots), with its own invitations, and a notice to workers when a client can see their monitoring data.
+- Linux desktop packages fixed and tested on Ubuntu 24.04 (the `.deb` is the recommended download). The app now explains what's wrong instead of failing silently when a desktop keyring is missing. On Wayland it reports what can't be tracked instead of recording partial data.
 
-### 🚧 In progress / next
+### 🚧 Work in progress
+
+**Built, being finalized (not released yet)**
+
+- **Payroll:** pay periods, payroll runs from approved time and paid time off, bonuses and deductions, and encrypted bank details.
+- **Pay stubs:** PDF pay stubs for payroll runs.
+- **Insights:** time, wages and billable totals by person, client, project and day. Members see only their own time and no money.
+- **Time types:** time types with pay and bill multipliers.
+- **Time entry locking:** stops time being added or edited after a set number of days or before a set date.
+- **Missing-time reminders:** reminder emails when time is missing.
+- **Time entries:** duration-only entries ("2 h on Tuesday"), part-billable entries, and an "All time entries" page for managers.
+- **CSV time import:** import time from a CSV file, with a template to download.
+- **Client profiles:** contact name, document language, colour, logo and client rates.
+- **Project details:** start and end dates, estimates, project rates, and project documents.
+- **Staff profiles:** personal and HR details, with HR notes the member can't see, employment dates and rates. Also an organization logo.
+- **Invitations:** invitations that set a team role and the projects to join.
+- **Invoices:** invoices and payments received under one menu.
+- **Budgets:** budgets edited in a dialog. Money budgets are hidden from people who can't see amounts.
+- **Invitation links:** when an email can't be sent, the invitation link is shown so it can be shared by hand.
+- **Sign-in:** sign-in returns you to the last workspace you used.
+- **UX audit:** a simplification audit of pages, navigation and permissions (`docs/audit/`).
+
+**Needs attention before the next release**
+
+- **Database migration order:** the client portal's migration has to be renumbered after the new migrations above (already applied to the database). Otherwise the next deploy skips it and sign-in stops working.
+- **Pay stubs:** pay stubs are on a web page, but workers use the desktop app only. They need a way to reach them.
+- **Tests:** CSV import and invitations with a team role and projects need tests.
+
+**Next / planned**
 
 - Full-scale load test (10,000 devices) on a test environment.
 - A backup restore drill.

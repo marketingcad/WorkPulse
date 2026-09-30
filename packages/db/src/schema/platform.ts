@@ -202,6 +202,19 @@ export const rateLimitBuckets = pgTable('rate_limit_buckets', {
 
 
 /** One row per digest email sent, so the daily job sends each member at most one per day. */
+/** One reminder of a kind per member per day (e.g. missing time). */
+export const reminderSends = pgTable(
+  'reminder_sends',
+  {
+    organizationId: orgId(),
+    membershipId: uuid().notNull(),
+    kind: text().notNull(),
+    reminderDate: text().notNull(),
+    sentAt: tstz().notNull().default(sql`now()`),
+  },
+  (t) => [primaryKey({ columns: [t.membershipId, t.kind, t.reminderDate] })],
+);
+
 export const digestSends = pgTable(
   'digest_sends',
   {

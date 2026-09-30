@@ -61,6 +61,8 @@ Custom roles can grant any subset, but never more than the admin who creates the
 | `invoices:manage` | org | — | — | — |
 | `payments:read` | org | — | — | — |
 | `payments:manage` | org | — | — | — |
+| `payroll:read` | org | — | — | — |
+| `payroll:manage` | org | — | — | — |
 | `reports:read` | org | team | own | — |
 | `reports:finance` | org | — | — | — |
 | `api_keys:manage` | org | — | — | — |

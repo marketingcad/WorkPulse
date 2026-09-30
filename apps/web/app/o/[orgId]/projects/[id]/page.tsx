@@ -23,6 +23,7 @@ import {
   PersonCell,
   SegmentedControl,
   SkeletonRows,
+  Stat,
   Tabs,
   cx,
   fmtDate,
@@ -33,7 +34,9 @@ import {
 import { ApiError, errorMessage, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
-import { ColorDot, PriorityBadge, ProjectFields, ProjectStatusBadge, TaskDialog, TaskStatusSelect, projectPayload, projectToForm, useOrgAction, type ProjectForm } from '@/components/workspace/shared';
+import { ColorDot, PriorityBadge, ProjectFields, ProjectStatusBadge, TaskDialog, TaskStatusSelect, projectPayload, projectToForm, useHoursPerDay, useOrgAction, type ProjectForm } from '@/components/workspace/shared';
+import { BudgetDialog } from '@/components/finance/budget-dialog';
+import { ProjectDocumentsTab } from '@/components/workspace/project-documents';
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -47,6 +50,8 @@ export default function ProjectDetailPage() {
   const p = projectQ.data;
   const budget = budgetsQ.data?.find((b) => b.subject_type === 'PROJECT' && b.subject_id === id);
   const canManage = org.can('projects:manage');
+  const hoursPerDay = useHoursPerDay();
+  const [budgetOpen, setBudgetOpen] = useState(false);
 
   if (projectQ.error) return <ErrorState error={projectQ.error} onRetry={() => projectQ.refetch()} />;
   if (!p)
@@ -59,9 +64,15 @@ export default function ProjectDetailPage() {
   const openTasks = (tasksQ.data ?? []).filter((t) => t.status !== 'DONE').length;
   const items = [
     ...(org.can('tasks:read') ? [{ value: 'tasks', label: 'Tasks', count: tasksQ.data?.length }] : []),
+    { value: 'plan', label: 'Plan & budget' },
     { value: 'members', label: 'Members & teams', count: p.member_ids.length + p.team_ids.length },
+    { value: 'documents', label: 'Documents' },
     ...(canManage ? [{ value: 'settings', label: 'Settings' }] : []),
   ];
+  const tracked = p.tracked_seconds ?? 0;
+  const estimate = p.estimate_seconds;
+  const estimateText = (s: number) => (p.estimate_unit === 'DAYS' ? `${Math.round((s / (hoursPerDay * 3600)) * 10) / 10} d` : org.fmtDuration(s));
+  const dates = p.start_date || p.end_date ? `${p.start_date ? fmtDate(p.start_date) : '…'} – ${p.end_date ? fmtDate(p.end_date) : '…'}` : null;
   const activeTab = items.some((i) => i.value === tab) ? tab : items[0]!.value;
 
   return (
@@ -76,6 +87,7 @@ export default function ProjectDetailPage() {
           <span className="flex items-center gap-2.5">
             <ColorDot color={p.color} className="size-3.5" />
             <span className="truncate">{p.name}</span>
+            {p.short_name && <Badge className="font-mono">{p.short_name}</Badge>}
           </span>
         }
         description={
@@ -93,6 +105,7 @@ export default function ProjectDetailPage() {
             )}
             <ProjectStatusBadge project={p} />
             {p.billable_default ? <Badge tone="success">Billable</Badge> : <Badge>Non-billable</Badge>}
+            {dates && <span className="tabular">{dates}</span>}
           </span>
         }
       />
@@ -101,7 +114,21 @@ export default function ProjectDetailPage() {
       <KpiStrip
         className="mb-4"
         items={[
-          { label: 'Tracked (all time)', value: org.fmtDuration(p.tracked_seconds ?? 0) },
+          { label: 'Time logged', value: org.fmtDuration(tracked), hint: 'All time' },
+          { label: 'Time billable', value: org.fmtDuration(p.billable_seconds ?? 0), hint: tracked ? `${Math.round(((p.billable_seconds ?? 0) / tracked) * 100)}% of logged` : undefined },
+          {
+            label: 'Estimated time',
+            value: estimate ? estimateText(estimate) : 'N/A',
+            hint: estimate ? (
+              <span className={cx(tracked > estimate && 'text-danger')}>
+                {tracked > estimate ? `${estimateText(tracked - estimate)} over` : `${estimateText(estimate - tracked)} left · ${Math.round((tracked / estimate) * 100)}% used`}
+              </span>
+            ) : canManage ? (
+              <button className="text-interactive hover:underline" onClick={() => setTab('settings')}>
+                Add an estimate
+              </button>
+            ) : undefined,
+          },
           ...(budget
             ? [
                 {
@@ -111,14 +138,26 @@ export default function ProjectDetailPage() {
                     <span className="mt-1 block">
                       <BudgetProgress pct={budget.pct_used} state={budget.state} projectedPct={budget.projected ? (budget.projected / budget.amount) * 100 : null} />
                       <span className="mt-1 block tabular">
-                        {budget.kind === 'HOURS' ? `${org.fmtDuration(budget.spent)} of ${org.fmtDuration(budget.amount)}` : `${fmtMoney(budget.spent, budget.currency)} of ${fmtMoney(budget.amount, budget.currency)}`}
+                        {budget.kind === 'HOURS' ? `${org.fmtDuration(budget.spent)} of ${org.fmtDuration(budget.amount)}` : budget.amounts_hidden ? `${Math.round(budget.pct_used)}% of the money budget` : `${fmtMoney(budget.spent, budget.currency)} billed of ${fmtMoney(budget.amount, budget.currency)}`}
                       </span>
                     </span>
                   ),
                 },
               ]
             : org.can('budgets:read')
-              ? [{ label: 'Budget', value: '—', hint: org.can('budgets:manage') ? <Link href={`${org.base}/finance/budgets`} className="text-interactive hover:underline">Set a budget</Link> : 'No budget' }]
+              ? [
+                  {
+                    label: 'Budget',
+                    value: '—',
+                    hint: org.can('budgets:manage') ? (
+                      <button className="text-interactive hover:underline" onClick={() => setBudgetOpen(true)}>
+                        Set a budget
+                      </button>
+                    ) : (
+                      'No budget'
+                    ),
+                  },
+                ]
               : []),
           ...(tasksQ.data ? [{ label: 'Open tasks', value: openTasks, hint: `${tasksQ.data.length - openTasks} done` }] : []),
           { label: 'People', value: p.member_ids.length, hint: p.team_ids.length ? `+ ${p.team_ids.length} ${p.team_ids.length === 1 ? 'team' : 'teams'}` : 'direct members' },
@@ -127,8 +166,11 @@ export default function ProjectDetailPage() {
 
       <Tabs value={activeTab} onValueChange={setTab} items={items} className="mb-4" />
       {activeTab === 'tasks' && <TasksTab project={p} tasks={tasksQ.data} loading={tasksQ.isLoading} error={tasksQ.error} workers={workersQ.data} />}
+      {activeTab === 'plan' && <PlanTab project={p} budget={budget} onEditBudget={() => setBudgetOpen(true)} onEditPlan={() => setTab('settings')} />}
       {activeTab === 'members' && <MembersTab project={p} workers={workersQ.data} teams={teamsQ.data} canManage={canManage} />}
+      {activeTab === 'documents' && <ProjectDocumentsTab project={p} />}
       {activeTab === 'settings' && canManage && <SettingsTab project={p} />}
+      {budgetOpen && <BudgetDialog value={budget ?? 'new'} preset={{ type: 'PROJECT', id: p.id, name: p.name }} onClose={() => setBudgetOpen(false)} />}
     </>
   );
 }
@@ -206,8 +248,8 @@ function TasksTab({ project, tasks, loading, error, workers }: { project: Projec
                   <MenuItem icon={<Pencil className="size-3.5" />} onSelect={() => setEdit(t)}>
                     Edit
                   </MenuItem>
-                  <MenuItem icon={<Trash2 className="size-3.5" />} danger onSelect={() => setDel(t)}>
-                    Delete
+                  <MenuItem icon={<Archive className="size-3.5" />} onSelect={() => setDel(t)}>
+                    Archive
                   </MenuItem>
                 </Menu>
               </span>
@@ -256,9 +298,9 @@ function TasksTab({ project, tasks, loading, error, workers }: { project: Projec
       <ConfirmDialog
         open={!!del}
         onOpenChange={(o) => !o && setDel(null)}
-        title="Delete task?"
+        title="Archive task?"
         description={del && `“${del.title}” is removed from lists and timers. Time already tracked to it is kept.`}
-        confirmLabel="Delete task"
+        confirmLabel="Archive task"
         danger
         loading={busy}
         onConfirm={async () => {
@@ -266,7 +308,7 @@ function TasksTab({ project, tasks, loading, error, workers }: { project: Projec
           setBusy(true);
           try {
             await run('DELETE', `/tasks/${del.id}`);
-            toast.success('Task deleted');
+            toast.success('Task archived');
             setDel(null);
           } catch (e) {
             toast.error(errorMessage(e));
@@ -394,17 +436,95 @@ function MembersTab({ project, workers, teams, canManage }: { project: ProjectDt
   );
 }
 
+// ─── Plan & budget ───────────────────────────────────────────────────────────
+function PlanTab({ project: p, budget, onEditBudget, onEditPlan }: { project: ProjectDto; budget?: BudgetStatusDto; onEditBudget: () => void; onEditPlan: () => void }) {
+  const org = useOrg();
+  const hoursPerDay = useHoursPerDay();
+  const tracked = p.tracked_seconds ?? 0;
+  const est = p.estimate_seconds;
+  const pct = est ? Math.round((tracked / est) * 100) : null;
+  const inDays = (s: number) => `${Math.round((s / (hoursPerDay * 3600)) * 10) / 10} days`;
+  const show = (s: number) => (p.estimate_unit === 'DAYS' ? `${inDays(s)} (${org.fmtDuration(s)})` : org.fmtDuration(s));
+  const today = todayIn(org.organization.timezone);
+  const daysLeft = p.end_date ? Math.round((Date.parse(p.end_date) - Date.parse(today)) / 86400000) : null;
+  const money = (m: number | null | undefined) => (m == null ? 'Not set' : `${fmtMoney(m, p.currency)} / h`);
+
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <Panel
+        title="Plan"
+        actions={
+          org.can('projects:manage') && (
+            <Button size="xs" icon={<Pencil className="size-3" />} onClick={onEditPlan}>
+              Edit
+            </Button>
+          )
+        }
+      >
+        <dl className="grid grid-cols-2 gap-4 p-4">
+          <Stat label="Start date" value={p.start_date ? fmtDate(p.start_date) : 'Not set'} />
+          <Stat label="End date" value={p.end_date ? fmtDate(p.end_date) : 'Not set'} hint={daysLeft === null ? undefined : daysLeft < 0 ? <span className="text-danger">Ended {-daysLeft} days ago</span> : `${daysLeft} days left`} />
+          <Stat label="Estimate" value={est ? show(est) : 'Not set'} />
+          <Stat label="Logged" value={show(tracked)} hint={pct === null ? undefined : <span className={cx(pct > 100 && 'text-danger')}>{pct}% of the estimate</span>} />
+        </dl>
+        {est ? (
+          <div className="px-4 pb-4">
+            <BudgetProgress pct={pct ?? 0} state={pct! > 100 ? 'exceeded' : pct! >= 80 ? 'warning' : 'healthy'} />
+          </div>
+        ) : null}
+      </Panel>
+
+      <Panel
+        title="Budget"
+        actions={
+          org.can('budgets:manage') && (
+            <Button size="xs" icon={budget ? <Pencil className="size-3" /> : <Plus className="size-3" />} onClick={onEditBudget}>
+              {budget ? 'Edit' : 'Set budget'}
+            </Button>
+          )
+        }
+      >
+        {budget ? (
+          <div className="flex flex-col gap-2 p-4">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="tabular text-2xl font-semibold">{Math.round(budget.pct_used)}%</span>
+              <span className="tabular text-sm text-text-muted">
+                {budget.kind === 'HOURS' ? `${org.fmtDuration(budget.spent)} of ${org.fmtDuration(budget.amount)}` : budget.amounts_hidden ? `${Math.round(budget.pct_used)}% of the money budget` : `${fmtMoney(budget.spent, budget.currency)} billed of ${fmtMoney(budget.amount, budget.currency)}`}
+              </span>
+            </div>
+            <BudgetProgress pct={budget.pct_used} state={budget.state} projectedPct={budget.projected ? (budget.projected / budget.amount) * 100 : null} />
+            <p className="text-xs text-text-muted">{budget.period === 'MONTHLY' ? 'Resets every month.' : 'Lifetime budget.'}</p>
+          </div>
+        ) : (
+          <EmptyState title="No budget" description="Set an hours or money budget to get warnings before the project runs over." />
+        )}
+      </Panel>
+
+      {p.pay_rate_minor !== undefined && (
+        <Panel title="Rates" className="lg:col-span-2">
+          <dl className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-3">
+            <Stat label="Currency" value={p.currency} hint={p.client_name ? `From ${p.client_name}` : 'Workspace default'} />
+            <Stat label="Pay rate" value={money(p.pay_rate_minor)} hint="What you pay for time on this project" />
+            <Stat label="Bill rate" value={money(p.bill_rate_minor)} hint={p.billable_default ? 'What you charge' : 'This project is not billable by default'} />
+          </dl>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
 // ─── Settings ────────────────────────────────────────────────────────────────
 function SettingsTab({ project }: { project: ProjectDto }) {
   const org = useOrg();
   const run = useOrgAction();
   const toast = useToast();
   const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients' : null);
-  const [f, setF] = useState<ProjectForm>(projectToForm(project));
+  const hoursPerDay = useHoursPerDay();
+  const [f, setF] = useState<ProjectForm>(projectToForm(project, hoursPerDay));
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  useEffect(() => setF(projectToForm(project)), [project]);
+  useEffect(() => setF(projectToForm(project, hoursPerDay)), [project, hoursPerDay]);
 
   const clients = useMemo(() => {
     const list = clientsQ.data ?? [];
@@ -416,7 +536,7 @@ function SettingsTab({ project }: { project: ProjectDto }) {
     setBusy(true);
     setErr(null);
     try {
-      await run('PATCH', `/projects/${project.id}`, projectPayload(f));
+      await run('PATCH', `/projects/${project.id}`, projectPayload(f, { hoursPerDay, initial: projectToForm(project, hoursPerDay), canManageRates: org.can('rates:manage') }));
       toast.success('Project saved');
     } catch (e) {
       if (e instanceof ApiError) setErr(e);
@@ -450,7 +570,7 @@ function SettingsTab({ project }: { project: ProjectDto }) {
         >
           <ProjectFields f={f} setF={setF} err={err} clients={clients} showAssignments={false} />
           <div className="mt-4 flex justify-end gap-2">
-            <Button onClick={() => setF(projectToForm(project))}>Reset</Button>
+            <Button onClick={() => setF(projectToForm(project, hoursPerDay))}>Reset</Button>
             <Button type="submit" variant="primary" loading={busy} disabled={!f.name.trim()}>
               Save changes
             </Button>

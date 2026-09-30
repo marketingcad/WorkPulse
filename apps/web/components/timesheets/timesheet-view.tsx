@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, History, Lock, MoreHorizontal, Pencil, Plus, Scissors, Send, Trash2 } from 'lucide-react';
-import type { TimeEntryDto, TimesheetDto } from '@tallywork/contracts';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Copy, Download, FileUp, History, Lock, MoreHorizontal, Pencil, Plus, Scissors, Send, Trash2 } from 'lucide-react';
+import type { InsightsDto, TimeEntryDto, TimeTypeDto, TimesheetDto } from '@tallywork/contracts';
 import {
   ActivityBar,
   Badge,
@@ -22,6 +22,7 @@ import {
   cx,
   fmtDate,
   fmtDateTime,
+  fmtMoney,
   fmtTime,
   humanize,
   useToast,
@@ -31,6 +32,9 @@ import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg } from '@/lib/org';
 import { CommentDialog, DeleteEntryDialog, EditEntryDialog, ManualTimeDialog, RevisionsDrawer, SplitEntryDialog } from './entry-dialogs';
 import { periodLabel, type TimesheetHistoryItem } from './shared';
+import { CsvImportDialog } from './csv-import';
+import { TimeTypeBadge } from '@/components/settings/time-types-panel';
+import { downloadText, toCsv } from '@/lib/csv';
 
 type Decision = 'approve' | 'reject' | 'request-changes' | 'reopen';
 
@@ -64,7 +68,24 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
   const [adding, setAdding] = useState(false);
   const [decision, setDecision] = useState<Decision | null>(null);
   const [approving, setApproving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const today = todayIn(org.membership.timezone || org.organization.timezone);
+  const seesMoney = org.can('time:read') && (org.can('rates:read') || org.can('billing:read'));
+  const moneyQ = useOrgQuery<InsightsDto>(ts && seesMoney ? `/insights${qs({ from: ts.period_start, to: ts.period_end, membership_ids: [membershipId] })}` : null);
+  const money = moneyQ.data?.money_visible ? moneyQ.data : null;
+  const fmtM = (m: number | null | undefined) => (m == null ? '—' : fmtMoney(m, money?.currency ?? org.organization.currency));
+  const typesQ = useOrgQuery<TimeTypeDto[]>('/time-types?include_archived=true', { staleTime: 60_000 });
+  const typeNames = new Map((typesQ.data ?? []).map((t) => [t.id, t.name]));
+
+  const exportCsv = () => {
+    if (!ts || !entriesQ.data) return;
+    const hours = (s: number) => Math.round((s / 3600) * 100) / 100;
+    const hm = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
+    const rows = [...entriesQ.data]
+      .sort((a, b) => a.started_at.localeCompare(b.started_at))
+      .map((e) => [e.local_date, hm(e.started_at), e.ended_at ? hm(e.ended_at) : '', e.project_name ?? '', e.task_title ?? '', e.note ?? '', (e.time_type_id && typeNames.get(e.time_type_id)) || '', e.billable ? 'yes' : 'no', e.source === 'MANUAL' ? 'manual' : 'tracked', hours(e.duration_seconds)]);
+    downloadText(`timesheet-${ts.worker_name.replace(/[^\w-]+/g, '_')}-${ts.period_start}.csv`, toCsv(['Date', 'Start', 'End', 'Project', 'Task', 'Note', 'Type', 'Billable', 'Source', 'Hours'], rows));
+  };
 
   const canSubmit = !!ts && (ts.status === 'DRAFT' || ts.status === 'REJECTED') && (isSelf ? org.can('timesheets:submit') : org.can('timesheets:approve'));
   const canDecide = !!decisions && !!ts?.id && org.can('timesheets:approve') && (!isSelf || org.membership.is_owner);
@@ -141,10 +162,20 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
           </span>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {canAdd && !compact && (ts.status === 'DRAFT' || ts.status === 'REJECTED') && (
-            <Button icon={<Plus className="size-3.5" />} onClick={() => setAdding(true)}>
-              Add time
+          {!compact && entriesQ.data && entriesQ.data.length > 0 && (
+            <Button variant="ghost" icon={<Download className="size-3.5" />} onClick={exportCsv}>
+              Export CSV
             </Button>
+          )}
+          {canAdd && !compact && (ts.status === 'DRAFT' || ts.status === 'REJECTED') && (
+            <>
+              <Button variant="ghost" icon={<FileUp className="size-3.5" />} onClick={() => setImporting(true)}>
+                Import CSV
+              </Button>
+              <Button icon={<Plus className="size-3.5" />} onClick={() => setAdding(true)}>
+                Add time
+              </Button>
+            </>
           )}
           {canSubmit && !compact && (
             <Button variant="primary" icon={<Send className="size-3.5" />} onClick={() => setConfirmSubmit(true)}>
@@ -199,6 +230,12 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
             hint: variance != null ? <span className={variance < 0 ? 'text-warning' : 'text-text-muted'}>{variance < 0 ? '−' : '+'}{org.fmtDuration(Math.abs(variance))} {variance < 0 ? 'under' : 'over'}</span> : 'No expected hours set',
           },
           { label: 'Avg activity', value: ts.avg_activity_pct != null ? `${ts.avg_activity_pct}%` : '—' },
+          ...(money
+            ? [
+                { label: 'Est. pay', value: fmtM(money.totals.pay_minor), hint: 'From pay rates; final after approval' },
+                { label: 'Est. billable', value: fmtM(money.totals.bill_minor) },
+              ]
+            : []),
         ]}
       />
 
@@ -221,12 +258,13 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
             }}
           />
         ) : (
-          <EntriesList ts={ts} entriesQ={entriesQ} day={day} onClearDay={() => setDay(null)} onAdd={canAdd && (ts.status === 'DRAFT' || ts.status === 'REJECTED') ? () => setAdding(true) : undefined} />
+          <EntriesList ts={ts} entriesQ={entriesQ} money={money} day={day} onClearDay={() => setDay(null)} onAdd={canAdd && (ts.status === 'DRAFT' || ts.status === 'REJECTED') ? () => setAdding(true) : undefined} />
         )}
       </Panel>
 
       {ts.id && <HistoryPanel timesheetId={ts.id} />}
 
+      {importing && <CsvImportDialog membershipId={membershipId} onClose={() => setImporting(false)} />}
       {adding && <ManualTimeDialog membershipId={membershipId} defaultDate={day ?? (today >= ts.period_start && today <= ts.period_end ? today : ts.period_start)} onClose={() => setAdding(false)} />}
       <ConfirmDialog
         open={confirmSubmit}
@@ -309,10 +347,13 @@ function WeekGrid({ ts, today, onDay }: { ts: TimesheetDto; today: string; onDay
 }
 
 // ─── Entries list ────────────────────────────────────────────────────────────
-type EntryAction = { kind: 'edit' | 'split' | 'delete' | 'history'; entry: TimeEntryDto };
+type EntryAction = { kind: 'edit' | 'split' | 'delete' | 'history' | 'duplicate'; entry: TimeEntryDto };
 
-function EntriesList({ ts, entriesQ, day, onClearDay, onAdd }: { ts: TimesheetDto; entriesQ: ReturnType<typeof useOrgQuery<TimeEntryDto[]>>; day: string | null; onClearDay: () => void; onAdd?: () => void }) {
+function EntriesList({ ts, entriesQ, money, day, onClearDay, onAdd }: { ts: TimesheetDto; entriesQ: ReturnType<typeof useOrgQuery<TimeEntryDto[]>>; money: InsightsDto | null; day: string | null; onClearDay: () => void; onAdd?: () => void }) {
   const org = useOrg();
+  const dayMoney = useMemo(() => new Map((money?.by_day ?? []).map((x) => [x.date, x])), [money]);
+  const typesQ = useOrgQuery<TimeTypeDto[]>('/time-types?include_archived=true', { staleTime: 60_000 });
+  const typeOf = useMemo(() => new Map((typesQ.data ?? []).map((t) => [t.id, t])), [typesQ.data]);
   const [action, setAction] = useState<EntryAction | null>(null);
   const isSelf = ts.membership_id === org.membership.id;
   const editGrant = org.grants['time:edit'];
@@ -357,7 +398,7 @@ function EntriesList({ ts, entriesQ, day, onClearDay, onAdd }: { ts: TimesheetDt
       {groups.every((g) => !g.entries.length) ? (
         <EmptyState
           title={day ? 'No time on this day' : 'No time entries in this period'}
-          description={onAdd ? 'Start the timer in the top bar, or add time you worked away from the computer.' : undefined}
+          description={onAdd ? 'Track time with the desktop app or the web timer, or add time you worked away from the computer.' : undefined}
           action={
             onAdd && (
               <Button icon={<Plus className="size-3.5" />} onClick={onAdd}>
@@ -371,14 +412,21 @@ function EntriesList({ ts, entriesQ, day, onClearDay, onAdd }: { ts: TimesheetDt
           <section key={g.date} aria-label={fmtDate(g.date, { weekday: 'long', month: 'long', day: 'numeric' })}>
             <header className="flex items-center justify-between border-b border-border bg-surface-muted/60 px-4 py-1.5">
               <h3 className="text-xs font-semibold">{fmtDate(g.date, { weekday: 'long', month: 'short', day: 'numeric' })}</h3>
-              <span className="tabular text-xs font-semibold">{org.fmtDuration(g.entries.reduce((s, e) => s + e.duration_seconds, 0))}</span>
+              <span className="flex flex-wrap items-center justify-end gap-x-3 text-xs">
+                <span className="text-text-muted">Billable {org.fmtDuration(g.entries.filter((e) => e.billable).reduce((s, e) => s + e.duration_seconds, 0))}</span>
+                {money && dayMoney.get(g.date) && (
+                  <>
+                    <span className="tabular text-text-muted">Wage {fmtMoney(dayMoney.get(g.date)!.pay_minor ?? 0, money.currency)}</span>
+                    <span className="tabular text-text-muted">Est. billable {fmtMoney(dayMoney.get(g.date)!.bill_minor ?? 0, money.currency)}</span>
+                  </>
+                )}
+                <span className="tabular font-semibold">{org.fmtDuration(g.entries.reduce((s, e) => s + e.duration_seconds, 0))}</span>
+              </span>
             </header>
             <ul className="divide-y divide-border">
               {g.entries.map((e) => (
                 <li key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 text-sm">
-                  <span className="tabular w-36 shrink-0 text-text-muted">
-                    {fmtTime(e.started_at)} – {fmtTime(e.ended_at)}
-                  </span>
+                  <span className="tabular w-36 shrink-0 text-text-muted">{e.duration_only ? <span className="text-text-faint">Duration entry</span> : `${fmtTime(e.started_at)} – ${fmtTime(e.ended_at)}`}</span>
                   <span className="min-w-0 flex-1 basis-48">
                     <span className="block truncate">
                       <span className="font-medium">{e.project_name}</span>
@@ -388,6 +436,7 @@ function EntriesList({ ts, entriesQ, day, onClearDay, onAdd }: { ts: TimesheetDt
                   </span>
                   <span className="flex shrink-0 items-center gap-1.5">
                     {e.source === 'MANUAL' ? <StatusBadge status="MANUAL" label="Manual" /> : <StatusBadge status={e.tracking_source ?? 'TRACKED'} label={e.tracking_source === 'DESKTOP' ? 'Tracked · Desktop' : e.tracking_source === 'WEB' ? 'Tracked · Web' : 'Tracked'} />}
+                    {e.time_type_id && typeOf.get(e.time_type_id) && <TimeTypeBadge type={typeOf.get(e.time_type_id)!} />}
                     {e.edited && <Badge>Edited</Badge>}
                     {!e.billable && <Badge>Non-billable</Badge>}
                   </span>
@@ -397,7 +446,7 @@ function EntriesList({ ts, entriesQ, day, onClearDay, onAdd }: { ts: TimesheetDt
                   <span className="tabular w-16 shrink-0 text-right font-medium">{org.fmtDuration(e.duration_seconds)}</span>
                   <span className="flex w-14 shrink-0 items-center justify-end gap-0.5">
                     {e.locked && (
-                      <Tooltip content="Locked: part of a submitted or approved timesheet">
+                      <Tooltip content="Locked: part of a submitted or approved timesheet, or older than your organization allows changing">
                         <span className="inline-flex p-1 text-text-faint" aria-label="Locked" role="img">
                           <Lock className="size-3.5" />
                         </span>
@@ -419,6 +468,11 @@ function EntriesList({ ts, entriesQ, day, onClearDay, onAdd }: { ts: TimesheetDt
                             Split
                           </MenuItem>
                         </>
+                      )}
+                      {onAdd && (
+                        <MenuItem icon={<Copy className="size-3.5" />} onSelect={() => setAction({ kind: 'duplicate', entry: e })}>
+                          Duplicate
+                        </MenuItem>
                       )}
                       <MenuItem icon={<History className="size-3.5" />} onSelect={() => setAction({ kind: 'history', entry: e })}>
                         View history
@@ -443,6 +497,14 @@ function EntriesList({ ts, entriesQ, day, onClearDay, onAdd }: { ts: TimesheetDt
       {action?.kind === 'split' && <SplitEntryDialog entry={action.entry} onClose={() => setAction(null)} />}
       {action?.kind === 'delete' && <DeleteEntryDialog entry={action.entry} onClose={() => setAction(null)} />}
       {action?.kind === 'history' && <RevisionsDrawer entry={action.entry} names={names} onClose={() => setAction(null)} />}
+      {action?.kind === 'duplicate' && (
+        <ManualTimeDialog
+          membershipId={action.entry.membership_id}
+          defaultDate={action.entry.local_date}
+          prefill={{ projectId: action.entry.project_id, taskId: action.entry.task_id, note: action.entry.note, timeTypeId: action.entry.time_type_id ?? null, durationSeconds: action.entry.duration_seconds }}
+          onClose={() => setAction(null)}
+        />
+      )}
     </div>
   );
 }

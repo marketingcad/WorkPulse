@@ -323,7 +323,7 @@ function TeamDrawer({ team, onClose, projects, canManage }: { team: TeamDto | nu
 
           <h3 className="border-t border-border px-5 pb-1 pt-4 text-2xs font-semibold uppercase tracking-wide text-text-muted">Projects</h3>
           {teamProjects.length === 0 ? (
-            <p className="px-5 pb-4 text-sm text-text-muted">No projects. Assign this team from a project’s settings.</p>
+            <p className="px-5 pb-4 text-sm text-text-muted">No projects. Add this team to a project in the project’s Members &amp; teams tab.</p>
           ) : (
             <ul className="divide-y divide-border pb-2">
               {teamProjects.map((p) => (

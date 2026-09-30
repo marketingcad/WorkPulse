@@ -113,6 +113,10 @@ export const timeEntries = pgTable(
     timezone: text().notNull(),
     billable: boolean().notNull(),
     note: text(),
+    /** Normal, Overtime, …; null = the organization's default type */
+    timeTypeId: uuid(),
+    /** entered as a duration only: the start/end are a placeholder slot, not real clock times */
+    durationOnly: boolean().notNull().default(false),
     edited: boolean().notNull().default(false),
     revision: integer().notNull().default(1),
     lockedAt: tstz(),
@@ -301,6 +305,9 @@ export const rollupWorkerDay = pgTable(
     activeSeconds: integer().notNull().default(0),
     activityTrackedSeconds: integer().notNull().default(0),
     idleSeconds: integer().notNull().default(0),
+    /** tracked + manual seconds weighted by each entry's time-type pay / bill coefficient */
+    payWeightedSeconds: integer().notNull().default(0),
+    billWeightedSeconds: integer().notNull().default(0),
     updatedAt: tstz().notNull().default(sql`now()`),
   },
   (t) => [

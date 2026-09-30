@@ -9,6 +9,7 @@ import {
   memberships,
   organizations,
   overtimeRuleSets,
+  projectMembers,
   retentionPolicies,
   rolePermissions,
   roles,
@@ -285,9 +286,13 @@ export async function acceptInvitation(
       await tx.insert(memberships).values({ id: membershipId, organizationId: inv.organizationId, userId: uid!, roleId: inv.roleId });
       // Only Workers are tracked by default; admins and managers can be switched on per person.
       await tx.insert(workerProfiles).values({ membershipId, organizationId: inv.organizationId, timezone: org?.tz ?? 'UTC', trackingEnabled: role?.key === 'WORKER' });
-      for (const teamId of inv.teamIds) {
-        await tx.insert(teamMembers).values({ organizationId: inv.organizationId, teamId, membershipId }).onConflictDoNothing();
-      }
+    }
+    // Teams (with the invited team role) and projects apply to new and returning members alike.
+    for (const teamId of inv.teamIds) {
+      await tx.insert(teamMembers).values({ organizationId: inv.organizationId, teamId, membershipId, role: inv.teamRole }).onConflictDoUpdate({ target: [teamMembers.teamId, teamMembers.membershipId], set: { role: inv.teamRole } });
+    }
+    for (const projectId of inv.projectIds) {
+      await tx.insert(projectMembers).values({ organizationId: inv.organizationId, projectId, membershipId }).onConflictDoNothing();
     }
     await tx.update(invitations).set({ acceptedAt: new Date() }).where(eq(invitations.id, inv.id));
     await auditSystem(tx, inv.organizationId, { action: 'invitation.accepted', actorType: 'user', actorId: membershipId, targetType: 'membership', targetId: membershipId, after: { email: inv.email } });

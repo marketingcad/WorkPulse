@@ -14,10 +14,11 @@ import {
   timeEntries,
   users,
 } from '@tallywork/db';
-import { can, forbidden, newId, notFound, businessRule } from '@tallywork/domain';
+import { can, forbidden, newId, notFound, businessRule, validation } from '@tallywork/domain';
 import type { ClientDto, ProjectDto, TaskDto, TeamDto, clientInput, projectInput, taskInput, teamInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { audit, emitFrom } from './events';
+import { applyScopedRates, currentScopedRates, rateChanges } from './finance';
 import { membershipFilter, projectFilter } from './scope';
 import { iso } from '../lib/http';
 
@@ -100,10 +101,12 @@ export async function listClients(x: Ctx, opts: { includeArchived?: boolean } = 
     visible = ids.length ? inArray(clients.id, x.tx.select({ id: projects.clientId }).from(projects).where(inArray(projects.id, ids)) as never) : sql`false`;
   }
   const rows = await x.tx
-    .select({ c: clients, projectCount: sql<number>`(select count(*)::int from ${projects} p where p.client_id = ${clients.id} and p.archived_at is null)` })
+    // The outer column is written out: inside the subquery an interpolated ${clients.id} renders as a bare "id", which binds to p.id.
+    .select({ c: clients, projectCount: sql<number>`(select count(*)::int from ${projects} p where p.client_id = "clients"."id" and p.archived_at is null)` })
     .from(clients)
     .where(and(eq(clients.organizationId, x.org.id), opts.includeArchived ? undefined : isNull(clients.archivedAt), visible))
     .orderBy(asc(clients.name));
+  const rates = x.actor.grants['rates:read'] ? await currentScopedRates(x, 'CLIENT') : null;
   return rows.map(({ c, projectCount }) => ({
     id: c.id,
     name: c.name,
@@ -112,6 +115,11 @@ export async function listClients(x: Ctx, opts: { includeArchived?: boolean } = 
     address: c.address,
     currency: c.currency,
     notes: c.notes,
+    contact_name: c.contactName,
+    document_language: c.documentLanguage,
+    color: c.color,
+    logo: c.logo,
+    ...(rates && { bill_rate_minor: rates.get(`BILL:${c.id}`)?.amountMinor ?? null, pay_rate_minor: rates.get(`PAY:${c.id}`)?.amountMinor ?? null }),
     project_count: projectCount,
     archived_at: iso(c.archivedAt),
     created_at: c.createdAt.toISOString(),
@@ -120,7 +128,20 @@ export async function listClients(x: Ctx, opts: { includeArchived?: boolean } = 
 
 export async function upsertClient(x: Ctx, clientId: string | null, input: z.infer<typeof clientInput>) {
   if (!x.actor.grants['clients:manage']) throw forbidden();
-  const values = { name: input.name, email: input.email ?? null, phone: input.phone ?? null, address: input.address ?? null, currency: input.currency ?? null, notes: input.notes ?? null };
+  const changes = rateChanges(input);
+  if (changes.length && !x.actor.grants['rates:manage']) throw forbidden();
+  const values = {
+    name: input.name,
+    email: input.email ?? null,
+    phone: input.phone ?? null,
+    address: input.address ?? null,
+    currency: input.currency ?? null,
+    notes: input.notes ?? null,
+    contactName: input.contact_name ?? null,
+    documentLanguage: input.document_language ?? null,
+    color: input.color ?? null,
+    logo: input.logo ?? null,
+  };
   let id = clientId;
   if (id) {
     const r = await x.tx.update(clients).set({ ...values, updatedAt: new Date() }).where(eq(clients.id, id)).returning({ id: clients.id });
@@ -129,7 +150,10 @@ export async function upsertClient(x: Ctx, clientId: string | null, input: z.inf
     id = newId();
     await x.tx.insert(clients).values({ id, organizationId: x.org.id, ...values });
   }
-  await audit(x, { action: clientId ? 'client.updated' : 'client.created', targetType: 'client', targetId: id, after: values });
+  const { logo, ...audited } = values;
+  await audit(x, { action: clientId ? 'client.updated' : 'client.created', targetType: 'client', targetId: id, after: { ...audited, logo: logo ? '(image)' : null } });
+
+  await applyScopedRates(x, 'CLIENT', id, changes, values.currency ?? x.org.currency);
   return (await listClients(x, { includeArchived: true })).find((c) => c.id === id)!;
 }
 
@@ -143,7 +167,7 @@ export async function setClientArchived(x: Ctx, clientId: string, archived: bool
 // ─── Projects ────────────────────────────────────────────────────────────────
 export async function listProjects(x: Ctx, opts: { includeArchived?: boolean; clientId?: string; ids?: string[] } = {}): Promise<ProjectDto[]> {
   const rows = await x.tx
-    .select({ p: projects, clientName: clients.name })
+    .select({ p: projects, clientName: clients.name, clientCurrency: clients.currency })
     .from(projects)
     .leftJoin(clients, eq(clients.id, projects.clientId))
     .where(
@@ -161,12 +185,17 @@ export async function listProjects(x: Ctx, opts: { includeArchived?: boolean; cl
   const pm = await x.tx.select().from(projectMembers).where(inArray(projectMembers.projectId, ids));
   const pt = await x.tx.select().from(projectTeams).where(inArray(projectTeams.projectId, ids));
   const tracked = await x.tx
-    .select({ projectId: rollupWorkerDay.projectId, s: sql<number>`coalesce(sum(${rollupWorkerDay.trackedSeconds} + ${rollupWorkerDay.manualSeconds}),0)::int` })
+    .select({
+      projectId: rollupWorkerDay.projectId,
+      s: sql<number>`coalesce(sum(${rollupWorkerDay.trackedSeconds} + ${rollupWorkerDay.manualSeconds}),0)::int`,
+      b: sql<number>`coalesce(sum(${rollupWorkerDay.trackedSeconds} + ${rollupWorkerDay.manualSeconds}) filter (where ${rollupWorkerDay.billable}),0)::int`,
+    })
     .from(rollupWorkerDay)
     .where(inArray(rollupWorkerDay.projectId, ids))
     .groupBy(rollupWorkerDay.projectId);
-  const trackedMap = new Map(tracked.map((t) => [t.projectId, t.s]));
-  return rows.map(({ p, clientName }) => ({
+  const trackedMap = new Map(tracked.map((t) => [t.projectId, t]));
+  const rates = x.actor.grants['rates:read'] ? await currentScopedRates(x, 'PROJECT') : null;
+  return rows.map(({ p, clientName, clientCurrency }) => ({
     id: p.id,
     name: p.name,
     client_id: p.clientId,
@@ -178,7 +207,15 @@ export async function listProjects(x: Ctx, opts: { includeArchived?: boolean; cl
     member_ids: pm.filter((m) => m.projectId === p.id).map((m) => m.membershipId),
     team_ids: pt.filter((t) => t.projectId === p.id).map((t) => t.teamId),
     archived_at: iso(p.archivedAt),
-    tracked_seconds: trackedMap.get(p.id) ?? 0,
+    tracked_seconds: trackedMap.get(p.id)?.s ?? 0,
+    billable_seconds: trackedMap.get(p.id)?.b ?? 0,
+    short_name: p.shortName,
+    start_date: p.startDate,
+    end_date: p.endDate,
+    estimate_seconds: p.estimateSeconds,
+    estimate_unit: p.estimateUnit,
+    currency: clientCurrency ?? x.org.currency,
+    ...(rates && { pay_rate_minor: rates.get(`PAY:${p.id}`)?.amountMinor ?? null, bill_rate_minor: rates.get(`BILL:${p.id}`)?.amountMinor ?? null }),
     created_at: p.createdAt.toISOString(),
   }));
 }
@@ -191,11 +228,19 @@ export async function getProject(x: Ctx, projectId: string): Promise<ProjectDto>
 
 export async function upsertProject(x: Ctx, projectId: string | null, input: z.infer<typeof projectInput>) {
   if (!x.actor.grants['projects:manage']) throw forbidden();
+  const changes = rateChanges(input);
+  if (changes.length && !x.actor.grants['rates:manage']) throw forbidden();
   if (input.client_id) {
     const [c] = await x.tx.select({ id: clients.id }).from(clients).where(eq(clients.id, input.client_id));
     if (!c) throw notFound('client');
   }
+  if (input.start_date && input.end_date && input.end_date < input.start_date) throw validation('The end date is before the start date', { errors: [{ field: 'end_date', message: 'Must be on or after the start date' }] });
   const values: Partial<typeof projects.$inferInsert> = {};
+  if (input.short_name !== undefined) values.shortName = input.short_name || null;
+  if (input.start_date !== undefined) values.startDate = input.start_date;
+  if (input.end_date !== undefined) values.endDate = input.end_date;
+  if (input.estimate_seconds !== undefined) values.estimateSeconds = input.estimate_seconds;
+  if (input.estimate_unit !== undefined) values.estimateUnit = input.estimate_unit;
   if (input.name !== undefined) values.name = input.name;
   if (input.client_id !== undefined) values.clientId = input.client_id;
   if (input.description !== undefined) values.description = input.description;
@@ -217,6 +262,11 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
   if (input.team_ids) {
     await x.tx.delete(projectTeams).where(eq(projectTeams.projectId, id));
     if (input.team_ids.length) await x.tx.insert(projectTeams).values(input.team_ids.map((t) => ({ organizationId: x.org.id, projectId: id!, teamId: t })));
+  }
+  if (changes.length) {
+    // Rates are in the client's currency when it has one, like the invoices for this project.
+    const [row] = await x.tx.select({ cur: clients.currency }).from(projects).leftJoin(clients, eq(clients.id, projects.clientId)).where(eq(projects.id, id));
+    await applyScopedRates(x, 'PROJECT', id, changes, row?.cur ?? x.org.currency);
   }
   if (!projectId) await emitFrom(x, 'project.created', { project_id: id, name: input.name });
   else await emitFrom(x, 'project.updated', { project_id: id });

@@ -23,6 +23,7 @@ import { addDaysToDate, localDate, type TrackingPolicy } from '@tallywork/domain
 import type { Deps } from '../context';
 import { auditSystem, emit } from '../services/events';
 import { sendDigests } from '../services/digest';
+import { runMissingTimeReminders } from '../services/reminders';
 import { applyRetention } from '../services/retention';
 import { processReportRuns, runSchedules } from '../services/report-runs';
 import { runSyncs } from '../services/integrations';
@@ -112,12 +113,12 @@ async function handleEvent(tx: Tx, deps: Deps, e: Envelope): Promise<void> {
     case 'time_off.requested': {
       const worker = p.membership_id as string;
       const names = await memberNames({ tx }, [worker]);
-      await notify(tx, deps, org, await approversFor(tx, org, worker, 'time_off:approve'), { type: 'time_off.requested', title: `${names.get(worker) ?? 'A member'} requested time off`, body: `${p.start_date} – ${p.end_date} (${p.hours}h)`, link: `/attendance/time-off` });
+      await notify(tx, deps, org, await approversFor(tx, org, worker, 'time_off:approve'), { type: 'time_off.requested', title: `${names.get(worker) ?? 'A member'} requested time off`, body: `${p.start_date} – ${p.end_date} (${p.hours}h)`, link: '/time-off?tab=requests' });
       break;
     }
     case 'time_off.approved':
     case 'time_off.rejected':
-      await notify(tx, deps, org, [p.membership_id as string], { type: e.event_type, title: `Your time off request was ${e.event_type.split('.')[1]}`, link: `/attendance/time-off` });
+      await notify(tx, deps, org, [p.membership_id as string], { type: e.event_type, title: `Your time off request was ${e.event_type.split('.')[1]}`, link: '/time-off' });
       break;
     case 'expense.submitted': {
       const worker = p.membership_id as string;
@@ -131,7 +132,7 @@ async function handleEvent(tx: Tx, deps: Deps, e: Envelope): Promise<void> {
       break;
     }
     case 'device.offline':
-      await notify(tx, deps, org, await membersWith(tx, org, 'devices:manage'), { type: 'device.offline', title: 'A device went offline', body: String(p.name ?? ''), link: '/tracking/devices' });
+      await notify(tx, deps, org, await membersWith(tx, org, 'devices:manage'), { type: 'device.offline', title: 'A device went offline', body: String(p.name ?? ''), link: '/devices' });
       break;
     case 'payment.received':
       await notify(tx, deps, org, await membersWith(tx, org, 'payments:manage'), { type: 'payment.received', title: 'Payment received', link: '/finance/payments' });
@@ -255,14 +256,15 @@ export async function markDevicesOffline(deps: Deps): Promise<number> {
 }
 
 /** Shift "not started" alerts and long-break warnings, per organization. */
-export async function runWorkforceAlerts(deps: Deps): Promise<{ shifts: number; breaks: number }> {
+export async function runWorkforceAlerts(deps: Deps): Promise<{ shifts: number; breaks: number; missing_time: number }> {
   const now = deps.now();
-  const out = { shifts: 0, breaks: 0 };
-  const orgs = await withSystem(deps.db, (tx) => tx.select({ id: organizations.id, tz: organizations.timezone, settings: organizations.settings }).from(organizations));
+  const out = { shifts: 0, breaks: 0, missing_time: 0 };
+  const orgs = await withSystem(deps.db, (tx) => tx.select({ id: organizations.id, tz: organizations.timezone, weekStart: organizations.weekStart, settings: organizations.settings }).from(organizations));
   for (const o of orgs) {
     await withTenant(deps.db, o.id, async (tx) => {
       out.shifts += await runShiftAlerts(tx, deps, o.id, o.tz, o.settings.lateGraceMinutes, now);
       out.breaks += await alertLongBreaks(tx, deps, o.id, now);
+      out.missing_time += await runMissingTimeReminders(tx, deps, { id: o.id, timezone: o.tz, weekStart: o.weekStart, settings: o.settings }, now);
     });
   }
   return out;

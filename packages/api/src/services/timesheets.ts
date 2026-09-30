@@ -5,6 +5,7 @@ import {
   approvalActions,
   billingEntries,
   billingRates,
+  clients,
   manualTimeRequests,
   memberships,
   projects,
@@ -30,6 +31,7 @@ import {
   periodFor,
   resolveRate,
   splitAtLocalMidnight,
+  startOfLocalDay,
   timesheetTransition,
   validation,
   localDate,
@@ -53,6 +55,7 @@ import { narrowMemberships } from './scope';
 import { lockWorker, markTimeChanged, validateTrackTarget, workerTimezone, type ActorRef } from './tracking';
 import { memberNames } from './timer';
 import { accrueForTimesheet } from './operations';
+import { checkTimeType, timeTypeCoefficients } from './time-types';
 
 function ref(x: Ctx): ActorRef {
   const a = actorRef(x);
@@ -60,12 +63,17 @@ function ref(x: Ctx): ActorRef {
 }
 
 // ─── Time entries ────────────────────────────────────────────────────────────
-export async function listTimeEntries(x: Ctx, q: { from: string; to: string; membershipIds?: string[]; projectId?: string }, permission: 'time:read' | 'timesheets:read' = 'time:read'): Promise<TimeEntryDto[]> {
+export async function listTimeEntries(
+  x: Ctx,
+  q: { from: string; to: string; membershipIds?: string[]; projectId?: string; projectIds?: string[]; clientId?: string; taskId?: string },
+  permission: 'time:read' | 'timesheets:read' = 'time:read',
+): Promise<TimeEntryDto[]> {
   const visible = narrowMemberships(x.actor, permission, q.membershipIds);
   const rows = await x.tx
-    .select({ e: timeEntries, projectName: projects.name, taskTitle: tasks.title, workerName: users.name })
+    .select({ e: timeEntries, projectName: projects.name, clientId: projects.clientId, clientName: clients.name, taskTitle: tasks.title, workerName: users.name })
     .from(timeEntries)
     .innerJoin(projects, eq(projects.id, timeEntries.projectId))
+    .leftJoin(clients, eq(clients.id, projects.clientId))
     .leftJoin(tasks, eq(tasks.id, timeEntries.taskId))
     .innerJoin(memberships, eq(memberships.id, timeEntries.membershipId))
     .innerJoin(users, eq(users.id, memberships.userId))
@@ -75,6 +83,9 @@ export async function listTimeEntries(x: Ctx, q: { from: string; to: string; mem
         sql`${timeEntries.localDate} between ${q.from} and ${q.to}`,
         visible === 'all' ? undefined : inArray(timeEntries.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']),
         q.projectId ? eq(timeEntries.projectId, q.projectId) : undefined,
+        q.projectIds?.length ? inArray(timeEntries.projectId, q.projectIds) : undefined,
+        q.clientId ? eq(projects.clientId, q.clientId) : undefined,
+        q.taskId ? eq(timeEntries.taskId, q.taskId) : undefined,
       ),
     )
     .orderBy(asc(timeEntries.startedAt))
@@ -90,7 +101,7 @@ export async function listTimeEntries(x: Ctx, q: { from: string; to: string; mem
           ),
         )
     : [];
-  return rows.map(({ e, projectName, taskTitle, workerName }) => {
+  return rows.map(({ e, projectName, clientId, clientName, taskTitle, workerName }) => {
     const ws = acts.filter((a) => a.membershipId === e.membershipId && a.windowStart >= new Date(e.startedAt.getTime() - 600_000) && a.windowStart < e.endedAt);
     const tracked = ws.reduce((s, a) => s + a.trackedSeconds, 0);
     const active = ws.reduce((s, a) => s + a.activeSeconds, 0);
@@ -111,11 +122,39 @@ export async function listTimeEntries(x: Ctx, q: { from: string; to: string; mem
       local_date: e.localDate,
       billable: e.billable,
       note: e.note,
+      time_type_id: e.timeTypeId,
+      duration_only: e.durationOnly,
+      client_id: clientId,
+      client_name: clientName,
       edited: e.edited,
-      locked: !!e.lockedAt,
+      locked: !!e.lockedAt || isAgeLocked(x, e.localDate, e.membershipId),
       activity_pct: tracked > 0 ? Math.round((active / tracked) * 100) : null,
     };
   });
+}
+
+/** The first date members may still change their own time on (org "lock time entries" setting), or null. */
+export function lockCutoff(x: Pick<Ctx, 'org' | 'deps'>): string | null {
+  const s = x.org.settings;
+  const cutoffs: string[] = [];
+  if (s.lockAfterDays != null) cutoffs.push(addDaysToDate(localDate(x.deps.now(), x.org.timezone), -s.lockAfterDays));
+  if (s.lockBeforeDate) cutoffs.push(s.lockBeforeDate);
+  return cutoffs.length ? cutoffs.sort().at(-1)! : null;
+}
+
+/** Whether the age lock stops this actor changing their own time on `date` (managers are not bound by it). */
+function isAgeLocked(x: Ctx, date: string, ownerMembershipId?: string): boolean {
+  const cutoff = lockCutoff(x);
+  if (!cutoff || date >= cutoff) return false;
+  if (ownerMembershipId && ownerMembershipId !== x.actor.membershipId) return false;
+  return x.actor.grants['time:edit'] !== 'org';
+}
+
+function assertNotAgeLocked(x: Ctx, membershipId: string, dates: string[]) {
+  if (membershipId !== x.actor.membershipId || x.actor.grants['time:edit'] === 'org') return;
+  const cutoff = lockCutoff(x);
+  const old = cutoff ? dates.filter((d) => d < cutoff).sort()[0] : undefined;
+  if (old) throw businessRule('time_entries_locked', `Time before ${cutoff} is locked. Ask a manager to change it.`, { locked_before: cutoff });
 }
 
 async function loadEntryForEdit(x: Ctx, entryId: string) {
@@ -127,6 +166,7 @@ async function loadEntryForEdit(x: Ctx, entryId: string) {
   const isManager = x.actor.grants['time:edit'] === 'org' || (x.actor.grants['time:edit'] === 'team' && !isSelf);
   if (isSelf && !isManager && !policy.timeEdits.workerCanEdit) throw forbidden('Your organization does not allow editing your own time');
   if (e.lockedAt) throw businessRule('time_locked', 'This entry is part of a submitted or approved timesheet');
+  assertNotAgeLocked(x, e.membershipId, [e.localDate]);
   await lockWorker(x.tx, e.membershipId);
   return { e, policy, isSelf, isManager };
 }
@@ -175,9 +215,20 @@ export async function updateTimeEntry(x: Ctx, entryId: string, input: z.infer<ty
 
   const pieces = splitAtLocalMidnight({ start, end }, e.timezone);
   if (pieces.length > 1) throw validation('An entry cannot cross midnight; split it into two entries');
+  assertNotAgeLocked(x, e.membershipId, [pieces[0]!.localDate]);
   await assertPeriodsOpen(x, e.membershipId, [pieces[0]!.localDate]);
-  const before = { started_at: e.startedAt, ended_at: e.endedAt, project_id: e.projectId, task_id: e.taskId, billable: e.billable, note: e.note };
-  const after = { started_at: start, ended_at: end, project_id: projectId, task_id: taskId, billable: input.billable ?? e.billable, note: input.note !== undefined ? input.note : e.note };
+  const type = await checkTimeType(x.tx, input.time_type_id);
+  const timeTypeId = type ? type.id : e.timeTypeId;
+  const before = { started_at: e.startedAt, ended_at: e.endedAt, project_id: e.projectId, task_id: e.taskId, billable: e.billable, note: e.note, time_type_id: e.timeTypeId };
+  const after = {
+    started_at: start,
+    ended_at: end,
+    project_id: projectId,
+    task_id: taskId,
+    billable: type?.notBillable ? false : (input.billable ?? e.billable),
+    note: input.note !== undefined ? input.note : e.note,
+    time_type_id: timeTypeId,
+  };
   await x.tx
     .update(timeEntries)
     .set({
@@ -189,6 +240,9 @@ export async function updateTimeEntry(x: Ctx, entryId: string, input: z.infer<ty
       taskId,
       billable: after.billable,
       note: after.note,
+      timeTypeId,
+      // Real clock times were entered: the entry is no longer duration-only.
+      ...(input.started_at || input.ended_at ? { durationOnly: false } : {}),
       edited: true,
       revision: e.revision + 1,
       updatedAt: new Date(),
@@ -234,11 +288,67 @@ export async function entryRevisions(x: Ctx, entryId: string) {
 }
 
 // ─── Manual time ─────────────────────────────────────────────────────────────
+/**
+ * Where a duration-only entry goes: the first gap on that local day that fits, starting at 09:00
+ * (or at midnight when the morning is full), never overlapping other time and never in the future.
+ */
+async function freeSlot(x: Ctx, membershipId: string, tz: string, date: string, seconds: number): Promise<{ start: Date; end: Date }> {
+  const dayStart = startOfLocalDay(date, tz);
+  const dayEnd = startOfLocalDay(addDaysToDate(date, 1), tz);
+  const busy = await x.tx
+    .select({ s: timeEntries.startedAt, e: timeEntries.endedAt })
+    .from(timeEntries)
+    .where(and(eq(timeEntries.membershipId, membershipId), isNull(timeEntries.deletedAt), lt(timeEntries.startedAt, dayEnd), gt(timeEntries.endedAt, dayStart)))
+    .orderBy(asc(timeEntries.startedAt));
+  const limit = Math.min(dayEnd.getTime(), x.deps.now().getTime());
+  const fit = (from: number) => {
+    let t = from;
+    for (const b of busy) if (t < b.e.getTime() && t + seconds * 1000 > b.s.getTime()) t = Math.max(t, b.e.getTime());
+    return t + seconds * 1000 <= limit ? t : null;
+  };
+  const t = fit(dayStart.getTime() + 9 * 3600_000) ?? fit(dayStart.getTime());
+  if (t === null) throw businessRule('no_free_time', `There is no free ${Math.round(seconds / 60)}-minute slot on ${date}. Enter start and end times instead.`);
+  return { start: new Date(t), end: new Date(t + seconds * 1000) };
+}
+
+/** Bulk changes from the timesheet list; each entry goes through the normal checks. */
+export async function bulkTimeEntries(x: Ctx, input: { ids: string[]; action: 'delete' | 'set_billable' | 'set_non_billable'; reason?: string | null }) {
+  const out: Array<{ id: string; ok: boolean; error?: string }> = [];
+  for (const id of [...new Set(input.ids)]) {
+    try {
+      // A savepoint per entry: one locked entry must not undo the others.
+      await x.tx.transaction(async (tx) => {
+        const y = { ...x, tx: tx as unknown as Tx };
+        if (input.action === 'delete') await deleteTimeEntry(y, id, input.reason ?? null);
+        else await updateTimeEntry(y, id, { billable: input.action === 'set_billable', reason: input.reason ?? undefined });
+      });
+      out.push({ id, ok: true });
+    } catch (e) {
+      out.push({ id, ok: false, error: e instanceof Error ? e.message : 'Failed' });
+    }
+  }
+  return out;
+}
 async function insertManualEntry(x: Ctx, req: typeof manualTimeRequests.$inferSelect): Promise<string[]> {
   const tz = await workerTimezone(x.tx, req.membershipId, x.org.timezone);
   const dates: string[] = [];
   let firstId: string | null = null;
+  // Part-billable time: the first `billableSeconds` are billable, the rest is a separate non-billable entry,
+  // so rollups, approval pricing and invoices need no special case.
+  let billableLeft = req.billable ? (req.billableSeconds ?? Number.POSITIVE_INFINITY) : 0;
+  const pieces: Array<{ start: Date; end: Date; localDate: string; billable: boolean }> = [];
   for (const pc of splitAtLocalMidnight({ start: req.startedAt, end: req.endedAt }, tz)) {
+    const secs = (pc.end.getTime() - pc.start.getTime()) / 1000;
+    if (!req.billable) pieces.push({ ...pc, billable: false });
+    else if (billableLeft >= secs) pieces.push({ ...pc, billable: true });
+    else if (billableLeft <= 0) pieces.push({ ...pc, billable: false });
+    else {
+      const cut = new Date(pc.start.getTime() + billableLeft * 1000);
+      pieces.push({ start: pc.start, end: cut, localDate: pc.localDate, billable: true }, { start: cut, end: pc.end, localDate: pc.localDate, billable: false });
+    }
+    billableLeft -= secs;
+  }
+  for (const pc of pieces) {
     const id = newId();
     firstId ??= id;
     await x.tx.insert(timeEntries).values({
@@ -253,8 +363,10 @@ async function insertManualEntry(x: Ctx, req: typeof manualTimeRequests.$inferSe
       durationSeconds: Math.round((pc.end.getTime() - pc.start.getTime()) / 1000),
       localDate: pc.localDate,
       timezone: tz,
-      billable: req.billable,
+      billable: pc.billable,
       note: req.note,
+      timeTypeId: req.timeTypeId,
+      durationOnly: req.durationOnly,
     });
     await x.tx.insert(timeEntryRevisions).values({ id: newId(), organizationId: x.org.id, timeEntryId: id, revision: 1, action: 'CREATE', after: { manual_request_id: req.id }, reason: req.reason, ...actorRef(x) });
     dates.push(pc.localDate);
@@ -269,19 +381,26 @@ export async function requestManualTime(x: Ctx, input: z.infer<typeof manualTime
   const forSelf = membershipId === x.actor.membershipId;
   if (forSelf && !x.actor.grants['manual_time:request']) throw forbidden();
   if (!forSelf && !can(x.actor, 'manual_time:approve', { ownerMembershipId: membershipId })) throw forbidden();
-  const start = new Date(input.started_at);
-  const end = new Date(input.ended_at);
-  if (end <= start) throw validation('End must be after start');
-  if (end > x.deps.now()) throw validation('Manual time cannot be in the future');
-  if (end.getTime() - start.getTime() > 24 * 3600_000) throw validation('Manual time is limited to 24 hours per entry');
   const policy = await effectivePolicy(x.tx, x.org.id, membershipId, x.policyCache);
   if (forSelf && !policy.manualTime.allowed) throw businessRule('manual_time_disabled', 'Manual time is disabled by your organization');
   if (forSelf && policy.manualTime.reasonRequired && !input.reason) throw validation('A reason is required for manual time');
   await validateTrackTarget(x.tx, membershipId, input.project_id, input.task_id ?? null);
   await lockWorker(x.tx, membershipId);
-  await assertNoOverlap(x.tx, membershipId, start, end, []);
   const tz = await workerTimezone(x.tx, membershipId, x.org.timezone);
-  await assertPeriodsOpen(x, membershipId, splitAtLocalMidnight({ start, end }, tz).map((pc) => pc.localDate));
+  const durationOnly = !(input.started_at && input.ended_at);
+  const { start, end } = durationOnly
+    ? await freeSlot(x, membershipId, tz, input.local_date!, input.duration_seconds!)
+    : { start: new Date(input.started_at!), end: new Date(input.ended_at!) };
+  if (end <= start) throw validation('End must be after start');
+  if (end > x.deps.now()) throw validation('Manual time cannot be in the future');
+  if (end.getTime() - start.getTime() > 24 * 3600_000) throw validation('Manual time is limited to 24 hours per entry');
+  const totalSeconds = Math.round((end.getTime() - start.getTime()) / 1000);
+  if (input.billable_seconds !== undefined && input.billable_seconds > totalSeconds) throw validation('Billable time cannot be more than the time logged', { errors: [{ field: 'billable_seconds', message: 'At most the time logged' }] });
+  await assertNoOverlap(x.tx, membershipId, start, end, []);
+  const dates = splitAtLocalMidnight({ start, end }, tz).map((pc) => pc.localDate);
+  assertNotAgeLocked(x, membershipId, dates);
+  await assertPeriodsOpen(x, membershipId, dates);
+  const type = await checkTimeType(x.tx, input.time_type_id);
   const [p] = await x.tx.select({ billable: projects.billableDefault }).from(projects).where(eq(projects.id, input.project_id));
   const autoApprove = !policy.manualTime.requiresApproval || !forSelf || x.actor.grants['manual_time:approve'] === 'org';
   const id = opts.id ?? newId();
@@ -297,7 +416,10 @@ export async function requestManualTime(x: Ctx, input: z.infer<typeof manualTime
       endedAt: end,
       reason: input.reason ?? null,
       note: input.note ?? null,
-      billable: input.billable ?? p?.billable ?? true,
+      billable: type?.notBillable ? false : (input.billable ?? p?.billable ?? true),
+      timeTypeId: type?.id ?? null,
+      billableSeconds: input.billable_seconds !== undefined && input.billable_seconds < totalSeconds ? input.billable_seconds : null,
+      durationOnly,
       status: autoApprove ? 'APPROVED' : 'PENDING',
       createdBy: x.actor.membershipId,
       decidedBy: autoApprove ? x.actor.membershipId : null,
@@ -485,7 +607,7 @@ export async function submitTimesheet(x: Ctx, membershipId: string, date: string
   await x.tx.update(timesheetEntries).set({ supersededAt: new Date() }).where(and(eq(timesheetEntries.timesheetId, ts.id), isNull(timesheetEntries.supersededAt)));
   if (entries.length) {
     await x.tx.insert(timesheetEntries).values(
-      entries.map((e) => ({ id: newId(), organizationId: x.org.id, timesheetId: ts.id, timeEntryId: e.id, revision: e.revision, projectId: e.projectId, taskId: e.taskId, localDate: e.localDate, durationSeconds: e.durationSeconds, billable: e.billable, source: e.source })),
+      entries.map((e) => ({ id: newId(), organizationId: x.org.id, timesheetId: ts.id, timeEntryId: e.id, revision: e.revision, projectId: e.projectId, taskId: e.taskId, localDate: e.localDate, durationSeconds: e.durationSeconds, billable: e.billable, source: e.source, timeTypeId: e.timeTypeId })),
     );
   }
   const total = entries.reduce((s, e) => s + e.durationSeconds, 0);
@@ -528,10 +650,12 @@ async function createBillingEntries(x: Ctx, ts: typeof timesheets.$inferSelect) 
   const pids = [...new Set(snap.map((s) => s.projectId))];
   const ps = await x.tx.select({ id: projects.id, clientId: projects.clientId }).from(projects).where(inArray(projects.id, pids));
   const clientOf = new Map(ps.map((p) => [p.id, p.clientId]));
+  const coef = await timeTypeCoefficients(x.tx);
   for (const s of snap) {
     const rc = { date: s.localDate, membershipId: ts.membershipId, projectId: s.projectId, clientId: clientOf.get(s.projectId) ?? null };
     const bill = s.billable ? resolveRate(rates, 'BILL', rc) : null;
     const pay = resolveRate(rates, 'PAY', rc);
+    const k = coef(s.timeTypeId);
     await x.tx
       .insert(billingEntries)
       .values({
@@ -549,8 +673,8 @@ async function createBillingEntries(x: Ctx, ts: typeof timesheets.$inferSelect) 
         billable: s.billable,
         billRateId: bill?.id ?? null,
         payRateId: pay?.id ?? null,
-        billAmountMinor: bill ? amountForSeconds(s.durationSeconds, bill.amountMinor) : 0,
-        payAmountMinor: pay ? amountForSeconds(s.durationSeconds, pay.amountMinor) : 0,
+        billAmountMinor: bill ? amountForSeconds(Math.round(s.durationSeconds * k.bill), bill.amountMinor) : 0,
+        payAmountMinor: pay ? amountForSeconds(Math.round(s.durationSeconds * k.pay), pay.amountMinor) : 0,
         currency: bill?.currency ?? pay?.currency ?? x.org.currency,
       })
       .onConflictDoNothing();

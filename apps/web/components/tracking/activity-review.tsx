@@ -405,7 +405,7 @@ export function ActivityReview({ member: memberParam, date, onChange }: { member
               <Panel>
                 <EmptyState
                   title={day === today && member === self ? 'Nothing tracked yet today' : 'No time tracked on this day'}
-                  description={day === today && member === self ? 'Start the timer in the top bar or the desktop app. Your 10-minute blocks appear here.' : 'Use the arrows or [ and ] to move to another day.'}
+                  description={day === today && member === self ? 'Track time with the desktop app or the web timer. Your 10-minute blocks appear here.' : 'Use the arrows or [ and ] to move to another day.'}
                 />
               </Panel>
             ) : hours.length === 0 ? (

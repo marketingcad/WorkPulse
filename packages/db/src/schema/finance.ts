@@ -1,7 +1,91 @@
 import { sql } from 'drizzle-orm';
-import { bigint, boolean, index, integer, numeric, pgTable, text, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-import type { RateKind, RateScope } from '@tallywork/domain';
+import { bigint, boolean, index, integer, jsonb, numeric, pgTable, primaryKey, text, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import type { PayPeriodConfig, RateKind, RateScope } from '@tallywork/domain';
 import { orgId, pk, timestamps, tstz } from './_helpers';
+
+// ─── Payroll ─────────────────────────────────────────────────────────────────
+/** A pay group: how often its members are paid and in which currency. */
+export const payrollProfiles = pgTable('payroll_profiles', {
+  id: pk(),
+  organizationId: orgId(),
+  name: text().notNull(),
+  period: jsonb().$type<PayPeriodConfig>().notNull(),
+  currency: text().notNull(),
+  isDefault: boolean().notNull().default(false),
+  archivedAt: tstz(),
+  ...timestamps,
+});
+
+/** Member of a payroll profile, with their bank details for it (encrypted at rest). */
+export const payrollProfileMembers = pgTable(
+  'payroll_profile_members',
+  {
+    organizationId: orgId(),
+    profileId: uuid().notNull(),
+    membershipId: uuid().notNull(),
+    /** AES-GCM sealed JSON: { type, bank_name, account_name, account_number, routing, iban, swift, notes } */
+    bankDetailsEnc: text(),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.profileId, t.membershipId] }), index().on(t.organizationId, t.membershipId)],
+);
+
+export type PayrollRunStatus = 'DRAFT' | 'FINALIZED' | 'PAID';
+
+export const payrollRuns = pgTable(
+  'payroll_runs',
+  {
+    id: pk(),
+    organizationId: orgId(),
+    profileId: uuid().notNull(),
+    periodStart: text().notNull(),
+    periodEnd: text().notNull(),
+    currency: text().notNull(),
+    status: text().$type<PayrollRunStatus>().notNull().default('DRAFT'),
+    grossMinor: bigint({ mode: 'number' }).notNull().default(0),
+    adjustmentsMinor: bigint({ mode: 'number' }).notNull().default(0),
+    netMinor: bigint({ mode: 'number' }).notNull().default(0),
+    /** some time in the period was priced in another currency and is not part of this run */
+    otherCurrency: boolean().notNull().default(false),
+    notes: text(),
+    createdBy: uuid().notNull(),
+    finalizedAt: tstz(),
+    finalizedBy: uuid(),
+    paidAt: tstz(),
+    ...timestamps,
+  },
+  (t) => [unique().on(t.profileId, t.periodStart), index().on(t.organizationId, t.periodStart)],
+);
+
+export interface PayAdjustment {
+  label: string;
+  /** positive = bonus / reimbursement, negative = deduction */
+  amount_minor: number;
+}
+
+/** One member's pay for a run; the pay stub. */
+export const payrollRunLines = pgTable(
+  'payroll_run_lines',
+  {
+    id: pk(),
+    organizationId: orgId(),
+    runId: uuid().notNull(),
+    membershipId: uuid().notNull(),
+    approvedSeconds: integer().notNull().default(0),
+    /** time in the period whose timesheet is not approved yet; not paid by this run */
+    unapprovedSeconds: integer().notNull().default(0),
+    regularSeconds: integer().notNull().default(0),
+    overtimeSeconds: integer().notNull().default(0),
+    timePayMinor: bigint({ mode: 'number' }).notNull().default(0),
+    timeOffHours: numeric({ precision: 8, scale: 2, mode: 'number' }).notNull().default(0),
+    timeOffPayMinor: bigint({ mode: 'number' }).notNull().default(0),
+    grossMinor: bigint({ mode: 'number' }).notNull().default(0),
+    adjustments: jsonb().$type<PayAdjustment[]>().notNull().default([]),
+    netMinor: bigint({ mode: 'number' }).notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [unique().on(t.runId, t.membershipId), index().on(t.organizationId, t.membershipId)],
+);
 
 export const billingRates = pgTable(
   'billing_rates',
@@ -82,7 +166,7 @@ export const budgets = pgTable(
 export const fileObjects = pgTable('file_objects', {
   id: pk(),
   organizationId: orgId(),
-  purpose: text().$type<'SCREENSHOT' | 'THUMBNAIL' | 'RECEIPT' | 'INVOICE_PDF' | 'EXPORT' | 'AVATAR'>().notNull(),
+  purpose: text().$type<'SCREENSHOT' | 'THUMBNAIL' | 'RECEIPT' | 'INVOICE_PDF' | 'EXPORT' | 'AVATAR' | 'PROJECT_DOCUMENT'>().notNull(),
   storageKey: text().notNull(),
   contentType: text().notNull(),
   bytes: integer(),

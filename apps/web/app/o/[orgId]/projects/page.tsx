@@ -20,6 +20,8 @@ import {
   Panel,
   PermissionState,
   Select,
+  cx,
+  fmtDate,
   fmtMoney,
   useToast,
   type Column,
@@ -80,6 +82,7 @@ function Projects() {
         <span className="flex min-w-0 items-center gap-2">
           <ColorDot color={p.color} />
           <span className="truncate font-medium">{p.name}</span>
+          {p.short_name && <span className="shrink-0 font-mono text-2xs text-text-faint">{p.short_name}</span>}
         </span>
       ),
     },
@@ -93,7 +96,22 @@ function Projects() {
         </span>
       ),
     },
-    { key: 'tracked', header: 'Tracked', align: 'right', value: (p) => p.tracked_seconds ?? 0, cell: (p) => org.fmtDuration(p.tracked_seconds ?? 0) },
+    {
+      key: 'tracked',
+      header: 'Logged / estimate',
+      align: 'right',
+      value: (p) => p.tracked_seconds ?? 0,
+      cell: (p) => {
+        const t = p.tracked_seconds ?? 0;
+        return (
+          <span className={cx('tabular', p.estimate_seconds && t > p.estimate_seconds && 'text-danger')}>
+            {org.fmtDuration(t)}
+            {p.estimate_seconds ? <span className="text-text-faint"> / {org.fmtDuration(p.estimate_seconds)}</span> : null}
+          </span>
+        );
+      },
+    },
+    { key: 'end', header: 'Ends', value: (p) => p.end_date ?? '9999', cell: (p) => <span className="tabular text-text-muted">{p.end_date ? fmtDate(p.end_date) : '—'}</span> },
     ...(budgetsQ.data
       ? [
           {

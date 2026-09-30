@@ -63,7 +63,7 @@ export default function SessionsPage() {
             onRowClick={(s) => setOpen(s.id)}
             initialSort={{ key: 'start', dir: 'desc' }}
             caption="Tracking sessions"
-            empty={<EmptyState title="No sessions in this period" description="Try a wider date range, or start the timer in the top bar to create one." />}
+            empty={<EmptyState title="No sessions in this period" description="Try a wider date range. Sessions appear when someone tracks time in the desktop app or with the web timer." />}
           />
         )}
         {q.data && q.data.length >= 500 && <p className="border-t border-border px-4 py-2 text-xs text-text-muted">Showing the 500 most recent sessions. Narrow the date range to see older ones.</p>}

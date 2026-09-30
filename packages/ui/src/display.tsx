@@ -39,6 +39,7 @@ const STATUS_MAP: Record<string, { tone: Tone; icon: ReactNode; label?: string }
   INTERRUPTED: { tone: 'warning', icon: <AlertTriangle className="size-3" /> },
   IN_PROGRESS: { tone: 'info', icon: <CircleDashed className="size-3" />, label: 'status.IN_PROGRESS' },
   SENT: { tone: 'info', icon: <Clock className="size-3" /> },
+  FINALIZED: { tone: 'info', icon: <CircleCheck className="size-3" /> },
   INVITED: { tone: 'info', icon: <Clock className="size-3" /> },
   ON_LEAVE: { tone: 'info', icon: <MinusCircle className="size-3" />, label: 'status.ON_LEAVE' },
   HOLIDAY: { tone: 'info', icon: <MinusCircle className="size-3" /> },
@@ -258,11 +259,12 @@ export function SkeletonRows({ rows = 6, cols = 5 }: { rows?: number; cols?: num
   );
 }
 
-export function Stat({ label, value, className }: { label: string; value: ReactNode; className?: string }) {
+export function Stat({ label, value, hint, className }: { label: string; value: ReactNode; hint?: ReactNode; className?: string }) {
   return (
     <div className={cx('min-w-0', className)}>
       <dt className="text-xs text-text-muted">{label}</dt>
       <dd className="tabular truncate text-sm font-medium">{value}</dd>
+      {hint && <dd className="mt-0.5 text-xs text-text-muted">{hint}</dd>}
     </div>
   );
 }

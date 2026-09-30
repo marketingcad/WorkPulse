@@ -2,6 +2,8 @@ import type { Permission, Scope } from '@tallywork/domain';
 import {
   Activity,
   BadgeDollarSign,
+  Banknote,
+  Wallet,
   BarChart3,
   Building2,
   CalendarClock,
@@ -10,8 +12,8 @@ import {
   CheckSquare,
   ClipboardCheck,
   Clock,
-  CreditCard,
   Eye,
+  FilePlus,
   FileText,
   FolderKanban,
   Gauge,
@@ -19,6 +21,7 @@ import {
   LayoutDashboard,
   Laptop,
   ListChecks,
+  PieChart,
   PiggyBank,
   Radio,
   Receipt,
@@ -60,14 +63,15 @@ export const NAV: NavGroup[] = [
     items: [
       { label: 'nav.item.overview', workerLabel: 'nav.item.today', href: '', icon: LayoutDashboard },
       { label: 'nav.item.myTimesheet', href: '/timesheets', icon: Clock, perms: ['timesheets:submit'], minScope: 'own' },
+      { label: 'nav.item.payStubs', href: '/pay-stubs', icon: Wallet, perms: ['timesheets:submit'], minScope: 'own' },
     ],
   },
   {
     label: 'nav.group.workspace',
     items: [
       { label: 'nav.item.members', href: '/workers', icon: Users, perms: ['members:read'], minScope: 'team_or_org' },
-      { label: 'nav.item.teams', href: '/teams', icon: UsersRound, perms: ['teams:manage'] },
-      { label: 'nav.item.clients', href: '/clients', icon: Building2, perms: ['clients:manage'] },
+      { label: 'nav.item.teams', href: '/teams', icon: UsersRound, perms: ['teams:read'], minScope: 'team_or_org' },
+      { label: 'nav.item.clients', href: '/clients', icon: Building2, perms: ['clients:read'] },
       { label: 'nav.item.projects', href: '/projects', icon: FolderKanban, perms: ['projects:read'] },
       { label: 'nav.item.tasks', href: '/tasks', icon: CheckSquare, perms: ['tasks:read'] },
     ],
@@ -84,9 +88,10 @@ export const NAV: NavGroup[] = [
   {
     label: 'nav.group.timesheets',
     items: [
+      { label: 'nav.item.allEntries', href: '/timesheets/all', icon: ListChecks, perms: ['time:read'], minScope: 'team_or_org' },
       { label: 'nav.item.viewEdit', href: '/timesheets/team', icon: CalendarDays, perms: ['timesheets:read'], minScope: 'team_or_org' },
       { label: 'nav.item.approvals', href: '/timesheets/approvals', icon: ClipboardCheck, perms: ['timesheets:approve'] },
-      { label: 'nav.item.manualTime', href: '/timesheets/manual', icon: ListChecks, perms: ['manual_time:request', 'manual_time:approve'] },
+      { label: 'nav.item.manualTime', href: '/timesheets/manual', icon: FilePlus, perms: ['manual_time:request', 'manual_time:approve'] },
     ],
   },
   {
@@ -103,13 +108,16 @@ export const NAV: NavGroup[] = [
       { label: 'nav.item.billingRates', href: '/finance/billing', icon: BadgeDollarSign, perms: ['rates:read', 'billing:read'] },
       { label: 'nav.item.budgets', href: '/finance/budgets', icon: PiggyBank, perms: ['budgets:read'] },
       { label: 'nav.item.expenses', href: '/finance/expenses', icon: Receipt, perms: ['expenses:read'] },
-      { label: 'nav.item.invoices', href: '/finance/invoices', icon: FileText, perms: ['invoices:read'] },
-      { label: 'nav.item.payments', href: '/finance/payments', icon: CreditCard, perms: ['payments:read'] },
+      { label: 'nav.item.invoices', href: '/finance/invoices', icon: FileText, perms: ['invoices:read', 'payments:read'] },
+      { label: 'nav.item.payroll', href: '/finance/payroll', icon: Banknote, perms: ['payroll:read'] },
     ],
   },
   {
     label: 'nav.group.insights',
-    items: [{ label: 'nav.item.reports', href: '/reports', icon: BarChart3, perms: ['reports:read'] }],
+    items: [
+      { label: 'nav.item.insights', href: '/insights', icon: PieChart, perms: ['time:read'], minScope: 'team_or_org' },
+      { label: 'nav.item.reports', href: '/reports', icon: BarChart3, perms: ['reports:read'] },
+    ],
   },
   {
     label: 'nav.group.developer',
@@ -122,7 +130,7 @@ export const NAV: NavGroup[] = [
     label: 'nav.group.settings',
     items: [
       { label: 'nav.item.organization', href: '/settings', icon: Settings, perms: ['org:update'] },
-      { label: 'nav.item.trackingPolicies', href: '/settings/policies', icon: SlidersHorizontal, perms: ['policies:manage'] },
+      { label: 'nav.item.trackingPolicies', href: '/settings/policies', icon: SlidersHorizontal, perms: ['policies:read'], minScope: 'team_or_org' },
       { label: 'nav.item.roles', href: '/settings/roles', icon: Shield, perms: ['roles:manage'] },
       { label: 'nav.item.security', href: '/settings/security', icon: Gauge, perms: ['retention:manage', 'settings:security'] },
       { label: 'nav.item.accessReview', href: '/settings/access-review', icon: ShieldCheck, perms: ['members:manage', 'settings:security'] },
@@ -138,15 +146,8 @@ export function filterNav(can: (p: Permission, s?: Scope) => boolean, grants: Pa
     items: g.items
       .filter((i) => {
         if (!i.perms) return true;
-        return i.perms.some((p) => {
-          if (!can(p)) return false;
-          if (i.minScope === 'team_or_org') return grants[p] === 'team' || grants[p] === 'org';
-          if (i.minScope === 'own') return true;
-          return true;
-        });
+        return i.perms.some((p) => can(p) && (i.minScope !== 'team_or_org' || grants[p] === 'team' || grants[p] === 'org'));
       })
-      // Hide the worker's "My timesheet" shortcut for managers who have the team view.
-      .filter((i) => !(i.href === '/timesheets' && isManagerView && false))
       .map((i) => (!isManagerView && i.workerLabel ? { ...i, label: i.workerLabel } : i)),
   })).filter((g) => g.items.length > 0);
 }

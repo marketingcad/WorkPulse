@@ -4,6 +4,8 @@ import type { AuditLogDto } from '@tallywork/contracts';
 import { Badge, Button, DataTable, Drawer, ErrorState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, Select, Stat, fmtDateTime, type Column, type Tone } from '@tallywork/ui';
 import { qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { downloadText, toCsv } from '@/lib/csv';
+import { Download } from 'lucide-react';
 import { JsonDiff } from '@/components/settings/json-diff';
 
 const TARGET_TYPES = ['organization', 'membership', 'role', 'team', 'project', 'client', 'task', 'timesheet', 'time_entry', 'invoice', 'payment', 'expense', 'device', 'api_key', 'webhook', 'report', 'policy_org', 'policy_team', 'policy_worker'];
@@ -55,10 +57,22 @@ export default function AuditPage() {
 
   if (!allowed) return <PermissionState />;
   const filtered = !!(action || targetType || from || to);
+  const exportCsv = () => {
+    const rows = (q.data ?? []).map((r) => [r.created_at, actorLabel(r), r.action, r.target_type ?? '', r.target_id ?? '', r.ip_address ?? '', r.before === null || r.before === undefined ? '' : JSON.stringify(r.before), r.after === null || r.after === undefined ? '' : JSON.stringify(r.after)]);
+    downloadText('audit-log.csv', toCsv(['When (UTC)', 'Actor', 'Action', 'Target type', 'Target id', 'IP', 'Before', 'After'], rows));
+  };
 
   return (
     <>
-      <PageHeader title="Audit log" description="Every change to settings, people, time and money, with who made it and from where. Entries cannot be edited or deleted." />
+      <PageHeader
+        title="Audit log"
+        description="Every change to settings, people, time and money, with who made it and from where. Entries cannot be edited or deleted."
+        actions={
+          <Button icon={<Download className="size-3.5" />} onClick={exportCsv} disabled={!q.data?.length}>
+            Export CSV
+          </Button>
+        }
+      />
       <FilterBar>
         <Input aria-label="Action starts with" placeholder="Action, e.g. policy. or invoice.sent" className="w-60" value={action} onChange={(e) => setAction(e.target.value)} />
         <Select aria-label="Target type" className="w-44" value={targetType} onChange={(e) => setTargetType(e.target.value)}>

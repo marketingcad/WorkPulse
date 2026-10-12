@@ -1,4 +1,5 @@
 import { app, BrowserWindow, crashReporter, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, shell, Tray, type IpcMainInvokeEvent } from 'electron';
+import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IPC, type IpcChannel, type IpcPayload } from '../shared/ipc';
@@ -120,6 +121,21 @@ async function quit(): Promise<void> {
   app.quit();
 }
 
+/**
+ * Fetch an own pay stub's PDF in main (the token never reaches the window), let the person
+ * choose where to keep it, then open it in their PDF viewer. Nothing is written without that choice.
+ */
+async function savePayStub(id: string): Promise<{ saved: boolean }> {
+  const { data, filename } = await agent.api.download(`/agent/me/pay-stubs/${id}/pdf`);
+  const name = filename && /^pay-stub-\d{4}-\d{2}-\d{2}\.pdf$/.test(filename) ? filename : 'pay-stub.pdf';
+  const opts = { title: 'Save pay stub', defaultPath: path.join(app.getPath('downloads'), name), filters: [{ name: 'PDF', extensions: ['pdf'] }] };
+  const r = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
+  if (r.canceled || !r.filePath) return { saved: false };
+  await writeFile(r.filePath, data);
+  void shell.openPath(r.filePath);
+  return { saved: true };
+}
+
 /** Strict IPC: only known channels, only from our own renderer, validated payloads. */
 function registerIpc(): void {
   const handlers: { [C in IpcChannel]: (payload: never) => unknown } = {
@@ -146,6 +162,7 @@ function registerIpc(): void {
     'me:submitTimesheet': (p: IpcPayload<'me:submitTimesheet'>) => agent.api.request('POST', '/agent/me/timesheet/submit', p).then(async (r) => (await agent.refreshBootstrap(), r)),
     'me:requestTimeOff': (p: IpcPayload<'me:requestTimeOff'>) => agent.api.request('POST', '/agent/me/time-off', p),
     'me:readNotifications': (p: IpcPayload<'me:readNotifications'>) => agent.api.request('POST', '/agent/me/notifications/read', p),
+    'me:savePayStub': (p: IpcPayload<'me:savePayStub'>) => savePayStub(p.id),
     'app:quit': () => quit(),
   };
   for (const channel of Object.keys(IPC) as IpcChannel[]) {

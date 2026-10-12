@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { TrackingPolicy } from '@tallywork/domain';
 
 /** Own-data resources the renderer may read (GET /api/v1/agent/me/<resource>). */
-export const ME_RESOURCES = ['summary', 'sessions', 'timesheet', 'activity', 'tasks', 'schedule', 'time-off', 'notifications', 'client-visibility'] as const;
+export const ME_RESOURCES = ['summary', 'sessions', 'timesheet', 'activity', 'tasks', 'schedule', 'time-off', 'notifications', 'client-visibility', 'pay-stubs'] as const;
 export type MeResource = (typeof ME_RESOURCES)[number];
 
 /**
@@ -48,6 +48,8 @@ export const IPC = {
   'me:submitTimesheet': z.object({ date: z.iso.date(), version: z.number().int().positive().optional() }),
   'me:requestTimeOff': z.object({ policy_id: z.uuid(), start_date: z.iso.date(), end_date: z.iso.date(), half_day: z.boolean().optional(), reason: z.string().trim().max(1000).optional() }),
   'me:readNotifications': z.object({ ids: z.union([z.literal('all'), z.array(z.uuid()).max(200)]) }),
+  /** Download one own pay stub as a PDF; main asks where to save it and opens it. */
+  'me:savePayStub': z.object({ id: z.uuid() }),
   'app:quit': z.void(),
 } as const;
 

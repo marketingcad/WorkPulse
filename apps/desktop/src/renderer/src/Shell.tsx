@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Activity, BarChart3, Bell, CalendarClock, CalendarDays, CalendarOff, Camera, CameraOff, CheckSquare, ChevronDown, Clock, CloudOff, Eye, FolderKanban, Home, LogOut, Menu, RefreshCw, Settings, X } from 'lucide-react';
+import { Activity, BarChart3, Bell, CalendarClock, CalendarDays, CalendarOff, Camera, CameraOff, CheckSquare, ChevronDown, Clock, CloudOff, Eye, FolderKanban, Home, LogOut, Menu, ReceiptText, RefreshCw, Settings, X } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
 import { bridge, fmtTime, initials, useMe, useTick, viewForLink, type Page, type View } from './lib';
 import type { NotificationsDto } from './types';
@@ -14,6 +14,7 @@ const NAV: Array<{ v: Page; label: string; icon: ReactNode }> = [
   { v: 'reports', label: 'Reports', icon: <BarChart3 className="size-4" /> },
   { v: 'timeoff', label: 'Time Off', icon: <CalendarOff className="size-4" /> },
   { v: 'schedule', label: 'Schedule', icon: <CalendarClock className="size-4" /> },
+  { v: 'paystubs', label: 'Pay Stubs', icon: <ReceiptText className="size-4" /> },
   { v: 'settings', label: 'Settings', icon: <Settings className="size-4" /> },
 ];
 
@@ -28,6 +29,7 @@ const SECTION: Record<View, Page> = {
   reports: 'reports',
   timeoff: 'timeoff',
   schedule: 'schedule',
+  paystubs: 'paystubs',
   settings: 'settings',
   manual: 'tracking',
   monitoring: 'settings',

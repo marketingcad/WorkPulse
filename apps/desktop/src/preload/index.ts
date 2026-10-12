@@ -34,6 +34,8 @@ const api = {
   submitTimesheet: (date: string, version?: number) => call('me:submitTimesheet', { date, version }),
   requestTimeOff: (r: { policy_id: string; start_date: string; end_date: string; half_day?: boolean; reason?: string }) => call('me:requestTimeOff', r),
   readNotifications: (ids: string[] | 'all') => call('me:readNotifications', { ids }),
+  /** Save one own pay stub as a PDF (main shows a save dialog); `saved` is false when cancelled. */
+  savePayStub: (id: string): Promise<{ saved: boolean }> => call('me:savePayStub', { id }),
   /** Main asks to show a page, e.g. after a desktop notification is clicked. */
   onNavigate: (cb: (view: string) => void): (() => void) => {
     const listener = (_: unknown, view: string) => cb(view);

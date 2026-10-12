@@ -1,10 +1,10 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { CalendarPlus, Check, ChevronLeft, ChevronRight, ClockPlus, PauseCircle, PenLine, Play, Send } from 'lucide-react';
+import { CalendarPlus, Check, ChevronLeft, ChevronRight, ClockPlus, Download, PauseCircle, PenLine, Play, Send } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
 import { ProjectsCard } from './Dashboard';
 import { SessionList, localDay } from './HomeCards';
 import { addDays, bridge, card, errorText, fmtDay, fmtHm, fmtTime, localDateInput, useMe, weekStartOf, type View } from './lib';
-import type { ActivityDayDto, SessionDto, ShiftDto, SummaryDto, TaskDto, TimeOffDto, TimesheetDto } from './types';
+import type { ActivityDayDto, PayStubDto, SessionDto, ShiftDto, SummaryDto, TaskDto, TimeOffDto, TimesheetDto } from './types';
 
 // ─── Shared page pieces ──────────────────────────────────────────────────────
 
@@ -693,6 +693,65 @@ function TimeOffForm({ d, onDone, onCancel }: { d: TimeOffDto; onDone: () => voi
         </button>
       </div>
     </Card>
+  );
+}
+
+// ─── Pay Stubs ───────────────────────────────────────────────────────────────
+
+function fmtMoney(minor: number, currency: string): string {
+  return new Intl.NumberFormat([], { style: 'currency', currency }).format(minor / 100);
+}
+
+export function PayStubsPage() {
+  const q = useMe<PayStubDto[]>('pay-stubs');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const save = async (id: string) => {
+    setBusy(id);
+    setError(null);
+    try {
+      await bridge.savePayStub(id);
+    } catch (e) {
+      setError(errorText(e, 'Could not download the pay stub'));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Page title="Pay Stubs" description="Your pay for each finalized payroll.">
+      {error && <p className="rounded-sm bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>}
+      <Card title="Pay stubs">
+        <Status loading={q.loading && !q.data} error={q.data ? null : q.error} empty={!!q.data && !q.data.length && 'No pay stubs yet. They appear here when a payroll that includes you is finalized.'}>
+          <ul className="divide-y divide-border">
+            {q.data?.map((p) => {
+              const adjustments = p.adjustments.reduce((sum, a) => sum + a.amount_minor, 0);
+              return (
+                <li key={p.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="tabular block truncate text-sm font-medium">
+                      {fmtDay(p.period_start, { month: 'short', day: 'numeric', year: 'numeric' })} – {fmtDay(p.period_end, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                    <span className="tabular block truncate text-2xs text-text-muted">
+                      {p.profile_name} · {fmtHm(p.approved_seconds)}
+                      {p.time_off_hours ? ` · ${fmtHours(p.time_off_hours)} h time off` : ''} · Gross {fmtMoney(p.gross_minor, p.currency)}
+                      {adjustments ? ` · Adjustments ${adjustments > 0 ? '+' : ''}${fmtMoney(adjustments, p.currency)}` : ''}
+                    </span>
+                  </span>
+                  <span className="text-right">
+                    <span className="tabular block text-sm font-semibold">{fmtMoney(p.net_minor, p.currency)}</span>
+                    <span className="block text-2xs text-text-muted">Net pay</span>
+                  </span>
+                  <Badge tone={p.status === 'PAID' ? 'success' : 'info'}>{p.status === 'PAID' ? 'Paid' : 'Finalized'}</Badge>
+                  <button onClick={() => void save(p.id)} disabled={busy !== null} className={btn}>
+                    <Download className="size-4" /> {busy === p.id ? 'Downloading…' : 'PDF'}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Status>
+      </Card>
+    </Page>
   );
 }
 

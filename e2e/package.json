@@ -1,0 +1,23 @@
+{
+  "name": "@tallywork/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:regression": "playwright test --project=web --project=desktop --project=electron",
+    "ui": "playwright test --ui",
+    "headed": "playwright test --headed",
+    "debug": "playwright test --debug",
+    "report": "playwright show-report",
+    "install-browsers": "playwright install chromium",
+    "typecheck": "tsc -p tsconfig.json",
+    "record": "playwright test --config playwright.record.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@tallywork/contracts": "workspace:*",
+    "@types/node": "^24.13.6"
+  }
+}

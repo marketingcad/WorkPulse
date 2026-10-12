@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { withSystem } from '@tallywork/db';
-import { Client, addMember, createHarness, signup, type Harness } from './harness';
+import { Client, addMember, createHarness, pkce, signup, type Harness } from './harness';
 
 // Clock: Friday 2026-10-02 (America/New_York); the last completed monthly period is September.
 const NOW = new Date('2026-10-02T15:00:00Z');
@@ -121,5 +121,45 @@ describe('payroll runs', () => {
     expect((await walt.get(o('/payroll/runs'))).status).toBe(403);
     expect((await walt.post(o('/payroll/runs'), { profile_id: profileId })).status).toBe(403);
     expect((await admin.get(o('/payroll/runs?year=2026'))).body).toHaveLength(1);
+  });
+});
+
+// Workers use the desktop app only, so their pay stubs come through the device own-data API.
+describe('pay stubs on the desktop app', () => {
+  async function device(member: Client, name: string): Promise<Client> {
+    const { verifier, challenge } = pkce();
+    const code = await member.post('/agent/authorize', { code_challenge: challenge, organization_id: orgId });
+    const c = new Client(t);
+    c.bearer = (await c.post('/agent/register', { code: code.body.code, code_verifier: verifier, device: { name, platform: 'windows', agent_version: '0.1.0' } })).body.access_token;
+    return c;
+  }
+  const pdf = (c: Client, id: string) => t.app.request(`/api/v1/agent/me/pay-stubs/${id}/pdf`, { headers: { Authorization: `Bearer ${c.bearer}` } });
+
+  it('lists only the bound worker’s own stubs and serves the PDF', async () => {
+    const waltDevice = await device(walt, 'Walt-PC');
+    const mine = (await waltDevice.get('/agent/me/pay-stubs')).body;
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ membership_id: waltId, status: 'PAID', net_minor: 6300 });
+    const r = await pdf(waltDevice, mine[0].id);
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-type')).toBe('application/pdf');
+    expect(r.headers.get('content-disposition')).toContain('attachment');
+    expect(Buffer.from(await r.arrayBuffer()).subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
+  it('never opens another member’s stub, even from an admin’s device', async () => {
+    const waltStub = (await walt.get(o('/me/pay-stubs'))).body[0].id;
+    const beaDevice = await device(bea, 'Bea-PC');
+    expect((await beaDevice.get('/agent/me/pay-stubs')).body.map((s: { membership_id: string }) => s.membership_id)).toEqual([beaId]);
+    expect((await pdf(beaDevice, waltStub)).status).toBe(404);
+    // The admin holds payroll:read on the web, but a device is narrowed to its own data.
+    expect((await admin.get(o(`/pay-stubs/${waltStub}`))).status).toBe(200);
+    expect((await pdf(await device(admin, 'Ada-PC'), waltStub)).status).toBe(404);
+  });
+
+  it('rejects malformed ids and requests without a device token', async () => {
+    const waltDevice = await device(walt, 'Walt-Laptop');
+    expect((await pdf(waltDevice, 'not-a-uuid')).status).toBe(404);
+    expect((await walt.get('/agent/me/pay-stubs')).status).toBe(401);
   });
 });

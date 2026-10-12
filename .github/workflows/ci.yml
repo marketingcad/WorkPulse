@@ -22,7 +22,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r --filter "./packages/*" --filter @tallywork/web typecheck
-      - run: pnpm --filter @tallywork/domain --filter @tallywork/ui --filter @tallywork/db --filter @tallywork/api test
+      - run: pnpm --filter @tallywork/domain --filter @tallywork/ui --filter @tallywork/db --filter @tallywork/api --filter @tallywork/web test
       # Load smoke on its own (no competing test files): 20 agents, ingest p95 under 500 ms.
       - run: pnpm --filter @tallywork/api exec vitest run test/ops.test.ts -t "load smoke"
         env:
@@ -82,3 +82,54 @@ jobs:
       - run: pnpm --filter @tallywork/desktop build
       # Signed installers: set CSC_LINK/CSC_KEY_PASSWORD (Windows/macOS) and APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID (notarization),
       # then run `pnpm --filter @tallywork/desktop dist` on tagged releases.
+
+  e2e:
+    # Browser tests against an isolated server (fresh in-memory database, no external services).
+    # See e2e/README.md. On failure, the HTML report, traces, screenshots and videos are uploaded.
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @tallywork/e2e typecheck
+      - run: pnpm --filter @tallywork/e2e exec playwright install --with-deps chromium
+      # The real Electron app needs a desktop session and an OS keychain: it runs in e2e-electron (Windows).
+      - run: pnpm test:e2e --project=web --project=desktop
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 14
+
+  e2e-electron:
+    # The real desktop app (Electron main process, preload, window) driven by Playwright. Windows runners
+    # have a desktop session and the OS keychain (DPAPI) the app requires to store its sign-in.
+    name: E2E desktop app (Electron, Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:e2e --project=electron
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-electron
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 14

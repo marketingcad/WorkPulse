@@ -10,7 +10,7 @@ The main flow the product covers is **Organization → People → Work structure
 - **Workforce:** workers, teams, clients, projects, tasks, devices.
 - **Time tracking:** a server-side session state machine; a web timer and a desktop timer; idle detection; pause/resume; daily and weekly limits.
 - **Activity monitoring (desktop, set by policy):** keyboard and mouse *counts* (keystrokes are never recorded), 10-minute activity blocks, screenshots of every display (optionally blurred), app usage, and website usage (macOS natively; Windows through the Tallywork browser extension or the address bar).
-- **Worker desktop app:** workers use WorkPulse through the desktop app only; the web app sends them to its download page. Home dashboard (timer, current session, recent sessions, today's summary with idle time, live activity), plus Time Tracking, Projects, Tasks, Timesheet (with submit), Activity, personal Reports, Time Off (with requests), Schedule and Settings. It reads only the signed-in worker's own data.
+- **Worker desktop app:** workers use WorkPulse through the desktop app only; the web app sends them to its download page. Home dashboard (timer, current session, recent sessions, today's summary with idle time, live activity), plus Time Tracking, Projects, Tasks, Timesheet (with submit), Activity, personal Reports, Time Off (with requests), Schedule, Pay Stubs (with PDF download) and Settings. It reads only the signed-in worker's own data.
 - **Timesheets:** manual time requests, time edits with full revision history, periods, and submit → approve / reject / request changes.
 - **Operations:** schedules, shifts, attendance, holidays, time-off policies with accruals, a balance ledger, and requests.
 - **Finance:** effective-dated pay and bill rates, billing entries, budgets, expenses with receipts, invoices (PDF), payments.
@@ -59,7 +59,7 @@ Updated 30 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallyw
 **Built, being finalized (not released yet)**
 
 - **Payroll:** pay periods, payroll runs from approved time and paid time off, bonuses and deductions, and encrypted bank details.
-- **Pay stubs:** PDF pay stubs for payroll runs.
+- **Pay stubs:** PDF pay stubs for payroll runs, in the desktop app's Pay Stubs page for workers.
 - **Insights:** time, wages and billable totals by person, client, project and day. Members see only their own time and no money.
 - **Time types:** time types with pay and bill multipliers.
 - **Time entry locking:** stops time being added or edited after a set number of days or before a set date.
@@ -78,9 +78,7 @@ Updated 30 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallyw
 
 **Needs attention before the next release**
 
-- **Database migration order:** the client portal's migration has to be renumbered after the new migrations above (already applied to the database). Otherwise the next deploy skips it and sign-in stops working.
-- **Pay stubs:** pay stubs are on a web page, but workers use the desktop app only. They need a way to reach them.
-- **Tests:** CSV import and invitations with a team role and projects need tests.
+- Nothing open. Fixed: the client portal migration now runs after 0011–0017; workers reach pay stubs in the desktop app; CSV import and invitations with a team role and projects have tests.
 
 **Next / planned**
 
@@ -126,7 +124,7 @@ Updated 30 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallyw
 | Documents | `pdf-lib` (invoices / PDF exports), `exceljs` (XLSX exports) |
 | Desktop agent | **Electron 44**, electron-vite, React 19, `uiohook-napi` (input counts), `get-windows` (active app; Windows needs its native binary, see `onlyBuiltDependencies`), `desktopCapturer` (screenshots), Windows UI Automation via PowerShell (address-bar fallback), `safeStorage` + AES-256-GCM (encrypted storage), `electron-updater` |
 | Browser extension | Chrome / Edge / Brave **Manifest V3** extension (`apps/extension`, plain JavaScript, no build) that reports the active tab to the desktop agent over a local `127.0.0.1` bridge |
-| Testing | **Vitest 5** (domain, db/RLS, API flows and security, desktop agent) |
+| Testing | **Vitest 5** (domain, db/RLS, API flows and security, web, desktop agent) and **Playwright** E2E (web app and desktop window in Chromium; [e2e/](e2e/README.md)) |
 | Hosting | **Vercel** (Fluid Compute, Node 24) |
 | CI | GitHub Actions (typecheck, test, build; desktop builds on Windows / macOS / Linux; desktop release and Linux smoke-test workflows) |
 | Desktop distribution | **electron-builder** → GitHub Releases in the public `marketingcad/tallywork-desktop` repo (installers + auto-update feed) |
@@ -824,7 +822,7 @@ erDiagram
 - **Authorization:** a permission is `resource:action` plus a **scope** (`own`, `assigned`, `team`, `org`). Roles are data (`roles`, `role_permissions`). The built-in presets are `SYSTEM_ADMIN`, `TEAM_MANAGER`, `WORKER` and `AGENT`. For list endpoints the evaluator returns a query filter, so single reads, lists, reports and exports all follow the same rule. See [packages/domain/src/permissions.ts](packages/domain/src/permissions.ts) and the full matrix in [docs/plan/05-security-api.md](docs/plan/05-security-api.md).
 - **Checks in layers:** route guard (`requirePermission`) → service-level scope check → PostgreSQL RLS (`app.org_id` set per transaction via `withTenant`). Cross-tenant system jobs must explicitly use `withSystem`.
 - **Agent constraints:** a device credential is bound to `(organization, membership, device)`. It writes only that worker's tracking data. Revoking the device kills its tokens and access immediately (checked on every request). Refresh tokens rotate within a family.
-- **Device own-data API (`/agent/me/*`):** the desktop app may read back **only its bound worker's own data** (sessions, timesheet, activity summary, tasks, schedule, time off, notifications, personal totals). It goes through the web app's own services, with the worker's grants narrowed to an allowlist at `own` scope (`projects:read` / `tasks:read`: `assigned`). **Screenshots are never returned to a device**; a team manager's or admin's device is just as narrow as a worker's. The only writes are submitting a timesheet, requesting time off and marking notifications read. Ranges are capped at 93 days, and reads and writes are rate-limited. See [agent-me.ts](packages/api/src/services/agent-me.ts) and ADR-121 in [08-decisions.md](docs/plan/08-decisions.md).
+- **Device own-data API (`/agent/me/*`):** the desktop app may read back **only its bound worker's own data** (sessions, timesheet, activity summary, tasks, schedule, time off, notifications, personal totals, and pay stubs from finalized payrolls). It goes through the web app's own services, with the worker's grants narrowed to an allowlist at `own` scope (`projects:read` / `tasks:read`: `assigned`). **Screenshots are never returned to a device**; a team manager's or admin's device is just as narrow as a worker's. Pay stub PDFs are fetched by the main process and saved only where the person chooses. The only writes are submitting a timesheet, requesting time off and marking notifications read. Ranges are capped at 93 days, and reads and writes are rate-limited. See [agent-me.ts](packages/api/src/services/agent-me.ts) and ADR-121 in [08-decisions.md](docs/plan/08-decisions.md).
 - **Browser extension bridge:** local-only (`127.0.0.1`), accepts only the extension's fixed ID as `Origin` and a loopback `Host` (defeats web pages and DNS rebinding), and never sees incognito windows.
 - **Secrets:** passwords are hashed with Argon2. Session tokens, API keys and refresh tokens are stored only as hashes. MFA and webhook secrets are encrypted with a key derived from `APP_SECRET`.
 - **Media:** screenshots are private blobs. They are served only through `/api/v1/media/:token`, a short-lived HMAC-signed URL issued after authorization.
@@ -843,7 +841,7 @@ Base path: **`/api/v1`**. JSON in and out. Errors use `application/problem+json`
 | Auth (`/auth`) | `signup`, `login`, `logout`, `password/forgot`, `password/reset`, `password/change`, `verify-email` (+ `resend`), `invitations/accept` |
 | Me (`/me`) | `GET /me`, `POST /me/organizations` |
 | Agent (`/agent`) | `login`, `authorize`, `register`, `token`, `bootstrap`, `policy/ack`, `ingest/batch`, `heartbeat`, `screenshots/upload-intent`, `screenshots/upload` |
-| Agent own data (`/agent/me`) | `summary`, `sessions`, `timesheet` (+ `submit`), `activity`, `tasks`, `schedule`, `time-off` (+ request), `notifications` (+ `read`). Device token only; bound worker only |
+| Agent own data (`/agent/me`) | `summary`, `sessions`, `timesheet` (+ `submit`), `activity`, `tasks`, `schedule`, `time-off` (+ request), `notifications` (+ `read`), `pay-stubs` (+ `:id/pdf`). Device token only; bound worker only |
 | Organization | org settings, `roles`, `workers`, `invitations`, `teams`, `clients`, `projects`, `tasks`, `me/assignments`, `policies/:scope`, `devices` |
 | Tracking & time | `tracking/{current,start,stop,pause,resume,switch,note,live}`, `sessions`, `time-entries`, `manual-time`, `timesheets` (+ `submit`, `approvals`, `bulk-approve`), `activity/day`, `screenshots`, `idle-events` |
 | Operations | `schedules`, `shifts`, `attendance`, `holidays`, `time-off/{policies,balances,requests}` |
@@ -951,6 +949,9 @@ Run from the repo root unless noted.
 | `pnpm build` | Build every package / app via Turborepo |
 | `pnpm typecheck` | Type-check every workspace |
 | `pnpm test` | Run all Vitest suites |
+| `pnpm test:e2e` | Run the Playwright E2E suite: builds, starts isolated servers on :3100/:3101, runs, reports ([e2e/README.md](e2e/README.md)) |
+| `pnpm test:e2e:smoke` | Only the critical E2E journeys (`@smoke`) |
+| `pnpm test:e2e:ui` / `:headed` / `:debug` / `:report` | Interactive runner, visible browser, inspector, last HTML report |
 | `pnpm lint` | Run lint tasks |
 | `pnpm db:generate` | Generate a new SQL migration from schema changes (`drizzle-kit generate`) |
 | `pnpm db:migrate` | Apply migrations, RLS policies and app-role grants to `DATABASE_URL` |
@@ -1015,7 +1016,7 @@ Run from the repo root unless noted.
 
 ## Testing & CI
 
-Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgres, including RLS, with no Docker needed.
+Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgres, including RLS, with no Docker needed. **Playwright** E2E tests drive the real web app, the desktop app's window in Chromium and the real Electron app against an isolated server (fresh in-memory database, no email or storage services): one command, `pnpm test:e2e`. See [e2e/README.md](e2e/README.md). Every new or changed feature ships with tests that were run: see [AGENTS.md](AGENTS.md).
 
 | Suite | Covers |
 |---|---|
@@ -1025,6 +1026,9 @@ Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgre
 | [packages/api/test/tracking.test.ts](packages/api/test/tracking.test.ts) | Session engine, idle handling, agent ingest, offline replay |
 | [packages/api/test/security.test.ts](packages/api/test/security.test.ts) | Authorization by role and scope, tenant isolation, token handling |
 | [packages/api/test/seed.test.ts](packages/api/test/seed.test.ts) | Demo seeder runs cleanly |
+| [packages/api/test/invitations.test.ts](packages/api/test/invitations.test.ts) | Invitations with teams, a team role and projects: applied on accept (new and returning members), cross-workspace and archived targets refused |
+| [packages/api/test/payroll.test.ts](packages/api/test/payroll.test.ts) | Payroll runs, bank details, pay stubs on the web and on the desktop (own finalized stubs only, even from an admin's device) |
+| [apps/web/test/csv-import.test.ts](apps/web/test/csv-import.test.ts) | CSV time import: parsing (quotes, BOM, semicolons), column mapping, and every row check before rows are sent as manual time |
 | [packages/api/test/agent-me.test.ts](packages/api/test/agent-me.test.ts) | Device own-data API: only the bound worker, never screenshots, managers narrowed to own, revoked devices refused |
 | [packages/api/test/storage.test.ts](packages/api/test/storage.test.ts) | Supabase Storage adapter: bucket setup, upload, signed upload URLs, delete batching, error handling |
 | [apps/desktop/test/agent.test.ts](apps/desktop/test/agent.test.ts) | Agent core: privacy contract, activity minutes and history, screenshot schedule, IPC contract, manual time |
@@ -1032,8 +1036,9 @@ Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgre
 
 **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every push to `main` and on every PR:
 
-- `verify` — install → typecheck packages + web → test domain / db / api → build web.
+- `verify` — install → typecheck packages + web → test domain / ui / db / api / web → build web.
 - `desktop` — typecheck, test and build the agent on **Windows, macOS and Linux**.
+- `e2e` — Playwright E2E for the web app and the desktop window on Chromium (Ubuntu); `e2e-electron` — the real Electron desktop app (Windows). The HTML report, traces, screenshots and videos are uploaded as artifacts.
 
 Two manual workflows ship the desktop app: **Desktop release** ([desktop-release.yml](.github/workflows/desktop-release.yml)) and **Desktop Linux smoke test** ([desktop-linux-smoke.yml](.github/workflows/desktop-linux-smoke.yml)). See [Deployment](#deployment).
 

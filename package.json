@@ -13,13 +13,23 @@
     "test": "turbo run test",
     "db:generate": "pnpm --filter @tallywork/db generate",
     "db:migrate": "pnpm --filter @tallywork/db migrate",
-    "db:seed": "pnpm --filter @tallywork/db seed"
+    "db:seed": "pnpm --filter @tallywork/db seed",
+    "test:e2e": "pnpm --filter @tallywork/e2e test",
+    "test:e2e:smoke": "pnpm --filter @tallywork/e2e test:smoke",
+    "test:e2e:regression": "pnpm --filter @tallywork/e2e test:regression",
+    "test:e2e:ui": "pnpm --filter @tallywork/e2e ui",
+    "test:e2e:headed": "pnpm --filter @tallywork/e2e headed",
+    "test:e2e:debug": "pnpm --filter @tallywork/e2e debug",
+    "test:e2e:report": "pnpm --filter @tallywork/e2e report",
+    "test:e2e:install": "pnpm --filter @tallywork/e2e install-browsers",
+    "test:e2e:record": "pnpm --filter @tallywork/e2e record"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "^24.13.6",
+    "tsx": "^4.23.15",
     "turbo": "^2.11.3",
     "typescript": "5.9.3",
-    "@types/node": "^24.13.6",
-    "vitest": "^5.0.1",
-    "tsx": "^4.23.15"
+    "vitest": "^5.0.1"
   }
 }

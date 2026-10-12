@@ -1,6 +1,6 @@
 'use client';
-import { useMemo, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, ChevronRight, Search } from 'lucide-react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { cx } from './primitives';
 import { EmptyState, SkeletonRows } from './display';
 import { t } from './i18n';
@@ -37,13 +37,33 @@ export interface DataTableProps<T> {
   toolbar?: ReactNode;
   density?: 'compact' | 'comfortable';
   rowClassName?: (row: T) => string | undefined;
+  /** Rows per page for client pagination (the starting value; people can change it). */
   pageSize?: number;
+  /** Choices for "Rows per page". `pageSize` is always included. */
+  pageSizeOptions?: number[];
+  /**
+   * Server pagination: `rows` is already one page, and paging is controlled by the caller.
+   * Client search and sorting then only see the current page, so pair this with server-side filters.
+   */
+  pagination?: ServerPagination;
   caption?: string;
 }
 
+export interface ServerPagination {
+  /** 0-based */
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange?: (size: number) => void;
+  pageSizeOptions?: number[];
+}
+
+const DEFAULT_PAGE_SIZES = [25, 50, 100];
+
 /**
  * Accessible, dense data table with sorting, search, selection + bulk bar,
- * client pagination, and a stacked card layout on small screens.
+ * client (or server) pagination, and a stacked card layout on small screens.
  */
 export function DataTable<T>({
   rows,
@@ -63,12 +83,28 @@ export function DataTable<T>({
   toolbar,
   density = 'compact',
   rowClassName,
-  pageSize = 100,
+  pageSize: initialPageSize = 100,
+  pageSizeOptions,
+  pagination,
   caption,
 }: DataTableProps<T>) {
-  const [sort, setSort] = useState(initialSort ?? null);
+  const [sort, setSortState] = useState(initialSort ?? null);
   const [q, setQ] = useState('');
-  const [page, setPage] = useState(0);
+  const [clientPage, setPage] = useState(0);
+  const [clientPageSize, setClientPageSize] = useState(initialPageSize);
+  const setSort = (s: { key: string; dir: 'asc' | 'desc' }) => {
+    setSortState(s);
+    setPage(0);
+  };
+
+  // A different data set (the caller changed a filter, switched period, …) starts again at page 1.
+  // Refetches and edits that keep the same first row stay on the current page.
+  const firstKey = rows?.length ? rowKey(rows[0]!) : null;
+  const [prevFirstKey, setPrevFirstKey] = useState(firstKey);
+  if (firstKey !== prevFirstKey) {
+    setPrevFirstKey(firstKey);
+    setPage(0);
+  }
 
   const filtered = useMemo(() => {
     let r = rows ?? [];
@@ -93,8 +129,21 @@ export function DataTable<T>({
     return r;
   }, [rows, q, sort, columns]);
 
-  const pageRows = filtered.slice(page * pageSize, (page + 1) * pageSize);
-  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const sizeChoices = useMemo(() => [...new Set([...(pageSizeOptions ?? DEFAULT_PAGE_SIZES), initialPageSize])].sort((a, b) => a - b), [pageSizeOptions, initialPageSize]);
+  const pageSize = pagination ? pagination.pageSize : clientPageSize;
+  const total = pagination ? pagination.total : filtered.length;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  // Clamp so rows removed by a search, refetch or delete never leave an empty page behind.
+  const page = Math.min(pagination ? pagination.page : clientPage, pages - 1);
+  const pageRows = pagination ? filtered : filtered.slice(page * pageSize, (page + 1) * pageSize);
+  const changePageSize = (size: number) => {
+    // Keep the first row of the current page in view.
+    setPage(Math.floor((page * clientPageSize) / size));
+    setClientPageSize(size);
+  };
+  // Client tables up to one page look as before; the footer shows once there is more than one page,
+  // or after someone picked a smaller page size (so they can switch back). Server tables always show it.
+  const showPager = pagination ? total > 0 : pages > 1 || clientPageSize !== initialPageSize;
   const sel = selected ?? new Set<string>();
   const allOnPage = pageRows.length > 0 && pageRows.every((r) => sel.has(rowKey(r)));
   const toggleAll = () => {
@@ -245,22 +294,94 @@ export function DataTable<T>({
               );
             })}
           </ul>
-          {pages > 1 && (
-            <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-text-muted">
-              <span className="tabular">
-                {t('table.range', { from: page * pageSize + 1, to: Math.min(filtered.length, (page + 1) * pageSize), total: filtered.length })}
-              </span>
-              <div className="flex gap-1">
-                <button disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="rounded-sm border border-border px-2 py-0.5 disabled:opacity-40">
-                  {t('common.previous')}
-                </button>
-                <button disabled={page >= pages - 1} onClick={() => setPage((p) => p + 1)} className="rounded-sm border border-border px-2 py-0.5 disabled:opacity-40">
-                  {t('common.next')}
-                </button>
-              </div>
-            </div>
-          )}
+          {showPager &&
+            (pagination ? (
+              <Pagination page={page} pageSize={pageSize} total={total} onPageChange={pagination.onPageChange} onPageSizeChange={pagination.onPageSizeChange} pageSizeOptions={pagination.pageSizeOptions} />
+            ) : (
+              <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={changePageSize} pageSizeOptions={sizeChoices} />
+            ))}
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Page buttons to show for `pages` pages around the 0-based `page`, with 'gap' for elided runs:
+ * 1 2 3 4 5 … 20, 1 … 9 10 11 … 20, 1 … 16 17 18 19 20. Always the same length once elided,
+ * so the buttons don't jump around while paging.
+ */
+export function pageItems(page: number, pages: number): Array<number | 'gap'> {
+  const slots = 7;
+  if (pages <= slots) return Array.from({ length: pages }, (_, i) => i);
+  const last = pages - 1;
+  if (page <= 3) return [0, 1, 2, 3, 4, 'gap', last];
+  if (page >= last - 3) return [0, 'gap', last - 4, last - 3, last - 2, last - 1, last];
+  return [0, 'gap', page - 1, page, page + 1, 'gap', last];
+}
+
+const pagerBtn = 'inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-sm border px-1.5 tabular transition-colors disabled:cursor-not-allowed disabled:opacity-40';
+
+/** "Showing 1–25 of 240 results", rows per page, and Previous / numbered pages / Next. `page` is 0-based. */
+export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChange, pageSizeOptions, className }: { page: number; pageSize: number; total: number; onPageChange: (page: number) => void; onPageSizeChange?: (size: number) => void; pageSizeOptions?: number[]; className?: string }) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const current = Math.min(Math.max(page, 0), pages - 1);
+  const from = current * pageSize + 1;
+  const to = Math.min(total, (current + 1) * pageSize);
+  const sizeId = useId();
+  return (
+    <div className={cx('flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border px-3 py-2 text-xs text-text-muted', className)}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="tabular" aria-live="polite">
+          {total > 0 ? t('table.range', { from, to, total }) : t('table.noRange')}
+        </span>
+        {onPageSizeChange && pageSizeOptions && pageSizeOptions.length > 1 && (
+          <span className="flex items-center gap-1.5">
+            <label htmlFor={sizeId}>{t('table.perPage')}</label>
+            <select id={sizeId} value={pageSize} onChange={(e) => onPageSizeChange(Number(e.target.value))} className="h-7 rounded-sm border border-border bg-surface px-1.5 text-xs text-text focus:border-interactive focus:outline-none">
+              {pageSizeOptions.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </span>
+        )}
+      </div>
+      {pages > 1 && (
+        <nav aria-label={t('table.pagination')} className="flex items-center gap-1">
+          <button type="button" disabled={current === 0} onClick={() => onPageChange(current - 1)} aria-label={t('table.previousPage')} className={cx(pagerBtn, 'border-border hover:enabled:bg-surface-muted hover:enabled:text-text')}>
+            <ChevronLeft className="size-3.5" aria-hidden />
+            <span className="hidden pr-0.5 sm:inline">{t('common.previous')}</span>
+          </button>
+          {/* Phones: compact "Page 3 of 12"; tablet and up: numbered buttons. */}
+          <span className="tabular px-1.5 sm:hidden">{t('table.pageOf', { page: current + 1, pages })}</span>
+          <ul className="hidden items-center gap-1 sm:flex">
+            {pageItems(current, pages).map((p, i) =>
+              p === 'gap' ? (
+                <li key={`gap-${i}`} aria-hidden className="px-0.5 text-text-faint">
+                  …
+                </li>
+              ) : (
+                <li key={p}>
+                  <button
+                    type="button"
+                    onClick={() => onPageChange(p)}
+                    aria-label={t('table.goToPage', { page: p + 1 })}
+                    aria-current={p === current ? 'page' : undefined}
+                    className={cx(pagerBtn, p === current ? 'border-interactive bg-interactive-soft font-semibold text-interactive' : 'border-border hover:bg-surface-muted hover:text-text')}
+                  >
+                    {p + 1}
+                  </button>
+                </li>
+              ),
+            )}
+          </ul>
+          <button type="button" disabled={current >= pages - 1} onClick={() => onPageChange(current + 1)} aria-label={t('table.nextPage')} className={cx(pagerBtn, 'border-border hover:enabled:bg-surface-muted hover:enabled:text-text')}>
+            <span className="hidden pl-0.5 sm:inline">{t('common.next')}</span>
+            <ChevronRight className="size-3.5" aria-hidden />
+          </button>
+        </nav>
       )}
     </div>
   );

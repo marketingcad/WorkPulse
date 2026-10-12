@@ -10,6 +10,7 @@ import { api, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
 import { filterNav, type NavItem } from './nav';
+import { NewOrgDialog } from './new-org-dialog';
 import { TimerBar } from './timer-bar';
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -208,35 +209,39 @@ function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
   const org = useOrg();
   const router = useRouter();
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<MeDto>('/me') });
+  const [creating, setCreating] = useState(false);
   return (
-    <Menu
-      align="start"
-      trigger={
-        <button className={cx('flex min-w-0 items-center gap-2 rounded-sm py-1 text-left hover:bg-white/5', collapsed ? 'px-1' : 'flex-1 px-1.5')} aria-label={t('shell.switchOrg')}>
-          <Logo size={26} className="shrink-0 text-white" />
-          {!collapsed && (
-            <>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-semibold text-white">{org.organization.name}</span>
-                <span className="block truncate text-2xs text-nav-muted">{org.membership.role_name}</span>
-              </span>
-              <ChevronsUpDown className="size-3.5 shrink-0 text-nav-muted" />
-            </>
-          )}
-        </button>
-      }
-    >
-      <MenuLabel>{t('shell.organizations')}</MenuLabel>
-      {me?.organizations.map((o) => (
-        <MenuItem key={o.id} onSelect={() => router.push(`/o/${o.id}`)} icon={o.id === org.organization.id ? <Check className="size-3.5" /> : <span className="size-3.5" />}>
-          <span className="truncate">{o.name}</span>
+    <>
+      <Menu
+        align="start"
+        trigger={
+          <button className={cx('flex min-w-0 items-center gap-2 rounded-sm py-1 text-left hover:bg-white/5', collapsed ? 'px-1' : 'flex-1 px-1.5')} aria-label={t('shell.switchOrg')}>
+            <Logo size={26} className="shrink-0 text-white" />
+            {!collapsed && (
+              <>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-white">{org.organization.name}</span>
+                  <span className="block truncate text-2xs text-nav-muted">{org.membership.role_name}</span>
+                </span>
+                <ChevronsUpDown className="size-3.5 shrink-0 text-nav-muted" />
+              </>
+            )}
+          </button>
+        }
+      >
+        <MenuLabel>{t('shell.organizations')}</MenuLabel>
+        {me?.organizations.map((o) => (
+          <MenuItem key={o.id} onSelect={() => router.push(`/o/${o.id}`)} icon={o.id === org.organization.id ? <Check className="size-3.5" /> : <span className="size-3.5" />}>
+            <span className="truncate">{o.name}</span>
+          </MenuItem>
+        ))}
+        <MenuSeparator />
+        <MenuItem icon={<Plus className="size-3.5" />} onSelect={() => setCreating(true)}>
+          {t('shell.newOrg')}
         </MenuItem>
-      ))}
-      <MenuSeparator />
-      <MenuItem icon={<Plus className="size-3.5" />} onSelect={() => router.push('/welcome')}>
-        {t('shell.newOrg')}
-      </MenuItem>
-    </Menu>
+      </Menu>
+      <NewOrgDialog open={creating} onOpenChange={setCreating} />
+    </>
   );
 }
 

@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
     "vercel-build": "pnpm --filter @tallywork/db migrate && next build",
     "seed": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/seed.ts"
   },

@@ -7,7 +7,9 @@ import type { AgentCtx } from './agent';
 import { memberCtx } from './agent';
 import type { Ctx } from './ctx';
 import { activityDay } from './activity';
+import { companyProfile } from './finance';
 import { balances, listShifts, listTimeOffRequests, requestTimeOff } from './operations';
+import { getPayStub, myPayStubs as ownPayStubs } from './payroll';
 import { listNotifications, markNotificationsRead } from './platform';
 import { clientVisibilityFor } from './portal';
 import { getTimesheet, submitTimesheet } from './timesheets';
@@ -146,6 +148,21 @@ export async function mySummary(a: AgentCtx, q: { from?: string; to?: string }) 
     days,
     projects: [...byProject.values()].sort((p, q2) => q2.seconds - p.seconds),
   };
+}
+
+/** Own pay stubs from finalized and paid payrolls (drafts stay hidden). */
+export async function myPayStubs(a: AgentCtx) {
+  return ownPayStubs(await ownCtx(a));
+}
+
+/**
+ * One own stub plus what its PDF needs. The device grants never include `payroll:read`,
+ * so even an admin's device can open only its own worker's finalized stubs.
+ */
+export async function myPayStub(a: AgentCtx, id: string) {
+  const x = await ownCtx(a);
+  const stub = await getPayStub(x, id);
+  return { stub, company: await companyProfile(x) };
 }
 
 /** Clients whose enabled portal shares this worker's activity or screenshots. */

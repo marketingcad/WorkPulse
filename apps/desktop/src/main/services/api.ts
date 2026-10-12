@@ -84,6 +84,19 @@ export class AgentApi {
   }
 
   async request<T>(method: string, path: string, body?: unknown, raw?: { data: Buffer; contentType: string }): Promise<T> {
+    const res = await this.send(method, path, body, raw);
+    if (res.status === 204) return undefined as T;
+    return (await res.json()) as T;
+  }
+
+  /** GET a file (e.g. a PDF) as bytes, with the server's suggested file name. */
+  async download(path: string): Promise<{ data: Buffer; filename: string | null }> {
+    const res = await this.send('GET', path);
+    const filename = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? null;
+    return { data: Buffer.from(await res.arrayBuffer()), filename };
+  }
+
+  private async send(method: string, path: string, body?: unknown, raw?: { data: Buffer; contentType: string }): Promise<Response> {
     if (!this.creds) throw new ApiError(401, 'signed_out', 'Not signed in');
     const send = async () =>
       net.fetch(`${this.creds!.serverUrl}/api/v1${path}`, {
@@ -108,7 +121,6 @@ export class AgentApi {
       }
       throw new ApiError(res.status, p.code ?? 'error', p.title ?? `Request failed (${res.status})`);
     }
-    if (res.status === 204) return undefined as T;
-    return (await res.json()) as T;
+    return res;
   }
 }

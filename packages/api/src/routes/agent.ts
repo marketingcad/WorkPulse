@@ -1,13 +1,14 @@
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { agentLoginInput, agentRefreshInput, agentRegisterInput, deviceAuthorizeInput, heartbeatInput, ingestBatchInput, isoDate, screenshotUploadInput, timeOffRequestInput } from '@tallywork/contracts';
-import { DomainError, forbidden } from '@tallywork/domain';
+import { DomainError, forbidden, notFound } from '@tallywork/domain';
 import type { AppEnv } from '../context';
 import { body, query } from '../lib/http';
+import { renderPayStubPdf } from '../lib/pay-stub-pdf';
 import { rateLimit } from '../middleware/rate-limit';
 import { requireUser, userId } from '../middleware/auth';
 import { runInTenantTx } from '../middleware/tenant';
-import { myActivity, myClientVisibility, myNotifications, mySchedule, mySessions, mySummary, myTasks, myTimeOff, myTimesheet, readMyNotifications, requestMyTimeOff, submitMyTimesheet } from '../services/agent-me';
+import { myActivity, myClientVisibility, myNotifications, myPayStub, myPayStubs, mySchedule, mySessions, mySummary, myTasks, myTimeOff, myTimesheet, readMyNotifications, requestMyTimeOff, submitMyTimesheet } from '../services/agent-me';
 import { acknowledgePolicy, bootstrap, createDeviceAuthCode, heartbeat, ingestBatch, loadAgentCtx, loginDevice, refreshDeviceToken, registerDevice, screenshotKeyPrefix, type AgentCtx } from '../services/agent';
 
 type AgentEnv = AppEnv & { Variables: AppEnv['Variables'] & { agent: AgentCtx } };
@@ -20,30 +21,40 @@ const rangeQuery = z
 
 const MAX_SCREENSHOT_BYTES = 8 * 1024 * 1024;
 
-/** Device principal only; runs inside the device's tenant transaction. */
+/** Device principal only. Each route opens the device's tenant transaction itself (`tenant`, below). */
 const agentOnly = new Hono<AgentEnv>().use(async (c, next) => {
   const p = c.var.principal;
   if (!p || p.type !== 'agent') throw new DomainError('unauthenticated', 'device_token_required', 'A device access token is required');
+  await next();
+});
+
+/**
+ * Runs the rest of the route inside the device's tenant transaction. Registered AFTER a route's
+ * rate limit: the limiter writes through the shared pool, and on single-connection PGlite (local dev)
+ * a write outside an open transaction waits for it to finish, which deadlocks the server.
+ */
+const tenant: MiddlewareHandler<AgentEnv> = async (c, next) => {
+  const p = c.var.principal as Extract<NonNullable<AgentEnv['Variables']['principal']>, { type: 'agent' }>;
   await runInTenantTx(c as never, p.organizationId, async () => {
     c.set('agent', await loadAgentCtx(c.var.tx, c.var.deps, p));
     await next();
   });
-});
+};
 
 agentOnly
-  .get('/bootstrap', async (c) => c.json(await bootstrap(c.var.agent)))
-  .post('/policy/ack', async (c) => {
+  .get('/bootstrap', tenant, async (c) => c.json(await bootstrap(c.var.agent)))
+  .post('/policy/ack', tenant, async (c) => {
     const { hash } = await body(c, z.object({ hash: z.string().max(64) }));
     await acknowledgePolicy(c.var.agent, hash);
     return c.body(null, 204);
   })
-  .post('/ingest/batch', rateLimit('ingest', 240, 60), async (c) => c.json(await ingestBatch(c.var.agent, await body(c, ingestBatchInput))))
-  .post('/heartbeat', rateLimit('heartbeat', 30, 60), async (c) => {
+  .post('/ingest/batch', rateLimit('ingest', 240, 60), tenant, async (c) => c.json(await ingestBatch(c.var.agent, await body(c, ingestBatchInput))))
+  .post('/heartbeat', rateLimit('heartbeat', 30, 60), tenant, async (c) => {
     const i = await body(c, heartbeatInput);
     return c.json(await heartbeat(c.var.agent, { sessionId: i.session_id, agentVersion: i.agent_version, capabilities: i.capabilities }));
   })
   /** Returns where/how to upload one screenshot (direct-to-Blob token, or this API in dev). */
-  .post('/screenshots/upload-intent', async (c) => {
+  .post('/screenshots/upload-intent', tenant, async (c) => {
     const a = c.var.agent;
     if (!a.policy.screenshots.enabled) throw forbidden('Screenshots are disabled by policy');
     const i = await body(c, screenshotUploadInput);
@@ -56,24 +67,32 @@ agentOnly
     return c.json({ storage_key: key, thumb_key: `${key}.thumb`, method: up.method, token: up.token, thumb_token: thumb.token, upload_url: up.method === 'api' ? apiUrl(key) : (up.url ?? null), thumb_upload_url: thumb.method === 'api' ? apiUrl(`${key}.thumb`) : (thumb.url ?? null) });
   })
   // ── Own data (the device's bound worker only; see services/agent-me.ts) ──
-  .get('/me/summary', rateLimit('agent-me', 240, 60), async (c) => c.json(await mySummary(c.var.agent, query(c, rangeQuery))))
-  .get('/me/sessions', rateLimit('agent-me', 240, 60), async (c) => c.json(await mySessions(c.var.agent, query(c, rangeQuery))))
-  .get('/me/timesheet', rateLimit('agent-me', 240, 60), async (c) => c.json(await myTimesheet(c.var.agent, query(c, dateQuery).date)))
-  .post('/me/timesheet/submit', rateLimit('agent-me-write', 30, 60), async (c) => c.json(await submitMyTimesheet(c.var.agent, await body(c, z.object({ date: isoDate, version: z.number().int().positive().optional() })))))
-  .get('/me/activity', rateLimit('agent-me', 240, 60), async (c) => c.json(await myActivity(c.var.agent, query(c, dateQuery).date)))
-  .get('/me/tasks', rateLimit('agent-me', 240, 60), async (c) => c.json(await myTasks(c.var.agent)))
-  .get('/me/schedule', rateLimit('agent-me', 240, 60), async (c) => c.json(await mySchedule(c.var.agent, query(c, rangeQuery))))
-  .get('/me/time-off', rateLimit('agent-me', 240, 60), async (c) => c.json(await myTimeOff(c.var.agent)))
-  .post('/me/time-off', rateLimit('agent-me-write', 30, 60), async (c) => c.json(await requestMyTimeOff(c.var.agent, await body(c, timeOffRequestInput)), 201))
-  .get('/me/notifications', rateLimit('agent-me', 240, 60), async (c) => c.json(await myNotifications(c.var.agent)))
-  .get('/me/client-visibility', rateLimit('agent-me', 240, 60), async (c) => c.json(await myClientVisibility(c.var.agent)))
-  .post('/me/notifications/read', rateLimit('agent-me-write', 60, 60), async (c) => {
+  .get('/me/summary', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await mySummary(c.var.agent, query(c, rangeQuery))))
+  .get('/me/sessions', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await mySessions(c.var.agent, query(c, rangeQuery))))
+  .get('/me/timesheet', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myTimesheet(c.var.agent, query(c, dateQuery).date)))
+  .post('/me/timesheet/submit', rateLimit('agent-me-write', 30, 60), tenant, async (c) => c.json(await submitMyTimesheet(c.var.agent, await body(c, z.object({ date: isoDate, version: z.number().int().positive().optional() })))))
+  .get('/me/activity', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myActivity(c.var.agent, query(c, dateQuery).date)))
+  .get('/me/tasks', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myTasks(c.var.agent)))
+  .get('/me/schedule', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await mySchedule(c.var.agent, query(c, rangeQuery))))
+  .get('/me/time-off', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myTimeOff(c.var.agent)))
+  .post('/me/time-off', rateLimit('agent-me-write', 30, 60), tenant, async (c) => c.json(await requestMyTimeOff(c.var.agent, await body(c, timeOffRequestInput)), 201))
+  .get('/me/notifications', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myNotifications(c.var.agent)))
+  .get('/me/client-visibility', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myClientVisibility(c.var.agent)))
+  .get('/me/pay-stubs', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myPayStubs(c.var.agent)))
+  .get('/me/pay-stubs/:id/pdf', rateLimit('agent-me', 240, 60), tenant, async (c) => {
+    const id = z.uuid().safeParse(c.req.param('id'));
+    if (!id.success) throw notFound('pay_stub');
+    const { stub, company } = await myPayStub(c.var.agent, id.data);
+    const pdf = await renderPayStubPdf(stub, company);
+    return new Response(new Uint8Array(pdf), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="pay-stub-${stub.period_start}.pdf"`, 'Cache-Control': 'private, no-store' } });
+  })
+  .post('/me/notifications/read', rateLimit('agent-me-write', 60, 60), tenant, async (c) => {
     const { ids } = await body(c, z.object({ ids: z.union([z.literal('all'), z.array(z.uuid()).max(200)]) }));
     await readMyNotifications(c.var.agent, ids);
     return c.body(null, 204);
   })
   /** Fallback upload path (local dev without Blob). */
-  .put('/screenshots/upload', async (c) => {
+  .put('/screenshots/upload', tenant, async (c) => {
     const a = c.var.agent;
     const key = c.req.query('key') ?? '';
     if (!key.startsWith(screenshotKeyPrefix(a.organizationId, a.membershipId))) throw forbidden('Invalid key');

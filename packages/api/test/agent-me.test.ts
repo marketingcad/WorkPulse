@@ -180,3 +180,29 @@ describe('/agent/me own data', () => {
     expect((await agent.get('/agent/me/timesheet')).status).toBe(401);
   });
 });
+
+// Rate limits are off in tests unless asked for. With them on, a device route must not wait on
+// itself: on single-connection PGlite (local dev) a limiter that writes outside the request's
+// tenant transaction deadlocks the whole server.
+describe('rate limits on device routes', () => {
+  const within = <T>(p: Promise<T>, ms = 5000) => Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`no response within ${ms}ms`)), ms))]);
+
+  it('answers own-data reads and writes with rate limiting on', async () => {
+    const pc = await device(walt, 'Walt-RL');
+    const on = { 'x-test-rate-limit': 'on' };
+    expect((await within(pc.req('GET', '/agent/me/summary', undefined, on))).status).toBe(200);
+    expect((await within(pc.req('GET', '/agent/me/pay-stubs', undefined, on))).status).toBe(200);
+    expect((await within(pc.req('POST', '/agent/me/notifications/read', { ids: 'all' }, on))).status).toBe(204);
+    expect((await within(pc.req('POST', '/agent/heartbeat', { agent_version: '0.1.0' }, on))).status).toBeLessThan(500);
+    // ...and the server still answers afterwards.
+    expect((await within(admin.get(`/orgs/${orgId}`))).status).toBe(200);
+  });
+
+  it('still limits a device that sends too many requests', async () => {
+    const pc = await device(walt, 'Walt-RL2');
+    const statuses: number[] = [];
+    for (let i = 0; i < 61; i++) statuses.push((await within(pc.req('POST', '/agent/me/notifications/read', { ids: 'all' }, { 'x-test-rate-limit': 'on' }))).status);
+    expect(statuses.slice(0, 60).every((s) => s === 204)).toBe(true);
+    expect(statuses[60]).toBe(429);
+  });
+});

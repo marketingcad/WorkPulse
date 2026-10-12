@@ -23,6 +23,7 @@ declare global {
       submitTimesheet(date: string, version?: number): Promise<unknown>;
       requestTimeOff(r: { policy_id: string; start_date: string; end_date: string; half_day?: boolean; reason?: string }): Promise<unknown>;
       readNotifications(ids: string[] | 'all'): Promise<void>;
+      savePayStub(id: string): Promise<{ saved: boolean }>;
       onNavigate(cb: (view: string) => void): () => void;
       quit(): Promise<void>;
     };

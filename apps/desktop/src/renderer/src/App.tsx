@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import { AppWindow, Camera, Check, ChevronLeft, ClockPlus, ExternalLink, Eye, Globe, Keyboard, LogOut, MapPin, RefreshCw, TimerOff } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
 import { Dashboard } from './Dashboard';
-import { ActivityPage, ProjectsPage, ReportsPage, SchedulePage, TasksPage, TimeOffPage, TimesheetPage, TrackingPage } from './Pages';
+import { ActivityPage, PayStubsPage, ProjectsPage, ReportsPage, SchedulePage, TasksPage, TimeOffPage, TimesheetPage, TrackingPage } from './Pages';
 import { Shell } from './Shell';
 import { bridge, errorText, fmtHm, isView, localDateInput, useAgentState, useMe, type View } from './lib';
 import type { ClientVisibilityDto } from './types';
@@ -54,6 +54,8 @@ export function App() {
         return <TimeOffPage />;
       case 'schedule':
         return <SchedulePage />;
+      case 'paystubs':
+        return <PayStubsPage />;
       case 'settings':
         return narrow(<SettingsView s={s} onBack={() => setView('home')} onMonitoring={() => setView('monitoring')} />);
       case 'monitoring':

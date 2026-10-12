@@ -136,6 +136,11 @@ describe('IPC contract', () => {
     expect(IPC['me:get'].safeParse({ resource: 'sessions', from: '2026-09-25&membership_id=x' }).success).toBe(false);
     expect(IPC['me:readNotifications'].safeParse({ ids: ['nope'] }).success).toBe(false);
     expect(IPC['me:requestTimeOff'].safeParse({ policy_id: 'x', start_date: '2026-10-01', end_date: '2026-10-01' }).success).toBe(false);
+    // Pay stubs: list through me:get, PDFs only by stub id (the path is built in main, never from the renderer).
+    expect(IPC['me:get'].safeParse({ resource: 'pay-stubs' }).success).toBe(true);
+    expect(IPC['me:savePayStub'].safeParse({ id: '0199f0a0-0000-7000-8000-000000000000' }).success).toBe(true);
+    expect(IPC['me:savePayStub'].safeParse({ id: '../../orgs/x/payroll/runs' }).success).toBe(false);
+    expect(IPC['me:savePayStub'].safeParse({ id: '0199f0a0-0000-7000-8000-000000000000', path: 'C:/Windows/x.pdf' }).data).not.toHaveProperty('path');
   });
 });
 

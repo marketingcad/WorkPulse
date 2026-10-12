@@ -298,4 +298,33 @@ describe('audit', () => {
     for (const a of ['timesheet.approved', 'invoice.created', 'rate.set', 'policy.updated', 'device.registered', 'activity.viewed']) expect(actions).toContain(a);
     expect((await worker.get(`/orgs/${orgId}/audit-logs`)).status).toBe(403);
   });
+
+  it('pages through entries with a total when asked for a page', async () => {
+    const all: Array<{ id: string; action: string }> =(await admin.get(`/orgs/${orgId}/audit-logs?limit=1000`)).body;
+    expect(all.length).toBeGreaterThan(4);
+    const size = 3;
+    const first = await admin.get(`/orgs/${orgId}/audit-logs?page=1&page_size=${size}`);
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({ total: all.length, page: 1, page_size: size });
+    expect(first.body.data).toHaveLength(size);
+
+    // Walking every page returns each entry exactly once, newest first, matching the unpaged list.
+    const seen: string[] = [];
+    for (let p = 1; p <= Math.ceil(all.length / size); p++) seen.push(...(await admin.get(`/orgs/${orgId}/audit-logs?page=${p}&page_size=${size}`)).body.data.map((r: { id: string }) => r.id));
+    expect(seen).toEqual(all.map((r) => r.id));
+
+    const past = await admin.get(`/orgs/${orgId}/audit-logs?page=${Math.ceil(all.length / size) + 1}&page_size=${size}`);
+    expect(past.body).toMatchObject({ data: [], total: all.length });
+
+    const oldest = await admin.get(`/orgs/${orgId}/audit-logs?page=1&page_size=1&order=asc`);
+    expect(oldest.body.data[0].id).toBe(all.at(-1)!.id);
+
+    const filtered = await admin.get(`/orgs/${orgId}/audit-logs?page=1&page_size=50&action=invoice.`);
+    expect(filtered.body.total).toBe(all.filter((r) => r.action.startsWith('invoice.')).length);
+    expect(filtered.body.data.every((r: { action: string }) => r.action.startsWith('invoice.'))).toBe(true);
+
+    expect((await admin.get(`/orgs/${orgId}/audit-logs?page=0`)).status).toBe(400);
+    expect((await admin.get(`/orgs/${orgId}/audit-logs?page=1&page_size=500`)).status).toBe(400);
+    expect((await worker.get(`/orgs/${orgId}/audit-logs?page=1`)).status).toBe(403);
+  });
 });

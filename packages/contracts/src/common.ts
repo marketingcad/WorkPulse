@@ -26,6 +26,14 @@ export interface Page<T> {
   has_more: boolean;
 }
 
+/** Numbered pages with a total, for lists people page through. `page` is 1-based. */
+export interface OffsetPage<T> {
+  data: T[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export interface Problem {
   type: string;
   title: string;

@@ -18,7 +18,7 @@ import {
   withSystem,
 } from '@tallywork/db';
 import { API_KEY_SCOPES, can, forbidden, newId, notFound, resolvePolicy, type DeepPartial, type TrackingPolicy } from '@tallywork/domain';
-import type { AuditLogDto, DeviceDto, EffectivePolicyDto, NotificationDto, apiKeyInput, policyDocInput, retentionInput, webhookInput } from '@tallywork/contracts';
+import type { AuditLogDto, DeviceDto, EffectivePolicyDto, NotificationDto, OffsetPage, apiKeyInput, policyDocInput, retentionInput, webhookInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
 import { audit, emitFrom } from './events';
@@ -300,23 +300,57 @@ export async function enqueueWebhooks(tx: Tx, organizationId: string, envelope: 
 }
 
 // ─── Audit ───────────────────────────────────────────────────────────────────
-export async function listAudit(x: Ctx, q: { from?: string; to?: string; action?: string; targetType?: string; targetId?: string; limit?: number }): Promise<AuditLogDto[]> {
+interface AuditQuery {
+  from?: string;
+  to?: string;
+  action?: string;
+  targetType?: string;
+  targetId?: string;
+  order?: 'asc' | 'desc';
+}
+
+function auditWhere(q: AuditQuery) {
+  return and(
+    q.from ? gte(auditLogs.createdAt, new Date(q.from)) : undefined,
+    q.to ? lt(auditLogs.createdAt, new Date(q.to)) : undefined,
+    q.action ? sql`${auditLogs.action} like ${`${q.action}%`}` : undefined,
+    q.targetType ? eq(auditLogs.targetType, q.targetType) : undefined,
+    q.targetId ? eq(auditLogs.targetId, q.targetId) : undefined,
+  );
+}
+
+// id breaks ties between entries written in the same instant, so pages never overlap or skip rows.
+const auditOrder = (order: AuditQuery['order']) => (order === 'asc' ? [asc(auditLogs.createdAt), asc(auditLogs.id)] : [desc(auditLogs.createdAt), desc(auditLogs.id)]);
+
+export async function listAudit(x: Ctx, q: AuditQuery & { limit?: number }): Promise<AuditLogDto[]> {
   const scope = x.actor.grants['audit:read'];
   if (!scope) throw forbidden();
   const rows = await x.tx
     .select()
     .from(auditLogs)
-    .where(
-      and(
-        q.from ? gte(auditLogs.createdAt, new Date(q.from)) : undefined,
-        q.to ? lt(auditLogs.createdAt, new Date(q.to)) : undefined,
-        q.action ? sql`${auditLogs.action} like ${`${q.action}%`}` : undefined,
-        q.targetType ? eq(auditLogs.targetType, q.targetType) : undefined,
-        q.targetId ? eq(auditLogs.targetId, q.targetId) : undefined,
-      ),
-    )
-    .orderBy(desc(auditLogs.createdAt))
+    .where(auditWhere(q))
+    .orderBy(...auditOrder(q.order))
     .limit(Math.min(q.limit ?? 200, 1000));
+  return toAuditDtos(x, rows);
+}
+
+/** One numbered page of the audit log plus the total matching entries. `page` is 1-based. */
+export async function pageAudit(x: Ctx, q: AuditQuery & { page: number; pageSize: number }): Promise<OffsetPage<AuditLogDto>> {
+  const scope = x.actor.grants['audit:read'];
+  if (!scope) throw forbidden();
+  const where = auditWhere(q);
+  const [count] = await x.tx.select({ n: sql<number>`count(*)::int` }).from(auditLogs).where(where);
+  const rows = await x.tx
+    .select()
+    .from(auditLogs)
+    .where(where)
+    .orderBy(...auditOrder(q.order))
+    .limit(q.pageSize)
+    .offset((q.page - 1) * q.pageSize);
+  return { data: await toAuditDtos(x, rows), total: count?.n ?? 0, page: q.page, page_size: q.pageSize };
+}
+
+async function toAuditDtos(x: Ctx, rows: Array<typeof auditLogs.$inferSelect>): Promise<AuditLogDto[]> {
   const names = await memberNames(x, [...new Set(rows.filter((r) => r.actorType === 'user' && r.actorId).map((r) => r.actorId!))]);
   return rows.map((r) => ({ id: r.id, actor_type: r.actorType, actor_id: r.actorId, actor_name: r.actorType === 'user' && r.actorId ? (names.get(r.actorId) ?? null) : null, action: r.action, target_type: r.targetType, target_id: r.targetId, before: r.before, after: r.after, ip_address: r.ipAddress, created_at: r.createdAt.toISOString() }));
 }

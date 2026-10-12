@@ -27,6 +27,7 @@ import {
   getNotificationPrefs,
   listApiKeys,
   listAudit,
+  pageAudit,
   listDeliveries,
   listNotifications,
   listWebhooks,
@@ -148,8 +149,25 @@ export const platformRoutes = new Hono<AppEnv>()
   .post('/webhooks/:id/deliveries/:deliveryId/replay', async (c) => c.json(await replayDelivery(ctx(c), c.req.param('id'), c.req.param('deliveryId'))))
   .post('/webhooks/:id/test', async (c) => c.json(await testWebhook(ctx(c), c.req.param('id'))))
   .get('/audit-logs', async (c) => {
-    const q = query(c, z.object({ from: z.iso.datetime({ offset: true }).optional(), to: z.iso.datetime({ offset: true }).optional(), action: z.string().max(60).optional(), target_type: z.string().max(40).optional(), target_id: z.string().max(80).optional(), limit: z.coerce.number().int().min(1).max(1000).optional() }));
-    return c.json(await listAudit(ctx(c), { from: q.from, to: q.to, action: q.action, targetType: q.target_type, targetId: q.target_id, limit: q.limit }));
+    const q = query(
+      c,
+      z.object({
+        from: z.iso.datetime({ offset: true }).optional(),
+        to: z.iso.datetime({ offset: true }).optional(),
+        action: z.string().max(60).optional(),
+        target_type: z.string().max(40).optional(),
+        target_id: z.string().max(80).optional(),
+        order: z.enum(['asc', 'desc']).optional(),
+        limit: z.coerce.number().int().min(1).max(1000).optional(),
+        // Sending `page` switches the response to { data, total, page, page_size }; without it the
+        // endpoint keeps returning a plain array of the newest `limit` entries.
+        page: z.coerce.number().int().min(1).max(100_000).optional(),
+        page_size: z.coerce.number().int().min(1).max(200).default(50),
+      }),
+    );
+    const filters = { from: q.from, to: q.to, action: q.action, targetType: q.target_type, targetId: q.target_id, order: q.order };
+    if (q.page) return c.json(await pageAudit(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }));
+    return c.json(await listAudit(ctx(c), { ...filters, limit: q.limit }));
   })
   .get('/retention-policies', async (c) => c.json(await getRetention(ctx(c))))
   .put('/retention-policies', async (c) => c.json(await setRetention(ctx(c), await body(c, retentionInput))))

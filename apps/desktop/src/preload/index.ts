@@ -26,7 +26,6 @@ const api = {
   takeBreak: (breakTypeId: string | null) => call('timer:break', { breakTypeId }),
   setNote: (note: string) => call('notes:set', { note }),
   resolveIdle: (choice: 'KEPT' | 'DISCARDED' | 'REASSIGNED', projectId?: string, taskId?: string | null) => call('idle:resolve', { choice, projectId, taskId }),
-  acknowledgePolicy: () => call('policy:ack'),
   resolveRecovery: (resume: boolean) => call('recovery:resolve', { resume }),
   requestManualTime: (r: { projectId: string; taskId: string | null; startedAt: string; endedAt: string; reason: string; note?: string }) => call('manualTime:request', r),
   /** The signed-in worker's own data (read-only). */
@@ -45,5 +44,4 @@ const api = {
   quit: () => call('app:quit'),
 };
 
-export type TallyworkBridge = typeof api;
 contextBridge.exposeInMainWorld('tallywork', api);

@@ -41,8 +41,7 @@ test('a worker signs in with email and password and reaches Home', { tag: '@smok
 test('downloads a pay stub through the main process to where the worker chose', { tag: '@smoke' }, async ({ desktopApp, data }) => {
   const { app, window } = desktopApp;
   await signIn(window, data.worker.email);
-  await window.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Me', exact: true }).click();
-  await window.getByRole('tab', { name: 'Pay stubs' }).click();
+  await window.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Pay stubs', exact: true }).click();
   await expect(window.getByRole('listitem').filter({ hasText: usd(data.payStub.netMinor) })).toBeVisible();
 
   const target = test.info().outputPath('my-pay-stub.pdf');
@@ -63,8 +62,7 @@ test('downloads a pay stub through the main process to where the worker chose', 
 test('cancelling the Save dialog writes nothing and shows no error', async ({ desktopApp, data }) => {
   const { app, window } = desktopApp;
   await signIn(window, data.worker.email);
-  await window.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Me', exact: true }).click();
-  await window.getByRole('tab', { name: 'Pay stubs' }).click();
+  await window.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Pay stubs', exact: true }).click();
   const save = await stubSaveDialog(app, { canceled: true });
   await window.getByRole('button', { name: 'PDF' }).click();
   await expect.poll(async () => (await save.asked()).length).toBe(1);

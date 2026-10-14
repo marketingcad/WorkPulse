@@ -1,11 +1,10 @@
 import { useEffect, useId, useState } from 'react';
-import { AppWindow, Camera, Check, ChevronLeft, ClockPlus, ExternalLink, Eye, Globe, Keyboard, LogOut, MapPin, RefreshCw, TimerOff } from 'lucide-react';
+import { Check, ChevronLeft, ClockPlus, ExternalLink, LogOut, RefreshCw } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
 import { Dashboard } from './Dashboard';
 import { ActivityPage, PayStubsPage, ProjectsPage, ReportsPage, SchedulePage, TasksPage, TimeOffPage, TimesheetPage, TrackingPage } from './Pages';
 import { Shell } from './Shell';
-import { bridge, errorText, fmtHm, isView, localDateInput, useAgentState, useMe, type View } from './lib';
-import type { ClientVisibilityDto } from './types';
+import { bridge, errorText, fmtHm, isView, localDateInput, useAgentState, type View } from './lib';
 
 export function App() {
   const s = useAgentState();
@@ -25,15 +24,7 @@ export function App() {
         <Recovery s={s} />
       </div>
     );
-  // First run and every policy change: the worker must see what is monitored before tracking.
-  if (!s.policyAcknowledged)
-    return (
-      <div className="h-full bg-bg md:p-6">
-        <div className="mx-auto h-full max-w-2xl">
-          <Monitoring s={s} />
-        </div>
-      </div>
-    );
+
   // Settings-style screens read best at a comfortable width inside a wide window.
   const narrow = (el: React.ReactNode) => <div className="mx-auto h-full w-full max-w-2xl md:py-4">{el}</div>;
   const page = (() => {
@@ -57,9 +48,8 @@ export function App() {
       case 'paystubs':
         return <PayStubsPage />;
       case 'settings':
-        return narrow(<SettingsView s={s} onBack={() => setView('home')} onMonitoring={() => setView('monitoring')} />);
-      case 'monitoring':
-        return narrow(<Monitoring s={s} onBack={() => setView('home')} />);
+        return narrow(<SettingsView s={s} onBack={() => setView('home')} />);
+      
       case 'manual':
         return narrow(<ManualTime s={s} onBack={() => setView('tracking')} />);
       default:
@@ -210,113 +200,6 @@ function SignIn({ s }: { s: AgentState }) {
         )}
       </div>
       <p className="text-2xs text-nav-muted">v{s.version}</p>
-    </div>
-  );
-}
-
-function Row({ icon, label, value, on }: { icon: React.ReactNode; label: string; value: string; on: boolean }) {
-  return (
-    <li className="flex items-start gap-3 py-2.5">
-      <span className={`mt-0.5 ${on ? 'text-interactive' : 'text-text-faint'}`}>{icon}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">{label}</span>
-        <span className="block text-xs text-text-muted">{value}</span>
-      </span>
-      <span className={`mt-0.5 rounded-full px-2 py-0.5 text-2xs font-semibold ${on ? 'bg-interactive-soft text-interactive' : 'bg-surface-muted text-text-muted'}`}>{on ? 'On' : 'Off'}</span>
-    </li>
-  );
-}
-
-/** How websites are recorded, in plain words (what, and on Windows, by which means). */
-function websitesText(mode: 'domain' | 'full', s: AgentState): string {
-  const what = mode === 'domain' ? 'Website domains only (e.g. github.com), not full addresses.' : 'Website addresses without query strings.';
-  if (!s.capabilities.urls) return `${what} Not available on this computer.`;
-  if (navigator.userAgent.includes('Windows')) {
-    const how = s.browserExtension.length
-      ? `Read by the browser extension in ${s.browserExtension.join(', ')}; other browsers: from the address bar.`
-      : 'Read from the browser address bar (install the browser extension for exact addresses).';
-    return `${what} ${how} Private/incognito windows are skipped when the extension is installed.`;
-  }
-  return what;
-}
-
-/** Transparency: exactly what this policy collects. Must be acknowledged on first run and on every change. */
-/** A one-line plain summary of what is actually on, so a worker gets the gist before reading each row. */
-function monitoringSummary(p: NonNullable<AgentState['policy']>, caps: AgentState['capabilities']): string {
-  const on = [
-    p.activity.enabled && caps.input !== false && 'how often you use the keyboard and mouse',
-    p.screenshots.enabled && caps.screenshots !== false && 'screenshots',
-    p.apps.enabled && caps.apps !== false && 'the app you are using',
-    p.urls.enabled && 'the websites you visit',
-  ].filter(Boolean) as string[];
-  const list = on.length === 0 ? 'nothing on your screen is recorded' : on.length === 1 ? on[0]! : `${on.slice(0, -1).join(', ')} and ${on.at(-1)}`;
-  return `while your timer runs, your employer sees ${list}. Your location is never collected, and keystrokes are never recorded.`;
-}
-
-function Monitoring({ s, onBack }: { s: AgentState; onBack?: () => void }) {
-  const p = s.policy!;
-  const [busy, setBusy] = useState(false);
-  const visibility = useMe<ClientVisibilityDto>('client-visibility');
-  return (
-    <div className="flex h-full flex-col bg-surface md:overflow-hidden md:rounded-md md:border md:border-border">
-      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-        {onBack && (
-          <button onClick={onBack} aria-label="Back" className="rounded-sm p-1 text-text-muted hover:bg-surface-muted">
-            <ChevronLeft className="size-4" />
-          </button>
-        )}
-        <Eye className="size-4 text-interactive" />
-        <h1 className="text-sm font-semibold">What is monitored</h1>
-      </header>
-      <div className="flex-1 overflow-y-auto px-4">
-        <p className="mt-3 text-xs text-text-muted">
-          {s.account!.organization} collects the following <strong>only while your timer is running</strong>. When tracking is stopped, nothing is collected.
-        </p>
-        <p className="mt-2 rounded-sm bg-surface-muted px-3 py-2 text-xs text-text">
-          <strong>In short:</strong> {monitoringSummary(p, s.capabilities)}
-        </p>
-        <ul className="divide-y divide-border">
-          <Row icon={<Keyboard className="size-4" />} label="Activity level" value="How often you use the keyboard and mouse, per minute. Keystrokes and typed text are never recorded." on={p.activity.enabled && s.capabilities.input !== false} />
-          <Row icon={<Camera className="size-4" />} label="Screenshots" value={p.screenshots.enabled ? `${p.screenshots.perTenMinutes} per 10 minutes, all displays${p.screenshots.blur ? ', blurred on this device before upload' : ''}.` : 'Not captured.'} on={p.screenshots.enabled && s.capabilities.screenshots !== false} />
-          <Row icon={<AppWindow className="size-4" />} label="Applications" value="Name of the app in the foreground and for how long." on={p.apps.enabled && s.capabilities.apps !== false} />
-          <Row icon={<Globe className="size-4" />} label="Websites" value={p.urls.enabled ? websitesText(p.urls.mode, s) : 'Not recorded.'} on={p.urls.enabled} />
-          <Row icon={<MapPin className="size-4" />} label="Location" value="Never collected by the desktop app." on={false} />
-          <Row icon={<TimerOff className="size-4" />} label="Idle detection" value={p.idle.enabled ? `After ${p.idle.thresholdMinutes} minutes without input you choose to keep or discard that time.` : 'Off.'} on={p.idle.enabled} />
-        </ul>
-        {visibility.data && visibility.data.clients.length > 0 && (
-          <p className="mb-3 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">
-            Clients can see some of your monitoring data from time on their projects: {visibility.data.clients.map((c) => `${c.client_name} (${[c.activity && 'activity level', c.screenshots && 'screenshots'].filter(Boolean).join(', ')})`).join('; ')}.
-          </p>
-        )}
-        {s.capabilities.wayland && (p.activity.enabled || p.apps.enabled || p.screenshots.enabled) && (
-          <p className="mb-3 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">
-            This computer uses a <strong>Wayland</strong> session, which does not let WorkPulse see your activity level, the app you are using or your screen, so those are not recorded. Your organization may ask you to switch: sign out, select your name on the login screen,
-            click the gear icon at the bottom right, choose <strong>Ubuntu on Xorg</strong> and sign in again.
-          </p>
-        )}
-        {(p.limits.dailySeconds || p.limits.weeklySeconds) && (
-          <p className="mb-3 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">
-            Time limits: {p.limits.dailySeconds ? `${fmtHm(p.limits.dailySeconds)} per day` : ''}
-            {p.limits.dailySeconds && p.limits.weeklySeconds ? ' · ' : ''}
-            {p.limits.weeklySeconds ? `${fmtHm(p.limits.weeklySeconds)} per week` : ''}
-          </p>
-        )}
-        <p className="mb-4 text-xs text-text-muted">Your managers and organization admins can see this data. Ask them if you want to review or remove something.</p>
-      </div>
-      {!s.policyAcknowledged && (
-        <footer className="border-t border-border p-4">
-          <button
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              await bridge.acknowledgePolicy().finally(() => setBusy(false));
-            }}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-60"
-          >
-            <Check className="size-4" /> I understand
-          </button>
-        </footer>
-      )}
     </div>
   );
 }
@@ -487,7 +370,7 @@ function deviceStatusLabel(status: string): string {
   return map[status.toUpperCase()] ?? status;
 }
 
-function SettingsView({ s, onBack, onMonitoring }: { s: AgentState; onBack: () => void; onMonitoring: () => void }) {
+function SettingsView({ s, onBack }: { s: AgentState; onBack: () => void }) {
   return (
     <div className="flex h-full flex-col bg-surface md:overflow-hidden md:rounded-md md:border md:border-border">
       <header className="flex items-center gap-2 border-b border-border px-4 py-3">
@@ -510,26 +393,7 @@ function SettingsView({ s, onBack, onMonitoring }: { s: AgentState; onBack: () =
         ))}
       </dl>
       {s.sync.error && <p className="mx-4 mt-2 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">{s.sync.error}</p>}
-      <details className="mx-4 mt-3 rounded-sm border border-border text-sm">
-        <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-text-muted hover:bg-surface-muted">Technical details</summary>
-        <dl className="divide-y divide-border border-t border-border px-3 text-xs">
-          {[
-            ['Server', s.serverUrl],
-            ['Device ID', s.device?.id ?? '—'],
-            ['Pending sync', `${s.sync.queued} events${s.sync.lastSyncAt ? ` · last sync ${new Date(s.sync.lastSyncAt).toLocaleTimeString()}` : ''}`],
-            ['Capabilities', Object.entries(s.capabilities).map(([k, v]) => `${k} ${v ? '✓' : '✗'}`).join('  ')],
-          ].map(([k, v]) => (
-            <div key={k} className="py-2">
-              <dt className="text-text-muted">{k}</dt>
-              <dd className="wrap-break-word font-mono text-text-faint">{v}</dd>
-            </div>
-          ))}
-        </dl>
-      </details>
       <div className="mt-auto flex flex-col gap-2 border-t border-border p-4">
-        <button onClick={onMonitoring} className="flex h-9 items-center justify-center gap-2 rounded-sm border border-border text-sm hover:bg-surface-muted">
-          <Eye className="size-4" /> What is monitored
-        </button>
         <button onClick={() => void bridge.logout()} className="flex h-9 items-center justify-center gap-2 rounded-sm border border-border text-sm text-danger hover:bg-danger-soft">
           <LogOut className="size-4" /> Sign out
         </button>

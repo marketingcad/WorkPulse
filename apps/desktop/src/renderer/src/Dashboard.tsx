@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AppWindow, Camera, CameraOff, ChevronDown, ChevronRight, CircleAlert, ClipboardCheck, ClockPlus, Eye, Globe, NotebookPen, Pause, Play, Search, Square } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight, CircleAlert, ClipboardCheck, ClockPlus, NotebookPen, Pause, Play, Search, Square } from 'lucide-react';
 import type { AgentState, Assignment } from '../../shared/ipc';
 import { bridge, card, errorText, fmtClock, fmtHm, fmtRange, fmtTime, initials, useTick, type View } from './lib';
 import { CurrentSessionCard, RecentSessionsCard, TodaySummaryCard } from './HomeCards';
@@ -38,7 +38,7 @@ export function Dashboard({ s, go }: { s: AgentState; go: (v: View) => void }) {
       </div>
       <aside className="flex min-w-0 flex-col gap-3 md:gap-4 md:pt-13">
         <TodaySummaryCard s={s} now={now} />
-        <ActivityCard s={s} go={go} />
+        <ActivityCard s={s} />
       </aside>
     </div>
   );
@@ -406,13 +406,11 @@ export function ProjectsCard({ s, run }: { s: AgentState; run: (fn: () => Promis
 
 // ─── Activity & transparency ────────────────────────────────────────────────
 
-function ActivityCard({ s, go }: { s: AgentState; go: (v: View) => void }) {
-  const p = s.policy!;
+function ActivityCard({ s }: { s: AgentState }) {
   const tracking = s.tracking.state === 'active';
   const bars = useMemo(() => lastHour(s.activityRecent), [s.activityRecent]);
   const measured = s.activityRecent.length;
   const avg = measured ? Math.round(s.activityRecent.reduce((sum, m) => sum + m.pct, 0) / measured) : null;
-  const rec = s.recordingNow;
   return (
     <section className={card} aria-label="Your activity">
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
@@ -442,34 +440,7 @@ function ActivityCard({ s, go }: { s: AgentState; go: (v: View) => void }) {
           <p className="py-4 text-center text-xs text-text-muted">{tracking ? 'Your first minute of activity appears in a moment.' : 'Start the timer to see your activity for the last hour.'}</p>
         )}
       </div>
-      <ul className="mt-2 divide-y divide-border border-t border-border text-sm">
-        <Info icon={<AppWindow className="size-4" />} label="App" value={!p.apps.enabled ? 'Not recorded' : rec?.app ?? (tracking ? '—' : 'Recorded while tracking')} />
-        <Info icon={<Globe className="size-4" />} label="Website" value={!p.urls.enabled ? 'Not recorded' : rec?.domain ?? (tracking ? '—' : 'Recorded while tracking')} />
-        <Info
-          icon={p.screenshots.enabled ? <Camera className="size-4" /> : <CameraOff className="size-4" />}
-          label="Screenshots"
-          value={p.screenshots.enabled ? `${p.screenshots.perTenMinutes} per 10 min · all screens${p.screenshots.blur ? ' · blurred' : ''}` : 'Off'}
-        />
-      </ul>
-      <button onClick={() => go('monitoring')} className="flex w-full items-center justify-between gap-2 border-t border-border px-4 py-2.5 text-xs font-medium text-interactive hover:bg-surface-muted">
-        <span className="inline-flex items-center gap-1.5">
-          <Eye className="size-3.5" /> What is monitored
-        </span>
-        <ChevronRight className="size-3.5" />
-      </button>
     </section>
-  );
-}
-
-function Info({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <li className="flex items-center gap-2.5 px-4 py-2">
-      <span className="text-text-faint">{icon}</span>
-      <span className="w-20 shrink-0 text-xs text-text-muted">{label}</span>
-      <span className="min-w-0 flex-1 truncate text-right text-sm font-medium" title={value}>
-        {value}
-      </span>
-    </li>
   );
 }
 

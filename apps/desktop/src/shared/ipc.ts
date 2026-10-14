@@ -28,7 +28,6 @@ export const IPC = {
   'timer:switch': z.object({ projectId: z.uuid(), taskId: z.uuid().nullable() }),
   'notes:set': z.object({ note: z.string().max(1000) }),
   'idle:resolve': z.object({ choice: z.enum(['KEPT', 'DISCARDED', 'REASSIGNED']), projectId: z.uuid().optional(), taskId: z.uuid().nullable().optional() }),
-  'policy:ack': z.void(),
   'recovery:resolve': z.object({ resume: z.boolean() }),
   'manualTime:request': z.object({
     projectId: z.uuid(),
@@ -83,8 +82,6 @@ export interface AgentState {
   account: { name: string; email: string; organization: string; organizationId: string; membershipId: string; timezone: string } | null;
   device: { id: string; status: string } | null;
   policy: TrackingPolicy | null;
-  policyHash: string | null;
-  policyAcknowledged: boolean;
   assignments: Assignment[];
   tracking: {
     state: TrackingState;

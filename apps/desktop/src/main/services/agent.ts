@@ -44,7 +44,6 @@ interface Bootstrap {
   device: { id: string; status: string };
   policy: TrackingPolicy;
   policy_hash: string;
-  policy_acknowledged: boolean;
   assignments: Assignment[];
   current_session: { id: string; state: string; project_id: string; task_id: string | null; started_at: string } | null;
   today_seconds: number;
@@ -201,7 +200,6 @@ export class Agent extends EventEmitter {
   async start(projectId: string, taskId: string | null): Promise<void> {
     if (!this.boot) throw new Error('Not ready');
     if (!this.boot.policy.tracking.allowDesktop) throw new Error('Desktop tracking is disabled by your organization');
-    if (!this.boot.policy_acknowledged) throw new Error('Please review what is monitored before tracking');
     if (this.queue.full) throw new Error('Offline storage is full. Reconnect to the internet to continue tracking.');
     const st = this.state();
     const lim = limitAction(this.boot.policy.limits, st.todaySeconds, st.weekSeconds, this.localToday(), null);
@@ -626,7 +624,7 @@ export class Agent extends EventEmitter {
       this.weekBase = { seconds: b.week_seconds, at: Date.now() };
       if (this.recovery) this.recovery.projectName = b.assignments.find((a) => a.project_id === this.session?.projectId)?.project_name ?? '';
       if (policyChanged) {
-        new Notification({ title: 'Tracking settings changed', body: 'Please review what is monitored.' }).show();
+        new Notification({ title: 'Tracking settings changed', body: 'Your organization updated its tracking settings.' }).show();
         this.emit('show');
         if (this.session?.state === 'active') {
           this.stopMonitors();
@@ -644,12 +642,6 @@ export class Agent extends EventEmitter {
     this.emitState();
   }
 
-  async acknowledgePolicy(): Promise<void> {
-    if (!this.boot) return;
-    await this.api.request('POST', '/agent/policy/ack', { hash: this.boot.policy_hash });
-    await this.refreshBootstrap();
-  }
-
   // ─── State for the UI ──────────────────────────────────────────────────────
   state(): AgentState {
     const s = this.session;
@@ -665,8 +657,6 @@ export class Agent extends EventEmitter {
         : null,
       device: this.boot?.device ?? null,
       policy: this.boot?.policy ?? null,
-      policyHash: this.boot?.policy_hash ?? null,
-      policyAcknowledged: this.boot?.policy_acknowledged ?? false,
       assignments: this.boot?.assignments ?? [],
       tracking: {
         state: s ? s.state : 'stopped',

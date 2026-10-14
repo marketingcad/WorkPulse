@@ -47,19 +47,13 @@ export const test = base.extend<{ desktopApp: DesktopApp }>({
   },
 });
 
-/** Sign in through the app's own form (email + password), then acknowledge what is monitored. */
+/** Sign in through the app's own form (email + password); the app opens straight on Home. */
 export async function signIn(window: Page, email: string): Promise<void> {
   await expect(window.getByRole('heading', { level: 1, name: 'Sign in to start tracking' })).toBeVisible();
   await window.getByLabel('Email').fill(email);
   await window.getByLabel('Password').fill(PASSWORD);
   await window.getByRole('button', { name: 'Sign in', exact: true }).click();
-  // Until a worker acknowledges the current policy (once per worker, on the server), the app shows
-  // what is monitored before anything else. Later sign-ins go straight to Home.
-  const nav = window.getByRole('navigation', { name: 'Primary' });
-  const monitored = window.getByRole('heading', { name: 'What is monitored' });
-  await expect(nav.or(monitored)).toBeVisible();
-  if (await monitored.isVisible()) await window.getByRole('button', { name: 'I understand' }).click();
-  await expect(nav).toBeVisible();
+  await expect(window.getByRole('navigation', { name: 'Primary' })).toBeVisible();
 }
 
 export { expect };

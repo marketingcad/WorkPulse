@@ -2,10 +2,9 @@ import type { Page } from '@playwright/test';
 import { expect, test, usd } from '../../support/fixtures';
 import { WEB_URL } from '../../support/env';
 
-/** Reach Pay Stubs through the grouped nav: the "Me" group, then its "Pay stubs" sub-tab. */
+/** Reach Pay Stubs through its own sidebar item. */
 const openPayStubs = async (page: Page) => {
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Me', exact: true }).click();
-  await page.getByRole('tab', { name: 'Pay stubs' }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Pay stubs', exact: true }).click();
 };
 
 /**
@@ -20,8 +19,7 @@ test.describe('Pay Stubs page', () => {
     await openPayStubs(page);
 
     await expect(page.getByRole('heading', { level: 1, name: 'Pay Stubs' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Pay stubs' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Me', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Pay stubs', exact: true })).toHaveAttribute('aria-current', 'page');
     const row = page.getByRole('listitem').filter({ hasText: `${longDay(data.payStub.periodStart)} – ${longDay(data.payStub.periodEnd)}` });
     await expect(row).toHaveCount(1);
     await expect(row).toContainText('3h 00m');

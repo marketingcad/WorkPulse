@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Bell, Camera, CameraOff, CalendarDays, CalendarOff, ChevronDown, Clock, CloudOff, Eye, Home, LogOut, Menu, RefreshCw, Settings, User, X } from 'lucide-react';
+import { Bell, CalendarClock, CalendarDays, CalendarOff, ChevronDown, Clock, CloudOff, Home, LogOut, Menu, Receipt, RefreshCw, Settings, X } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
 import { bridge, fmtTime, initials, useMe, useTick, viewForLink, type View } from './lib';
 import { GROUP_OF, NAV_GROUPS, groupFor } from './nav';
@@ -11,7 +11,9 @@ const GROUP_ICON: Record<string, ReactNode> = {
   track: <Clock className="size-4" />,
   timesheet: <CalendarDays className="size-4" />,
   timeoff: <CalendarOff className="size-4" />,
-  me: <User className="size-4" />,
+  schedule: <CalendarClock className="size-4" />,
+  paystubs: <Receipt className="size-4" />,
+  settings: <Settings className="size-4" />,
 };
 
 function NavList({ view, go, onPick }: { view: View; go: (v: View) => void; onPick?: () => void }) {
@@ -69,7 +71,6 @@ export function Shell({ s, view, go, children }: { s: AgentState; view: View; go
   const now = useTick(true);
   const [drawer, setDrawer] = useState(false);
   const synced = s.sync.lastSyncAt ? Math.max(0, Math.round((now - Date.parse(s.sync.lastSyncAt)) / 60_000)) : null;
-  const p = s.policy;
   return (
     <div className="flex h-full flex-col bg-bg">
       <header className="flex h-12 shrink-0 items-center gap-2 bg-nav px-2 text-nav-fg md:gap-3 md:px-4">
@@ -85,14 +86,8 @@ export function Shell({ s, view, go, children }: { s: AgentState; view: View; go
           <RefreshCw className={`size-3.5 ${s.sync.queued > 0 && s.sync.online ? 'animate-spin' : ''}`} />
           {s.sync.queued > 0 ? (s.sync.online ? 'Syncing…' : `${s.sync.queued} saved`) : synced === null ? 'Not synced yet' : synced < 1 ? 'Synced just now' : `Synced ${synced}m ago`}
         </span>
-        {p && (
-          <button onClick={() => go('monitoring')} className="hidden items-center gap-1.5 rounded-sm px-1.5 py-1 text-xs text-nav-muted hover:bg-white/10 hover:text-nav-fg sm:inline-flex" title="What is monitored">
-            {p.screenshots.enabled ? <Camera className="size-3.5" /> : <CameraOff className="size-3.5" />}
-            <span className="hidden md:inline">Screenshots {p.screenshots.enabled ? 'on' : 'off'}</span>
-          </button>
-        )}
         <Notifications s={s} go={go} />
-        <ProfileMenu s={s} go={go} />
+        <ProfileMenu s={s} />
       </header>
       <div className="flex min-h-0 flex-1">
         <nav aria-label="Primary" className="hidden w-52 shrink-0 flex-col gap-0.5 overflow-y-auto bg-nav px-2 py-3 text-nav-fg lg:flex">
@@ -197,7 +192,7 @@ function Notifications({ s, go }: { s: AgentState; go: (v: View) => void }) {
   );
 }
 
-function ProfileMenu({ s, go }: { s: AgentState; go: (v: View) => void }) {
+function ProfileMenu({ s }: { s: AgentState }) {
   const pop = usePopover();
   const item = 'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-muted';
   const pick = (fn: () => void) => () => {
@@ -218,13 +213,6 @@ function ProfileMenu({ s, go }: { s: AgentState; go: (v: View) => void }) {
             <div className="truncate text-xs text-text-muted">{s.account!.email}</div>
             <div className="truncate text-2xs text-text-faint">{s.account!.organization}</div>
           </div>
-          <button role="menuitem" className={item} onClick={pick(() => go('monitoring'))}>
-            <Eye className="size-4 text-text-muted" /> What is monitored
-          </button>
-          <button role="menuitem" className={item} onClick={pick(() => go('settings'))}>
-            <Settings className="size-4 text-text-muted" /> Settings
-          </button>
-          <div className="my-1 border-t border-border" />
           <button role="menuitem" className={`${item} text-danger`} onClick={pick(() => void bridge.logout())}>
             <LogOut className="size-4" /> Sign out
           </button>

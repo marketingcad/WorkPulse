@@ -6,11 +6,11 @@ export const bridge = window.tallywork;
 /** The one card style used across pages. */
 export const card = 'rounded-md border border-border bg-surface';
 
-/** Pages of the worker app (navigation order), plus the two sub-screens reached from them. */
+/** Pages of the worker app (navigation order), plus the manual-time sub-screen reached from them. */
 export type Page = 'home' | 'tracking' | 'projects' | 'tasks' | 'timesheet' | 'activity' | 'reports' | 'timeoff' | 'schedule' | 'paystubs' | 'settings';
-export type View = Page | 'monitoring' | 'manual';
+export type View = Page | 'manual';
 
-const VIEWS: readonly View[] = ['home', 'tracking', 'projects', 'tasks', 'timesheet', 'activity', 'reports', 'timeoff', 'schedule', 'paystubs', 'settings', 'monitoring', 'manual'];
+const VIEWS: readonly View[] = ['home', 'tracking', 'projects', 'tasks', 'timesheet', 'activity', 'reports', 'timeoff', 'schedule', 'paystubs', 'settings', 'manual'];
 export const isView = (v: string): v is View => (VIEWS as readonly string[]).includes(v);
 
 /**
@@ -23,7 +23,6 @@ export function viewForLink(link: string): View | null {
   if (path.startsWith('timesheets/manual')) return 'tracking';
   if (path.startsWith('timesheets')) return 'timesheet';
   if (path.startsWith('attendance/time-off') || path.startsWith('time-off')) return 'timeoff';
-  if (path.startsWith('me/monitoring')) return 'monitoring';
   if (path.startsWith('pay-stubs')) return 'paystubs';
   const top: Record<string, View> = { tasks: 'tasks', projects: 'projects', activity: 'activity', reports: 'reports', schedules: 'schedule' };
   return top[path.split('/')[0]!] ?? null;

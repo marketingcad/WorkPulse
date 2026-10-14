@@ -1,5 +1,12 @@
+import type { Page } from '@playwright/test';
 import { expect, test, usd } from '../../support/fixtures';
 import { WEB_URL } from '../../support/env';
+
+/** Reach Pay Stubs through the grouped nav: the "Me" group, then its "Pay stubs" sub-tab. */
+const openPayStubs = async (page: Page) => {
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Me', exact: true }).click();
+  await page.getByRole('tab', { name: 'Pay stubs' }).click();
+};
 
 /**
  * Pay stubs in the desktop app (workers use the desktop app only, so this is how they get their pay).
@@ -10,10 +17,11 @@ const longDay = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString
 test.describe('Pay Stubs page', () => {
   test('a worker sees their finalized pay stub with hours, gross, adjustments and net pay', { tag: '@smoke' }, async ({ page, openDesktop, workerDevice, data }) => {
     await openDesktop(workerDevice);
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Pay Stubs' }).click();
+    await openPayStubs(page);
 
     await expect(page.getByRole('heading', { level: 1, name: 'Pay Stubs' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Pay Stubs' })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('tab', { name: 'Pay stubs' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Me', exact: true })).toHaveAttribute('aria-current', 'page');
     const row = page.getByRole('listitem').filter({ hasText: `${longDay(data.payStub.periodStart)} – ${longDay(data.payStub.periodEnd)}` });
     await expect(row).toHaveCount(1);
     await expect(row).toContainText('3h 00m');
@@ -28,7 +36,7 @@ test.describe('Pay Stubs page', () => {
 
   test('downloads the pay stub as a real PDF', { tag: '@smoke' }, async ({ page, openDesktop, workerDevice, data }) => {
     const desktop = await openDesktop(workerDevice);
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Pay Stubs' }).click();
+    await openPayStubs(page);
     await page.getByRole('button', { name: 'PDF' }).click();
 
     await expect.poll(() => desktop.savedPdfs.length).toBe(1);
@@ -41,15 +49,17 @@ test.describe('Pay Stubs page', () => {
 
   test('a worker who is in no finalized payroll sees the empty state', async ({ page, openDesktop, newcomerDevice }) => {
     await openDesktop(newcomerDevice);
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Pay Stubs' }).click();
+    await openPayStubs(page);
     await expect(page.getByText('No pay stubs yet. They appear here when a payroll that includes you is finalized.')).toBeVisible();
     await expect(page.getByRole('button', { name: 'PDF' })).toHaveCount(0);
   });
 
   test('shows the error when pay stubs cannot be loaded', async ({ page, openDesktop, workerDevice }) => {
     await openDesktop(workerDevice, { offline: ['pay-stubs'] });
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Pay Stubs' }).click();
+    await openPayStubs(page);
     await expect(page.getByText('Could not reach the server. Check your connection.')).toBeVisible();
+    // The standardized error state offers a way to retry.
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
   });
 
   test('the "pay stub ready" notification opens the Pay Stubs page', async ({ page, openDesktop, workerDevice }) => {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AppWindow, Camera, CameraOff, ChevronDown, ChevronRight, ClipboardCheck, ClockPlus, CloudOff, Eye, Globe, NotebookPen, Pause, Play, RefreshCw, Search, Settings, Square } from 'lucide-react';
+import { AppWindow, Camera, CameraOff, ChevronDown, ChevronRight, CircleAlert, ClipboardCheck, ClockPlus, Eye, Globe, NotebookPen, Pause, Play, Search, Square } from 'lucide-react';
 import type { AgentState, Assignment } from '../../shared/ipc';
 import { bridge, card, errorText, fmtClock, fmtHm, fmtRange, fmtTime, initials, useTick, type View } from './lib';
 import { CurrentSessionCard, RecentSessionsCard, TodaySummaryCard } from './HomeCards';
@@ -28,6 +28,7 @@ export function Dashboard({ s, go }: { s: AgentState; go: (v: View) => void }) {
         <Greeting s={s} now={now} />
         {/* Primary workspace */}
         <TimerCard s={s} now={now} run={run} error={error} />
+        <NeedsAttention s={s} go={go} />
         <QuickActions s={s} go={go} />
         {/* Worker information */}
         <div className="grid gap-3 md:gap-4 xl:grid-cols-2">
@@ -63,6 +64,8 @@ function TimerCard({ s, now, run, error }: { s: AgentState; now: number; run: (f
   const tracking = t.state !== 'stopped';
   const elapsed = t.baseSeconds + (t.segmentStartedAt ? (now - Date.parse(t.segmentStartedAt)) / 1000 : 0);
   const [breakMenu, setBreakMenu] = useState(false);
+  // While tracking, the pickers stay out of the way behind "Change"; when stopped they're always shown.
+  const [editing, setEditing] = useState(false);
   const currentBreak = s.breakTypes.find((b) => b.id === s.breakTypeId);
   // What Start will track: the running project, else the last one used.
   const target = tracking && t.projectId ? { projectId: t.projectId, taskId: t.taskId } : s.lastProject;
@@ -79,23 +82,30 @@ function TimerCard({ s, now, run, error }: { s: AgentState; now: number; run: (f
   // Picking a project starts (or switches) tracking on it, like clicking it in Projects.
   const chooseProject = (projectId: string) => projectId && void run(() => (tracking ? bridge.switchTask(projectId, null) : bridge.start(projectId, null)));
 
+  const showPickers = s.assignments.length > 0 && (!tracking || editing);
   return (
     <section className={`${card} p-4`} aria-label="Timer">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_150px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
         {/* What you are working on */}
         <div className="flex min-w-0 flex-col justify-center gap-3 lg:border-r lg:border-border lg:pr-4">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-md text-base font-semibold text-white" style={{ background: project?.color ?? 'var(--tw-text-faint)' }} aria-hidden>
               {project ? initials(project.project_name) : '—'}
             </span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
+              <div className="text-2xs text-text-muted">Working on</div>
               <div className="truncate text-base font-semibold">{project?.project_name ?? 'No project selected'}</div>
-              <div className="truncate text-xs text-text-muted">{project ? (project.client_name ?? 'Internal') : 'Pick a project from the list to start'}</div>
+              <div className="truncate text-xs text-text-muted">{project ? `${project.client_name ?? 'Internal'}${task ? ` · ${task.title}` : ''}` : 'Pick a project to start'}</div>
             </div>
+            {tracking && s.assignments.length > 0 && (
+              <button onClick={() => setEditing((e) => !e)} className="shrink-0 rounded-sm border border-border px-2 py-1 text-2xs text-text-muted hover:bg-surface-muted">
+                {editing ? 'Done' : 'Change'}
+              </button>
+            )}
           </div>
-          {s.assignments.length > 0 && (
+          {showPickers && (
             <label className="block">
-              <span className="text-2xs text-text-muted">Current project</span>
+              <span className="text-2xs text-text-muted">Project</span>
               <select value={project?.project_id ?? ''} onChange={(e) => chooseProject(e.target.value)} className="mt-0.5 h-9 w-full rounded-sm border border-border bg-surface px-2 text-sm focus:border-interactive focus:outline-none">
                 {!project && <option value="">Choose a project…</option>}
                 {s.assignments.map((a) => (
@@ -107,9 +117,9 @@ function TimerCard({ s, now, run, error }: { s: AgentState; now: number; run: (f
               </select>
             </label>
           )}
-          {project && project.tasks.length > 0 && (
+          {showPickers && project && project.tasks.length > 0 && (
             <label className="block">
-              <span className="text-2xs text-text-muted">Current task</span>
+              <span className="text-2xs text-text-muted">Task</span>
               <select value={task?.id ?? ''} onChange={(e) => chooseTask(e.target.value)} className="mt-0.5 h-9 w-full rounded-sm border border-border bg-surface px-2 text-sm focus:border-interactive focus:outline-none">
                 <option value="">No task</option>
                 {project.tasks.map((x) => (
@@ -133,6 +143,7 @@ function TimerCard({ s, now, run, error }: { s: AgentState; now: number; run: (f
           </div>
           <div className="tabular text-xs text-text-muted">
             Today {fmtHm(s.todaySeconds)} · Week {fmtHm(s.weekSeconds)}
+            {tracking && t.startedAt ? ` · since ${fmtTime(t.startedAt)}` : ''}
           </div>
           <div className="flex w-full max-w-sm gap-2">
             {tracking ? (
@@ -171,21 +182,6 @@ function TimerCard({ s, now, run, error }: { s: AgentState; now: number; run: (f
           </div>
           {error && <p className="w-full max-w-sm rounded-sm bg-danger-soft px-2.5 py-1.5 text-xs text-danger">{error}</p>}
         </div>
-
-        {/* At a glance */}
-        <dl className="grid grid-cols-2 gap-3 border-t border-border pt-3 lg:col-span-2 xl:col-span-1 xl:flex xl:flex-col xl:justify-center xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0">
-          <div>
-            <dt className="text-2xs text-text-muted">Activity</dt>
-            <dd className="mt-1 flex items-center gap-2">
-              <Ring pct={tracking ? s.activityPct : null} />
-              <span className="tabular text-base font-semibold">{tracking && s.activityPct !== null ? `${s.activityPct}%` : '—'}</span>
-            </dd>
-          </div>
-          <div>
-            <dt className="text-2xs text-text-muted">Started</dt>
-            <dd className="tabular mt-1 text-base font-semibold">{tracking && t.startedAt ? fmtTime(t.startedAt) : '—'}</dd>
-          </div>
-        </dl>
       </div>
     </section>
   );
@@ -225,19 +221,6 @@ function BreakMenu({ s, onClose, run }: { s: AgentState; onClose: () => void; ru
   );
 }
 
-/** Activity ring: a neutral indigo meter (activity is a signal, not a verdict). */
-function Ring({ pct, size = 22 }: { pct: number | null; size?: number }) {
-  const r = (size - 4) / 2;
-  const c = 2 * Math.PI * r;
-  const v = pct === null ? 0 : Math.max(0, Math.min(100, pct));
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden className="-rotate-90">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth="3" className="stroke-surface-sunken" />
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth="3" strokeLinecap="round" strokeDasharray={`${(v / 100) * c} ${c}`} className="stroke-interactive transition-[stroke-dasharray] duration-500" />
-    </svg>
-  );
-}
-
 // ─── Quick actions ───────────────────────────────────────────────────────────
 
 function QuickActions({ s, go }: { s: AgentState; go: (v: View) => void }) {
@@ -273,23 +256,68 @@ function QuickActions({ s, go }: { s: AgentState; go: (v: View) => void }) {
           <ClipboardCheck className="size-4 text-text-muted" /> My timesheet
         </button>
       </div>
-      {s.timesheetDue && (
-        <button
-          onClick={() => go('timesheet')}
-          className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left text-xs ${s.timesheetDue.overdue ? 'border-warning/30 bg-warning-soft text-warning' : 'border-interactive/20 bg-interactive-soft text-interactive'}`}
-        >
-          <ClipboardCheck className="size-4 shrink-0" />
-          <span className="min-w-0 flex-1">
-            <span className="font-semibold">{s.timesheetDue.overdue ? 'Timesheet not submitted' : 'Timesheet due today'}</span>
-            <span className="ml-1">
-              · {fmtRange(s.timesheetDue.periodStart, s.timesheetDue.periodEnd)} · {fmtHm(s.timesheetDue.totalSeconds)}
-              {s.timesheetDue.status === 'REJECTED' ? ' · changes requested' : ''}
-            </span>
-          </span>
-          <ChevronRight className="size-3.5 shrink-0" />
-        </button>
-      )}
     </div>
+  );
+}
+
+// ─── Needs attention ───────────────────────────────────────────────────────────
+
+/**
+ * The one place that answers "what should I do next?". It shows only items that need the worker
+ * to act or to know: a timesheet to submit or fix, and manual-time requests still waiting to sync.
+ * It renders nothing when there is nothing to act on, so it never becomes noise.
+ */
+function NeedsAttention({ s, go }: { s: AgentState; go: (v: View) => void }) {
+  const due = s.timesheetDue;
+  const queued = s.manualRequests.filter((r) => r.status === 'queued').length;
+  if (!due && !queued) return null;
+
+  const timesheet = due
+    ? due.status === 'REJECTED'
+      ? { tone: 'warning' as const, title: 'Timesheet needs changes', detail: `${fmtRange(due.periodStart, due.periodEnd)} · ${fmtHm(due.totalSeconds)}` }
+      : due.overdue
+        ? { tone: 'warning' as const, title: 'Timesheet not submitted', detail: `${fmtRange(due.periodStart, due.periodEnd)} · ${fmtHm(due.totalSeconds)}` }
+        : { tone: 'info' as const, title: 'Timesheet ready to submit', detail: `${fmtRange(due.periodStart, due.periodEnd)} · ${fmtHm(due.totalSeconds)}` }
+    : null;
+
+  const rowCls = (tone: 'warning' | 'info') =>
+    `flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm hover:bg-surface-muted ${tone === 'warning' ? 'text-warning' : 'text-interactive'}`;
+
+  return (
+    <section className={`${card} overflow-hidden`} aria-label="Needs attention">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+        <CircleAlert className="size-4 text-text-muted" />
+        <h2 className="text-sm font-semibold">Needs attention</h2>
+      </div>
+      <ul className="divide-y divide-border">
+        {timesheet && (
+          <li>
+            <button onClick={() => go('timesheet')} className={rowCls(timesheet.tone)}>
+              <ClipboardCheck className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="font-semibold">{timesheet.title}</span>
+                <span className="ml-1 text-text-muted">· {timesheet.detail}</span>
+              </span>
+              <ChevronRight className="size-3.5 shrink-0 text-text-faint" />
+            </button>
+          </li>
+        )}
+        {queued > 0 && (
+          <li>
+            <button onClick={() => go('manual')} className={rowCls('info')}>
+              <ClockPlus className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="font-semibold">
+                  {queued} manual-time {queued === 1 ? 'request' : 'requests'} waiting to send
+                </span>
+                <span className="ml-1 text-text-muted">· saved on this computer, will sync when online</span>
+              </span>
+              <ChevronRight className="size-3.5 shrink-0 text-text-faint" />
+            </button>
+          </li>
+        )}
+      </ul>
+    </section>
   );
 }
 

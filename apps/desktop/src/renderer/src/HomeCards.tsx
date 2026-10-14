@@ -19,7 +19,7 @@ export function TodaySummaryCard({ s, now }: { s: AgentState; now: number }) {
         <Total label="This week" seconds={s.weekSeconds} limit={limits.weeklySeconds} />
         <div className="grid grid-cols-3 gap-2 border-t border-border pt-3">
           <Mini label="Active" value={d ? fmtHm(d.active_seconds) : '—'} />
-          <Mini label="Idle" value={d ? fmtHm(d.idle_seconds) : '—'} warn={!!d && d.idle_seconds > 0} />
+          <Mini label="Away" value={d ? fmtHm(d.idle_seconds) : '—'} warn={!!d && d.idle_seconds > 0} />
           <Mini label="Activity" value={d?.activity_pct != null ? `${d.activity_pct}%` : '—'} />
         </div>
         {shift && (

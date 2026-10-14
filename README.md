@@ -22,7 +22,7 @@ The main flow the product covers is **Organization → People → Work structure
 
 ## Project status
 
-Updated 30 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.4
+Updated 14 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.4
 
 ### ✅ Completed
 
@@ -37,6 +37,7 @@ Updated 30 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallyw
 - Security and privacy: two-factor sign-in, IP allowlists, a tamper-proof audit log, data retention rules, a personal data export, a right-to-erasure process, and an access review.
 - Ready for production use: health monitoring, alerts, load tests, recovery procedures and on-call guides.
 - Accessibility: every main screen meets the WCAG 2.1 AA standard, in light and dark mode.
+- Automated end-to-end tests (Playwright) for the web app, the desktop window and the real desktop app, run with one command (`pnpm test:e2e`) and in CI on every change. Every change now ships with tests that were run and passed ([AGENTS.md](AGENTS.md)).
 
 ### 🆕 New updates
 
@@ -75,10 +76,14 @@ Updated 30 September 2026 · Live at [tallywork-alpha.vercel.app](https://tallyw
 - **Invitation links:** when an email can't be sent, the invitation link is shown so it can be shared by hand.
 - **Sign-in:** sign-in returns you to the last workspace you used.
 - **UX audit:** a simplification audit of pages, navigation and permissions (`docs/audit/`).
+- **New organization:** create another organization (name, time zone, currency) from the organization switcher, without leaving the app.
+- **Audit log paging:** the audit log pages through every entry with a total, newest or oldest first, and the CSV export covers all matching entries (up to 1,000), not just the page on screen.
+- **Table pagination:** numbered pages, "Showing 1–50 of 230 results" and a rows-per-page choice in the shared table.
 
 **Needs attention before the next release**
 
-- Nothing open. Fixed: the client portal migration now runs after 0011–0017; workers reach pay stubs in the desktop app; CSV import and invitations with a team role and projects have tests.
+- **Tests:** audit log paging (API) and table pagination (unit) have tests, but these screens and the new organization dialog have no E2E specs yet.
+- Fixed since the last update: the client portal migration now runs after 0011–0017; workers reach pay stubs in the desktop app; CSV import and invitations with a team role and projects have tests.
 
 **Next / planned**
 

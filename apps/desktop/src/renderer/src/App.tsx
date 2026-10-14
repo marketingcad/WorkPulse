@@ -241,6 +241,18 @@ function websitesText(mode: 'domain' | 'full', s: AgentState): string {
 }
 
 /** Transparency: exactly what this policy collects. Must be acknowledged on first run and on every change. */
+/** A one-line plain summary of what is actually on, so a worker gets the gist before reading each row. */
+function monitoringSummary(p: NonNullable<AgentState['policy']>, caps: AgentState['capabilities']): string {
+  const on = [
+    p.activity.enabled && caps.input !== false && 'how often you use the keyboard and mouse',
+    p.screenshots.enabled && caps.screenshots !== false && 'screenshots',
+    p.apps.enabled && caps.apps !== false && 'the app you are using',
+    p.urls.enabled && 'the websites you visit',
+  ].filter(Boolean) as string[];
+  const list = on.length === 0 ? 'nothing on your screen is recorded' : on.length === 1 ? on[0]! : `${on.slice(0, -1).join(', ')} and ${on.at(-1)}`;
+  return `while your timer runs, your employer sees ${list}. Your location is never collected, and keystrokes are never recorded.`;
+}
+
 function Monitoring({ s, onBack }: { s: AgentState; onBack?: () => void }) {
   const p = s.policy!;
   const [busy, setBusy] = useState(false);
@@ -259,6 +271,9 @@ function Monitoring({ s, onBack }: { s: AgentState; onBack?: () => void }) {
       <div className="flex-1 overflow-y-auto px-4">
         <p className="mt-3 text-xs text-text-muted">
           {s.account!.organization} collects the following <strong>only while your timer is running</strong>. When tracking is stopped, nothing is collected.
+        </p>
+        <p className="mt-2 rounded-sm bg-surface-muted px-3 py-2 text-xs text-text">
+          <strong>In short:</strong> {monitoringSummary(p, s.capabilities)}
         </p>
         <ul className="divide-y divide-border">
           <Row icon={<Keyboard className="size-4" />} label="Activity level" value="How often you use the keyboard and mouse, per minute. Keystrokes and typed text are never recorded." on={p.activity.enabled && s.capabilities.input !== false} />
@@ -466,6 +481,12 @@ function ManualTime({ s, onBack }: { s: AgentState; onBack: () => void }) {
   );
 }
 
+/** Device status in plain words a worker understands, rather than the raw enum. */
+function deviceStatusLabel(status: string): string {
+  const map: Record<string, string> = { ACTIVE: 'Active', PENDING: 'Waiting for your administrator to approve it', REVOKED: 'Removed by your administrator' };
+  return map[status.toUpperCase()] ?? status;
+}
+
 function SettingsView({ s, onBack, onMonitoring }: { s: AgentState; onBack: () => void; onMonitoring: () => void }) {
   return (
     <div className="flex h-full flex-col bg-surface md:overflow-hidden md:rounded-md md:border md:border-border">
@@ -479,10 +500,7 @@ function SettingsView({ s, onBack, onMonitoring }: { s: AgentState; onBack: () =
         {[
           ['Signed in as', `${s.account?.name} (${s.account?.email})`],
           ['Organization', s.account?.organization ?? ''],
-          ['Server', s.serverUrl],
-          ['Device', s.device ? `${s.device.status.toLowerCase()} · ${s.device.id.slice(0, 8)}` : '—'],
-          ['Pending sync', `${s.sync.queued} events${s.sync.lastSyncAt ? ` · last sync ${new Date(s.sync.lastSyncAt).toLocaleTimeString()}` : ''}`],
-          ['Capabilities', Object.entries(s.capabilities).map(([k, v]) => `${k} ${v ? '✓' : '✗'}`).join('  ')],
+          ['This device', s.device ? deviceStatusLabel(s.device.status) : '—'],
           ['Version', s.version],
         ].map(([k, v]) => (
           <div key={k} className="py-2.5">
@@ -492,6 +510,22 @@ function SettingsView({ s, onBack, onMonitoring }: { s: AgentState; onBack: () =
         ))}
       </dl>
       {s.sync.error && <p className="mx-4 mt-2 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">{s.sync.error}</p>}
+      <details className="mx-4 mt-3 rounded-sm border border-border text-sm">
+        <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-text-muted hover:bg-surface-muted">Technical details</summary>
+        <dl className="divide-y divide-border border-t border-border px-3 text-xs">
+          {[
+            ['Server', s.serverUrl],
+            ['Device ID', s.device?.id ?? '—'],
+            ['Pending sync', `${s.sync.queued} events${s.sync.lastSyncAt ? ` · last sync ${new Date(s.sync.lastSyncAt).toLocaleTimeString()}` : ''}`],
+            ['Capabilities', Object.entries(s.capabilities).map(([k, v]) => `${k} ${v ? '✓' : '✗'}`).join('  ')],
+          ].map(([k, v]) => (
+            <div key={k} className="py-2">
+              <dt className="text-text-muted">{k}</dt>
+              <dd className="wrap-break-word font-mono text-text-faint">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
       <div className="mt-auto flex flex-col gap-2 border-t border-border p-4">
         <button onClick={onMonitoring} className="flex h-9 items-center justify-center gap-2 rounded-sm border border-border text-sm hover:bg-surface-muted">
           <Eye className="size-4" /> What is monitored

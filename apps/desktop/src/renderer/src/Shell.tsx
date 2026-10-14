@@ -1,45 +1,24 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Activity, BarChart3, Bell, CalendarClock, CalendarDays, CalendarOff, Camera, CameraOff, CheckSquare, ChevronDown, Clock, CloudOff, Eye, FolderKanban, Home, LogOut, Menu, ReceiptText, RefreshCw, Settings, X } from 'lucide-react';
+import { Bell, Camera, CameraOff, CalendarDays, CalendarOff, ChevronDown, Clock, CloudOff, Eye, Home, LogOut, Menu, RefreshCw, Settings, User, X } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
-import { bridge, fmtTime, initials, useMe, useTick, viewForLink, type Page, type View } from './lib';
+import { bridge, fmtTime, initials, useMe, useTick, viewForLink, type View } from './lib';
+import { GROUP_OF, NAV_GROUPS, groupFor } from './nav';
 import type { NotificationsDto } from './types';
 
-const NAV: Array<{ v: Page; label: string; icon: ReactNode }> = [
-  { v: 'home', label: 'Home', icon: <Home className="size-4" /> },
-  { v: 'tracking', label: 'Time Tracking', icon: <Clock className="size-4" /> },
-  { v: 'projects', label: 'Projects', icon: <FolderKanban className="size-4" /> },
-  { v: 'tasks', label: 'Tasks', icon: <CheckSquare className="size-4" /> },
-  { v: 'timesheet', label: 'Timesheet', icon: <CalendarDays className="size-4" /> },
-  { v: 'activity', label: 'Activity', icon: <Activity className="size-4" /> },
-  { v: 'reports', label: 'Reports', icon: <BarChart3 className="size-4" /> },
-  { v: 'timeoff', label: 'Time Off', icon: <CalendarOff className="size-4" /> },
-  { v: 'schedule', label: 'Schedule', icon: <CalendarClock className="size-4" /> },
-  { v: 'paystubs', label: 'Pay Stubs', icon: <ReceiptText className="size-4" /> },
-  { v: 'settings', label: 'Settings', icon: <Settings className="size-4" /> },
-];
-
-/** The nav item a sub-screen belongs to (highlighted while it is open). */
-const SECTION: Record<View, Page> = {
-  home: 'home',
-  tracking: 'tracking',
-  projects: 'projects',
-  tasks: 'tasks',
-  timesheet: 'timesheet',
-  activity: 'activity',
-  reports: 'reports',
-  timeoff: 'timeoff',
-  schedule: 'schedule',
-  paystubs: 'paystubs',
-  settings: 'settings',
-  manual: 'tracking',
-  monitoring: 'settings',
+/** Icon for each nav group, keyed by the group's `icon` id (the nav model itself stays icon-free and testable). */
+const GROUP_ICON: Record<string, ReactNode> = {
+  home: <Home className="size-4" />,
+  track: <Clock className="size-4" />,
+  timesheet: <CalendarDays className="size-4" />,
+  timeoff: <CalendarOff className="size-4" />,
+  me: <User className="size-4" />,
 };
 
 function NavList({ view, go, onPick }: { view: View; go: (v: View) => void; onPick?: () => void }) {
-  const active = SECTION[view];
+  const active = GROUP_OF[view];
   return (
     <>
-      {NAV.map((i) => (
+      {NAV_GROUPS.map((i) => (
         <button
           key={i.v}
           onClick={() => {
@@ -50,11 +29,35 @@ function NavList({ view, go, onPick }: { view: View; go: (v: View) => void; onPi
           className={`relative flex h-9 w-full shrink-0 items-center gap-2.5 rounded-sm px-2.5 text-left text-sm transition-colors ${active === i.v ? 'bg-nav-active font-semibold text-white' : 'text-nav-muted hover:bg-white/5 hover:text-nav-fg'}`}
         >
           {active === i.v && <span className="absolute inset-y-1.5 left-0 w-0.75 rounded-r-full bg-[#8a8df0]" aria-hidden />}
-          {i.icon}
+          {GROUP_ICON[i.icon]}
           {i.label}
         </button>
       ))}
     </>
+  );
+}
+
+/** Secondary tabs for the open group, so its screens share one place instead of separate nav items. */
+function SubTabs({ view, go }: { view: View; go: (v: View) => void }) {
+  const group = groupFor(view);
+  if (!group.tabs) return null;
+  return (
+    <div className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b border-border bg-bg px-3 py-2" role="tablist" aria-label={`${group.label} sections`}>
+      {group.tabs.map((t) => {
+        const on = view === t.v;
+        return (
+          <button
+            key={t.v}
+            role="tab"
+            aria-selected={on}
+            onClick={() => go(t.v)}
+            className={`shrink-0 whitespace-nowrap rounded-sm px-3 py-1.5 text-sm transition-colors ${on ? 'bg-surface font-semibold text-text shadow-sm' : 'text-text-muted hover:bg-surface-muted hover:text-text'}`}
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -95,7 +98,10 @@ export function Shell({ s, view, go, children }: { s: AgentState; view: View; go
         <nav aria-label="Primary" className="hidden w-52 shrink-0 flex-col gap-0.5 overflow-y-auto bg-nav px-2 py-3 text-nav-fg lg:flex">
           <NavList view={view} go={go} />
         </nav>
-        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+          <SubTabs view={view} go={go} />
+          {children}
+        </main>
       </div>
       {drawer && (
         <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">

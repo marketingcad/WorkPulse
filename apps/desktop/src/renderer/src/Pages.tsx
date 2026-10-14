@@ -263,7 +263,7 @@ export function TimesheetPage({ s }: { s: AgentState }) {
     setMsg(null);
     try {
       await bridge.submitTimesheet(ts.period_start, ts.version);
-      setMsg({ ok: true, text: 'Timesheet submitted for approval.' });
+      setMsg({ ok: true, text: 'Timesheet submitted — your manager will review it. You will be notified when it is approved or if changes are needed.' });
       q.reload();
     } catch (e) {
       setMsg({ ok: false, text: errorText(e, 'Could not submit') });
@@ -292,10 +292,9 @@ export function TimesheetPage({ s }: { s: AgentState }) {
       <Status loading={q.loading && !ts} error={ts ? null : q.error}>
         {ts && (
           <>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
               <Stat label="Total" value={fmtHm(ts.total_seconds)} hint={ts.expected_seconds ? `of ${fmtHm(ts.expected_seconds)} expected` : undefined} />
-              <Stat label="Billable" value={fmtHm(ts.billable_seconds)} />
-              <Stat label="Manual" value={fmtHm(ts.manual_seconds)} />
+              <Stat label="Added by hand" value={fmtHm(ts.manual_seconds)} />
               <Stat label="Activity" value={ts.avg_activity_pct != null ? `${ts.avg_activity_pct}%` : '—'} />
             </div>
             <Card title="Hours by day" right={<Badge tone={TS_TONE[ts.status] ?? 'neutral'}>{ts.status.charAt(0) + ts.status.slice(1).toLowerCase()}</Badge>}>
@@ -413,11 +412,11 @@ export function ActivityPage({ s }: { s: AgentState }) {
                             <div key={b.window_start} className="rounded-sm border border-border px-2 py-1.5" title={`${fmtTime(b.window_start)} · ${b.project_name}`}>
                               <div className="flex items-center justify-between gap-1">
                                 <span className="tabular text-2xs text-text-muted">{fmtTime(b.window_start)}</span>
-                                {b.idle && <PauseCircle className="size-3 text-warning" aria-label="Includes idle time" />}
-                                {b.manual && <PenLine className="size-3 text-info" aria-label="Manual time" />}
+                                {b.idle && <PauseCircle className="size-3 text-warning" aria-label="Includes away time" />}
+                                {b.manual && <PenLine className="size-3 text-info" aria-label="Added by hand" />}
                               </div>
                               {b.manual ? (
-                                <div className="mt-1 text-2xs text-text-faint">Manual</div>
+                                <div className="mt-1 text-2xs text-text-faint">By hand</div>
                               ) : (
                                 <>
                                   <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-sunken">
@@ -509,12 +508,11 @@ export function ReportsPage() {
       <Status loading={q.loading && !r} error={r ? null : q.error}>
         {r && (
           <>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-5 md:gap-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
               <Stat label="Worked" value={fmtHm(r.worked_seconds)} hint={`${fmtDay(r.from, { month: 'short', day: 'numeric' })} – ${fmtDay(r.to, { month: 'short', day: 'numeric' })}`} />
-              <Stat label="Billable" value={fmtHm(r.billable_seconds)} hint={total ? `${Math.round((r.billable_seconds / total) * 100)}% of worked` : undefined} />
-              <Stat label="Manual" value={fmtHm(r.manual_seconds)} />
+              <Stat label="Added by hand" value={fmtHm(r.manual_seconds)} />
               <Stat label="Activity" value={r.activity_pct != null ? `${r.activity_pct}%` : '—'} />
-              <Stat label="Idle" value={fmtHm(r.idle_seconds)} tone={r.idle_seconds > 0 ? 'warning' : undefined} />
+              <Stat label="Away time" value={fmtHm(r.idle_seconds)} tone={r.idle_seconds > 0 ? 'warning' : undefined} />
             </div>
             <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_320px] md:gap-4">
               <Card title="Hours by day">
@@ -568,6 +566,7 @@ const TO_TONE: Record<TimeOffDto['requests'][number]['status'], 'success' | 'war
 export function TimeOffPage() {
   const q = useMe<TimeOffDto>('time-off');
   const [open, setOpen] = useState(false);
+  const [sent, setSent] = useState(false);
   const d = q.data;
   return (
     <Page
@@ -576,7 +575,7 @@ export function TimeOffPage() {
       actions={
         d &&
         d.balances.length > 0 && (
-          <button onClick={() => setOpen((o) => !o)} className={primary}>
+          <button onClick={() => (setSent(false), setOpen((o) => !o))} className={primary}>
             <CalendarPlus className="size-4" /> Request time off
           </button>
         )
@@ -585,7 +584,8 @@ export function TimeOffPage() {
       <Status loading={q.loading && !d} error={d ? null : q.error} empty={!!d && !d.balances.length && 'No time-off policy applies to you. Ask your administrator.'}>
         {d && (
           <>
-            {open && <TimeOffForm d={d} onDone={() => (setOpen(false), q.reload())} onCancel={() => setOpen(false)} />}
+            {sent && !open && <p className="rounded-sm bg-success-soft px-3 py-2 text-sm text-success">Request sent — your manager will review it. You can see its status under “Your requests”.</p>}
+            {open && <TimeOffForm d={d} onDone={() => (setOpen(false), setSent(true), q.reload())} onCancel={() => setOpen(false)} />}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 md:gap-4">
               {d.balances.map((b) => (
                 <div key={b.policy_id} className={`${card} px-4 py-3`}>

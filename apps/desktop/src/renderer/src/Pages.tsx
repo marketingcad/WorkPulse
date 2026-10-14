@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { CalendarPlus, Check, ChevronLeft, ChevronRight, ClockPlus, Download, PauseCircle, PenLine, Play, Send } from 'lucide-react';
+import { CalendarPlus, Check, ChevronLeft, ChevronRight, ClockPlus, Download, PauseCircle, PenLine, Play, RefreshCw, Send } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
 import { ProjectsCard } from './Dashboard';
 import { SessionList, localDay } from './HomeCards';
@@ -37,9 +37,31 @@ function Card({ title, right, children, className = '' }: { title?: string; righ
   );
 }
 
-function Status({ loading, error, empty, children }: { loading: boolean; error: string | null; empty?: string | false; children?: ReactNode }) {
-  if (loading) return <p className="px-4 py-8 text-center text-sm text-text-muted">Loading…</p>;
-  if (error) return <p className="px-4 py-8 text-center text-sm text-warning">{error}</p>;
+/**
+ * The one place that renders a data screen's loading / error / empty states, so every page handles
+ * all of them the same way. Pass `onRetry` (a query's reload) to offer a Try again button on error.
+ */
+function Status({ loading, error, empty, onRetry, children }: { loading: boolean; error: string | null; empty?: string | false; onRetry?: () => void; children?: ReactNode }) {
+  if (loading)
+    return (
+      <div className="space-y-2 p-4" aria-busy="true">
+        <span className="sr-only">Loading…</span>
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-10 animate-pulse rounded-sm bg-surface-muted motion-reduce:animate-none" />
+        ))}
+      </div>
+    );
+  if (error)
+    return (
+      <div className="px-4 py-8 text-center">
+        <p className="text-sm text-warning">{error}</p>
+        {onRetry && (
+          <button onClick={onRetry} className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-sm border border-border bg-surface px-3 text-sm hover:bg-surface-muted">
+            <RefreshCw className="size-3.5" /> Try again
+          </button>
+        )}
+      </div>
+    );
   if (empty) return <p className="px-4 py-8 text-center text-sm text-text-muted">{empty}</p>;
   return <>{children}</>;
 }
@@ -111,7 +133,7 @@ export function TrackingPage({ s, go }: { s: AgentState; go: (v: View) => void }
         </>
       }
     >
-      <Status loading={q.loading && !q.data} error={q.data ? null : q.error} empty={!!q.data && !byDay.length && 'No sessions in this period.'}>
+      <Status loading={q.loading && !q.data} error={q.data ? null : q.error} onRetry={q.reload} empty={!!q.data && !byDay.length && 'No sessions in this period.'}>
         {byDay.map(([date, list]) => (
           <Card key={date} title={fmtDay(date, { weekday: 'long', month: 'short', day: 'numeric' })} right={<span className="tabular text-sm font-semibold">{fmtHm(list.reduce((sum, x) => sum + x.worked_seconds, 0))}</span>}>
             <SessionList sessions={list} loading={false} error={null} s={s} empty="" />
@@ -142,7 +164,7 @@ export function ProjectsPage({ s }: { s: AgentState }) {
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_320px] md:gap-4">
         <ProjectsCard s={s} run={run} />
         <Card title="This week">
-          <Status loading={week.loading && !week.data} error={week.data ? null : week.error} empty={!!week.data && !week.data.projects.length && 'No time this week yet.'}>
+          <Status loading={week.loading && !week.data} error={week.data ? null : week.error} onRetry={week.reload} empty={!!week.data && !week.data.projects.length && 'No time this week yet.'}>
             <ul className="flex flex-col gap-3 px-4 py-3">
               {week.data?.projects.map((p) => (
                 <li key={p.project_id}>
@@ -204,7 +226,7 @@ export function TasksPage({ s }: { s: AgentState }) {
       }
     >
       {error && <p className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
-      <Status loading={q.loading && !q.data} error={q.data ? null : q.error} empty={!!q.data && !groups.length && (filter === 'done' ? 'No finished tasks.' : 'No tasks assigned to you.')}>
+      <Status loading={q.loading && !q.data} error={q.data ? null : q.error} onRetry={q.reload} empty={!!q.data && !groups.length && (filter === 'done' ? 'No finished tasks.' : 'No tasks assigned to you.')}>
         {groups.map(([projectId, list]) => {
           const a = s.assignments.find((x) => x.project_id === projectId);
           return (
@@ -289,7 +311,7 @@ export function TimesheetPage({ s }: { s: AgentState }) {
       }
     >
       {msg && <p className={`rounded-sm px-3 py-2 text-sm ${msg.ok ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}`}>{msg.text}</p>}
-      <Status loading={q.loading && !ts} error={ts ? null : q.error}>
+      <Status loading={q.loading && !ts} error={ts ? null : q.error} onRetry={q.reload}>
         {ts && (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
@@ -392,7 +414,7 @@ export function ActivityPage({ s }: { s: AgentState }) {
       description="Your own activity in 10-minute blocks. Keystrokes are counted, never recorded."
       actions={<Stepper label={date === today() ? 'Today' : fmtDay(date)} onPrev={() => setDate(addDays(date, -1))} onNext={() => setDate(addDays(date, 1))} nextDisabled={date >= today()} />}
     >
-      <Status loading={q.loading && !d} error={d ? null : q.error}>
+      <Status loading={q.loading && !d} error={d ? null : q.error} onRetry={q.reload}>
         {d && (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
@@ -505,7 +527,7 @@ export function ReportsPage() {
         </select>
       }
     >
-      <Status loading={q.loading && !r} error={r ? null : q.error}>
+      <Status loading={q.loading && !r} error={r ? null : q.error} onRetry={q.reload}>
         {r && (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
@@ -581,7 +603,7 @@ export function TimeOffPage() {
         )
       }
     >
-      <Status loading={q.loading && !d} error={d ? null : q.error} empty={!!d && !d.balances.length && 'No time-off policy applies to you. Ask your administrator.'}>
+      <Status loading={q.loading && !d} error={d ? null : q.error} onRetry={q.reload} empty={!!d && !d.balances.length && 'No time-off policy applies to you. Ask your administrator.'}>
         {d && (
           <>
             {sent && !open && <p className="rounded-sm bg-success-soft px-3 py-2 text-sm text-success">Request sent — your manager will review it. You can see its status under “Your requests”.</p>}
@@ -721,7 +743,7 @@ export function PayStubsPage() {
     <Page title="Pay Stubs" description="Your pay for each finalized payroll.">
       {error && <p className="rounded-sm bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>}
       <Card title="Pay stubs">
-        <Status loading={q.loading && !q.data} error={q.data ? null : q.error} empty={!!q.data && !q.data.length && 'No pay stubs yet. They appear here when a payroll that includes you is finalized.'}>
+        <Status loading={q.loading && !q.data} error={q.data ? null : q.error} onRetry={q.reload} empty={!!q.data && !q.data.length && 'No pay stubs yet. They appear here when a payroll that includes you is finalized.'}>
           <ul className="divide-y divide-border">
             {q.data?.map((p) => {
               const adjustments = p.adjustments.reduce((sum, a) => sum + a.amount_minor, 0);
@@ -773,7 +795,7 @@ export function SchedulePage() {
       .reduce((sum, x) => sum + (Date.parse(x.ends_at) - Date.parse(x.starts_at)) / 1000, 0);
   return (
     <Page title="Schedule" description="Your shifts for this week and next.">
-      <Status loading={q.loading && !q.data} error={q.data ? null : q.error} empty={!!q.data && !q.data.length && 'You have no scheduled shifts. Your manager sets your schedule.'}>
+      <Status loading={q.loading && !q.data} error={q.data ? null : q.error} onRetry={q.reload} empty={!!q.data && !q.data.length && 'You have no scheduled shifts. Your manager sets your schedule.'}>
         <div className="grid gap-3 md:gap-4 lg:grid-cols-2">
           {[from, addDays(from, 7)].map((ws, wi) => (
             <Card key={ws} title={wi === 0 ? 'This week' : 'Next week'} right={<span className="tabular text-sm font-semibold">{fmtHm(weekSeconds(ws))}</span>}>

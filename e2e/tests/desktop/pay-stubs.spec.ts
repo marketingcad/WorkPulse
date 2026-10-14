@@ -58,6 +58,8 @@ test.describe('Pay Stubs page', () => {
     await openDesktop(workerDevice, { offline: ['pay-stubs'] });
     await openPayStubs(page);
     await expect(page.getByText('Could not reach the server. Check your connection.')).toBeVisible();
+    // The standardized error state offers a way to retry.
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
   });
 
   test('the "pay stub ready" notification opens the Pay Stubs page', async ({ page, openDesktop, workerDevice }) => {

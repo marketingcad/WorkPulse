@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { test as base, expect, request, type Page } from '@playwright/test';
+import { test as base, expect, request, type APIRequestContext, type Page } from '@playwright/test';
 import type { AgentBootstrapDto } from '@tallywork/contracts';
 import type { AgentState, MeResource } from '../../apps/desktop/src/shared/ipc';
-import { DATA_FILE, PASSWORD, WEB_URL } from './env';
+import { ADMIN_STATE, DATA_FILE, PASSWORD, WEB_URL } from './env';
 import type { E2EData } from './global-setup';
 
 /** A desktop-app sign-in: a real device registered through POST /agent/login (email + password). */
@@ -126,6 +126,11 @@ interface WorkerFixtures {
 
 interface TestFixtures {
   openDesktop: (device: Device, opts?: DesktopOptions) => Promise<DesktopHandle>;
+  /**
+   * The admin's API session, for a test to create its own records (unique names) before driving the UI.
+   * `orgApi(path)` gives the org-scoped URL, e.g. `orgApi('/clients')`.
+   */
+  adminApi: { api: APIRequestContext; orgApi: (path: string) => string };
 }
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
@@ -134,7 +139,18 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   workerDevice: [async ({ data }, use) => use(await signInDevice(data.worker.email)), { scope: 'worker' }],
   newcomerDevice: [async ({ data }, use) => use(await signInDevice(data.newcomer.email)), { scope: 'worker' }],
   openDesktop: async ({ page }, use) => use((device, opts) => openDesktop(page, device, opts)),
+  adminApi: async ({ data }, use) => {
+    const api = await request.newContext({ baseURL: WEB_URL, storageState: ADMIN_STATE, extraHTTPHeaders: { Origin: WEB_URL } });
+    await use({ api, orgApi: (path) => `/api/v1/orgs/${data.orgId}${path}` });
+    await api.dispose();
+  },
 });
+
+/** Fail with the server's answer when an API call made to set up a test does not succeed. */
+export async function ok<T = any>(res: Awaited<ReturnType<APIRequestContext['get']>>, what: string): Promise<T> {
+  if (!res.ok()) throw new Error(`${what}: HTTP ${res.status()} ${await res.text()}`);
+  return (res.status() === 204 ? undefined : await res.json()) as T;
+}
 
 export { expect };
 

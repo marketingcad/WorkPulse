@@ -8,6 +8,7 @@ import {
   holidayInput,
   invoiceCreateInput,
   invoiceDraftUpdateInput,
+  pageQuery,
   paymentInput,
   rateInput,
   scheduleInput,
@@ -58,6 +59,9 @@ import {
   getInvoice,
   listBudgets,
   listExpenses,
+  pageExpenses,
+  pageInvoices,
+  pagePayments,
   listInvoices,
   listPayments,
   listRates,
@@ -166,13 +170,22 @@ export const financeRoutes = new Hono<AppEnv>()
     await deleteBudget(ctx(c), c.req.param('id'));
     return c.body(null, 204);
   })
-  .get('/expenses', requirePermission('expenses:read'), async (c) => c.json(await listExpenses(ctx(c), query(c, z.object({ status: z.string().max(20).optional(), from: z.iso.date().optional(), to: z.iso.date().optional() })))))
+  // Lists: sending `page` returns { data, total, page, page_size, ... }; without it, the same plain array as before.
+  .get('/expenses', requirePermission('expenses:read'), async (c) => {
+    const q = query(c, pageQuery.extend({ status: z.string().max(20).optional(), from: z.iso.date().optional(), to: z.iso.date().optional() }));
+    const filters = { status: q.status, from: q.from, to: q.to, search: q.q };
+    return c.json(q.page ? await pageExpenses(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listExpenses(ctx(c), filters));
+  })
   .post('/expenses', async (c) => c.json(await createExpense(ctx(c), await body(c, expenseInput)), 201))
   .post('/expenses/:id/:action{approve|reject|reimburse}', async (c) => {
     await decideExpense(ctx(c), c.req.param('id'), c.req.param('action').toUpperCase() as 'APPROVE');
     return c.body(null, 204);
   })
-  .get('/invoices', async (c) => c.json(await listInvoices(ctx(c), query(c, z.object({ status: z.string().max(20).optional(), client_id: z.uuid().optional() })))))
+  .get('/invoices', async (c) => {
+    const q = query(c, pageQuery.extend({ status: z.string().max(20).optional(), client_id: z.uuid().optional() }));
+    const filters = { status: q.status, clientId: q.client_id, search: q.q };
+    return c.json(q.page ? await pageInvoices(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listInvoices(ctx(c), filters));
+  })
   .post('/invoices/preview', async (c) => c.json(await previewInvoice(ctx(c), await body(c, invoiceCreateInput))))
   .post('/invoices', async (c) => c.json(await createInvoice(ctx(c), await body(c, invoiceCreateInput)), 201))
   .get('/invoices/:id', async (c) => c.json(await getInvoice(ctx(c), c.req.param('id'))))
@@ -219,7 +232,10 @@ export const financeRoutes = new Hono<AppEnv>()
     const pdf = await renderPayStubPdf(stub, await companyProfile(x));
     return new Response(new Uint8Array(pdf), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="pay-stub-${stub.period_start}.pdf"`, 'Cache-Control': 'private, no-store' } });
   })
-  .get('/payments', async (c) => c.json(await listPayments(ctx(c))))
+  .get('/payments', async (c) => {
+    const q = query(c, pageQuery);
+    return c.json(q.page ? await pagePayments(ctx(c), { search: q.q, page: q.page, pageSize: q.page_size }) : await listPayments(ctx(c), { search: q.q }));
+  })
   .post('/payments', async (c) => c.json(await recordPayment(ctx(c), await body(c, paymentInput)), 201))
   .delete('/payments/:id', async (c) => {
     await deletePayment(ctx(c), c.req.param('id'));

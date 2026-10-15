@@ -289,7 +289,7 @@ async function timesheetApproval(x: Ctx, p: ReportParams): Promise<ReportResult>
 }
 
 async function expensesReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
-  const rows = await listExpenses(x, { from: p.from, to: p.to, status: p.status });
+  const rows = await listExpenses(x, { from: p.from, to: p.to, status: p.status }, null);
   return {
     columns: [{ key: 'spent_on', label: 'Date', type: 'date' }, { key: 'worker_name', label: 'Member', type: 'text' }, { key: 'category', label: 'Category', type: 'text' }, { key: 'project_name', label: 'Project', type: 'text' }, { key: 'client_name', label: 'Client', type: 'text' }, { key: 'amount_minor', label: 'Amount', type: 'money' }, { key: 'status', label: 'Status', type: 'status' }],
     rows: rows as unknown as ReportResult['rows'],
@@ -311,7 +311,7 @@ async function amountsOwedReport(x: Ctx, p: ReportParams): Promise<ReportResult>
 }
 
 async function paymentsReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
-  const rows = (await listPayments(x)).filter((r) => r.received_on >= p.from && r.received_on <= p.to);
+  const rows = await listPayments(x, { from: p.from, to: p.to }, null);
   return {
     columns: [{ key: 'received_on', label: 'Date', type: 'date' }, { key: 'client_name', label: 'Client', type: 'text' }, { key: 'provider', label: 'Method', type: 'status' }, { key: 'provider_ref', label: 'Reference', type: 'text' }, { key: 'amount_minor', label: 'Amount', type: 'money' }],
     rows: rows.map(({ allocations: _a, ...r }) => r) as unknown as ReportResult['rows'],
@@ -436,7 +436,8 @@ async function billingReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
 }
 
 async function invoicesReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
-  const rows = (await listInvoices(x, { status: p.status })).filter((i) => i.issue_date >= p.from && i.issue_date <= p.to);
+  // The whole date range, not only the newest 1000 invoices.
+  const rows = await listInvoices(x, { status: p.status, from: p.from, to: p.to }, null);
   return {
     columns: [{ key: 'number', label: 'Invoice', type: 'text' }, { key: 'client_name', label: 'Client', type: 'text' }, { key: 'issue_date', label: 'Issued', type: 'date' }, { key: 'due_date', label: 'Due', type: 'date' }, { key: 'status', label: 'Status', type: 'status' }, { key: 'total_minor', label: 'Total', type: 'money' }, { key: 'balance_minor', label: 'Balance', type: 'money' }],
     rows: rows as unknown as ReportResult['rows'],

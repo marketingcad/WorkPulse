@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, Paperclip, Plus, Receipt, Wallet, X } from 'lucide-react';
-import type { ProjectDto } from '@tallywork/contracts';
+import type { ExpensePageSummary, OffsetPage, ProjectDto } from '@tallywork/contracts';
 import {
   Badge,
   Button,
@@ -11,6 +11,7 @@ import {
   EmptyState,
   ErrorState,
   Field,
+  FilterBar,
   Input,
   PageHeader,
   Panel,
@@ -25,8 +26,9 @@ import {
   useToast,
   type Column,
 } from '@tallywork/ui';
-import { ApiError, api, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
+import { ApiError, api, errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
+import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { toMinor, type ExpenseRow, type ExpenseStatus } from '@/components/finance/types';
 
 const STATUSES: Array<{ value: 'ALL' | ExpenseStatus; label: string }> = [
@@ -45,12 +47,16 @@ export default function ExpensesPage() {
   const toast = useToast();
   const [status, setStatus] = useState<'ALL' | ExpenseStatus>('ALL');
   const [creating, setCreating] = useState(false);
-  const q = useOrgQuery<ExpenseRow[]>(org.can('expenses:read') ? '/expenses' : null);
+  const search = useSearch();
+  // The server filters, pages and adds up every expense the person may see, not only the newest 1000.
+  const filters = { status: status === 'ALL' ? undefined : status, q: search.term || undefined };
+  const paging = useServerPage(JSON.stringify(filters));
+  const q = useOrgQuery<OffsetPage<ExpenseRow> & { summary: ExpensePageSummary }>(org.can('expenses:read') ? `/expenses${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  useClampPage(paging, q.data, q.isPlaceholderData);
   const decide = useOrgMutation<{ id: string; action: Action }>('POST', (b) => `/expenses/${b.id}/${b.action}`);
   const [pending, setPending] = useState<string | null>(null);
 
-  const all = q.data ?? [];
-  const rows = useMemo(() => (status === 'ALL' ? all : all.filter((e) => e.status === status)), [all, status]);
+  const summary = q.data?.summary;
   const canApprove = org.can('expenses:approve');
   const receiptUrl = (id: string) => `/api/v1/orgs/${org.organization.id}/files/${id}`;
 
@@ -69,8 +75,8 @@ export default function ExpensesPage() {
   };
 
   const columns: Column<ExpenseRow>[] = [
-    { key: 'date', header: 'Date', cell: (e) => fmtDate(e.spent_on), value: (e) => e.spent_on, priority: 'secondary' },
-    ...(org.isManagerView ? [{ key: 'member', header: 'Member', cell: (e: ExpenseRow) => <PersonCell name={e.worker_name || 'Member'} />, value: (e: ExpenseRow) => e.worker_name, priority: 'secondary' as const }] : []),
+    { key: 'date', header: 'Date', cell: (e) => fmtDate(e.spent_on), value: (e) => e.spent_on, sortable: false, priority: 'secondary' },
+    ...(org.isManagerView ? [{ key: 'member', header: 'Member', cell: (e: ExpenseRow) => <PersonCell name={e.worker_name || 'Member'} />, value: (e: ExpenseRow) => e.worker_name, sortable: false, priority: 'secondary' as const }] : []),
     {
       key: 'category',
       header: 'Expense',
@@ -81,9 +87,10 @@ export default function ExpensesPage() {
         </span>
       ),
       value: (e) => `${e.category} ${e.description ?? ''}`,
+      sortable: false,
       priority: 'primary',
     },
-    { key: 'project', header: 'Project', cell: (e) => e.project_name ?? e.client_name ?? <span className="text-text-faint">—</span>, value: (e) => e.project_name ?? e.client_name ?? '' },
+    { key: 'project', header: 'Project', cell: (e) => e.project_name ?? e.client_name ?? <span className="text-text-faint">—</span>, value: (e) => e.project_name ?? e.client_name ?? '', sortable: false },
     {
       key: 'flags',
       header: 'Flags',
@@ -108,8 +115,8 @@ export default function ExpensesPage() {
           <span className="text-text-faint">—</span>
         ),
     },
-    { key: 'amount', header: 'Amount', align: 'right', cell: (e) => <span className="font-medium">{fmtMoney(e.amount_minor, e.currency)}</span>, value: (e) => e.amount_minor, priority: 'primary' },
-    { key: 'status', header: 'Status', cell: (e) => <StatusBadge status={e.status} />, value: (e) => e.status, priority: 'secondary' },
+    { key: 'amount', header: 'Amount', align: 'right', cell: (e) => <span className="font-medium">{fmtMoney(e.amount_minor, e.currency)}</span>, value: (e) => e.amount_minor, sortable: false, priority: 'primary' },
+    { key: 'status', header: 'Status', cell: (e) => <StatusBadge status={e.status} />, value: (e) => e.status, sortable: false, priority: 'secondary' },
     ...(canApprove
       ? [
           {
@@ -143,8 +150,6 @@ export default function ExpensesPage() {
       : []),
   ];
 
-  const total = rows.reduce((s, e) => s + (e.currency === org.organization.currency ? e.amount_minor : 0), 0);
-
   return (
     <>
       <PageHeader
@@ -158,30 +163,33 @@ export default function ExpensesPage() {
           )
         }
       />
-      <Panel footer={rows.length ? <span className="tabular">Total shown ({org.organization.currency}): {fmtMoney(total, org.organization.currency)}</span> : undefined}>
+      <FilterBar>
+        <Input aria-label="Search expenses" placeholder="Search expense, project or member…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-72" />
+      </FilterBar>
+      {/* The total covers every matching expense, on all pages. */}
+      <Panel footer={summary && q.data?.total ? <span className="tabular">Total ({summary.currency}): {fmtMoney(summary.total_minor, summary.currency)}</span> : undefined}>
         <Tabs
           value={status}
           onValueChange={(v) => setStatus(v as typeof status)}
           className="px-2 pt-1"
-          items={STATUSES.map((s) => ({ value: s.value, label: s.label, count: q.data ? (s.value === 'ALL' ? all.length : all.filter((e) => e.status === s.value).length) : undefined }))}
+          items={STATUSES.map((s) => ({ value: s.value, label: s.label, count: summary?.counts[s.value] }))}
         />
         {q.error ? (
           <ErrorState error={q.error} onRetry={() => q.refetch()} />
         ) : (
           <DataTable
-            rows={q.data ? rows : undefined}
+            rows={q.data?.data}
             loading={q.isLoading}
             columns={columns}
             rowKey={(e) => e.id}
-            searchable
-            searchPlaceholder="Search expenses…"
-            initialSort={{ key: 'date', dir: 'desc' }}
+            pagination={paging.pagination(q.data)}
+            caption="Expenses"
             empty={
               <EmptyState
                 icon={<Receipt className="size-5" />}
-                title={status === 'ALL' ? 'No expenses yet' : `No ${status.toLowerCase()} expenses`}
+                title={search.term ? 'No expenses match your search' : status === 'ALL' ? 'No expenses yet' : `No ${status.toLowerCase()} expenses`}
                 description={org.can('expenses:create') ? 'Add an expense and attach a photo or PDF of the receipt.' : undefined}
-                action={org.can('expenses:create') && status === 'ALL' && <Button size="sm" variant="primary" onClick={() => setCreating(true)}>New expense</Button>}
+                action={org.can('expenses:create') && status === 'ALL' && !search.term && <Button size="sm" variant="primary" onClick={() => setCreating(true)}>New expense</Button>}
               />
             }
           />

@@ -47,6 +47,26 @@ Data is also limited by what the creator can see. For example, a key made by a t
 
 Date ranges are capped at 400 days.
 
+## Paging long lists
+
+`GET /invoices`, `GET /payments` and `GET /expenses` can be paged. Send `page` (1-based) to get one page:
+
+| Parameter | Meaning |
+|---|---|
+| `page` | Page number, from 1. Switches the response to the paged shape below. |
+| `page_size` | Rows per page, 1–200 (default 50). |
+| `q` | Case-insensitive search. Invoices: number or client name. Payments: client, reference, note or the number of an invoice it paid. Expenses: category, description, project, client or member name. |
+
+```json
+{ "data": [ … ], "total": 1050, "page": 1, "page_size": 50, "summary": { … } }
+```
+
+`total` counts every matching record. Invoices and expenses also return a `summary` over every match, not just the page:
+- **Invoices:** `counts` per status, `open_count`, `overdue_count`, and `outstanding_minor`, `overdue_minor` and `collected_minor` in the organization's currency.
+- **Expenses:** `counts` per status, and `total_minor` of the matches in the organization's currency.
+
+Without `page`, these endpoints return a plain array, as before: the newest 1000 records, with `status` and `q` applied first. Use `page` to reach older records. `GET /audit-logs` pages the same way.
+
 ## Errors
 
 Errors use RFC 7807 problem JSON:

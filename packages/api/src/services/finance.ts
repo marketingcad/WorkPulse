@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   billingEntries,
@@ -39,13 +39,18 @@ import {
   type RateKind,
   type RateScope,
 } from '@tallywork/domain';
-import type { BudgetStatusDto, budgetInput, expenseInput, invoiceCreateInput, invoiceDraftUpdateInput, paymentInput, rateInput } from '@tallywork/contracts';
+import type { BudgetStatusDto, ExpensePageSummary, InvoicePageSummary, OffsetPage, budgetInput, expenseInput, invoiceCreateInput, invoiceDraftUpdateInput, paymentInput, rateInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
 import { audit, emit, emitFrom } from './events';
 import { narrowMemberships } from './scope';
 import { memberNames } from './timer';
 import { membersWith, notify } from './notify';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A case-insensitive `contains` pattern for ILIKE, with the LIKE wildcards in the search escaped. */
+const likePattern = (term: string) => `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
 /** The issuing company as printed on invoices. */
 export async function companyProfile(x: Ctx) {
@@ -360,23 +365,79 @@ export async function amountsOwed(x: Ctx, from: string, to: string) {
 }
 
 // ─── Expenses ────────────────────────────────────────────────────────────────
-export async function listExpenses(x: Ctx, q: { status?: string; from?: string; to?: string }) {
+type ExpenseQuery = { status?: string; from?: string; to?: string; search?: string };
+
+/** The expenses the person may see that match the filters. `withStatus: false` ignores the status (for per-status counts). */
+function expenseWhere(x: Ctx, q: ExpenseQuery, withStatus = true) {
   const visible = narrowMemberships(x.actor, 'expenses:read');
+  const term = q.search ? likePattern(q.search) : null;
+  return and(
+    withStatus && q.status && q.status !== 'ALL' ? eq(expenses.status, q.status as 'SUBMITTED') : undefined,
+    q.from ? gte(expenses.spentOn, q.from) : undefined,
+    q.to ? lte(expenses.spentOn, q.to) : undefined,
+    visible === 'all' ? undefined : inArray(expenses.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']),
+    term
+      ? or(
+          ilike(expenses.category, term),
+          ilike(expenses.description, term),
+          ilike(projects.name, term),
+          ilike(clients.name, term),
+          inArray(expenses.membershipId, x.tx.select({ id: memberships.id }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).where(ilike(users.name, term))),
+        )
+      : undefined,
+  );
+}
+
+const expenseOrder = [desc(expenses.spentOn), desc(expenses.id)];
+
+/**
+ * Expenses as a plain array, newest first. Capped at 1000 unless `limit` is null (reports, which
+ * are bounded by their date range); use `pageExpenses` to reach every expense.
+ */
+export async function listExpenses(x: Ctx, q: ExpenseQuery, limit: number | null = 1000) {
+  const base = x.tx
+    .select({ e: expenses, projectName: projects.name, clientName: clients.name })
+    .from(expenses)
+    .leftJoin(projects, eq(projects.id, expenses.projectId))
+    .leftJoin(clients, eq(clients.id, expenses.clientId))
+    .where(expenseWhere(x, q))
+    .orderBy(...expenseOrder);
+  return toExpenseRows(x, limit === null ? await base : await base.limit(limit));
+}
+
+/** One numbered page of expenses (`page` is 1-based), the total, and per-status counts. */
+export async function pageExpenses(x: Ctx, q: ExpenseQuery & { page: number; pageSize: number }): Promise<OffsetPage<Awaited<ReturnType<typeof toExpenseRows>>[number]> & { summary: ExpensePageSummary }> {
+  const byStatus = await x.tx
+    .select({ status: expenses.status, n: sql<number>`count(*)::int` })
+    .from(expenses)
+    .leftJoin(projects, eq(projects.id, expenses.projectId))
+    .leftJoin(clients, eq(clients.id, expenses.clientId))
+    .where(expenseWhere(x, q, false))
+    .groupBy(expenses.status);
+  const [sum] = await x.tx
+    .select({ n: sql<number>`count(*)::int`, amount: sql<number>`coalesce(sum(${expenses.amountMinor}) filter (where ${expenses.currency} = ${x.org.currency}), 0)::bigint` })
+    .from(expenses)
+    .leftJoin(projects, eq(projects.id, expenses.projectId))
+    .leftJoin(clients, eq(clients.id, expenses.clientId))
+    .where(expenseWhere(x, q));
   const rows = await x.tx
     .select({ e: expenses, projectName: projects.name, clientName: clients.name })
     .from(expenses)
     .leftJoin(projects, eq(projects.id, expenses.projectId))
     .leftJoin(clients, eq(clients.id, expenses.clientId))
-    .where(
-      and(
-        q.status ? eq(expenses.status, q.status as 'SUBMITTED') : undefined,
-        q.from ? gte(expenses.spentOn, q.from) : undefined,
-        q.to ? lte(expenses.spentOn, q.to) : undefined,
-        visible === 'all' ? undefined : inArray(expenses.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']),
-      ),
-    )
-    .orderBy(desc(expenses.spentOn))
-    .limit(1000);
+    .where(expenseWhere(x, q))
+    .orderBy(...expenseOrder)
+    .limit(q.pageSize)
+    .offset((q.page - 1) * q.pageSize);
+  const counts: ExpensePageSummary['counts'] = { ALL: 0, SUBMITTED: 0, APPROVED: 0, REJECTED: 0, REIMBURSED: 0 };
+  for (const r of byStatus) {
+    counts[r.status] = r.n;
+    counts.ALL += r.n;
+  }
+  return { data: await toExpenseRows(x, rows), total: sum?.n ?? 0, page: q.page, page_size: q.pageSize, summary: { counts, total_minor: Number(sum?.amount ?? 0), currency: x.org.currency } };
+}
+
+async function toExpenseRows(x: Ctx, rows: Array<{ e: typeof expenses.$inferSelect; projectName: string | null; clientName: string | null }>) {
   const names = await memberNames(x, [...new Set(rows.map((r) => r.e.membershipId))]);
   return rows.map(({ e, projectName, clientName }) => ({
     id: e.id,
@@ -586,17 +647,97 @@ export async function createInvoice(x: Ctx, input: z.infer<typeof invoiceCreateI
   return getInvoice(x, id);
 }
 
-export async function listInvoices(x: Ctx, q: { status?: string; clientId?: string }) {
+type InvoiceQuery = { status?: string; clientId?: string; from?: string; to?: string; search?: string };
+
+/**
+ * An invoice's status exactly as `deriveInvoiceStatus` computes it, in SQL, so lists can filter
+ * and count by it before paging. Keep the two in step (finance-paging.test.ts checks they agree).
+ */
+const invoiceStatusSql = (today: string) =>
+  sql<InvoiceStatusKey>`case when ${invoices.status} in ('DRAFT', 'VOID') then ${invoices.status} when ${invoices.paidMinor} >= ${invoices.totalMinor} and ${invoices.totalMinor} > 0 then 'PAID' when ${invoices.dueDate} < ${today} then 'OVERDUE' when ${invoices.paidMinor} > 0 then 'PARTIALLY_PAID' else 'SENT' end`;
+type InvoiceStatusKey = Exclude<keyof InvoicePageSummary['counts'], 'ALL'>;
+
+/** Invoices matching the filters. `withStatus: false` ignores the status (for per-status counts and totals). */
+function invoiceWhere(q: InvoiceQuery, today: string, withStatus = true) {
+  const term = q.search ? likePattern(q.search) : null;
+  return and(
+    q.clientId ? eq(invoices.clientId, q.clientId) : undefined,
+    withStatus && q.status && q.status !== 'ALL' ? sql`${invoiceStatusSql(today)} = ${q.status}` : undefined,
+    q.from ? gte(invoices.issueDate, q.from) : undefined,
+    q.to ? lte(invoices.issueDate, q.to) : undefined,
+    term ? or(ilike(invoices.number, term), ilike(clients.name, term)) : undefined,
+  );
+}
+
+const invoiceOrder = [desc(invoices.issueDate), desc(invoices.createdAt), desc(invoices.id)];
+
+/**
+ * Invoices as a plain array, newest first. Capped at 1000 unless `limit` is null (reports, which
+ * are bounded by their date range); use `pageInvoices` to reach every invoice.
+ */
+export async function listInvoices(x: Ctx, q: InvoiceQuery, limit: number | null = 1000) {
   if (!x.actor.grants['invoices:read']) throw forbidden();
   const today = localDate(x.deps.now(), x.org.timezone);
+  const base = x.tx
+    .select({ i: invoices, clientName: clients.name })
+    .from(invoices)
+    .innerJoin(clients, eq(clients.id, invoices.clientId))
+    .where(invoiceWhere(q, today))
+    .orderBy(...invoiceOrder);
+  return (limit === null ? await base : await base.limit(limit)).map((r) => toInvoiceRow(r, today));
+}
+
+/** One numbered page of invoices (`page` is 1-based), the total, and totals over every matching invoice. */
+export async function pageInvoices(x: Ctx, q: InvoiceQuery & { page: number; pageSize: number }): Promise<OffsetPage<ReturnType<typeof toInvoiceRow>> & { summary: InvoicePageSummary }> {
+  if (!x.actor.grants['invoices:read']) throw forbidden();
+  const today = localDate(x.deps.now(), x.org.timezone);
+  const status = invoiceStatusSql(today);
+  const inCurrency = sql`${invoices.currency} = ${x.org.currency}`;
+  const groups = await x.tx
+    .select({
+      status,
+      n: sql<number>`count(*)::int`,
+      balance: sql<number>`coalesce(sum(${invoices.totalMinor} - ${invoices.paidMinor}) filter (where ${inCurrency}), 0)::bigint`,
+      paid: sql<number>`coalesce(sum(${invoices.paidMinor}) filter (where ${inCurrency}), 0)::bigint`,
+    })
+    .from(invoices)
+    .innerJoin(clients, eq(clients.id, invoices.clientId))
+    .where(invoiceWhere(q, today, false))
+    // By position: the status expression carries a parameter, so repeating it would not match the select list.
+    .groupBy(sql`1`);
   const rows = await x.tx
     .select({ i: invoices, clientName: clients.name })
     .from(invoices)
     .innerJoin(clients, eq(clients.id, invoices.clientId))
-    .where(q.clientId ? eq(invoices.clientId, q.clientId) : undefined)
-    .orderBy(desc(invoices.issueDate), desc(invoices.createdAt))
-    .limit(1000);
-  const list = rows.map(({ i, clientName }) => ({
+    .where(invoiceWhere(q, today))
+    .orderBy(...invoiceOrder)
+    .limit(q.pageSize)
+    .offset((q.page - 1) * q.pageSize);
+
+  const counts: InvoicePageSummary['counts'] = { ALL: 0, DRAFT: 0, SENT: 0, PARTIALLY_PAID: 0, OVERDUE: 0, PAID: 0, VOID: 0 };
+  let outstanding = 0;
+  let overdue = 0;
+  let collected = 0;
+  for (const g of groups) {
+    counts[g.status] = g.n;
+    counts.ALL += g.n;
+    collected += Number(g.paid);
+    // Open invoices are the ones still waiting for money; a void invoice owes nothing.
+    if (g.status === 'SENT' || g.status === 'PARTIALLY_PAID' || g.status === 'OVERDUE') outstanding += Number(g.balance);
+    if (g.status === 'OVERDUE') overdue += Number(g.balance);
+  }
+  const total = q.status && q.status !== 'ALL' ? (counts[q.status as InvoiceStatusKey] ?? 0) : counts.ALL;
+  return {
+    data: rows.map((r) => toInvoiceRow(r, today)),
+    total,
+    page: q.page,
+    page_size: q.pageSize,
+    summary: { counts, open_count: counts.SENT + counts.PARTIALLY_PAID + counts.OVERDUE, overdue_count: counts.OVERDUE, outstanding_minor: outstanding, overdue_minor: overdue, collected_minor: collected, currency: x.org.currency },
+  };
+}
+
+function toInvoiceRow({ i, clientName }: { i: typeof invoices.$inferSelect; clientName: string }, today: string) {
+  return {
     id: i.id,
     number: i.number,
     client_id: i.clientId,
@@ -612,15 +753,18 @@ export async function listInvoices(x: Ctx, q: { status?: string; clientId?: stri
     total_minor: i.totalMinor,
     paid_minor: i.paidMinor,
     balance_minor: i.status === 'VOID' ? 0 : i.totalMinor - i.paidMinor,
-  }));
-  return q.status ? list.filter((i) => i.status === q.status) : list;
+  };
 }
 
 export async function getInvoice(x: Ctx, id: string) {
-  const [inv] = (await listInvoices(x, {})).filter((i) => i.id === id);
-  if (!inv) throw notFound('invoice');
+  if (!x.actor.grants['invoices:read']) throw forbidden();
+  // Looked up by id directly, so any invoice opens, however old (not only the newest 1000).
+  if (!UUID.test(id)) throw notFound('invoice');
+  const [found] = await x.tx.select({ i: invoices, clientName: clients.name }).from(invoices).innerJoin(clients, eq(clients.id, invoices.clientId)).where(eq(invoices.id, id));
+  if (!found) throw notFound('invoice');
+  const inv = toInvoiceRow(found, localDate(x.deps.now(), x.org.timezone));
+  const raw = found.i;
   const lines = await x.tx.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, id)).orderBy(asc(invoiceLines.position));
-  const [raw] = await x.tx.select().from(invoices).where(eq(invoices.id, id));
   const [client] = await x.tx.select().from(clients).where(eq(clients.id, inv.client_id));
   const allocs = await x.tx
     .select({ a: paymentAllocations, p: payments })
@@ -672,9 +816,53 @@ export async function voidInvoice(x: Ctx, id: string) {
 }
 
 // ─── Payments ────────────────────────────────────────────────────────────────
-export async function listPayments(x: Ctx) {
+type PaymentQuery = { from?: string; to?: string; search?: string };
+
+/** Payments matching the filters. The search covers the client, reference, note and the invoices paid. */
+function paymentWhere(x: Ctx, q: PaymentQuery) {
+  const term = q.search ? likePattern(q.search) : null;
+  return and(
+    q.from ? gte(payments.receivedOn, q.from) : undefined,
+    q.to ? lte(payments.receivedOn, q.to) : undefined,
+    term
+      ? or(
+          ilike(clients.name, term),
+          ilike(payments.providerRef, term),
+          ilike(payments.note, term),
+          inArray(payments.id, x.tx.select({ id: paymentAllocations.paymentId }).from(paymentAllocations).innerJoin(invoices, eq(invoices.id, paymentAllocations.invoiceId)).where(ilike(invoices.number, term))),
+        )
+      : undefined,
+  );
+}
+
+const paymentOrder = [desc(payments.receivedOn), desc(payments.id)];
+
+/**
+ * Payments as a plain array, newest first. Capped at 1000 unless `limit` is null (reports, which
+ * are bounded by their date range); use `pagePayments` to reach every payment.
+ */
+export async function listPayments(x: Ctx, q: PaymentQuery = {}, limit: number | null = 1000) {
   if (!x.actor.grants['payments:read']) throw forbidden();
-  const rows = await x.tx.select({ p: payments, clientName: clients.name }).from(payments).leftJoin(clients, eq(clients.id, payments.clientId)).orderBy(desc(payments.receivedOn)).limit(1000);
+  const base = x.tx.select({ p: payments, clientName: clients.name }).from(payments).leftJoin(clients, eq(clients.id, payments.clientId)).where(paymentWhere(x, q)).orderBy(...paymentOrder);
+  return toPaymentRows(x, limit === null ? await base : await base.limit(limit));
+}
+
+/** One numbered page of payments (`page` is 1-based) and the total. */
+export async function pagePayments(x: Ctx, q: PaymentQuery & { page: number; pageSize: number }): Promise<OffsetPage<Awaited<ReturnType<typeof toPaymentRows>>[number]>> {
+  if (!x.actor.grants['payments:read']) throw forbidden();
+  const [count] = await x.tx.select({ n: sql<number>`count(*)::int` }).from(payments).leftJoin(clients, eq(clients.id, payments.clientId)).where(paymentWhere(x, q));
+  const rows = await x.tx
+    .select({ p: payments, clientName: clients.name })
+    .from(payments)
+    .leftJoin(clients, eq(clients.id, payments.clientId))
+    .where(paymentWhere(x, q))
+    .orderBy(...paymentOrder)
+    .limit(q.pageSize)
+    .offset((q.page - 1) * q.pageSize);
+  return { data: await toPaymentRows(x, rows), total: count?.n ?? 0, page: q.page, page_size: q.pageSize };
+}
+
+async function toPaymentRows(x: Ctx, rows: Array<{ p: typeof payments.$inferSelect; clientName: string | null }>) {
   const allocs = rows.length ? await x.tx.select({ a: paymentAllocations, number: invoices.number }).from(paymentAllocations).innerJoin(invoices, eq(invoices.id, paymentAllocations.invoiceId)).where(inArray(paymentAllocations.paymentId, rows.map((r) => r.p.id))) : [];
   return rows.map(({ p, clientName }) => ({
     id: p.id,

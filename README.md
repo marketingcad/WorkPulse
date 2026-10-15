@@ -22,7 +22,7 @@ The main flow the product covers is **Organization → People → Work structure
 
 ## Project status
 
-Updated 15 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.4
+Updated 15 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.5
 
 ### ✅ Completed
 
@@ -53,6 +53,13 @@ Updated 15 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - Support console: WorkPulse support can help customers, but can only see their data when the customer allows it, for a limited time.
 - Company-wide desktop rollout: installers and central settings for IT teams.
 - Client portal: a read-only, no-money dashboard per client (hours, tasks, and optionally activity and screenshots), with its own invitations, and a notice to workers when a client can see their monitoring data.
+- **Desktop app 0.1.5** (released 15 October 2026):
+  - A simpler worker app. The sidebar is Home, Track, Timesheet, Time off, Schedule, Pay stubs and Settings, with Track and Timesheet grouping their related screens as tabs.
+  - The profile menu holds only Sign out, and Settings shows the signed-in person, organization, device status and version.
+  - Home leads with the timer, then things that need attention and quick actions.
+  - The "What is monitored" screen and its acknowledgement step are gone, so workers can start tracking straight after signing in.
+- Website deploys are automatic: Vercel is connected to GitHub, so every merge into `main` deploys production.
+- CI passes again: the Electron desktop tests had failed since 12 October because the CI screen is narrower than the app's sidebar breakpoint. The tests now work at any window width.
 - Linux desktop packages fixed and tested on Ubuntu 24.04 (the `.deb` is the recommended download). The app now explains what's wrong instead of failing silently when a desktop keyring is missing. On Wayland it reports what can't be tracked instead of recording partial data.
 
 ### 🚧 Work in progress
@@ -79,19 +86,14 @@ Updated 15 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - **New organization:** create another organization (name, time zone, currency) from the organization switcher, without leaving the app.
 - **Audit log paging:** the audit log pages through every entry with a total, newest or oldest first, and the CSV export covers all matching entries (up to 1,000), not just the page on screen.
 - **Table pagination:** numbered pages, "Showing 1–50 of 230 results" and a rows-per-page choice in the shared table.
-- **Simpler worker desktop app** (in the code, not in a desktop release yet; the last release is 0.1.4):
-  - The sidebar is Home, Track, Timesheet, Time off, Schedule, Pay stubs and Settings. Track and Timesheet group their related screens as tabs.
-  - The "Me" group is gone, and the profile menu now holds only Sign out.
-  - Settings shows the signed-in person, organization, device status and version, with no technical details.
-  - Home is lighter: the timer comes first, then things that need attention and quick actions.
-- **"What is monitored" removed from the desktop app:** the screen, its first-run acknowledgement and the rule that blocked the timer until a worker acknowledged the policy are gone. Workers can start tracking straight after signing in.
 
 **Needs attention before the next release**
 
-- **Desktop release:** the version is bumped to 0.1.5. Once that is on `main`, run the **Desktop release** workflow and then the **Desktop Linux smoke test** with tag `v0.1.5` (see [Deployment](#deployment)).
+- **Live address:** `tallywork-alpha.vercel.app` is a manual alias, so automatic production deploys don't move it. Add it as a domain on the Vercel project so it always follows production (see [Deployment](#deployment)).
+- **Preview builds:** Vercel blocks Preview builds for commits whose author isn't a member of the Vercel team. Add the committing GitHub account to the team, or commit as a member.
 - **Monitoring notice:** the desktop app no longer shows workers what is monitored or records their acknowledgement. The `/agent/policy/ack` endpoint and the web `/me/monitoring` page still exist, but the desktop doesn't use them. Make sure workers are told about monitoring some other way where the law requires it. The server's "Tracking settings were updated" notification still links to `/me/monitoring`, which the desktop app no longer opens.
 - **Tests:** audit log paging (API) and table pagination (unit) have tests, but these screens and the new organization dialog have no E2E specs yet.
-- Fixed since the last update: the client portal migration now runs after 0011–0017; workers reach pay stubs in the desktop app; CSV import and invitations with a team role and projects have tests.
+- Fixed since the last update: desktop 0.1.5 is released (Windows, macOS and Linux; the Linux smoke test passed); CI on `main` passes again; Vercel deploys from GitHub.
 
 **Next / planned**
 
@@ -1076,12 +1078,14 @@ The web app and API deploy together to **Vercel** as one project (root directory
 
 1. In Supabase, copy the **Session pooler** connection string (Connect → Session pooler, port 5432) into `DATABASE_URL`, and set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` for file storage. Don't use the direct host (IPv6-only) or the transaction pooler (port 6543): the app sets a restricted database role per connection, which transaction pooling doesn't preserve. Disable Supabase's Data API (or stop exposing the `public` schema), since the app doesn't use it.
 2. Set `APP_SECRET` (32+ random characters) and `CRON_SECRET`. Optionally set `APP_URL`, an email provider (`RESEND_API_KEY` or `SMTP_*`, plus `MAIL_FROM`; see [Send real email](#send-real-email)), `REQUIRE_EMAIL_VERIFICATION=true`, and the `DESKTOP_DOWNLOAD_URL_*` links for `/download`.
-3. Deploy from the repo root with `npx vercel --prod` (the folder is linked to the `tallywork` project in `.vercel/`). The `vercel-build` script runs `pnpm --filter @tallywork/db migrate` **before** `next build`, so every deploy applies migrations and RLS.
-   - The project isn't connected to GitHub, so pushing to `main` deploys nothing. Run `vercel git connect` to deploy on every push.
+3. Deploy. The `vercel-build` script runs `pnpm --filter @tallywork/db migrate` **before** `next build`, so every deploy applies migrations and RLS.
+   - **From GitHub (normal):** the project is connected to `marketingcad/WorkPulse` with `main` as the production branch. Every merge into `main` deploys production, and every other branch gets a Preview.
+   - **Preview builds:** these have no database, because `DATABASE_URL` is set for Production only, so their migrations are skipped and their API returns errors. Vercel blocks a Preview when the commit's author isn't a member of the Vercel team.
+   - **By hand:** `npx vercel --prod` from the repo root (the folder is linked to the `tallywork` project in `.vercel/`).
    - The live address `tallywork-alpha.vercel.app` is a manual alias, so a production deploy doesn't move it. After each deploy, point it at the new deployment with `npx vercel alias set <deployment-url> tallywork-alpha.vercel.app`. Alternatively, add it as a domain on the project (Settings → Domains) so it follows production automatically. To roll back, point the alias at the previous deployment.
 4. [apps/web/vercel.json](apps/web/vercel.json) registers the cron jobs (`/api/v1/cron/tick` every minute, `/api/v1/cron/daily` at 03:15 UTC) and gives the API function a 300s max duration.
 
-**Desktop releases** (current version 0.1.5; the last published release is 0.1.4): bump `version` in `apps/desktop/package.json`, push, then run the **Desktop release** workflow (GitHub → Actions → Desktop release → Run workflow, `platforms`: `all`, or one platform to redo a failed build). It creates a draft, builds Windows (NSIS `.exe`), macOS (universal `.dmg` + `.zip`) and Linux (`.AppImage` + `.deb`), and publishes them with the auto-update feed as one GitHub Release in the public `marketingcad/tallywork-desktop` repo (no source code there) once every build has succeeded. It refuses to overwrite a published version, and needs the `DESKTOP_RELEASE_TOKEN` secret (fine-grained token, that repo only, Contents: read and write). Windows only, from your own PC: `pnpm --filter @tallywork/desktop release:win` (token from `gh auth token`). The `.msi` and `.pkg` targets aren't built by the workflow. Native modules use their prebuilt N-API binaries (`npmRebuild: false`), so no C++ toolchain is needed.
+**Desktop releases** (current version 0.1.5, published 15 October 2026): bump `version` in `apps/desktop/package.json`, push, then run the **Desktop release** workflow (GitHub → Actions → Desktop release → Run workflow, `platforms`: `all`, or one platform to redo a failed build). It creates a draft, builds Windows (NSIS `.exe`), macOS (universal `.dmg` + `.zip`) and Linux (`.AppImage` + `.deb`), and publishes them with the auto-update feed as one GitHub Release in the public `marketingcad/tallywork-desktop` repo (no source code there) once every build has succeeded. It refuses to overwrite a published version, and needs the `DESKTOP_RELEASE_TOKEN` secret (fine-grained token, that repo only, Contents: read and write). Windows only, from your own PC: `pnpm --filter @tallywork/desktop release:win` (token from `gh auth token`). The `.msi` and `.pkg` targets aren't built by the workflow. Native modules use their prebuilt N-API binaries (`npmRebuild: false`), so no C++ toolchain is needed.
 
 Installer names are stable (`Tallywork-Setup.exe`, `Tallywork-mac.dmg`, `Tallywork-mac.zip`, `Tallywork-linux.AppImage`, `Tallywork-linux.deb`), so `https://github.com/marketingcad/tallywork-desktop/releases/latest/download/<file>` always serves the newest; use these for `DESKTOP_DOWNLOAD_URL_*`. Installed apps check every 6 hours, download in the background and install on quit, never interrupting a timer (the `.deb` asks for the password). Builds are **not signed yet**: Windows shows SmartScreen (**More info → Run anyway**); Macs are ad-hoc signed and not notarized, so the first launch needs **System Settings → Privacy & Security → Open Anyway**, and updates arrive as a notification linking to `/download` instead of installing. IT rollout: [docs/ops/desktop-deployment.md](docs/ops/desktop-deployment.md). Release steps: [docs/ops/runbooks.md](docs/ops/runbooks.md#desktop-release-staged).
 

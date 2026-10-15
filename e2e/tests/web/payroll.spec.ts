@@ -100,6 +100,32 @@ test.describe('Payroll (admin)', () => {
       }
     }
   });
+
+  test('time approved after its payroll was finalized is paid by the next payroll', async ({ page, data, adminApi }) => {
+    const suffix = `${data.run}-${uid()}`;
+    const person = `Remy Late ${suffix}`;
+    const membershipId = await invitePerson(adminApi, `remy+${suffix}@e2e.test`, person);
+    const o = adminApi.orgApi;
+    const day = (offset: number) => new Date(Date.now() + offset * 86400_000).toISOString().slice(0, 10);
+    await ok(await adminApi.api.post(o('/rates'), { data: { kind: 'PAY', scope: 'WORKER', scope_id: membershipId, amount_minor: 3000, currency: 'USD', effective_from: '2020-01-01' } }), 'pay rate');
+    const project = await ok<{ id: string }>(await adminApi.api.post(o('/projects'), { data: { name: `Late work ${suffix}`, member_ids: [membershipId] } }), 'project');
+    const group = await ok<{ id: string }>(await adminApi.api.post(o('/payroll/profiles'), { data: { name: `Remy's group ${suffix}`, period: { type: 'weekly' }, currency: 'USD', member_ids: [membershipId] } }), 'pay group');
+
+    // The payroll for two weeks ago is finalized before Remy's time that week is approved.
+    const earlier = await ok<{ id: string }>(await adminApi.api.post(o('/payroll/runs'), { data: { profile_id: group.id, date: day(-14) } }), 'earlier payroll');
+    await ok(await adminApi.api.post(o(`/payroll/runs/${earlier.id}/finalize`), { data: {} }), 'finalize earlier');
+    const start = new Date(`${day(-14)}T10:00:00Z`);
+    await ok(await adminApi.api.post(o('/manual-time'), { data: { membership_id: membershipId, project_id: project.id, started_at: start.toISOString(), ended_at: new Date(start.getTime() + 2 * 3600_000).toISOString(), reason: 'late timesheet' } }), 'manual time');
+    const ts = await ok<{ id: string }>(await adminApi.api.post(o('/timesheets/submit'), { data: { membership_id: membershipId, date: day(-14) } }), 'submit');
+    await ok(await adminApi.api.post(o(`/timesheets/${ts.id}/approve`), { data: {} }), 'approve');
+
+    // Last week's payroll pays those 2 hours, and says where they come from.
+    const next = await ok<{ id: string }>(await adminApi.api.post(o('/payroll/runs'), { data: { profile_id: group.id, date: day(-7) } }), 'next payroll');
+    await page.goto(`/o/${data.orgId}/finance/payroll/${next.id}`);
+    const line = page.getByRole('row', { name: new RegExp(person) });
+    await expect(line).toContainText('from earlier periods');
+    await expect(line).toContainText(usd(6000));
+  });
 });
 
 test.describe('Payroll (no money access)', () => {

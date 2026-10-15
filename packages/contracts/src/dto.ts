@@ -323,6 +323,8 @@ export interface PayStubDto {
   status: 'DRAFT' | 'FINALIZED' | 'PAID';
   approved_seconds: number;
   unapproved_seconds: number;
+  /** approved time from earlier periods (approved after their payroll); included in approved_seconds */
+  carried_seconds: number;
   regular_seconds: number;
   overtime_seconds: number;
   time_pay_minor: number;

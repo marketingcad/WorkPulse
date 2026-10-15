@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { withSystem } from '@tallywork/db';
 import { Client, addMember, createHarness, pkce, signup, type Harness } from './harness';
@@ -161,5 +162,73 @@ describe('pay stubs on the desktop app', () => {
     const waltDevice = await device(walt, 'Walt-Laptop');
     expect((await pdf(waltDevice, 'not-a-uuid')).status).toBe(404);
     expect((await walt.get('/agent/me/pay-stubs')).status).toBe(401);
+  });
+});
+
+// Each approved entry records the pay stub that paid it, so time approved after its payroll was
+// finalized is paid by the next one, and no time is paid twice (audit BE-1, BE-2).
+describe('paid time is tracked per entry', () => {
+  let octId: string;
+  const waltLine = (run: { lines: Array<{ membership_id: string }> }) => run.lines.find((l) => l.membership_id === waltId) as unknown as Record<string, number>;
+
+  it('time approved after its payroll was finalized is carried into the next payroll', async () => {
+    // September is finalized and paid (above). October's draft starts with nothing approved for Walt.
+    const oct = await admin.post(o('/payroll/runs'), { profile_id: profileId, date: '2026-10-15' });
+    expect(oct.status).toBe(201);
+    octId = oct.body.id;
+    expect(oct.body.period_start).toBe('2026-10-01');
+    expect(waltLine(oct.body)).toMatchObject({ approved_seconds: 0, carried_seconds: 0 });
+
+    // Walt's last September week (1 h on 2026-09-22) is approved only now.
+    const ts = await walt.post(o('/timesheets/submit'), { date: '2026-09-22' });
+    expect((await admin.post(o(`/timesheets/${ts.body.id}/approve`), {})).status).toBe(200);
+
+    // The draft no longer matches what is approved, so it cannot be finalized as is.
+    const stale = await admin.post(o(`/payroll/runs/${octId}/finalize`), {});
+    expect(stale.status).toBe(422);
+    expect(stale.body.code).toBe('payroll_stale');
+
+    const recalculated = await admin.post(o(`/payroll/runs/${octId}/recalculate`), {});
+    expect(waltLine(recalculated.body)).toMatchObject({ approved_seconds: 1 * H, carried_seconds: 1 * H, time_pay_minor: 2000 });
+    expect((await admin.post(o(`/payroll/runs/${octId}/finalize`), {})).body.status).toBe('FINALIZED');
+  });
+
+  it('never pays the same time twice', async () => {
+    const nov = await admin.post(o('/payroll/runs'), { profile_id: profileId, date: '2026-11-15' });
+    expect(nov.status).toBe(201);
+    expect(waltLine(nov.body)).toMatchObject({ approved_seconds: 0, carried_seconds: 0, time_pay_minor: 0 });
+    expect((await admin.del(o(`/payroll/runs/${nov.body.id}`))).status).toBe(204);
+  });
+
+  it('refuses a payroll whose period overlaps one that exists (for example after the pay period changes)', async () => {
+    expect((await admin.patch(o(`/payroll/profiles/${profileId}`), { name: 'Monthly USD', period: { type: 'weekly' }, currency: 'USD', member_ids: [waltId, beaId] })).status).toBe(200);
+    const r = await admin.post(o('/payroll/runs'), { profile_id: profileId, date: '2026-09-29' });
+    expect(r.status).toBe(409);
+    expect(r.body.code).toBe('payroll_overlap');
+    await admin.patch(o(`/payroll/profiles/${profileId}`), { name: 'Monthly USD', period: { type: 'monthly' }, currency: 'USD', member_ids: [waltId, beaId] });
+  });
+
+  it('a timesheet whose time was paid cannot be reopened', async () => {
+    const ts = (await admin.get<{ id: string; status: string }>(o(`/timesheets?membership_id=${waltId}&date=2026-09-08`))).body;
+    expect(ts.status).toBe('APPROVED');
+    const r = await admin.post(o(`/timesheets/${ts.id}/reopen`), { comment: 'fix' });
+    expect(r.status).toBe(422);
+    expect(r.body.code).toBe('timesheet_paid');
+  });
+
+  it('the migration backfill links exactly the time a finalized payroll paid', async () => {
+    // Undo the links for September, then run the backfill from migration 0020.
+    const run = async (q: ReturnType<typeof sql>) => withSystem(t.deps.db, (tx) => tx.execute(q));
+    await run(sql`update billing_entries set payroll_line_id = null where local_date between '2026-09-01' and '2026-09-30'`);
+    const file = readFileSync(new URL('../../db/migrations/0020_payroll_paid_time.sql', import.meta.url), 'utf8');
+    const backfill = file.split('--> statement-breakpoint').find((s) => s.includes('UPDATE "billing_entries"'))!;
+    await run(sql.raw(backfill));
+    const rows = await run(sql`select local_date, (payroll_line_id is not null) as linked from billing_entries where membership_id = ${waltId} and voided_at is null order by local_date`);
+    // 2026-09-08 was paid by September; 2026-09-22 was approved after September was finalized, so the
+    // backfill leaves it alone (in this test it was in fact paid by October, which the backfill can't know).
+    expect((rows as unknown as { rows: Array<{ local_date: string; linked: boolean }> }).rows.map((r) => [r.local_date, r.linked])).toEqual([
+      ['2026-09-08', true],
+      ['2026-09-22', false],
+    ]);
   });
 });

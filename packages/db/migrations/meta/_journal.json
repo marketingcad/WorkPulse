@@ -141,6 +141,13 @@
       "when": 1792097990778,
       "tag": "0019_payment_ref_per_org",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792099005429,
+      "tag": "0020_payroll_paid_time",
+      "breakpoints": true
     }
   ]
 }

@@ -1,9 +1,11 @@
 'use client';
 import { useState } from 'react';
 import { Check, X } from 'lucide-react';
-import { Button, ConfirmDialog, DataTable, Dialog, EmptyState, ErrorState, Field, Panel, PersonCell, SegmentedControl, StatusBadge, Textarea, fmtRelative, useToast, type Column } from '@tallywork/ui';
+import type { OffsetPage } from '@tallywork/contracts';
+import { Button, ConfirmDialog, DataTable, Dialog, EmptyState, ErrorState, Field, Input, Panel, PersonCell, SegmentedControl, StatusBadge, Textarea, fmtRelative, useToast, type Column } from '@tallywork/ui';
 import { api, errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { useQueryClient } from '@tanstack/react-query';
 import { dateRangeLabel, fmtHours, type TimeOffRequest, type TimeOffStatus } from './shared';
 
@@ -20,7 +22,12 @@ export function TimeOffRequests() {
   const [cancelling, setCancelling] = useState<TimeOffRequest | null>(null);
   const [comment, setComment] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
-  const q = useOrgQuery<TimeOffRequest[]>(`/time-off/requests${qs({ status })}`);
+  const search = useSearch();
+  // The server searches and pages every request (approved ones keep growing), not only the latest 500.
+  const filters = { status, q: search.term || undefined };
+  const paging = useServerPage(JSON.stringify(filters));
+  const q = useOrgQuery<OffsetPage<TimeOffRequest>>(`/time-off/requests${qs({ ...filters, ...paging.params })}`, { placeholderData: (p) => p });
+  useClampPage(paging, q.data, q.isPlaceholderData);
   const decide = useOrgMutation<Decision>('POST', (b) => `/time-off/requests/${b.id}/${b.action}`);
 
   const run = async (b: Decision, msg: string) => {
@@ -129,22 +136,22 @@ export function TimeOffRequests() {
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
       ) : (
         <DataTable
-          rows={q.data}
+          rows={q.data?.data}
           loading={q.isLoading}
-          columns={columns}
+          columns={columns.map((c) => ({ ...c, sortable: false }))}
           rowKey={(r) => r.id}
-          searchable
-          searchPlaceholder="Search members or policies…"
+          pagination={paging.pagination(q.data)}
+          toolbar={<Input aria-label="Search time off requests" placeholder="Search members, policies or reasons…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-72" />}
           caption="Time off requests"
           selectable={status === 'PENDING'}
           selected={selected}
-          onSelectedChange={(s) => setSelected(new Set([...s].filter((id) => q.data?.find((r) => r.id === id)?.membership_id !== me)))}
+          onSelectedChange={(s) => setSelected(new Set([...s].filter((id) => q.data?.data.find((r) => r.id === id)?.membership_id !== me)))}
           bulkActions={(ids) => (
             <Button size="xs" variant="primary" icon={<Check className="size-3" />} loading={bulkBusy} onClick={() => bulkApprove(ids)}>
               Approve {ids.length}
             </Button>
           )}
-          empty={<EmptyState title={status === 'PENDING' ? 'No requests waiting for you' : `No ${status.toLowerCase()} requests`} description={status === 'PENDING' ? 'New requests from your team will show up here.' : undefined} />}
+          empty={<EmptyState title={search.term ? 'No requests match your search' : status === 'PENDING' ? 'No requests waiting for you' : `No ${status.toLowerCase()} requests`} description={status === 'PENDING' ? 'New requests from your team will show up here.' : undefined} />}
         />
       )}
 

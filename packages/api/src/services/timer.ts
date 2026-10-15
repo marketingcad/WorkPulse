@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import {
   activityWindows,
   devices,
@@ -13,12 +13,13 @@ import {
   workerProfiles,
 } from '@tallywork/db';
 import { can, forbidden, localDate, notFound, startOfLocalDay, addDaysToDate } from '@tallywork/domain';
-import type { CurrentTrackingDto, LiveWorkerDto, SessionDto } from '@tallywork/contracts';
+import type { CurrentTrackingDto, LiveWorkerDto, OffsetPage, SessionDto } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { actorRef } from './ctx';
 import { audit } from './events';
 import { effectivePolicy } from './policies';
 import { narrowMemberships } from './scope';
+import { likePattern } from '../lib/search';
 import { applyTrigger, liveSession, lockWorker, recentSessions, startSession, toSessionDtos, todayAndWeek, workerTimezone, type ActorRef } from './tracking';
 import { assertBreakType } from './operations';
 import { assignmentsFor } from './work';
@@ -127,6 +128,47 @@ export async function listSessions(x: Ctx, q: { from: string; to: string; member
   const dtos = await toSessionDtos(x.tx, rows, x.deps.now());
   const names = await memberNames(x, [...new Set(rows.map((r) => r.membershipId))]);
   return dtos.map((d) => ({ ...d, worker_name: names.get(d.membership_id) ?? '' }));
+}
+
+/** Sessions that overlap the local dates [from..to], that the person may see, optionally searched by member or project name. */
+function sessionWhere(x: Ctx, q: { from: string; to: string; membershipIds?: string[]; search?: string }) {
+  const visible = narrowMemberships(x.actor, 'tracking:read', q.membershipIds);
+  const from = startOfLocalDay(q.from, x.org.timezone);
+  const to = startOfLocalDay(addDaysToDate(q.to, 1), x.org.timezone);
+  const term = q.search ? likePattern(q.search) : null;
+  return and(
+    visible === 'all' ? undefined : inArray(trackingSessions.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']),
+    lt(trackingSessions.startedAt, to),
+    sql`coalesce(${trackingSessions.endedAt}, now()) >= ${from}`,
+    term
+      ? or(
+          inArray(trackingSessions.membershipId, x.tx.select({ id: memberships.id }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).where(ilike(users.name, term))),
+          inArray(trackingSessions.projectId, x.tx.select({ id: projects.id }).from(projects).where(ilike(projects.name, term))),
+        )
+      : undefined,
+  );
+}
+
+/**
+ * One numbered page of sessions (`page` is 1-based), newest first, plus the time worked across
+ * every matching session (open work segments count up to now).
+ */
+export async function pageSessions(
+  x: Ctx,
+  q: { from: string; to: string; membershipIds?: string[]; search?: string; page: number; pageSize: number },
+): Promise<OffsetPage<SessionDto> & { summary: { worked_seconds: number } }> {
+  const where = sessionWhere(x, q);
+  const [count] = await x.tx.select({ n: sql<number>`count(*)::int` }).from(trackingSessions).where(where);
+  const now = x.deps.now();
+  const [worked] = await x.tx
+    .select({ s: sql<number>`coalesce(sum(greatest(0, round(extract(epoch from (coalesce(${timeSegments.endedAt}, ${now}) - ${timeSegments.startedAt}))))), 0)::bigint` })
+    .from(timeSegments)
+    .innerJoin(trackingSessions, eq(trackingSessions.id, timeSegments.sessionId))
+    .where(and(eq(timeSegments.kind, 'WORK'), where));
+  const rows = await x.tx.select().from(trackingSessions).where(where).orderBy(desc(trackingSessions.startedAt), desc(trackingSessions.id)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
+  const dtos = await toSessionDtos(x.tx, rows, now);
+  const names = await memberNames(x, [...new Set(rows.map((r) => r.membershipId))]);
+  return { data: dtos.map((d) => ({ ...d, worker_name: names.get(d.membership_id) ?? '' })), total: count?.n ?? 0, page: q.page, page_size: q.pageSize, summary: { worked_seconds: Number(worked?.s ?? 0) } };
 }
 
 export async function getSession(x: Ctx, sessionId: string) {

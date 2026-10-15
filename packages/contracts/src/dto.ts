@@ -240,6 +240,23 @@ export interface LiveWorkerDto {
   last_seen_at: string | null;
 }
 
+/** Totals over every matching entry in the range, and per day, for the paged time entry list. */
+export interface TimeEntryPageSummary {
+  entries: number;
+  seconds: number;
+  billable_seconds: number;
+  by_day: Array<{ date: string; entries: number; seconds: number; billable_seconds: number }>;
+}
+
+/** Hours per member and day, summed by the server (GET /time-entries/totals). */
+export interface TimeEntryTotalRow {
+  membership_id: string;
+  date: string;
+  seconds: number;
+  billable_seconds: number;
+  manual_seconds: number;
+}
+
 export interface TimeEntryDto {
   id: string;
   membership_id: string;

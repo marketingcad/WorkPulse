@@ -39,6 +39,7 @@ import {
   listShifts,
   listTimeOffPolicies,
   listTimeOffRequests,
+  pageTimeOffRequests,
   requestTimeOff,
   upsertSchedule,
   upsertTimeOffPolicy,
@@ -143,8 +144,9 @@ export const opsRoutes = new Hono<AppEnv>()
   })
   .post('/time-off/balances/adjust', async (c) => c.json(await adjustBalance(ctx(c), await body(c, timeOffAdjustInput))))
   .get('/time-off/requests', requirePermission('time_off:read'), async (c) => {
-    const q = query(c, z.object({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional(), from: z.iso.date().optional(), to: z.iso.date().optional(), membership_ids: idList }));
-    return c.json(await listTimeOffRequests(ctx(c), { status: q.status, from: q.from, to: q.to, membershipIds: q.membership_ids }));
+    const q = query(c, pageQuery.extend({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional(), from: z.iso.date().optional(), to: z.iso.date().optional(), membership_ids: idList }));
+    const filters = { status: q.status, from: q.from, to: q.to, membershipIds: q.membership_ids, search: q.q };
+    return c.json(q.page ? await pageTimeOffRequests(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listTimeOffRequests(ctx(c), filters));
   })
   .post('/time-off/requests', async (c) => c.json(await requestTimeOff(ctx(c), await body(c, timeOffRequestInput)), 201))
   .post('/time-off/requests/:id/:action{approve|reject|cancel}', async (c) => {

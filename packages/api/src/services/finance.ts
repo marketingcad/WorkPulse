@@ -659,7 +659,9 @@ function invoiceWhere(q: InvoiceQuery, today: string, withStatus = true) {
   const term = q.search ? likePattern(q.search) : null;
   return and(
     q.clientId ? eq(invoices.clientId, q.clientId) : undefined,
-    withStatus && q.status && q.status !== 'ALL' ? sql`${invoiceStatusSql(today)} = ${q.status}` : undefined,
+    // OPEN: still waiting for money (sent, partially paid or overdue), e.g. for applying a payment.
+    withStatus && q.status === 'OPEN' ? sql`${invoiceStatusSql(today)} in ('SENT', 'PARTIALLY_PAID', 'OVERDUE')` : undefined,
+    withStatus && q.status && q.status !== 'ALL' && q.status !== 'OPEN' ? sql`${invoiceStatusSql(today)} = ${q.status}` : undefined,
     q.from ? gte(invoices.issueDate, q.from) : undefined,
     q.to ? lte(invoices.issueDate, q.to) : undefined,
     term ? or(ilike(invoices.number, term), ilike(clients.name, term)) : undefined,
@@ -723,13 +725,14 @@ export async function pageInvoices(x: Ctx, q: InvoiceQuery & { page: number; pag
     if (g.status === 'SENT' || g.status === 'PARTIALLY_PAID' || g.status === 'OVERDUE') outstanding += Number(g.balance);
     if (g.status === 'OVERDUE') overdue += Number(g.balance);
   }
-  const total = q.status && q.status !== 'ALL' ? (counts[q.status as InvoiceStatusKey] ?? 0) : counts.ALL;
+  const open = counts.SENT + counts.PARTIALLY_PAID + counts.OVERDUE;
+  const total = q.status === 'OPEN' ? open : q.status && q.status !== 'ALL' ? (counts[q.status as InvoiceStatusKey] ?? 0) : counts.ALL;
   return {
     data: rows.map((r) => toInvoiceRow(r, today)),
     total,
     page: q.page,
     page_size: q.pageSize,
-    summary: { counts, open_count: counts.SENT + counts.PARTIALLY_PAID + counts.OVERDUE, overdue_count: counts.OVERDUE, outstanding_minor: outstanding, overdue_minor: overdue, collected_minor: collected, currency: x.org.currency },
+    summary: { counts, open_count: open, overdue_count: counts.OVERDUE, outstanding_minor: outstanding, overdue_minor: overdue, collected_minor: collected, currency: x.org.currency },
   };
 }
 

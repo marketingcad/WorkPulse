@@ -59,6 +59,12 @@ export interface WorkerDto {
   created_at: string;
 }
 
+/**
+ * A member for pickers and name lookups (GET /workers/options): the fields those need, without the
+ * rates and team lists the full member record loads, so it stays light for large organizations.
+ */
+export type MemberOptionDto = Pick<WorkerDto, 'id' | 'name' | 'email' | 'role_name' | 'status' | 'title' | 'timezone' | 'tracking_enabled' | 'weekly_expected_seconds'>;
+
 /** Time and money for a date range. Money fields are null without rates:read / billing:read. */
 export interface InsightsDto {
   from: string;

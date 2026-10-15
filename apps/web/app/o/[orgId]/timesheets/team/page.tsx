@@ -1,6 +1,6 @@
 'use client';
 import { Suspense, useMemo } from 'react';
-import type { TimeEntryTotalRow, WorkerDto } from '@tallywork/contracts';
+import type { MemberOptionDto, TimeEntryTotalRow } from '@tallywork/contracts';
 import { Button, DataTable, EmptyState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, Select, SkeletonRows, cx, fmtDate, type Column } from '@tallywork/ui';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { qs, useOrgQuery } from '@/lib/api';
@@ -8,6 +8,7 @@ import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
 import { TimesheetView } from '@/components/timesheets/timesheet-view';
 import { useUrlParams } from '@/components/timesheets/use-url-params';
 import { periodLabel, sumBy } from '@/components/timesheets/shared';
+import { useMemberOptions } from '@/lib/members';
 
 export default function TeamTimesheetsPage() {
   return (
@@ -18,7 +19,7 @@ export default function TeamTimesheetsPage() {
 }
 
 interface SummaryRow {
-  worker: WorkerDto;
+  worker: MemberOptionDto;
   seconds: number;
   billable: number;
   manual: number;
@@ -32,7 +33,7 @@ function TeamTimesheets() {
   const date = params.date || today;
   const member = params.member;
   const allowed = org.can('timesheets:read', 'team');
-  const workersQ = useOrgQuery<WorkerDto[]>(allowed ? '/workers' : null);
+  const workersQ = useMemberOptions(allowed);
   const weekFrom = weekStartOf(date, org.organization.week_start);
   const weekTo = addDays(weekFrom, 6);
   // Hours per member and day, summed by the server: the whole team's week, however many entries it has.

@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Archive, MoreHorizontal, Pencil, Plus } from 'lucide-react';
-import type { OffsetPage, ProjectDto, TaskDto, WorkerDto } from '@tallywork/contracts';
+import type { OffsetPage, ProjectDto, TaskDto } from '@tallywork/contracts';
 import {
   Avatar,
   Button,
@@ -29,6 +29,7 @@ import { errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { ColorDot, PriorityBadge, TASK_STATUSES, TaskDialog, TaskStatusSelect, useOrgAction } from '@/components/workspace/shared';
+import { useMemberOptions } from '@/lib/members';
 
 export default function TasksPage() {
   const org = useOrg();
@@ -50,7 +51,7 @@ export default function TasksPage() {
   const q = useOrgQuery<OffsetPage<TaskDto> & { summary: { counts: Record<string, number> } }>(org.can('tasks:read') ? `/tasks${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
   useClampPage(paging, q.data, q.isPlaceholderData);
   const projectsQ = useOrgQuery<ProjectDto[]>(org.can('projects:read') ? '/projects' : null);
-  const workersQ = useOrgQuery<WorkerDto[]>(org.can('members:read') ? '/workers' : null);
+  const workersQ = useMemberOptions(org.can('members:read'));
   const names = useMemo(() => new Map((workersQ.data ?? []).map((w) => [w.id, w.name])), [workersQ.data]);
   const colors = useMemo(() => new Map((projectsQ.data ?? []).map((p) => [p.id, p.color])), [projectsQ.data]);
   const today = todayIn(org.membership.timezone);

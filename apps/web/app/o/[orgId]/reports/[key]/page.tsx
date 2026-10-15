@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, FileSpreadsheet, FileText, History, Hourglass, Save, Sheet, X } from 'lucide-react';
-import type { ClientDto, ProjectDto, TeamDto, WorkerDto } from '@tallywork/contracts';
+import type { ClientDto, ProjectDto, TeamDto } from '@tallywork/contracts';
 import { resolveRange } from '@tallywork/domain';
 import {
   Button,
@@ -37,6 +37,7 @@ import { NUMERIC_TYPES, formatCell, formatValue, type CatalogItem, type ColumnTy
 import { downloadExport } from '@/components/reports/download';
 import { SaveReportDialog } from '@/components/reports/save-dialog';
 import { isRange } from '@/components/reports/schedule';
+import { useMemberOptions } from '@/lib/members';
 
 type Billable = 'all' | 'billable' | 'non_billable';
 interface Params {
@@ -84,7 +85,7 @@ function ReportRunner() {
   const item = catalogQ.data?.find((r) => r.key === key);
   const has = (f: 'dates' | 'members' | 'teams' | 'projects' | 'clients' | 'billable') => !item?.filters || item.filters.includes(f);
   const manager = org.isManagerView;
-  const workersQ = useOrgQuery<WorkerDto[]>(manager ? '/workers' : null);
+  const workersQ = useMemberOptions(manager);
   const teamsQ = useOrgQuery<TeamDto[]>(manager ? '/teams' : null);
   const projectsQ = useOrgQuery<ProjectDto[]>('/projects');
   const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients' : null);

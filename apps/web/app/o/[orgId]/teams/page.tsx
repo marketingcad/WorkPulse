@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Archive, MoreHorizontal, Pencil, Plus, Trash2, UserPlus } from 'lucide-react';
-import type { ProjectDto, TeamDto, WorkerDto } from '@tallywork/contracts';
+import type { ProjectDto, TeamDto } from '@tallywork/contracts';
 import {
   Badge,
   Button,
@@ -29,6 +29,7 @@ import {
 import { ApiError, errorMessage, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { ColorDot, useOrgAction } from '@/components/workspace/shared';
+import { useMemberOptions } from '@/lib/members';
 
 export default function TeamsPage() {
   const org = useOrg();
@@ -235,7 +236,7 @@ function TeamDrawer({ team, onClose, projects, canManage }: { team: TeamDto | nu
   const org = useOrg();
   const run = useOrgAction();
   const toast = useToast();
-  const workersQ = useOrgQuery<WorkerDto[]>(canManage && team && org.can('members:read') ? '/workers' : null);
+  const workersQ = useMemberOptions(!!(canManage && team && org.can('members:read')));
   const [add, setAdd] = useState({ membership_id: '', role: 'MEMBER' });
   const [busy, setBusy] = useState<string | null>(null);
   useEffect(() => setAdd({ membership_id: '', role: 'MEMBER' }), [team?.id]);

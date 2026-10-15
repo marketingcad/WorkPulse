@@ -30,6 +30,7 @@ import {
   listInvitations,
   listRoles,
   listWorkers,
+  listMemberOptions,
   pageWorkers,
   orgContext,
   removeWorker,
@@ -88,6 +89,11 @@ export const orgRoutes = new Hono<AppEnv>()
     const q = query(c, pageQuery.extend({ include_removed: bool, view: z.enum(['current', 'former']).optional(), status: z.enum(['INVITED', 'ACTIVE', 'SUSPENDED', 'REMOVED']).optional(), role_id: z.uuid().optional() }));
     const filters = { includeRemoved: q.include_removed, view: q.view, status: q.status, roleId: q.role_id, search: q.q };
     return c.json(q.page ? await pageWorkers(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listWorkers(ctx(c), filters));
+  })
+  // Light member list for pickers and name lookups (registered before /workers/:id so "options" is not an id).
+  .get('/workers/options', requirePermission('members:read'), async (c) => {
+    const q = query(c, z.object({ include_removed: bool }));
+    return c.json(await listMemberOptions(ctx(c), { includeRemoved: q.include_removed }));
   })
   .get('/workers/:id', requirePermission('members:read'), async (c) => c.json(await getWorker(ctx(c), c.req.param('id'))))
   .patch('/workers/:id', async (c) => c.json(await updateWorker(ctx(c), c.req.param('id'), await body(c, updateWorkerInput))))

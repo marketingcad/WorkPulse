@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { MeDto, WorkerDto } from '@tallywork/contracts';
+import type { MeDto } from '@tallywork/contracts';
 import { resolveRange, type ReportRange } from '@tallywork/domain';
 import { Button, Checkbox, Dialog, Field, Input, SegmentedControl, Select, Switch, useToast } from '@tallywork/ui';
 import { ApiError, api, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
@@ -10,6 +10,7 @@ import { timeZones } from '@/components/settings/options';
 import { MultiSelect } from './multi-select';
 import type { SavedReport } from './format';
 import { DEFAULT_SCHEDULE, EXPORT_FORMATS, RANGES, buildCron, isRange, parseSchedule, type ExportFormat, type Frequency, type Schedule } from './schedule';
+import { useMemberOptions } from '@/lib/members';
 
 interface SavedReportBody {
   report_key: string;
@@ -44,7 +45,7 @@ export function SaveReportDialog({ open, onOpenChange, reportKey, defaultName, p
   const orgTz = org.organization.timezone;
   const ws = org.organization.week_start;
   const meQ = useQuery({ queryKey: ['me'], queryFn: () => api<MeDto>('/me'), enabled: open });
-  const workersQ = useOrgQuery<WorkerDto[]>(open && org.can('members:read') ? '/workers' : null);
+  const workersQ = useMemberOptions(open && org.can('members:read'));
   const myEmail = meQ.data?.user.email;
 
   const [name, setName] = useState(defaultName);

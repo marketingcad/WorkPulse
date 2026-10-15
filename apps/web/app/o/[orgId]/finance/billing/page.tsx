@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { Info, Plus, Trash2 } from 'lucide-react';
-import type { ClientDto, ProjectDto, WorkerDto } from '@tallywork/contracts';
+import type { ClientDto, ProjectDto } from '@tallywork/contracts';
 import {
   Badge,
   Button,
@@ -29,6 +29,7 @@ import {
 import { ApiError, errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { monthRange, toMinor, type AmountOwedRow, type RateKind, type RateRow, type RateScope } from '@/components/finance/types';
+import { useMemberOptions } from '@/lib/members';
 
 const SCOPE_LABEL: Record<RateScope, string> = {
   ORG: 'Organization',
@@ -68,7 +69,7 @@ function useTargets() {
   const org = useOrg();
   const clientsQ = useOrgQuery<ClientDto[]>('/clients?include_archived=true');
   const projectsQ = useOrgQuery<ProjectDto[]>('/projects?include_archived=true');
-  const workersQ = useOrgQuery<WorkerDto[]>(org.can('members:read') ? '/workers' : null, { retry: false });
+  const workersQ = useMemberOptions(org.can('members:read'));
   const names = useMemo(() => {
     const m = new Map<string, string>();
     clientsQ.data?.forEach((c) => m.set(c.id, c.name));

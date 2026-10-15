@@ -1,12 +1,13 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { CalendarOff, Pencil } from 'lucide-react';
-import type { WorkerDto } from '@tallywork/contracts';
+
 import { Badge, Button, EmptyState, ErrorState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, SkeletonRows, cx, fmtDate } from '@tallywork/ui';
 import { qs, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
 import { DateStepper, dateRangeLabel, wallTime, type HolidayRow, type ScheduleRow, type ShiftInstance, type TimeOffRequest } from '@/components/people/shared';
 import { ScheduleEditor, currentSchedule, scheduleSummary } from '@/components/people/schedule-editor';
+import { useMemberOptions } from '@/lib/members';
 
 interface Member {
   id: string;
@@ -31,7 +32,7 @@ export default function SchedulesPage() {
   const canManage = org.can('schedules:manage');
   const me = org.membership.id;
 
-  const workersQ = useOrgQuery<WorkerDto[]>(allowed ? '/workers' : null);
+  const workersQ = useMemberOptions(allowed);
   const shiftsQ = useOrgQuery<ShiftInstance[]>(allowed ? `/shifts${qs({ from: weekStart, to: weekEnd, membership_ids: teamView ? undefined : [me] })}` : null);
   const schedulesQ = useOrgQuery<ScheduleRow[]>(allowed ? `/schedules${qs({ membership_ids: teamView ? undefined : [me] })}` : null);
   const leaveQ = useOrgQuery<TimeOffRequest[]>(org.can('time_off:read') ? `/time-off/requests${qs({ status: 'APPROVED', from: weekStart, to: weekEnd, membership_ids: teamView ? undefined : [me] })}` : null);

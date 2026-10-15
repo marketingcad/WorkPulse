@@ -899,7 +899,7 @@ pnpm dev
 
 With no `DATABASE_URL`, the app uses a **file-backed PGlite** database at `apps/web/.data/pglite`, migrated automatically on boot. Files go to `apps/web/.data/blobs`, and emails (sign-up confirmation, password reset, invitations) are printed to the server console, links included. Delete `apps/web/.data/` to start fresh.
 
-**Demo login** (after seeding): `admin@demo.tallywork.app` / `demo-password-123`
+**Demo login** (after seeding locally): `admin@demo.tallywork.app` / `demo-password-123`. A deployed demo is seeded with its own `SEED_PASSWORD`, so this password never opens it.
 
 ### Run the desktop agent
 
@@ -979,7 +979,7 @@ Run from the repo root unless noted.
 | `pnpm lint` | Run lint tasks |
 | `pnpm db:generate` | Generate a new SQL migration from schema changes (`drizzle-kit generate`) |
 | `pnpm db:migrate` | Apply migrations, RLS policies and app-role grants to `DATABASE_URL` |
-| `pnpm --filter @tallywork/web seed` | Seed the demo organization (`SEED_DAYS`, `SEED_WORKERS`, `SEED_SCREENSHOT_DAYS` tune the size) |
+| `pnpm --filter @tallywork/web seed` | Seed the demo organization (`SEED_DAYS`, `SEED_WORKERS`, `SEED_SCREENSHOT_DAYS` tune the size; `SEED_PASSWORD` sets a private password for every demo account, required for any database reachable from the internet) |
 | `pnpm --filter @tallywork/web start` | Serve a production build |
 | `pnpm --filter @tallywork/desktop dev` | Run the Electron agent with hot reload |
 | `pnpm --filter @tallywork/desktop build` | Build the agent (`out/`) |

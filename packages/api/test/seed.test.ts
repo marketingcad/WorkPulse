@@ -4,16 +4,20 @@ import { seedDemo, DEMO_ADMIN } from '../src/seed';
 
 let t: Harness;
 let orgId: string;
+// A private password, as used for any database reachable from the internet.
+const PASSWORD = 'a-private-demo-password-for-tests';
 beforeAll(async () => {
   t = await createHarness();
-  ({ organizationId: orgId } = await seedDemo(t.deps, { days: 3, workers: 8, screenshotDays: 1 }));
+  ({ organizationId: orgId } = await seedDemo(t.deps, { days: 3, workers: 8, screenshotDays: 1, password: PASSWORD }));
 }, 600_000);
 afterAll(() => t.close());
 
 describe('demo seed', () => {
   it('produces a coherent, realistic workspace through the public API', async () => {
     const c = new Client(t);
-    const login = await c.post('/auth/login', { email: DEMO_ADMIN.email, password: DEMO_ADMIN.password });
+    // The public local-demo password does not open a seeded workspace that was given its own.
+    expect((await new Client(t).post('/auth/login', { email: DEMO_ADMIN.email, password: DEMO_ADMIN.password })).status).toBe(401);
+    const login = await c.post('/auth/login', { email: DEMO_ADMIN.email, password: PASSWORD });
     expect(login.status).toBe(200);
     const workers = await c.get(`/orgs/${orgId}/workers`);
     expect(workers.body.length).toBe(9);

@@ -11,10 +11,16 @@ export interface QueuedEvent {
   [k: string]: unknown;
 }
 
+/** The queue file of one account (organization + member) on this machine; `null` is the file used before accounts had their own. */
+export function queueFileFor(account: string | null): string {
+  return account ? `queue-${account.replace(/[^0-9a-z-]/gi, '_')}.log` : 'queue.log';
+}
+
 /**
  * Durable, encrypted, append-only offline queue. Every event is fsync'd to disk
  * (one encrypted line per event) BEFORE it is sent, so crashes and network outages
- * never lose tracked time. Acknowledged events are compacted away.
+ * never lose tracked time. Acknowledged events are compacted away. Each account has its own
+ * file, so events are only ever sent with the credentials of the person who recorded them.
  */
 export class OfflineQueue {
   private readonly file: string;
@@ -23,11 +29,22 @@ export class OfflineQueue {
 
   constructor(
     private readonly store: SecureStore,
+    fileName = 'queue.log',
     maxEvents = 50_000,
   ) {
-    this.file = path.join(store.directory, 'queue.log');
+    this.file = path.join(store.directory, fileName);
     this.maxEvents = maxEvents;
     this.load();
+  }
+
+  /**
+   * Takes over the events of the file used before accounts had their own (an upgrade): they were
+   * recorded by whoever was signed in, which is the account that signs in first afterwards.
+   */
+  static adoptLegacy(store: SecureStore, fileName: string): void {
+    const legacy = path.join(store.directory, queueFileFor(null));
+    const target = path.join(store.directory, fileName);
+    if (existsSync(legacy) && !existsSync(target)) renameSync(legacy, target);
   }
 
   private load(): void {

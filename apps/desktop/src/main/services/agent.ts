@@ -8,7 +8,7 @@ import { signIn, signInWithPassword, type PasswordCredentials, type PasswordSign
 import { manualRequestError, reminderKey } from './manual';
 import { limitAction, shiftReminder } from './reminders';
 import { ActivityMonitor, AppTracker, captureScreens, isWaylandSession, msUntilNextShotSlot, nextShotDelays } from './monitors';
-import { OfflineQueue, type QueuedEvent } from './queue';
+import { OfflineQueue, queueFileFor, type QueuedEvent } from './queue';
 import { SecureStore } from './secure-store';
 import { BROWSER_NAMES, UrlResolver } from './urls';
 
@@ -53,6 +53,11 @@ interface Bootstrap {
   break_types: Array<{ id: string; name: string; paid: boolean; max_minutes: number | null }>;
 }
 
+/** Who a bootstrap belongs to: queued events are only sent with this account's credentials. */
+function accountOf(b: Bootstrap): string {
+  return `${b.organization.id}:${b.worker.membership_id}`;
+}
+
 /**
  * The agent core. Owns local tracking state (a mirror of the server state
  * machine), monitors, the offline queue and synchronization. The server is
@@ -61,7 +66,10 @@ interface Bootstrap {
 export class Agent extends EventEmitter {
   readonly store = new SecureStore();
   readonly api = new AgentApi(this.store);
-  readonly queue = new OfflineQueue(this.store);
+  /** The account (organization:member) whose queue, session and requests are on this machine. */
+  private account: string | null = this.store.readJson<string>('account');
+  /** The signed-in account's offline queue; replaced when another account signs in. */
+  queue = new OfflineQueue(this.store, queueFileFor(this.account));
   readonly activity = new ActivityMonitor();
   /** Active-tab URLs on Windows: browser extension bridge, falling back to the address bar. */
   readonly urls = new UrlResolver(() => ({
@@ -179,6 +187,11 @@ export class Agent extends EventEmitter {
     return result;
   }
 
+  /**
+   * Signs out after stopping the timer and trying to send what is queued. Anything still unsent
+   * (offline) stays in this account's own queue and is sent the next time it signs in here; it is
+   * never sent with someone else's credentials.
+   */
   async logout(): Promise<void> {
     if (this.session) await this.stop();
     await this.sync();
@@ -565,6 +578,9 @@ export class Agent extends EventEmitter {
   // ─── Sync ──────────────────────────────────────────────────────────────────
   async sync(): Promise<void> {
     if (this.syncing || !this.api.signedIn) return;
+    // Only with the credentials of the account that recorded the events (known from bootstrap).
+    if (!this.boot) await this.refreshBootstrap();
+    if (!this.boot || accountOf(this.boot) !== this.account) return;
     this.syncing = true;
     try {
       while (this.queue.size > 0) {
@@ -617,6 +633,7 @@ export class Agent extends EventEmitter {
     if (!this.api.signedIn) return;
     try {
       const b = await this.api.request<Bootstrap>('GET', '/agent/bootstrap');
+      this.useAccount(accountOf(b));
       const policyChanged = this.boot && this.boot.policy_hash !== b.policy_hash;
       this.boot = b;
       this.remindTimesheet(b);
@@ -640,6 +657,37 @@ export class Agent extends EventEmitter {
       this.online = false;
     }
     this.emitState();
+  }
+
+  /**
+   * Called with the account that is signed in now. When it differs from the account whose data is
+   * on this machine (someone else signed in), the previous account's timer is stopped into its own
+   * queue at its last evidence, its per-person state is cleared, and the new account's queue is used.
+   */
+  private useAccount(account: string): void {
+    if (this.account === account) return;
+    if (this.account === null) {
+      OfflineQueue.adoptLegacy(this.store, queueFileFor(account));
+    } else {
+      const s = this.session;
+      if (s) {
+        this.flushObservations();
+        this.stopMonitors();
+        s.seq += 1;
+        this.enqueue({ type: 'session.stop', session_id: s.id, seq: s.seq, occurred_at: s.lastEvidenceAt });
+        this.session = null;
+        this.persistSession();
+      }
+      this.idle = null;
+      this.recovery = null;
+      this.lastProject = null;
+      this.store.writeJson('last-project', null);
+      this.manualRequests = [];
+      this.store.writeJson('manual-requests', []);
+    }
+    this.account = account;
+    this.store.writeJson('account', account);
+    this.queue = new OfflineQueue(this.store, queueFileFor(account));
   }
 
   // ─── State for the UI ──────────────────────────────────────────────────────

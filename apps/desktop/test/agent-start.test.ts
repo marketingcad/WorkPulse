@@ -17,6 +17,7 @@ vi.mock('../src/main/services/api', () => ({
   },
 }));
 vi.mock('../src/main/services/queue', () => ({
+  queueFileFor: (account: string | null) => account ?? 'queue.log',
   OfflineQueue: class {
     full = false;
     events: unknown[] = [];

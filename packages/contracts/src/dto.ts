@@ -434,6 +434,28 @@ export interface ManualTimeDto {
   created_at: string;
 }
 
+/** Totals over every invoice matching the client and search filters (all statuses), for the paged invoice list. */
+export interface InvoicePageSummary {
+  /** invoices per status, plus ALL */
+  counts: Record<'ALL' | 'DRAFT' | 'SENT' | 'PARTIALLY_PAID' | 'OVERDUE' | 'PAID' | 'VOID', number>;
+  open_count: number;
+  overdue_count: number;
+  /** money in the organization's currency only; invoices in other currencies are counted but not summed */
+  outstanding_minor: number;
+  overdue_minor: number;
+  collected_minor: number;
+  currency: string;
+}
+
+/** Totals over every expense the person may see that matches the search, for the paged expense list. */
+export interface ExpensePageSummary {
+  /** expenses per status, plus ALL */
+  counts: Record<'ALL' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'REIMBURSED', number>;
+  /** amount of the expenses matching the status filter too, in the organization's currency only */
+  total_minor: number;
+  currency: string;
+}
+
 export interface BudgetStatusDto {
   id: string;
   subject_type: 'PROJECT' | 'CLIENT';

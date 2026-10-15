@@ -2,6 +2,17 @@ import { z } from 'zod';
 import { PERMISSIONS, SCOPES, API_KEY_SCOPES } from '@tallywork/domain';
 import { currency, hhmm, id, isoDate, isoDateTime, nonEmpty, optionalText, timeZone } from './common';
 
+/**
+ * Optional numbered paging for long lists. Sending `page` (1-based) switches a list endpoint's
+ * response to `{ data, total, page, page_size, ... }`; without it the endpoint keeps returning a
+ * plain array, so existing API clients are unaffected. `q` is a case-insensitive text search.
+ */
+export const pageQuery = z.object({
+  page: z.coerce.number().int().min(1).max(100_000).optional(),
+  page_size: z.coerce.number().int().min(1).max(200).default(50),
+  q: z.string().trim().max(100).optional(),
+});
+
 export const DOCUMENT_LANGUAGES = ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl'] as const;
 
 /** square PNG/JPEG image as a data: URL (PNG/JPEG so it can be embedded in PDFs) */

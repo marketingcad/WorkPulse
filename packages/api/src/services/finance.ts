@@ -884,7 +884,13 @@ export async function recordPayment(x: Ctx, input: z.infer<typeof paymentInput>)
   const allocated = input.allocations.reduce((s, a) => s + a.amount_minor, 0);
   if (allocated > input.amount_minor) throw validation('Allocations exceed the payment amount');
   const id = newId();
-  await x.tx.insert(payments).values({ id, organizationId: x.org.id, clientId: input.client_id ?? null, provider: input.provider, providerRef: input.provider_ref ?? null, amountMinor: input.amount_minor, currency: input.currency, receivedOn: input.received_on, note: input.note ?? null, createdBy: x.actor.membershipId });
+  // A reference (cheque number, transfer id) is recorded once per organization.
+  const [created] = await x.tx
+    .insert(payments)
+    .values({ id, organizationId: x.org.id, clientId: input.client_id ?? null, provider: input.provider, providerRef: input.provider_ref ?? null, amountMinor: input.amount_minor, currency: input.currency, receivedOn: input.received_on, note: input.note ?? null, createdBy: x.actor.membershipId })
+    .onConflictDoNothing()
+    .returning({ id: payments.id });
+  if (!created) throw conflict('duplicate_payment', `A payment with reference ${input.provider_ref} is already recorded`, { errors: [{ field: 'provider_ref', message: 'Already recorded' }] });
   for (const a of input.allocations) {
     const [inv] = await x.tx.select().from(invoices).where(eq(invoices.id, a.invoice_id));
     if (!inv) throw notFound('invoice');

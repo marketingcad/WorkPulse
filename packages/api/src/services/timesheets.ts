@@ -12,6 +12,7 @@ import {
   tasks,
   timeEntries,
   timeEntryRevisions,
+  timeSegments,
   timesheetEntries,
   timesheets,
   users,
@@ -272,6 +273,21 @@ async function assertNoOverlap(tx: Tx, membershipId: string, start: Date, end: D
     )
     .limit(1);
   if (clash) throw businessRule('time_overlap', 'This time overlaps another time entry');
+  const running = await runningSince(tx, membershipId);
+  if (running && running < end) throw businessRule('time_overlap', 'This time overlaps the timer that is running now');
+}
+
+/**
+ * When the member's timer is running: the start of its open work (or idle) segment. That time
+ * becomes an entry only when the segment closes, so it is checked separately; it runs until now.
+ */
+async function runningSince(tx: Tx, membershipId: string): Promise<Date | null> {
+  const [open] = await tx
+    .select({ startedAt: timeSegments.startedAt })
+    .from(timeSegments)
+    .where(and(eq(timeSegments.membershipId, membershipId), isNull(timeSegments.endedAt), inArray(timeSegments.kind, ['WORK', 'IDLE'])))
+    .limit(1);
+  return open?.startedAt ?? null;
 }
 
 /** New or moved time may not land in a period whose timesheet is submitted or approved. */
@@ -386,6 +402,9 @@ async function freeSlot(x: Ctx, membershipId: string, tz: string, date: string, 
     .from(timeEntries)
     .where(and(eq(timeEntries.membershipId, membershipId), isNull(timeEntries.deletedAt), lt(timeEntries.startedAt, dayEnd), gt(timeEntries.endedAt, dayStart)))
     .orderBy(asc(timeEntries.startedAt));
+  const running = await runningSince(x.tx, membershipId);
+  if (running) busy.push({ s: running, e: x.deps.now() });
+  busy.sort((a, b) => a.s.getTime() - b.s.getTime());
   const limit = Math.min(dayEnd.getTime(), x.deps.now().getTime());
   const fit = (from: number) => {
     let t = from;

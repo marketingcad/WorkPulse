@@ -283,3 +283,30 @@ async function relogin() {
   expect((await admin.post('/auth/login', { email: 'ada@fin.test', password: 'correct-horse-battery' })).status).toBe(200);
   expect((await worker.post('/auth/login', { email: 'walt@fin.test', password: 'correct-horse-battery' })).status).toBe(200);
 }
+
+describe('payment references and malformed ids', () => {
+  it('a reference is unique within an organization, not across organizations', async () => {
+    const pay = { amount_minor: 1000, currency: 'USD', received_on: '2026-09-20', provider: 'manual', provider_ref: 'CHK-1001' };
+    expect((await admin.post(o('/payments'), pay)).status).toBe(201);
+    // The same cheque number again in this organization is a clear conflict, not a server error.
+    const again = await admin.post(o('/payments'), pay);
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe('duplicate_payment');
+    // Another organization may use the same reference.
+    const { client: other, orgId: otherOrg } = await signup(t, 'Olga', 'olga@fin-other.test');
+    expect((await other.post(`/orgs/${otherOrg}/payments`, pay)).status).toBe(201);
+  });
+
+  it('a malformed id is a 404, not a server error', async () => {
+    for (const [method, path] of [
+      ['GET', '/payroll/runs/abc'],
+      ['GET', '/pay-stubs/abc'],
+      ['GET', '/timesheets/abc/history'],
+      ['POST', '/expenses/abc/approve'],
+      ['DELETE', '/payments/abc'],
+    ] as const) {
+      const r = method === 'GET' ? await admin.get(o(path)) : method === 'POST' ? await admin.post(o(path), {}) : await admin.del(o(path));
+      expect(r.status, `${method} ${path}`).toBe(404);
+    }
+  });
+});

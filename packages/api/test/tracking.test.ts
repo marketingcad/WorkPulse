@@ -163,6 +163,26 @@ describe('manual time, edits and approvals', () => {
     expect(dup.status).toBe(422);
   });
 
+  it('manual time cannot overlap the timer that is running now (it would be counted twice)', async () => {
+    const timerStart = new Date(t.clock.now);
+    expect((await worker.post(`/orgs/${orgId}/tracking/start`, { project_id: projectId })).status).toBe(200);
+    t.clock.advance(30 * 60_000);
+    const at = (min: number) => new Date(timerStart.getTime() + min * 60_000).toISOString();
+
+    const inside = await worker.post(`/orgs/${orgId}/manual-time`, { project_id: projectId, started_at: at(5), ended_at: at(15), reason: 'meeting' });
+    expect(inside.status).toBe(422);
+    expect(inside.body.code).toBe('time_overlap');
+    const across = await worker.post(`/orgs/${orgId}/manual-time`, { project_id: projectId, started_at: at(-20), ended_at: at(5), reason: 'meeting' });
+    expect(across.status).toBe(422);
+    // Before the timer started is fine.
+    const before = await worker.post(`/orgs/${orgId}/manual-time`, { project_id: projectId, started_at: at(-60), ended_at: at(-30), reason: 'meeting' });
+    expect(before.status).toBe(201);
+
+    expect((await worker.post(`/orgs/${orgId}/tracking/stop`)).status).toBe(200);
+    // Once stopped, the tracked time is an entry and the same range is still refused.
+    expect((await worker.post(`/orgs/${orgId}/manual-time`, { project_id: projectId, started_at: at(5), ended_at: at(15), reason: 'meeting' })).status).toBe(422);
+  });
+
   it('edits require a reason, are revisioned, and cannot overlap', async () => {
     const e = (await worker.get(`/orgs/${orgId}/time-entries?${RANGE()}`)).body.find((x: { source: string }) => x.source === 'MANUAL');
     expect((await worker.patch(`/orgs/${orgId}/time-entries/${e.id}`, { note: 'x' })).status).toBe(400);

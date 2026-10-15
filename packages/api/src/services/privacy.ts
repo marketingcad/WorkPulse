@@ -48,7 +48,7 @@ export const DATA_EXPORT_KEY = 'data-export';
  */
 export async function queueDataExport(x: Ctx, membershipId: string) {
   const self = membershipId === x.actor.membershipId;
-  if (!self && !x.actor.grants['members:manage']) throw forbidden();
+  if (!self && !can(x.actor, 'members:manage', { ownerMembershipId: membershipId })) throw forbidden();
   const [m] = await x.tx.select({ id: memberships.id }).from(memberships).where(eq(memberships.id, membershipId));
   if (!m) throw notFound('worker');
   const id = newId();

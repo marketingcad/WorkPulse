@@ -38,6 +38,22 @@ test.describe('signing in', () => {
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/teams`));
     await expect(page.getByRole('heading', { level: 1, name: 'Teams' })).toBeVisible();
   });
+
+  test('a return link pointing to another site is ignored (open redirect)', async ({ page, data }) => {
+    // Browsers read "/\evil.example" as "//evil.example"; nothing may leave this site.
+    const offSite: string[] = [];
+    await page.route(/^https?:\/\/(?!localhost)/, (route) => {
+      offSite.push(route.request().url());
+      return route.abort();
+    });
+    await page.goto(`/login?next=${encodeURIComponent('/\\evil.example/phish')}`);
+    await page.getByLabel('Work email').fill(data.admin.email);
+    await page.getByLabel('Password').fill(PASSWORD);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}`));
+    await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
+    expect(offSite).toEqual([]);
+  });
 });
 
 test.describe('signing out', () => {

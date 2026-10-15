@@ -10,7 +10,7 @@ The main flow the product covers is **Organization → People → Work structure
 - **Workforce:** workers, teams, clients, projects, tasks, devices.
 - **Time tracking:** a server-side session state machine; a web timer and a desktop timer; idle detection; pause/resume; daily and weekly limits.
 - **Activity monitoring (desktop, set by policy):** keyboard and mouse *counts* (keystrokes are never recorded), 10-minute activity blocks, screenshots of every display (optionally blurred), app usage, and website usage (macOS natively; Windows through the Tallywork browser extension or the address bar).
-- **Worker desktop app:** workers use WorkPulse through the desktop app only; the web app sends them to its download page. Home dashboard (timer, current session, recent sessions, today's summary with idle time, live activity), plus Time Tracking, Projects, Tasks, Timesheet (with submit), Activity, personal Reports, Time Off (with requests), Schedule, Pay Stubs (with PDF download) and Settings. It reads only the signed-in worker's own data.
+- **Worker desktop app:** workers use WorkPulse through the desktop app only; the web app sends them to its download page. Home dashboard (timer, things that need attention, quick actions, current session, recent sessions, today's summary with idle time, live activity), plus Track (Projects, Tasks, Sessions), Timesheet (with submit, Activity, personal Reports), Time Off (with requests), Schedule, Pay Stubs (with PDF download) and Settings. It reads only the signed-in worker's own data.
 - **Timesheets:** manual time requests, time edits with full revision history, periods, and submit → approve / reject / request changes.
 - **Operations:** schedules, shifts, attendance, holidays, time-off policies with accruals, a balance ledger, and requests.
 - **Finance:** effective-dated pay and bill rates, billing entries, budgets, expenses with receipts, invoices (PDF), payments.
@@ -22,7 +22,7 @@ The main flow the product covers is **Organization → People → Work structure
 
 ## Project status
 
-Updated 14 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.4
+Updated 15 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.4
 
 ### ✅ Completed
 
@@ -79,9 +79,17 @@ Updated 14 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - **New organization:** create another organization (name, time zone, currency) from the organization switcher, without leaving the app.
 - **Audit log paging:** the audit log pages through every entry with a total, newest or oldest first, and the CSV export covers all matching entries (up to 1,000), not just the page on screen.
 - **Table pagination:** numbered pages, "Showing 1–50 of 230 results" and a rows-per-page choice in the shared table.
+- **Simpler worker desktop app** (in the code, not in a desktop release yet; the last release is 0.1.4):
+  - The sidebar is Home, Track, Timesheet, Time off, Schedule, Pay stubs and Settings. Track and Timesheet group their related screens as tabs.
+  - The "Me" group is gone, and the profile menu now holds only Sign out.
+  - Settings shows the signed-in person, organization, device status and version, with no technical details.
+  - Home is lighter: the timer comes first, then things that need attention and quick actions.
+- **"What is monitored" removed from the desktop app:** the screen, its first-run acknowledgement and the rule that blocked the timer until a worker acknowledged the policy are gone. Workers can start tracking straight after signing in.
 
 **Needs attention before the next release**
 
+- **Desktop release:** the changes above need a version bump and a run of the **Desktop release** workflow (see [Deployment](#deployment)).
+- **Monitoring notice:** the desktop app no longer shows workers what is monitored or records their acknowledgement. The `/agent/policy/ack` endpoint and the web `/me/monitoring` page still exist, but the desktop doesn't use them. Make sure workers are told about monitoring some other way where the law requires it. The server's "Tracking settings were updated" notification still links to `/me/monitoring`, which the desktop app no longer opens.
 - **Tests:** audit log paging (API) and table pagination (unit) have tests, but these screens and the new organization dialog have no E2E specs yet.
 - Fixed since the last update: the client portal migration now runs after 0011–0017; workers reach pay stubs in the desktop app; CSV import and invitations with a team role and projects have tests.
 
@@ -159,10 +167,11 @@ tallywork/
 │       └── src/
 │           ├── main/           privileged process: Agent core + services
 │           │   └── services/   agent, api, auth (email + password, or browser PKCE), monitors, queue (offline), secure-store,
-│           │                   urls (browser-extension bridge + address-bar fallback)
+│           │                   urls (browser-extension bridge + address-bar fallback), manual (manual time checks),
+│           │                   reminders (shifts, limits), managed-config (MDM / Group Policy)
 │           ├── preload/        typed, minimal contextBridge API
-│           ├── renderer/       sandboxed React UI: Shell (top bar + navigation), Dashboard (Home),
-│           │                   HomeCards, Pages (Time Tracking … Schedule), lib (hooks, formatting)
+│           ├── renderer/       sandboxed React UI: Shell (top bar + sidebar), nav (sidebar model), Dashboard (Home),
+│           │                   HomeCards, Pages (Track, Timesheet, Time off, Schedule, Pay stubs…), lib (hooks, formatting)
 │           └── shared/ipc.ts   IPC contract shared by main + renderer (zod-validated in main)
 │   └── extension/              browser extension (Manifest V3): active tab → desktop agent
 ├── packages/
@@ -173,7 +182,9 @@ tallywork/
 │   ├── api/                    Hono app: middleware, routes, services, jobs, seed
 │   └── ui/                     shared React components + design tokens (tokens.css); `Logo` and
 │                               `BrandLockup` in src/logo.tsx (wordmark in Poppins Bold, `--font-brand`)
-├── docs/plan/                  product & architecture plan, ADRs
+├── e2e/                        Playwright E2E: tests/web, tests/desktop (window in Chromium), tests/electron (real app)
+├── docs/                       plan/ (product & architecture plan, ADRs), ops/ (runbooks, desktop rollout), api/, security/, audit/
+├── AGENTS.md                   how to work in this repo: every change ships with tests that were run
 ├── .github/workflows/          ci.yml (CI), desktop-release.yml, desktop-linux-smoke.yml
 ├── turbo.json                  task graph
 └── pnpm-workspace.yaml
@@ -459,13 +470,18 @@ Both cron endpoints require `Authorization: Bearer $CRON_SECRET`.
 
 ### 7. The worker desktop app
 
-The desktop app is the worker's whole workspace, not only a timer. It opens as a dashboard (1120×760) and collapses to a compact single column when the window is narrow. There is a side rail from 1024px wide, and a slide-in menu below that.
+The desktop app is the worker's whole workspace, not only a timer. It opens as a dashboard (1120×760) and collapses to a compact single column when the window is narrow. There is a side rail from 1024px wide, and a slide-in menu below that. After signing in, a worker goes straight to Home and can start the timer. There is no first-run policy screen to acknowledge.
 
 | Area | Contents |
 |---|---|
-| **Top bar** | online/offline, sync status, screenshots on/off, notifications (unread count, mark read), profile menu |
-| **Home** | current project and task, large timer, Pause / Break / Stop, activity ring, today and week totals · current session · recent sessions · today's summary (tracked, active, **idle**, activity %, limits, shift) · live activity for the last hour and what is being recorded right now |
-| **Pages** | Time Tracking (sessions by day, manual time) · Projects · Tasks · Timesheet (period grid, **submit**) · Activity (own 10-minute blocks, apps, websites; screenshots stay on the web) · Reports (personal only) · Time Off (balances, requests, **request**) · Schedule · Settings |
+| **Top bar** | organization name, online/offline, sync status, notifications (unread count, mark read), profile menu (name, email, organization, **Sign out**) |
+| **Sidebar** | Home · Track · Timesheet · Time off · Schedule · Pay stubs · Settings. Track and Timesheet open a tab bar for their related screens; the others open one page each |
+| **Home** | greeting · timer card (project and task, large timer, Pause / Break / Stop) · needs attention (a timesheet to submit or fix, manual time still waiting to sync; hidden when there is nothing to do) · quick actions (work note while tracking, manual time when the policy allows it, my timesheet) · current session · recent sessions · today's summary (tracked, active, **idle**, activity %, limits, shift) · your activity for the last hour |
+| **Track** | tabs: Projects · Tasks · Sessions (sessions by day, manual time) |
+| **Timesheet** | tabs: Timesheet (period grid, **submit**) · Activity (own 10-minute blocks, apps, websites; screenshots stay on the web) · Reports (personal only) |
+| **Other pages** | Time off (balances, requests, **request**) · Schedule · Pay stubs (finalized stubs, PDF download) · Settings (signed in as, organization, device status, version, sign out, quit) |
+
+The sidebar is plain data in [nav.ts](apps/desktop/src/renderer/src/nav.ts), unit-tested in [nav.test.ts](apps/desktop/test/nav.test.ts), so every screen stays reachable.
 
 The data comes from the **device own-data API** (`/api/v1/agent/me/*`, see [Security model](#security-model)). The window asks the main process through one IPC channel with a fixed list of resources. Main builds the API path itself, so the token never reaches the window.
 
@@ -956,6 +972,7 @@ Run from the repo root unless noted.
 | `pnpm test` | Run all Vitest suites |
 | `pnpm test:e2e` | Run the Playwright E2E suite: builds, starts isolated servers on :3100/:3101, runs, reports ([e2e/README.md](e2e/README.md)) |
 | `pnpm test:e2e:smoke` | Only the critical E2E journeys (`@smoke`) |
+| `pnpm test:e2e:install` | Install the Playwright browsers (first run) |
 | `pnpm test:e2e:ui` / `:headed` / `:debug` / `:report` | Interactive runner, visible browser, inspector, last HTML report |
 | `pnpm lint` | Run lint tasks |
 | `pnpm db:generate` | Generate a new SQL migration from schema changes (`drizzle-kit generate`) |
@@ -1037,6 +1054,10 @@ Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgre
 | [packages/api/test/agent-me.test.ts](packages/api/test/agent-me.test.ts) | Device own-data API: only the bound worker, never screenshots, managers narrowed to own, revoked devices refused |
 | [packages/api/test/storage.test.ts](packages/api/test/storage.test.ts) | Supabase Storage adapter: bucket setup, upload, signed upload URLs, delete batching, error handling |
 | [apps/desktop/test/agent.test.ts](apps/desktop/test/agent.test.ts) | Agent core: privacy contract, activity minutes and history, screenshot schedule, IPC contract, manual time |
+| [apps/desktop/test/agent-start.test.ts](apps/desktop/test/agent-start.test.ts) | Starting the timer: no policy acknowledgement needed, still refused when the organization turns desktop tracking off |
+| [apps/desktop/test/nav.test.ts](apps/desktop/test/nav.test.ts) | Sidebar model: the item order, every screen reachable, no orphan views |
+| [packages/ui/test](packages/ui/test/) | Shared UI: table pagination, translated messages (placeholders, plurals, fallback to English) and the English message catalog |
+| [e2e/tests](e2e/tests/) | Playwright: web sign-in, navigation, invitations and CSV import; the desktop window's navigation and pay stubs; the real Electron app (sign-in, pay stub download, IPC checks, sign-out) |
 | [apps/desktop/test/urls.test.ts](apps/desktop/test/urls.test.ts) | URL capture: browser detection, address-bar parsing, extension bridge access control (live HTTP), source selection, domain-only trimming |
 
 **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every push to `main` and on every PR:
@@ -1055,7 +1076,9 @@ The web app and API deploy together to **Vercel** as one project (root directory
 
 1. In Supabase, copy the **Session pooler** connection string (Connect → Session pooler, port 5432) into `DATABASE_URL`, and set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` for file storage. Don't use the direct host (IPv6-only) or the transaction pooler (port 6543): the app sets a restricted database role per connection, which transaction pooling doesn't preserve. Disable Supabase's Data API (or stop exposing the `public` schema), since the app doesn't use it.
 2. Set `APP_SECRET` (32+ random characters) and `CRON_SECRET`. Optionally set `APP_URL`, an email provider (`RESEND_API_KEY` or `SMTP_*`, plus `MAIL_FROM`; see [Send real email](#send-real-email)), `REQUIRE_EMAIL_VERIFICATION=true`, and the `DESKTOP_DOWNLOAD_URL_*` links for `/download`.
-3. Deploy. The `vercel-build` script runs `pnpm --filter @tallywork/db migrate` **before** `next build`, so every deploy applies migrations and RLS.
+3. Deploy from the repo root with `npx vercel --prod` (the folder is linked to the `tallywork` project in `.vercel/`). The `vercel-build` script runs `pnpm --filter @tallywork/db migrate` **before** `next build`, so every deploy applies migrations and RLS.
+   - The project isn't connected to GitHub, so pushing to `main` deploys nothing. Run `vercel git connect` to deploy on every push.
+   - The live address `tallywork-alpha.vercel.app` is a manual alias, so a production deploy doesn't move it. After each deploy, point it at the new deployment with `npx vercel alias set <deployment-url> tallywork-alpha.vercel.app`. Alternatively, add it as a domain on the project (Settings → Domains) so it follows production automatically. To roll back, point the alias at the previous deployment.
 4. [apps/web/vercel.json](apps/web/vercel.json) registers the cron jobs (`/api/v1/cron/tick` every minute, `/api/v1/cron/daily` at 03:15 UTC) and gives the API function a 300s max duration.
 
 **Desktop releases** (current version 0.1.4): bump `version` in `apps/desktop/package.json`, push, then run the **Desktop release** workflow (GitHub → Actions → Desktop release → Run workflow, `platforms`: `all`, or one platform to redo a failed build). It creates a draft, builds Windows (NSIS `.exe`), macOS (universal `.dmg` + `.zip`) and Linux (`.AppImage` + `.deb`), and publishes them with the auto-update feed as one GitHub Release in the public `marketingcad/tallywork-desktop` repo (no source code there) once every build has succeeded. It refuses to overwrite a published version, and needs the `DESKTOP_RELEASE_TOKEN` secret (fine-grained token, that repo only, Contents: read and write). Windows only, from your own PC: `pnpm --filter @tallywork/desktop release:win` (token from `gh auth token`). The `.msi` and `.pkg` targets aren't built by the workflow. Native modules use their prebuilt N-API binaries (`npmRebuild: false`), so no C++ toolchain is needed.

@@ -3,11 +3,11 @@ import { GROUP_OF, NAV_GROUPS, groupFor, type NavGroup } from '../src/renderer/s
 
 // The set of views the app can show, mirrored from lib.ts `View`. Kept here so the test fails loudly
 // if a new screen is added without being placed in a nav group.
-const VIEWS = ['home', 'tracking', 'projects', 'tasks', 'timesheet', 'activity', 'reports', 'timeoff', 'schedule', 'paystubs', 'settings', 'monitoring', 'manual'] as const;
+const VIEWS = ['home', 'tracking', 'projects', 'tasks', 'timesheet', 'activity', 'reports', 'timeoff', 'schedule', 'paystubs', 'settings', 'manual'] as const;
 
 describe('worker nav model', () => {
-  it('presents exactly five primary groups, daily actions first', () => {
-    expect(NAV_GROUPS.map((g) => g.label)).toEqual(['Home', 'Track', 'Timesheet', 'Time off', 'Me']);
+  it('presents the primary groups, daily actions first and Settings last', () => {
+    expect(NAV_GROUPS.map((g) => g.label)).toEqual(['Home', 'Track', 'Timesheet', 'Time off', 'Schedule', 'Pay stubs', 'Settings']);
   });
 
   it('places every view in a group that exists', () => {
@@ -28,17 +28,22 @@ describe('worker nav model', () => {
       reachable.add(g.v); // the group button opens its primary view
       for (const t of g.tabs ?? []) reachable.add(t.v);
     }
-    // Every view except the two contextual sub-screens (manual time, the idle/monitoring gate entry
-    // "manual") must be reachable directly from the rail or a sub-tab.
+    // Every view except the contextual manual-time sub-screen must be reachable directly from the
+    // rail or a sub-tab.
     for (const v of VIEWS) {
       if (v === 'manual') continue; // reached from Track screens and Home quick actions, by design
       expect(reachable, `view "${v}" is not reachable from the nav`).toContain(v);
     }
   });
 
-  it("keeps the monitoring disclosure reachable from the nav (it must not be hidden)", () => {
-    const meTabs = NAV_GROUPS.find((g) => g.label === 'Me')?.tabs ?? [];
-    expect(meTabs.map((t) => t.v)).toContain('monitoring');
+  it('Schedule, Pay stubs and Settings are their own sidebar items, with no sub-tabs', () => {
+    for (const v of ['schedule', 'paystubs', 'settings'] as const) {
+      const g = NAV_GROUPS.find((x) => x.v === v);
+      expect(g, `no sidebar item for "${v}"`).toBeDefined();
+      expect(g!.tabs).toBeUndefined();
+      expect(GROUP_OF[v]).toBe(v);
+    }
+    expect(NAV_GROUPS.map((g) => g.label)).not.toContain('Me');
   });
 
   it('groupFor resolves to the owning group for every view', () => {

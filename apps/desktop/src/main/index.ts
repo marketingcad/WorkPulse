@@ -151,7 +151,6 @@ function registerIpc(): void {
     'timer:switch': (p: { projectId: string; taskId: string | null }) => agent.start(p.projectId, p.taskId),
     'notes:set': (p: { note: string }) => agent.setNote(p.note),
     'idle:resolve': (p: { choice: 'KEPT' | 'DISCARDED' | 'REASSIGNED'; projectId?: string; taskId?: string | null }) => agent.resolveIdle(p.choice, p.projectId, p.taskId),
-    'policy:ack': () => agent.acknowledgePolicy(),
     'recovery:resolve': (p: { resume: boolean }) => agent.resolveRecovery(p.resume),
     'manualTime:request': (p: IpcPayload<'manualTime:request'>) => agent.requestManualTime(p),
     'me:get': (p: IpcPayload<'me:get'>) => {

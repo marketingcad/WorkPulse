@@ -45,9 +45,6 @@ function readyState(d: Device): AgentState {
     account: { name: b.worker.name, email: b.worker.email, organization: b.organization.name, organizationId: b.organization.id, membershipId: b.worker.membership_id, timezone: b.worker.timezone },
     device: b.device,
     policy: b.policy,
-    policyHash: b.policy_hash,
-    // The worker has already seen what is monitored (the first-run screen is not under test here).
-    policyAcknowledged: true,
     assignments: b.assignments,
     tracking: { state: 'stopped', sessionId: null, projectId: null, taskId: null, startedAt: null, baseSeconds: 0, segmentStartedAt: null, note: '' },
     todaySeconds: b.today_seconds,
@@ -114,7 +111,7 @@ async function openDesktop(page: Page, device: Device, opts: DesktopOptions = {}
       me: (resource: string, params = {}) => b('me', { resource, params }),
       savePayStub: (id: string) => b('savePayStub', { id }),
       readNotifications: (ids: string[] | 'all') => b('readNotifications', { ids }),
-      ...Object.fromEntries(['login', 'loginWithPassword', 'logout', 'start', 'switchTask', 'stop', 'pause', 'resume', 'takeBreak', 'setNote', 'resolveIdle', 'acknowledgePolicy', 'resolveRecovery', 'requestManualTime', 'submitTimesheet', 'requestTimeOff', 'quit'].map((op) => [op, unavailable(op)])),
+      ...Object.fromEntries(['login', 'loginWithPassword', 'logout', 'start', 'switchTask', 'stop', 'pause', 'resume', 'takeBreak', 'setNote', 'resolveIdle', 'resolveRecovery', 'requestManualTime', 'submitTimesheet', 'requestTimeOff', 'quit'].map((op) => [op, unavailable(op)])),
     };
   });
   await page.goto('/');

@@ -2,9 +2,9 @@ import type { Page, View } from './lib';
 
 /**
  * The worker app's primary navigation, as pure data (no React, no icons) so it can be unit-tested.
- * Five groups for the worker's daily job: the daily actions come first (Home, Track, Timesheet,
- * Time off); read-only and personal screens collapse into "Me". A group with `tabs` opens its first
- * tab and shows a secondary tab bar. Every screen the app had before is still reachable here.
+ * The daily actions come first (Home, Track, Timesheet, Time off), then Schedule, Pay stubs and
+ * Settings. A group with `tabs` opens its first tab and shows a secondary tab bar. Every screen the
+ * app has is reachable here.
  */
 export type NavTab = { v: View; label: string };
 export type NavGroup = { v: Page; label: string; icon: string; tabs?: NavTab[] };
@@ -32,17 +32,9 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   { v: 'timeoff', label: 'Time off', icon: 'timeoff' },
-  {
-    v: 'schedule',
-    label: 'Me',
-    icon: 'me',
-    tabs: [
-      { v: 'schedule', label: 'Schedule' },
-      { v: 'paystubs', label: 'Pay stubs' },
-      { v: 'monitoring', label: 'What is monitored' },
-      { v: 'settings', label: 'Settings' },
-    ],
-  },
+  { v: 'schedule', label: 'Schedule', icon: 'schedule' },
+  { v: 'paystubs', label: 'Pay stubs', icon: 'paystubs' },
+  { v: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
 /** The nav group each view belongs to (highlighted while any of its screens is open). */
@@ -57,9 +49,8 @@ export const GROUP_OF: Record<View, Page> = {
   reports: 'timesheet',
   timeoff: 'timeoff',
   schedule: 'schedule',
-  paystubs: 'schedule',
-  monitoring: 'schedule',
-  settings: 'schedule',
+  paystubs: 'paystubs',
+  settings: 'settings',
 };
 
 /** The group that owns a view, for highlighting the rail and choosing the sub-tab bar. */

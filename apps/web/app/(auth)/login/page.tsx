@@ -8,6 +8,7 @@ import { AuthShell } from '@/components/auth-shell';
 import { CheckEmail } from '@/components/check-email';
 import { api, ApiError } from '@/lib/api';
 import { t } from '@/lib/i18n';
+import { sameOriginPath } from '@/lib/redirect';
 
 function LoginForm() {
   const router = useRouter();
@@ -31,7 +32,7 @@ function LoginForm() {
     const org = me.organizations.find((o) => o.id === last) ?? me.organizations[0];
     // Client viewers have no organization of their own: they go to their dashboards.
     const fallback = org ? `/o/${org.id}` : me.client_portals?.length ? (me.client_portals.length === 1 ? `/portal/${me.client_portals[0]!.access_id}` : '/portal') : '/welcome';
-    router.replace(next && next.startsWith('/') && !next.startsWith('//') ? next : fallback);
+    router.replace(sameOriginPath(next) ?? fallback);
   }
 
   async function submit(e: React.FormEvent) {

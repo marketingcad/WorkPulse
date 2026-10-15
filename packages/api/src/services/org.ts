@@ -113,12 +113,29 @@ export async function listRoles(x: Ctx) {
     }));
 }
 
+/** Whether the actor holds `perm` at least as widely as `scope`: never hand out more than you hold. */
+function holdsGrant(x: Ctx, perm: string, scope: string): boolean {
+  const mine = x.actor.grants[perm as keyof Grants];
+  return !!mine && (mine === 'org' || mine === scope);
+}
+
+/**
+ * Giving someone a role (inviting or changing their role) is bounded like creating one: every
+ * permission in it must be one the actor holds at that scope or wider.
+ */
+async function assertCanAssignRole(x: Ctx, roleId: string) {
+  const [role] = await x.tx.select().from(roles).where(eq(roles.id, roleId));
+  if (!role || role.key === 'AGENT') throw notFound('role');
+  const grants = await x.tx.select().from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+  for (const g of grants) if (!holdsGrant(x, g.permission, g.scope)) throw forbidden('You cannot give a role with more access than you have');
+  return role;
+}
+
 export async function upsertRole(x: Ctx, roleId: string | null, input: z.infer<typeof roleInput>) {
   if (!x.actor.grants['roles:manage']) throw forbidden();
   // A custom role can never grant more than the editor holds.
   for (const [perm, scope] of Object.entries(input.grants)) {
-    const mine = x.actor.grants[perm as keyof Grants];
-    if (!mine || (mine !== 'org' && mine !== scope)) throw forbidden(`You cannot grant ${perm} at ${scope} scope`);
+    if (!holdsGrant(x, perm, scope)) throw forbidden(`You cannot grant ${perm} at ${scope} scope`);
     if (perm === 'agent:ingest') throw forbidden('agent:ingest is reserved for devices');
   }
   let id = roleId;
@@ -283,7 +300,8 @@ export async function getWorker(x: Ctx, membershipId: string): Promise<WorkerDto
 export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<typeof updateWorkerInput>) {
   const before = await getWorker(x, membershipId);
   const isSelf = membershipId === x.actor.membershipId;
-  const admin = !!x.actor.grants['members:manage'];
+  // members:manage only reaches the members inside its scope.
+  const admin = can(x.actor, 'members:manage', { ownerMembershipId: membershipId });
   // Workers may only change their own timezone/title.
   if (!admin) {
     const allowedSelf =
@@ -302,9 +320,9 @@ export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<
   if (input.start_date && input.end_date && input.end_date < input.start_date) throw validation('The end date is before the start date', { errors: [{ field: 'end_date', message: 'Must be on or after the start date' }] });
   if (input.role_id !== undefined || input.status !== undefined) {
     if (before.is_owner) throw businessRule('owner_protected', 'The organization owner’s role and status cannot be changed');
-    if (input.role_id) {
-      const [r] = await x.tx.select().from(roles).where(eq(roles.id, input.role_id));
-      if (!r || r.key === 'AGENT') throw notFound('role');
+    if (input.role_id && input.role_id !== before.role_id) {
+      if (isSelf) throw forbidden('You cannot change your own role');
+      await assertCanAssignRole(x, input.role_id);
     }
     await x.tx
       .update(memberships)
@@ -332,7 +350,7 @@ export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<
 }
 
 export async function removeWorker(x: Ctx, membershipId: string) {
-  if (!x.actor.grants['members:manage']) throw forbidden();
+  if (!can(x.actor, 'members:manage', { ownerMembershipId: membershipId })) throw forbidden();
   const w = await getWorker(x, membershipId);
   if (w.is_owner) throw businessRule('owner_protected', 'Transfer ownership before removing the owner');
   await x.tx.update(memberships).set({ status: 'REMOVED', updatedAt: new Date() }).where(eq(memberships.id, membershipId));
@@ -418,8 +436,7 @@ export async function updateMemberDetails(x: Ctx, membershipId: string, input: z
 
 export async function inviteWorker(x: Ctx, input: z.infer<typeof inviteInput>) {
   if (!x.actor.grants['members:manage']) throw forbidden();
-  const [role] = await x.tx.select().from(roles).where(eq(roles.id, input.role_id));
-  if (!role || role.key === 'AGENT') throw notFound('role');
+  const role = await assertCanAssignRole(x, input.role_id);
   const existing = await x.tx
     .select({ id: memberships.id, status: memberships.status })
     .from(memberships)

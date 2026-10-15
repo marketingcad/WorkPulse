@@ -1,0 +1,2 @@
+DROP INDEX "payments_provider_ref_uq";--> statement-breakpoint
+CREATE UNIQUE INDEX "payments_provider_ref_uq" ON "payments" USING btree ("organization_id","provider","provider_ref") WHERE "payments"."provider_ref" is not null;

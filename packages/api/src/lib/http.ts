@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import { z } from 'zod';
-import { DomainError, validation } from '@tallywork/domain';
+import { DomainError, conflict, notFound, validation } from '@tallywork/domain';
 import type { Problem } from '@tallywork/contracts';
 
 const STATUS: Record<DomainError['category'], number> = {
@@ -13,7 +13,22 @@ const STATUS: Record<DomainError['category'], number> = {
   rate_limited: 429,
 };
 
-export function problemFromError(err: unknown, requestId: string): Problem {
+/**
+ * Database errors that are the caller's doing, not ours: a malformed id in the path (22P02, the
+ * value is not a uuid) is a missing record, and a unique violation (23505) is a conflict. Drizzle
+ * wraps the driver error, so the code may sit on a cause.
+ */
+export function fromDatabaseError(err: unknown): DomainError | null {
+  for (let e = err, depth = 0; e && typeof e === 'object' && depth < 4; e = (e as { cause?: unknown }).cause, depth++) {
+    const code = (e as { code?: unknown }).code;
+    if (code === '22P02') return notFound('resource');
+    if (code === '23505') return conflict('duplicate', 'This already exists');
+  }
+  return null;
+}
+
+export function problemFromError(error: unknown, requestId: string): Problem {
+  const err = error instanceof DomainError ? error : (fromDatabaseError(error) ?? error);
   if (err instanceof DomainError) {
     const errors = Array.isArray(err.details?.errors) ? (err.details.errors as Problem['errors']) : undefined;
     return {

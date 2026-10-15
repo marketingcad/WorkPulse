@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import { rateLimitBuckets } from '@tallywork/db';
 import { DomainError, newId } from '@tallywork/domain';
 import type { AppEnv, Deps } from './context';
-import { problemFromError } from './lib/http';
+import { fromDatabaseError, problemFromError } from './lib/http';
 import { safeEqual, verifyToken } from './lib/crypto';
 import { authenticate } from './middleware/auth';
 import { tenant } from './middleware/tenant';
@@ -47,7 +47,7 @@ export function createApp(deps: Deps) {
 
   app.onError((err, c) => {
     const rid = c.var.requestId ?? 'unknown';
-    if (!(err instanceof DomainError)) console.error(JSON.stringify({ level: 'error', request_id: rid, path: c.req.path, msg: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack?.split('\n').slice(0, 6) : undefined }));
+    if (!(err instanceof DomainError) && !fromDatabaseError(err)) console.error(JSON.stringify({ level: 'error', request_id: rid, path: c.req.path, msg: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack?.split('\n').slice(0, 6) : undefined }));
     const p = problemFromError(err, rid);
     return c.json(p, p.status as 400, { 'Content-Type': 'application/problem+json' });
   });

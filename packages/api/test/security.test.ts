@@ -183,6 +183,66 @@ describe('role scoping inside one organization', () => {
   });
 });
 
+describe('role assignment', () => {
+  const o = (p: string) => `/orgs/${orgA}${p}`;
+  let roleIds: Record<string, string>;
+
+  /** Invites someone with a role by id (addMember only knows the built-in keys). */
+  async function memberWithRole(name: string, email: string, roleId: string) {
+    const inv = await adminA.post<{ invite_url: string }>(o('/invitations'), { email, name, role_id: roleId });
+    expect(inv.status).toBe(201);
+    const c = new Client(t);
+    const acc = await c.post<{ membership_id: string }>('/auth/invitations/accept', { token: new URL(inv.body.invite_url).searchParams.get('token'), name, password: 'correct-horse-battery' });
+    expect(acc.status).toBe(200);
+    return { client: c, membershipId: acc.body.membership_id };
+  }
+
+  beforeAll(async () => {
+    roleIds = Object.fromEntries((await adminA.get<Array<{ id: string; key: string }>>(o('/roles'))).body.map((r) => [r.key, r.id]));
+  });
+
+  it('a custom role that manages members cannot make itself (or anyone) System Admin', async () => {
+    const role = await adminA.post<{ id: string }>(o('/roles'), { name: 'Self manager', grants: { 'members:read': 'own', 'members:manage': 'own' } });
+    const { client: lead, membershipId: leadId } = await memberWithRole('Lee Lead', 'lee@a.test', role.body.id);
+
+    const promote = await lead.patch(o(`/workers/${leadId}`), { role_id: roleIds.SYSTEM_ADMIN });
+    expect(promote.status).toBe(403);
+    expect((await lead.get(o('/api-keys'))).status).toBe(403);
+    expect((await adminA.get<{ role_id: string }>(o(`/workers/${leadId}`))).body.role_id).toBe(role.body.id);
+  });
+
+  it('invites and role changes never hand out more than the actor holds', async () => {
+    const role = await adminA.post<{ id: string }>(o('/roles'), { name: 'Recruiter', grants: { 'members:read': 'org', 'members:manage': 'org', 'time:read': 'own' } });
+    const { client: recruiter } = await memberWithRole('Rita Recruiter', 'rita@a.test', role.body.id);
+
+    const tooMuch = await recruiter.post(o('/invitations'), { email: 'boss@a.test', name: 'Boss', role_id: roleIds.SYSTEM_ADMIN });
+    expect(tooMuch.status).toBe(403);
+    expect((await recruiter.patch(o(`/workers/${w2Id}`), { role_id: roleIds.TEAM_MANAGER })).status).toBe(403);
+
+    // A role inside the recruiter's own grants is fine.
+    const small = await adminA.post<{ id: string }>(o('/roles'), { name: 'Viewer of self', grants: { 'members:read': 'org', 'time:read': 'own' } });
+    expect((await recruiter.post(o('/invitations'), { email: 'newbie@a.test', name: 'Newbie', role_id: small.body.id })).status).toBe(201);
+  });
+
+  it('team-scope members:manage only reaches members of the teams they manage', async () => {
+    const role = await adminA.post<{ id: string }>(o('/roles'), { name: 'Team people lead', grants: { 'members:read': 'org', 'members:manage': 'team' } });
+    const { client: lead, membershipId: leadId } = await memberWithRole('Tess Teamlead', 'tess@a.test', role.body.id);
+    await adminA.put(o(`/teams/${teamId}/members/${leadId}`), { role: 'MANAGER' });
+
+    // w2 is not in the team.
+    expect((await lead.patch(o(`/workers/${w2Id}`), { status: 'SUSPENDED' })).status).toBe(403);
+    expect((await lead.del(o(`/workers/${w2Id}`))).status).toBe(403);
+    expect((await lead.post(o(`/workers/${w2Id}/data-export`))).status).toBe(403);
+    // w1 is.
+    expect((await lead.patch(o(`/workers/${w1Id}`), { title: 'Designer' })).status).toBe(200);
+  });
+
+  it('the owner still changes roles', async () => {
+    expect((await adminA.patch(o(`/workers/${w2Id}`), { role_id: roleIds.TEAM_MANAGER })).status).toBe(200);
+    expect((await adminA.patch(o(`/workers/${w2Id}`), { role_id: roleIds.WORKER })).status).toBe(200);
+  });
+});
+
 describe('web security', () => {
   it('blocks cross-site state changes with a cookie session (CSRF)', async () => {
     const r = await t.app.request(`/api/v1/orgs/${orgA}/clients`, { method: 'POST', headers: { Cookie: adminA.cookie, Origin: 'https://evil.test', 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'x' }) });

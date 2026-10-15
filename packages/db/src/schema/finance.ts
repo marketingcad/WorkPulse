@@ -270,7 +270,7 @@ export const payments = pgTable(
     createdBy: uuid(),
     ...timestamps,
   },
-  (t) => [uniqueIndex('payments_provider_ref_uq').on(t.provider, t.providerRef).where(sql`${t.providerRef} is not null`), index().on(t.organizationId, t.receivedOn)],
+  (t) => [uniqueIndex('payments_provider_ref_uq').on(t.organizationId, t.provider, t.providerRef).where(sql`${t.providerRef} is not null`), index().on(t.organizationId, t.receivedOn)],
 );
 
 export const paymentAllocations = pgTable(

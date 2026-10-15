@@ -28,8 +28,8 @@ test('an admin logs a part-billable duration and finds it on All time entries', 
   await dialog.getByRole('button', { name: 'Add time' }).click();
   await expect(page.getByText('Time added to the timesheet')).toBeVisible();
 
-  await page.getByLabel('From').fill(DAY);
-  await page.getByLabel('To').fill(DAY);
+  await page.getByLabel('From', { exact: true }).fill(DAY);
+  await page.getByLabel('To', { exact: true }).fill(DAY);
   // Part-billable time is kept as a billable entry plus a non-billable rest, both shown as durations.
   const entries = page.getByRole('listitem').filter({ hasText: note });
   await expect(entries).toHaveCount(2);

@@ -1,9 +1,10 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   breakTypes,
   holidays,
   memberships,
+  users,
   overtimeRuleSets,
   shiftAlerts,
   shifts,
@@ -42,12 +43,13 @@ import {
   type AttendanceStatus,
   type OvertimeRules,
 } from '@tallywork/domain';
-import type { breakTypeInput, holidayInput, overtimeRulesInput, scheduleInput, timeOffAdjustInput, timeOffPolicyInput, timeOffRequestInput } from '@tallywork/contracts';
+import type { OffsetPage, breakTypeInput, holidayInput, overtimeRulesInput, scheduleInput, timeOffAdjustInput, timeOffPolicyInput, timeOffRequestInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
 import { audit, emitFrom } from './events';
 import { approversFor, notify } from './notify';
 import { narrowMemberships } from './scope';
+import { likePattern } from '../lib/search';
 import { memberNames } from './timer';
 
 // ─── Schedules & shifts ──────────────────────────────────────────────────────
@@ -319,22 +321,57 @@ export async function balances(x: Ctx, membershipId: string) {
   }));
 }
 
-export async function listTimeOffRequests(x: Ctx, q: { status?: string; from?: string; to?: string; membershipIds?: string[] }) {
+type TimeOffQuery = { status?: string; from?: string; to?: string; membershipIds?: string[]; search?: string };
+
+/** Time-off requests the person may see that overlap [from..to]; `search` covers the member, policy and reason. */
+function timeOffWhere(x: Ctx, q: TimeOffQuery) {
   const visible = narrowMemberships(x.actor, 'time_off:read', q.membershipIds);
+  const term = q.search ? likePattern(q.search) : null;
+  return and(
+    q.status ? eq(timeOffRequests.status, q.status as 'PENDING') : undefined,
+    q.to ? lte(timeOffRequests.startDate, q.to) : undefined,
+    q.from ? gte(timeOffRequests.endDate, q.from) : undefined,
+    visible === 'all' ? undefined : inArray(timeOffRequests.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']),
+    term
+      ? or(
+          ilike(timeOffPolicies.name, term),
+          ilike(timeOffRequests.reason, term),
+          inArray(timeOffRequests.membershipId, x.tx.select({ id: memberships.id }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).where(ilike(users.name, term))),
+        )
+      : undefined,
+  );
+}
+
+const timeOffOrder = [desc(timeOffRequests.startDate), desc(timeOffRequests.id)];
+
+/** Time-off requests as a plain array, latest first, capped at 500; use `pageTimeOffRequests` to reach every request. */
+export async function listTimeOffRequests(x: Ctx, q: TimeOffQuery) {
   const rows = await x.tx
     .select({ r: timeOffRequests, policyName: timeOffPolicies.name })
     .from(timeOffRequests)
     .innerJoin(timeOffPolicies, eq(timeOffPolicies.id, timeOffRequests.policyId))
-    .where(
-      and(
-        q.status ? eq(timeOffRequests.status, q.status as 'PENDING') : undefined,
-        q.to ? lte(timeOffRequests.startDate, q.to) : undefined,
-        q.from ? gte(timeOffRequests.endDate, q.from) : undefined,
-        visible === 'all' ? undefined : inArray(timeOffRequests.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']),
-      ),
-    )
-    .orderBy(desc(timeOffRequests.startDate))
+    .where(timeOffWhere(x, q))
+    .orderBy(...timeOffOrder)
     .limit(500);
+  return toTimeOffRows(x, rows);
+}
+
+/** One numbered page of time-off requests (`page` is 1-based) and the total. */
+export async function pageTimeOffRequests(x: Ctx, q: TimeOffQuery & { page: number; pageSize: number }): Promise<OffsetPage<Awaited<ReturnType<typeof toTimeOffRows>>[number]>> {
+  const where = timeOffWhere(x, q);
+  const [count] = await x.tx.select({ n: sql<number>`count(*)::int` }).from(timeOffRequests).innerJoin(timeOffPolicies, eq(timeOffPolicies.id, timeOffRequests.policyId)).where(where);
+  const rows = await x.tx
+    .select({ r: timeOffRequests, policyName: timeOffPolicies.name })
+    .from(timeOffRequests)
+    .innerJoin(timeOffPolicies, eq(timeOffPolicies.id, timeOffRequests.policyId))
+    .where(where)
+    .orderBy(...timeOffOrder)
+    .limit(q.pageSize)
+    .offset((q.page - 1) * q.pageSize);
+  return { data: await toTimeOffRows(x, rows), total: count?.n ?? 0, page: q.page, page_size: q.pageSize };
+}
+
+async function toTimeOffRows(x: Ctx, rows: Array<{ r: typeof timeOffRequests.$inferSelect; policyName: string }>) {
   const names = await memberNames(x, [...new Set(rows.flatMap((r) => [r.r.membershipId, ...(r.r.decidedBy ? [r.r.decidedBy] : [])]))]);
   return rows.map(({ r, policyName }) => ({
     id: r.id,

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import {
   dateRangeQuery,
+  pageQuery,
   decisionInput,
   idleResolveInput,
   isoDate,
@@ -21,7 +22,7 @@ import { body, idList, query } from '../lib/http';
 import { requirePermission } from '../middleware/tenant';
 import { ctx } from '../services/ctx';
 import { activityDay, deleteScreenshot, getScreenshot, listIdleEvents, listScreenshots, rawSpans, resolveIdleByUser, usage } from '../services/activity';
-import { currentTracking, forceStop, getSession, listSessions, liveWorkers, setSessionNote, webPause, webResume, webStart, webStop, webSwitch } from '../services/timer';
+import { currentTracking, forceStop, getSession, listSessions, liveWorkers, pageSessions, setSessionNote, webPause, webResume, webStart, webStop, webSwitch } from '../services/timer';
 import {
   approvalQueue,
   bulkApprove,
@@ -31,7 +32,11 @@ import {
   entryRevisions,
   getTimesheet,
   listManualTime,
+  pageManualTime,
+  pageApprovalQueue,
   listTimeEntries,
+  pageTimeEntries,
+  timeEntryTotals,
   bulkTimeEntries,
   requestManualTime,
   splitTimeEntry,
@@ -63,16 +68,23 @@ export const timeRoutes = new Hono<AppEnv>()
   .post('/tracking/note', async (c) => c.json(await setSessionNote(ctx(c), (await body(c, sessionNoteInput)).note)))
   .get('/tracking/live', requirePermission('tracking:read'), async (c) => c.json(await liveWorkers(ctx(c))))
   .get('/sessions', requirePermission('tracking:read'), async (c) => {
-    const q = query(c, rangeWithMembers);
-    return c.json(await listSessions(ctx(c), { from: q.from, to: q.to, membershipIds: q.membership_ids }));
+    const q = query(c, rangeWithMembers.and(pageQuery));
+    const filters = { from: q.from, to: q.to, membershipIds: q.membership_ids };
+    return c.json(q.page ? await pageSessions(ctx(c), { ...filters, search: q.q, page: q.page, pageSize: q.page_size }) : await listSessions(ctx(c), filters));
   })
   .get('/sessions/:id', async (c) => c.json(await getSession(ctx(c), c.req.param('id'))))
   .post('/sessions/:id/force-stop', async (c) => c.json(await forceStop(ctx(c), c.req.param('id'))))
 
   // Time entries
+  // Sending `page` returns { data, total, page, page_size, summary }; without it, the same plain array as before.
   .get('/time-entries', requirePermission('time:read'), async (c) => {
+    const q = query(c, rangeWithMembers.and(pageQuery).and(z.object({ order: z.enum(['asc', 'desc']).optional() })));
+    const filters = { from: q.from, to: q.to, membershipIds: q.membership_ids, projectId: q.project_id, projectIds: q.project_ids, clientId: q.client_id, taskId: q.task_id, search: q.q };
+    return c.json(q.page ? await pageTimeEntries(ctx(c), { ...filters, page: q.page, pageSize: q.page_size, order: q.order }) : await listTimeEntries(ctx(c), filters));
+  })
+  .get('/time-entries/totals', requirePermission('time:read'), async (c) => {
     const q = query(c, rangeWithMembers);
-    return c.json(await listTimeEntries(ctx(c), { from: q.from, to: q.to, membershipIds: q.membership_ids, projectId: q.project_id, projectIds: q.project_ids, clientId: q.client_id, taskId: q.task_id }));
+    return c.json(await timeEntryTotals(ctx(c), { from: q.from, to: q.to, membershipIds: q.membership_ids, projectId: q.project_id, projectIds: q.project_ids, clientId: q.client_id, taskId: q.task_id }));
   })
   .post('/time-entries/bulk', async (c) => c.json(await bulkTimeEntries(ctx(c), await body(c, timeEntryBulkInput))))
   .patch('/time-entries/:id', async (c) => c.json(await updateTimeEntry(ctx(c), c.req.param('id'), await body(c, timeEntryUpdateInput))))
@@ -90,8 +102,9 @@ export const timeRoutes = new Hono<AppEnv>()
 
   // Manual time
   .get('/manual-time', async (c) => {
-    const q = query(c, z.object({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional(), membership_ids: idList }));
-    return c.json(await listManualTime(ctx(c), { status: q.status, membershipIds: q.membership_ids }));
+    const q = query(c, pageQuery.extend({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional(), membership_ids: idList }));
+    const filters = { status: q.status, membershipIds: q.membership_ids, search: q.q };
+    return c.json(q.page ? await pageManualTime(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listManualTime(ctx(c), filters));
   })
   .post('/manual-time', async (c) => c.json(await requestManualTime(ctx(c), await body(c, manualTimeInput)), 201))
   .post('/manual-time/:id/:action{approve|reject}', async (c) => {
@@ -111,7 +124,11 @@ export const timeRoutes = new Hono<AppEnv>()
     const i = await body(c, z.object({ membership_id: z.uuid().optional(), date: isoDate, version: z.number().int().optional() }));
     return c.json(await submitTimesheet(x, i.membership_id ?? x.actor.membershipId, i.date, i.version));
   })
-  .get('/timesheets/approvals', async (c) => c.json(await approvalQueue(ctx(c), query(c, z.object({ status: z.enum(['SUBMITTED', 'APPROVED', 'REJECTED']).optional() })))))
+  .get('/timesheets/approvals', async (c) => {
+    const q = query(c, pageQuery.extend({ status: z.enum(['SUBMITTED', 'APPROVED', 'REJECTED']).optional() }));
+    const filters = { status: q.status, search: q.q };
+    return c.json(q.page ? await pageApprovalQueue(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await approvalQueue(ctx(c), filters));
+  })
   .post('/timesheets/bulk-approve', async (c) => c.json(await bulkApprove(ctx(c), (await body(c, z.object({ ids: z.array(z.uuid()).min(1).max(200) }))).ids)))
   .post('/timesheets/:id/:action{approve|reject|request-changes|reopen}', async (c) => {
     const i = await body(c, decisionInput);

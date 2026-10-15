@@ -1,6 +1,6 @@
 'use client';
 import { Suspense, useMemo } from 'react';
-import type { TimeEntryDto, WorkerDto } from '@tallywork/contracts';
+import type { TimeEntryTotalRow, WorkerDto } from '@tallywork/contracts';
 import { Button, DataTable, EmptyState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, Select, SkeletonRows, cx, fmtDate, type Column } from '@tallywork/ui';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { qs, useOrgQuery } from '@/lib/api';
@@ -35,17 +35,18 @@ function TeamTimesheets() {
   const workersQ = useOrgQuery<WorkerDto[]>(allowed ? '/workers' : null);
   const weekFrom = weekStartOf(date, org.organization.week_start);
   const weekTo = addDays(weekFrom, 6);
-  const entriesQ = useOrgQuery<TimeEntryDto[]>(allowed && org.can('time:read') ? `/time-entries${qs({ from: weekFrom, to: weekTo })}` : null);
+  // Hours per member and day, summed by the server: the whole team's week, however many entries it has.
+  const entriesQ = useOrgQuery<TimeEntryTotalRow[]>(allowed && org.can('time:read') ? `/time-entries/totals${qs({ from: weekFrom, to: weekTo })}` : null);
 
   const workers = useMemo(() => (workersQ.data ?? []).filter((w) => w.status === 'ACTIVE').sort((a, b) => a.name.localeCompare(b.name)), [workersQ.data]);
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekFrom, i)), [weekFrom]);
 
   const rows = useMemo<SummaryRow[]>(() => {
     const es = entriesQ.data ?? [];
-    const total = sumBy(es, (e) => e.membership_id, (e) => e.duration_seconds);
-    const billable = sumBy(es.filter((e) => e.billable), (e) => e.membership_id, (e) => e.duration_seconds);
-    const manual = sumBy(es.filter((e) => e.source === 'MANUAL'), (e) => e.membership_id, (e) => e.duration_seconds);
-    const perDay = sumBy(es, (e) => `${e.membership_id}|${e.local_date}`, (e) => e.duration_seconds);
+    const total = sumBy(es, (e) => e.membership_id, (e) => e.seconds);
+    const billable = sumBy(es, (e) => e.membership_id, (e) => e.billable_seconds);
+    const manual = sumBy(es, (e) => e.membership_id, (e) => e.manual_seconds);
+    const perDay = sumBy(es, (e) => `${e.membership_id}|${e.date}`, (e) => e.seconds);
     return workers.map((w) => ({
       worker: w,
       seconds: total.get(w.id) ?? 0,

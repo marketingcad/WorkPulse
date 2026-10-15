@@ -2,11 +2,12 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { CheckCheck, ExternalLink } from 'lucide-react';
-import type { ApprovalQueueItemDto } from '@tallywork/contracts';
-import { ActivityBar, Button, DataTable, Drawer, EmptyState, ErrorState, PageHeader, Panel, PermissionState, PersonCell, StatusBadge, Tabs, cx, fmtDateTime, useToast, type Column } from '@tallywork/ui';
+import type { ApprovalQueueItemDto, OffsetPage } from '@tallywork/contracts';
+import { ActivityBar, Button, DataTable, Drawer, EmptyState, ErrorState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, StatusBadge, Tabs, cx, fmtDateTime, useToast, type Column } from '@tallywork/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, errorMessage, useOrgId, useOrgQuery } from '@/lib/api';
+import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { TimesheetView } from '@/components/timesheets/timesheet-view';
 import { FlagBadges, periodLabel, type BulkResult } from '@/components/timesheets/shared';
 
@@ -23,8 +24,13 @@ export default function ApprovalsPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkSummary, setBulkSummary] = useState<{ ok: number; failed: Array<{ name: string; error: string }> } | null>(null);
   const allowed = org.can('timesheets:approve');
-  const q = useOrgQuery<ApprovalQueueItemDto[]>(allowed ? `/timesheets/approvals?status=${status}` : null);
-  const pendingQ = useOrgQuery<ApprovalQueueItemDto[]>(allowed ? '/timesheets/approvals?status=SUBMITTED' : null);
+  const search = useSearch();
+  // The server pages the queue (approved timesheets keep growing) and counts every pending one.
+  const filters = { status, q: search.term || undefined };
+  const paging = useServerPage(JSON.stringify(filters));
+  const q = useOrgQuery<OffsetPage<ApprovalQueueItemDto>>(allowed ? `/timesheets/approvals${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  useClampPage(paging, q.data, q.isPlaceholderData);
+  const pendingQ = useOrgQuery<OffsetPage<ApprovalQueueItemDto>>(allowed ? '/timesheets/approvals?status=SUBMITTED&page=1&page_size=1' : null);
 
   if (!allowed) return <PermissionState message="Approving timesheets requires the timesheet approval permission." />;
 
@@ -34,7 +40,7 @@ export default function ApprovalsPage() {
     setBulkSummary(null);
     try {
       const res = await api<BulkResult[]>(`/orgs/${orgId}/timesheets/bulk-approve`, { method: 'POST', body: { ids } });
-      const byId = new Map((q.data ?? []).map((r) => [r.timesheet_id, r.worker_name]));
+      const byId = new Map((q.data?.data ?? []).map((r) => [r.timesheet_id, r.worker_name]));
       const ok = res.filter((r) => r.ok).length;
       const failed = res.filter((r) => !r.ok).map((r) => ({ name: byId.get(r.id) ?? r.id, error: r.error ?? 'Failed' }));
       setBulkSummary({ ok, failed });
@@ -81,6 +87,9 @@ export default function ApprovalsPage() {
   return (
     <>
       <PageHeader title="Timesheet approvals" description="Review submitted timesheets. Flags point to periods worth a closer look." />
+      <FilterBar>
+        <Input aria-label="Search members" placeholder="Search members…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-64" />
+      </FilterBar>
       <Panel>
         <Tabs
           value={status}
@@ -90,7 +99,7 @@ export default function ApprovalsPage() {
             setBulkSummary(null);
           }}
           items={[
-            { value: 'SUBMITTED', label: 'Pending', count: pendingQ.data?.length },
+            { value: 'SUBMITTED', label: 'Pending', count: pendingQ.data?.total },
             { value: 'APPROVED', label: 'Approved' },
             { value: 'REJECTED', label: 'Rejected' },
           ]}
@@ -119,10 +128,11 @@ export default function ApprovalsPage() {
           <ErrorState error={q.error} onRetry={() => q.refetch()} />
         ) : (
           <DataTable
-            rows={q.data}
+            rows={q.data?.data}
             loading={q.isLoading}
-            columns={columns}
+            columns={columns.map((c) => ({ ...c, sortable: false }))}
             rowKey={(r) => r.timesheet_id}
+            pagination={paging.pagination(q.data)}
             onRowClick={setOpen}
             selectable={status === 'SUBMITTED'}
             selected={selected}
@@ -132,12 +142,10 @@ export default function ApprovalsPage() {
                 Approve {ids.length}
               </Button>
             )}
-            searchable
-            searchPlaceholder="Search members…"
             caption="Timesheets"
             empty={
               <EmptyState
-                title={status === 'SUBMITTED' ? 'Nothing waiting for approval' : status === 'APPROVED' ? 'No approved timesheets' : 'No rejected timesheets'}
+                title={search.term ? 'No timesheets match your search' : status === 'SUBMITTED' ? 'Nothing waiting for approval' : status === 'APPROVED' ? 'No approved timesheets' : 'No rejected timesheets'}
                 description={status === 'SUBMITTED' ? 'Submitted timesheets from your team appear here.' : undefined}
               />
             }

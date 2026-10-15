@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   activityWindows,
@@ -43,7 +43,10 @@ import type {
   ApprovalQueueItemDto,
   TimesheetDueDto,
   ManualTimeDto,
+  OffsetPage,
   TimeEntryDto,
+  TimeEntryPageSummary,
+  TimeEntryTotalRow,
   TimesheetDto,
   manualTimeInput,
   timeEntryUpdateInput,
@@ -52,6 +55,7 @@ import { actorRef, type Ctx } from './ctx';
 import { audit, emitFrom } from './events';
 import { effectivePolicy } from './policies';
 import { narrowMemberships } from './scope';
+import { likePattern } from '../lib/search';
 import { lockWorker, markTimeChanged, validateTrackTarget, workerTimezone, type ActorRef } from './tracking';
 import { memberNames } from './timer';
 import { accrueForTimesheet } from './operations';
@@ -63,44 +67,126 @@ function ref(x: Ctx): ActorRef {
 }
 
 // ─── Time entries ────────────────────────────────────────────────────────────
-export async function listTimeEntries(
-  x: Ctx,
-  q: { from: string; to: string; membershipIds?: string[]; projectId?: string; projectIds?: string[]; clientId?: string; taskId?: string },
-  permission: 'time:read' | 'timesheets:read' = 'time:read',
-): Promise<TimeEntryDto[]> {
+type TimeEntryQuery = { from: string; to: string; membershipIds?: string[]; projectId?: string; projectIds?: string[]; clientId?: string; taskId?: string; search?: string };
+type TimePermission = 'time:read' | 'timesheets:read';
+
+/** Entries the person may see that match the filters. `search` covers the note, project, task, client and member. */
+function timeEntryWhere(x: Ctx, q: TimeEntryQuery, permission: TimePermission) {
   const visible = narrowMemberships(x.actor, permission, q.membershipIds);
+  const term = q.search ? likePattern(q.search) : null;
+  return and(
+    isNull(timeEntries.deletedAt),
+    sql`${timeEntries.localDate} between ${q.from} and ${q.to}`,
+    visible === 'all' ? undefined : inArray(timeEntries.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']),
+    q.projectId ? eq(timeEntries.projectId, q.projectId) : undefined,
+    q.projectIds?.length ? inArray(timeEntries.projectId, q.projectIds) : undefined,
+    q.clientId ? eq(projects.clientId, q.clientId) : undefined,
+    q.taskId ? eq(timeEntries.taskId, q.taskId) : undefined,
+    term ? or(ilike(timeEntries.note, term), ilike(projects.name, term), ilike(tasks.title, term), ilike(clients.name, term), ilike(users.name, term)) : undefined,
+  );
+}
+
+const entryFields = { e: timeEntries, projectName: projects.name, clientId: projects.clientId, clientName: clients.name, taskTitle: tasks.title, workerName: users.name };
+
+/**
+ * Time entries as a plain array, oldest first. Capped at 5000; use `pageTimeEntries` to reach
+ * every entry in a busy range.
+ */
+export async function listTimeEntries(x: Ctx, q: TimeEntryQuery, permission: TimePermission = 'time:read'): Promise<TimeEntryDto[]> {
   const rows = await x.tx
-    .select({ e: timeEntries, projectName: projects.name, clientId: projects.clientId, clientName: clients.name, taskTitle: tasks.title, workerName: users.name })
+    .select(entryFields)
     .from(timeEntries)
     .innerJoin(projects, eq(projects.id, timeEntries.projectId))
     .leftJoin(clients, eq(clients.id, projects.clientId))
     .leftJoin(tasks, eq(tasks.id, timeEntries.taskId))
     .innerJoin(memberships, eq(memberships.id, timeEntries.membershipId))
     .innerJoin(users, eq(users.id, memberships.userId))
+    .where(timeEntryWhere(x, q, permission)).orderBy(asc(timeEntries.startedAt), asc(timeEntries.id)).limit(5000);
+  return toTimeEntryDtos(x, rows);
+}
+
+/**
+ * One numbered page of time entries (`page` is 1-based), newest day first unless `order` is
+ * 'asc', plus totals for the whole range and for each day, so day headers stay right when a day
+ * spans two pages.
+ */
+export async function pageTimeEntries(x: Ctx, q: TimeEntryQuery & { page: number; pageSize: number; order?: 'asc' | 'desc' }): Promise<OffsetPage<TimeEntryDto> & { summary: TimeEntryPageSummary }> {
+  const where = timeEntryWhere(x, q, 'time:read');
+  const billableSeconds = sql<number>`coalesce(sum(${timeEntries.durationSeconds}) filter (where ${timeEntries.billable}), 0)::int`;
+  const byDay = await x.tx
+    .select({ date: timeEntries.localDate, entries: sql<number>`count(*)::int`, seconds: sql<number>`coalesce(sum(${timeEntries.durationSeconds}), 0)::int`, billable: billableSeconds })
+    .from(timeEntries)
+    .innerJoin(projects, eq(projects.id, timeEntries.projectId))
+    .leftJoin(clients, eq(clients.id, projects.clientId))
+    .leftJoin(tasks, eq(tasks.id, timeEntries.taskId))
+    .innerJoin(memberships, eq(memberships.id, timeEntries.membershipId))
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .where(where)
+    .groupBy(timeEntries.localDate)
+    .orderBy(asc(timeEntries.localDate));
+  const dir = q.order === 'asc' ? asc : desc;
+  const rows = await x.tx
+    .select(entryFields)
+    .from(timeEntries)
+    .innerJoin(projects, eq(projects.id, timeEntries.projectId))
+    .leftJoin(clients, eq(clients.id, projects.clientId))
+    .leftJoin(tasks, eq(tasks.id, timeEntries.taskId))
+    .innerJoin(memberships, eq(memberships.id, timeEntries.membershipId))
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .where(where)
+    .orderBy(dir(timeEntries.localDate), dir(timeEntries.startedAt), dir(timeEntries.id))
+    .limit(q.pageSize)
+    .offset((q.page - 1) * q.pageSize);
+  const total = byDay.reduce((s, d) => s + d.entries, 0);
+  return {
+    data: await toTimeEntryDtos(x, rows),
+    total,
+    page: q.page,
+    page_size: q.pageSize,
+    summary: {
+      entries: total,
+      seconds: byDay.reduce((s, d) => s + d.seconds, 0),
+      billable_seconds: byDay.reduce((s, d) => s + d.billable, 0),
+      by_day: byDay.map((d) => ({ date: d.date, entries: d.entries, seconds: d.seconds, billable_seconds: d.billable })),
+    },
+  };
+}
+
+/** Hours per member and day (total, billable, manual), summed in the database: the team timesheet without loading entries. */
+export async function timeEntryTotals(x: Ctx, q: TimeEntryQuery): Promise<TimeEntryTotalRow[]> {
+  const rows = await x.tx
+    .select({
+    membershipId: timeEntries.membershipId,
+    date: timeEntries.localDate,
+    seconds: sql<number>`coalesce(sum(${timeEntries.durationSeconds}), 0)::int`,
+    billable: sql<number>`coalesce(sum(${timeEntries.durationSeconds}) filter (where ${timeEntries.billable}), 0)::int`,
+    manual: sql<number>`coalesce(sum(${timeEntries.durationSeconds}) filter (where ${timeEntries.source} = 'MANUAL'), 0)::int`,
+    })
+    .from(timeEntries)
+    .innerJoin(projects, eq(projects.id, timeEntries.projectId))
+    .leftJoin(clients, eq(clients.id, projects.clientId))
+    .leftJoin(tasks, eq(tasks.id, timeEntries.taskId))
+    .innerJoin(memberships, eq(memberships.id, timeEntries.membershipId))
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .where(timeEntryWhere(x, q, 'time:read'))
+    .groupBy(timeEntries.membershipId, timeEntries.localDate);
+  return rows.map((r) => ({ membership_id: r.membershipId, date: r.date, seconds: r.seconds, billable_seconds: r.billable, manual_seconds: r.manual }));
+}
+
+async function toTimeEntryDtos(x: Ctx, rows: Array<{ e: typeof timeEntries.$inferSelect; projectName: string; clientId: string | null; clientName: string | null; taskTitle: string | null; workerName: string }>): Promise<TimeEntryDto[]> {
+  if (!rows.length) return [];
+  // Activity only for the members and days on this page, not the whole range.
+  const dates = rows.map((r) => r.e.localDate).sort();
+  const acts = await x.tx
+    .select()
+    .from(activityWindows)
     .where(
       and(
-        isNull(timeEntries.deletedAt),
-        sql`${timeEntries.localDate} between ${q.from} and ${q.to}`,
-        visible === 'all' ? undefined : inArray(timeEntries.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']),
-        q.projectId ? eq(timeEntries.projectId, q.projectId) : undefined,
-        q.projectIds?.length ? inArray(timeEntries.projectId, q.projectIds) : undefined,
-        q.clientId ? eq(projects.clientId, q.clientId) : undefined,
-        q.taskId ? eq(timeEntries.taskId, q.taskId) : undefined,
+        inArray(activityWindows.membershipId, [...new Set(rows.map((r) => r.e.membershipId))]),
+        // A day either side: an entry can start just before midnight of the window's local day.
+        sql`${activityWindows.localDate} between ${addDaysToDate(dates[0]!, -1)} and ${addDaysToDate(dates.at(-1)!, 1)}`,
       ),
-    )
-    .orderBy(asc(timeEntries.startedAt))
-    .limit(5000);
-  const acts = rows.length
-    ? await x.tx
-        .select()
-        .from(activityWindows)
-        .where(
-          and(
-            inArray(activityWindows.membershipId, [...new Set(rows.map((r) => r.e.membershipId))]),
-            sql`${activityWindows.localDate} between ${q.from} and ${q.to}`,
-          ),
-        )
-    : [];
+    );
   return rows.map(({ e, projectName, clientId, clientName, taskTitle, workerName }) => {
     const ws = acts.filter((a) => a.membershipId === e.membershipId && a.windowStart >= new Date(e.startedAt.getTime() - 600_000) && a.windowStart < e.endedAt);
     const tracked = ws.reduce((s, a) => s + a.trackedSeconds, 0);
@@ -432,21 +518,64 @@ export async function requestManualTime(x: Ctx, input: z.infer<typeof manualTime
   return (await listManualTime(x, {})).find((r) => r.id === id)!;
 }
 
-export async function listManualTime(x: Ctx, q: { status?: string; membershipIds?: string[] }): Promise<ManualTimeDto[]> {
+type ManualTimeQuery = { status?: string; membershipIds?: string[]; search?: string };
+
+/** Manual time requests the person may see; `search` covers the reason, note, project, task and member. */
+function manualTimeWhere(x: Ctx, q: ManualTimeQuery) {
   const visible = narrowMemberships(x.actor, 'time:read', q.membershipIds);
+  const term = q.search ? likePattern(q.search) : null;
+  return and(
+    q.status ? eq(manualTimeRequests.status, q.status as 'PENDING') : undefined,
+    visible === 'all' ? undefined : inArray(manualTimeRequests.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']),
+    term
+      ? or(
+          ilike(manualTimeRequests.reason, term),
+          ilike(manualTimeRequests.note, term),
+          ilike(projects.name, term),
+          ilike(tasks.title, term),
+          inArray(manualTimeRequests.membershipId, x.tx.select({ id: memberships.id }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).where(ilike(users.name, term))),
+        )
+      : undefined,
+  );
+}
+
+const manualTimeOrder = [desc(manualTimeRequests.createdAt), desc(manualTimeRequests.id)];
+
+/** Manual time requests as a plain array, newest first, capped at 500; use `pageManualTime` to reach every request. */
+export async function listManualTime(x: Ctx, q: ManualTimeQuery): Promise<ManualTimeDto[]> {
   const rows = await x.tx
     .select({ r: manualTimeRequests, projectName: projects.name, taskTitle: tasks.title })
     .from(manualTimeRequests)
     .innerJoin(projects, eq(projects.id, manualTimeRequests.projectId))
     .leftJoin(tasks, eq(tasks.id, manualTimeRequests.taskId))
-    .where(
-      and(
-        q.status ? eq(manualTimeRequests.status, q.status as 'PENDING') : undefined,
-        visible === 'all' ? undefined : inArray(manualTimeRequests.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']),
-      ),
-    )
-    .orderBy(desc(manualTimeRequests.createdAt))
+    .where(manualTimeWhere(x, q))
+    .orderBy(...manualTimeOrder)
     .limit(500);
+  return toManualTimeDtos(x, rows);
+}
+
+/** One numbered page of manual time requests (`page` is 1-based) and the total. */
+export async function pageManualTime(x: Ctx, q: ManualTimeQuery & { page: number; pageSize: number }): Promise<OffsetPage<ManualTimeDto>> {
+  const where = manualTimeWhere(x, q);
+  const [count] = await x.tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(manualTimeRequests)
+    .innerJoin(projects, eq(projects.id, manualTimeRequests.projectId))
+    .leftJoin(tasks, eq(tasks.id, manualTimeRequests.taskId))
+    .where(where);
+  const rows = await x.tx
+    .select({ r: manualTimeRequests, projectName: projects.name, taskTitle: tasks.title })
+    .from(manualTimeRequests)
+    .innerJoin(projects, eq(projects.id, manualTimeRequests.projectId))
+    .leftJoin(tasks, eq(tasks.id, manualTimeRequests.taskId))
+    .where(where)
+    .orderBy(...manualTimeOrder)
+    .limit(q.pageSize)
+    .offset((q.page - 1) * q.pageSize);
+  return { data: await toManualTimeDtos(x, rows), total: count?.n ?? 0, page: q.page, page_size: q.pageSize };
+}
+
+async function toManualTimeDtos(x: Ctx, rows: Array<{ r: typeof manualTimeRequests.$inferSelect; projectName: string; taskTitle: string | null }>): Promise<ManualTimeDto[]> {
   const names = await memberNames(x, [...new Set(rows.map((r) => r.r.membershipId))]);
   return rows.map(({ r, projectName, taskTitle }) => ({
     id: r.id,
@@ -717,21 +846,39 @@ export async function bulkApprove(x: Ctx, ids: string[]) {
   return results;
 }
 
-export async function approvalQueue(x: Ctx, q: { status?: string }): Promise<ApprovalQueueItemDto[]> {
-  if (!x.actor.grants['timesheets:approve']) throw forbidden();
+type ApprovalQuery = { status?: string; search?: string };
+
+/** Timesheets in the queue the person may decide on (never their own, unless they own the organization). */
+function approvalWhere(x: Ctx, q: ApprovalQuery) {
   const visible = narrowMemberships(x.actor, 'timesheets:approve');
-  const rows = await x.tx
-    .select()
-    .from(timesheets)
-    .where(
-      and(
-        eq(timesheets.status, (q.status ?? 'SUBMITTED') as TimesheetStatus),
-        visible === 'all' ? undefined : inArray(timesheets.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']),
-        x.actor.isOwner ? undefined : ne(timesheets.membershipId, x.actor.membershipId),
-      ),
-    )
-    .orderBy(desc(timesheets.periodStart), asc(timesheets.submittedAt))
-    .limit(500);
+  const term = q.search ? likePattern(q.search) : null;
+  return and(
+    eq(timesheets.status, (q.status ?? 'SUBMITTED') as TimesheetStatus),
+    visible === 'all' ? undefined : inArray(timesheets.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']),
+    x.actor.isOwner ? undefined : ne(timesheets.membershipId, x.actor.membershipId),
+    term ? inArray(timesheets.membershipId, x.tx.select({ id: memberships.id }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).where(ilike(users.name, term))) : undefined,
+  );
+}
+
+const approvalOrder = [desc(timesheets.periodStart), asc(timesheets.submittedAt), asc(timesheets.id)];
+
+/** The approval queue as a plain array, capped at 500; use `pageApprovalQueue` to reach every timesheet. */
+export async function approvalQueue(x: Ctx, q: ApprovalQuery): Promise<ApprovalQueueItemDto[]> {
+  if (!x.actor.grants['timesheets:approve']) throw forbidden();
+  const rows = await x.tx.select().from(timesheets).where(approvalWhere(x, q)).orderBy(...approvalOrder).limit(500);
+  return toApprovalItems(x, rows);
+}
+
+/** One numbered page of the approval queue (`page` is 1-based) and the total. */
+export async function pageApprovalQueue(x: Ctx, q: ApprovalQuery & { page: number; pageSize: number }): Promise<OffsetPage<ApprovalQueueItemDto>> {
+  if (!x.actor.grants['timesheets:approve']) throw forbidden();
+  const where = approvalWhere(x, q);
+  const [count] = await x.tx.select({ n: sql<number>`count(*)::int` }).from(timesheets).where(where);
+  const rows = await x.tx.select().from(timesheets).where(where).orderBy(...approvalOrder).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
+  return { data: await toApprovalItems(x, rows), total: count?.n ?? 0, page: q.page, page_size: q.pageSize };
+}
+
+async function toApprovalItems(x: Ctx, rows: Array<typeof timesheets.$inferSelect>): Promise<ApprovalQueueItemDto[]> {
   if (!rows.length) return [];
   const names = await memberNames(x, rows.map((r) => r.membershipId));
   const profs = await x.tx.select().from(workerProfiles).where(inArray(workerProfiles.membershipId, rows.map((r) => r.membershipId)));

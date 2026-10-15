@@ -46,11 +46,8 @@ import { audit, emit, emitFrom } from './events';
 import { narrowMemberships } from './scope';
 import { memberNames } from './timer';
 import { membersWith, notify } from './notify';
+import { isUuid, likePattern } from '../lib/search';
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** A case-insensitive `contains` pattern for ILIKE, with the LIKE wildcards in the search escaped. */
-const likePattern = (term: string) => `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
 /** The issuing company as printed on invoices. */
 export async function companyProfile(x: Ctx) {
@@ -759,7 +756,7 @@ function toInvoiceRow({ i, clientName }: { i: typeof invoices.$inferSelect; clie
 export async function getInvoice(x: Ctx, id: string) {
   if (!x.actor.grants['invoices:read']) throw forbidden();
   // Looked up by id directly, so any invoice opens, however old (not only the newest 1000).
-  if (!UUID.test(id)) throw notFound('invoice');
+  if (!isUuid(id)) throw notFound('invoice');
   const [found] = await x.tx.select({ i: invoices, clientName: clients.name }).from(invoices).innerJoin(clients, eq(clients.id, invoices.clientId)).where(eq(invoices.id, id));
   if (!found) throw notFound('invoice');
   const inv = toInvoiceRow(found, localDate(x.deps.now(), x.org.timezone));

@@ -1,11 +1,12 @@
 'use client';
 import { useState } from 'react';
 import { Check, Plus, X } from 'lucide-react';
-import type { ManualTimeDto } from '@tallywork/contracts';
-import { Button, DataTable, EmptyState, ErrorState, PageHeader, Panel, PermissionState, PersonCell, StatusBadge, Tabs, fmtDate, fmtDateTime, fmtTime, useToast, type Column } from '@tallywork/ui';
+import type { ManualTimeDto, OffsetPage } from '@tallywork/contracts';
+import { Button, DataTable, EmptyState, ErrorState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, StatusBadge, Tabs, fmtDate, fmtDateTime, fmtTime, useToast, type Column } from '@tallywork/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
+import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { CommentDialog, ManualTimeDialog } from '@/components/timesheets/entry-dialogs';
 
 type Tab = 'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL';
@@ -22,8 +23,13 @@ export default function ManualTimePage() {
   const canRequest = org.can('manual_time:request');
   const canApprove = org.can('manual_time:approve');
   const allowed = canRequest || canApprove;
-  const q = useOrgQuery<ManualTimeDto[]>(allowed ? `/manual-time${qs({ status: tab === 'ALL' ? undefined : tab })}` : null);
-  const pendingQ = useOrgQuery<ManualTimeDto[]>(allowed ? '/manual-time?status=PENDING' : null);
+  const search = useSearch();
+  // The server searches and pages every request, and counts every pending one.
+  const filters = { status: tab === 'ALL' ? undefined : tab, q: search.term || undefined };
+  const paging = useServerPage(JSON.stringify(filters));
+  const q = useOrgQuery<OffsetPage<ManualTimeDto>>(allowed ? `/manual-time${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  useClampPage(paging, q.data, q.isPlaceholderData);
+  const pendingQ = useOrgQuery<OffsetPage<ManualTimeDto>>(allowed ? '/manual-time?status=PENDING&page=1&page_size=1' : null);
 
   if (!allowed) return <PermissionState />;
 
@@ -110,12 +116,15 @@ export default function ManualTimePage() {
           )
         }
       />
+      <FilterBar>
+        <Input aria-label="Search manual time" placeholder="Search member, project, reason…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-72" />
+      </FilterBar>
       <Panel>
         <Tabs
           value={tab}
           onValueChange={(v) => setTab(v as Tab)}
           items={[
-            { value: 'PENDING', label: 'Pending', count: pendingQ.data?.length },
+            { value: 'PENDING', label: 'Pending', count: pendingQ.data?.total },
             { value: 'APPROVED', label: 'Approved' },
             { value: 'REJECTED', label: 'Rejected' },
             { value: 'ALL', label: 'All' },
@@ -125,16 +134,15 @@ export default function ManualTimePage() {
           <ErrorState error={q.error} onRetry={() => q.refetch()} />
         ) : (
           <DataTable
-            rows={q.data}
+            rows={q.data?.data}
             loading={q.isLoading}
-            columns={columns}
+            columns={columns.map((c) => ({ ...c, sortable: false }))}
             rowKey={(r) => r.id}
-            searchable
-            searchPlaceholder="Search member, project, reason…"
+            pagination={paging.pagination(q.data)}
             caption="Manual time requests"
             empty={
               <EmptyState
-                title={tab === 'PENDING' ? 'No pending requests' : 'No requests here'}
+                title={search.term ? 'No requests match your search' : tab === 'PENDING' ? 'No pending requests' : 'No requests here'}
                 description={canRequest ? 'Worked away from the computer? Request manual time and it will be added once approved.' : undefined}
                 action={
                   canRequest && (

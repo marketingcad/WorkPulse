@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowDown, ArrowUp, CalendarOff, Copy, Download, History, Lock, MoreHorizontal, Pencil, Plus, Save, Scissors, Trash2 } from 'lucide-react';
-import type { ClientDto, InsightsDto, ProjectDto, TaskDto, TimeEntryDto, TimeTypeDto, WorkerDto } from '@tallywork/contracts';
+import type { ClientDto, InsightsDto, OffsetPage, ProjectDto, TaskDto, TimeEntryDto, TimeEntryPageSummary, TimeTypeDto, WorkerDto } from '@tallywork/contracts';
 import {
   Avatar,
   Badge,
@@ -20,6 +20,7 @@ import {
   MenuItem,
   MenuSeparator,
   PageHeader,
+  Pagination,
   Panel,
   PermissionState,
   Select,
@@ -35,6 +36,7 @@ import {
 import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
 import { downloadText, toCsv } from '@/lib/csv';
+import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { DeleteEntryDialog, EditEntryDialog, ManualTimeDialog, RevisionsDrawer, SplitEntryDialog } from '@/components/timesheets/entry-dialogs';
 import { TimeTypeBadge } from '@/components/settings/time-types-panel';
 import { useQueryClient } from '@tanstack/react-query';
@@ -111,17 +113,21 @@ export default function AllTimeEntriesPage() {
   const [adding, setAdding] = useState<string | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const workersQ = useOrgQuery<WorkerDto[]>(org.can('members:read') ? '/workers' : null);
   const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients' : null);
   const projectsQ = useOrgQuery<ProjectDto[]>('/projects');
   const tasksQ = useOrgQuery<TaskDto[]>(project && org.can('tasks:read') ? `/projects/${project}/tasks` : null);
   const typesQ = useOrgQuery<TimeTypeDto[]>('/time-types?include_archived=true', { staleTime: 60_000 });
-  const entriesQ = useOrgQuery<TimeEntryDto[]>(
-    org.can('time:read')
-      ? `/time-entries${qs({ from: range.from, to: range.to, membership_ids: member ? [member] : undefined, client_id: client || undefined, project_ids: project ? [project] : undefined, task_id: task || undefined })}`
-      : null,
-  );
+  const search = useSearch();
+  // The server pages every entry in the range (busy ranges pass 5000) and returns totals for the
+  // whole range and for each day, so day headers stay right when a day spans two pages.
+  const filters = { from: range.from, to: range.to, membership_ids: member ? [member] : undefined, client_id: client || undefined, project_ids: project ? [project] : undefined, task_id: task || undefined, q: search.term || undefined, order: desc ? 'desc' : 'asc' };
+  const paging = useServerPage(JSON.stringify(filters), 100);
+  const entriesQ = useOrgQuery<OffsetPage<TimeEntryDto> & { summary: TimeEntryPageSummary }>(org.can('time:read') ? `/time-entries${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  useClampPage(paging, entriesQ.data, entriesQ.isPlaceholderData);
+  const summary = entriesQ.data?.summary;
   // Money per day is only exact when the list is not narrowed below member level.
   const seesMoney = (org.can('rates:read') || org.can('billing:read')) && !client && !project && !task;
   const moneyQ = useOrgQuery<InsightsDto>(seesMoney ? `/insights${qs({ from: range.from, to: range.to, membership_ids: member ? [member] : undefined })}` : null);
@@ -136,25 +142,35 @@ export default function AllTimeEntriesPage() {
   const canAdd = org.can('manual_time:approve') || org.can('manual_time:request');
   const d = org.fmtDuration;
 
-  const entries = entriesQ.data ?? [];
+  const entries = useMemo(() => entriesQ.data?.data ?? [], [entriesQ.data]);
+  const dayTotals = useMemo(() => new Map((summary?.by_day ?? []).map((x) => [x.date, x])), [summary]);
   // Readable names for the entry history (project/task ids in revisions).
   const names = useMemo(() => {
     const m = new Map<string, string>((projectsQ.data ?? []).map((p) => [p.id, p.name]));
-    for (const e of entriesQ.data ?? []) if (e.task_id && e.task_title) m.set(e.task_id, e.task_title);
+    for (const e of entries) if (e.task_id && e.task_title) m.set(e.task_id, e.task_title);
     return m;
-  }, [projectsQ.data, entriesQ.data]);
+  }, [projectsQ.data, entries]);
   const days = useMemo(() => {
     const byDate = new Map<string, TimeEntryDto[]>();
     for (const e of entries) byDate.set(e.local_date, [...(byDate.get(e.local_date) ?? []), e]);
-    if (showLeaves)
+    if (showLeaves) {
+      // Leave days without time are shown on the page whose dates cover them (the first and last
+      // pages reach out to the ends of the range).
+      const dates = entries.map((e) => e.local_date).sort();
+      const pages = Math.max(1, Math.ceil((entriesQ.data?.total ?? 0) / paging.pageSize));
+      const first = paging.page === 0;
+      const last = paging.page >= pages - 1;
+      const lo = !dates.length || (desc ? last : first) ? range.from : dates[0]!;
+      const hi = !dates.length || (desc ? first : last) ? range.to : dates.at(-1)!;
       for (const l of leavesQ.data ?? [])
-        for (let dt = l.start_date < range.from ? range.from : l.start_date; dt <= l.end_date && dt <= range.to; dt = addDays(dt, 1)) if (!byDate.has(dt)) byDate.set(dt, []);
+        for (let dt = l.start_date < lo ? lo : l.start_date; dt <= l.end_date && dt <= hi; dt = addDays(dt, 1)) if (!byDate.has(dt) && !dayTotals.has(dt)) byDate.set(dt, []);
+    }
     return [...byDate.entries()].sort(([a], [b]) => (desc ? b.localeCompare(a) : a.localeCompare(b)));
-  }, [entries, desc, showLeaves, leavesQ.data, range.from, range.to]);
+  }, [entries, desc, showLeaves, leavesQ.data, range.from, range.to, dayTotals, entriesQ.data?.total, paging.page, paging.pageSize]);
   const dayMoney = useMemo(() => new Map((moneyQ.data?.by_day ?? []).map((x) => [x.date, x])), [moneyQ.data]);
   const leavesOn = (date: string) => (leavesQ.data ?? []).filter((l) => l.start_date <= date && l.end_date >= date);
-  const total = entries.reduce((s, e) => s + e.duration_seconds, 0);
-  const billable = entries.filter((e) => e.billable).reduce((s, e) => s + e.duration_seconds, 0);
+  const total = summary?.seconds ?? 0;
+  const billable = summary?.billable_seconds ?? 0;
   const selectable = entries.filter(mayEdit);
   const allSelected = selectable.length > 0 && selectable.every((e) => selected.has(e.id));
 
@@ -179,9 +195,25 @@ export default function AllTimeEntriesPage() {
       setBulkBusy(false);
     }
   };
-  const exportCsv = () => {
+  const EXPORT_LIMIT = 20_000;
+  const exportCsv = async () => {
+    setExporting(true);
+    const all: TimeEntryDto[] = [];
+    try {
+      for (let page = 1; all.length < EXPORT_LIMIT; page++) {
+        const r = await api<OffsetPage<TimeEntryDto>>(`/orgs/${orgId}/time-entries${qs({ ...filters, order: 'asc', page, page_size: 200 })}`);
+        all.push(...r.data);
+        if (all.length >= r.total || !r.data.length) break;
+      }
+    } catch (e) {
+      toast.error(errorMessage(e));
+      return;
+    } finally {
+      setExporting(false);
+    }
+    if ((summary?.entries ?? 0) > all.length) toast.info(`Exported the first ${all.length} of ${summary!.entries} entries. Narrow the dates to export the rest.`);
     const hours = (s: number) => Math.round((s / 3600) * 100) / 100;
-    const rows = [...entries]
+    const rows = all
       .sort((a, b) => a.started_at.localeCompare(b.started_at))
       .map((e) => [
         e.local_date,
@@ -211,7 +243,7 @@ export default function AllTimeEntriesPage() {
                 Save as report
               </Button>
             )}
-            <Button icon={<Download className="size-3.5" />} onClick={exportCsv} disabled={!entries.length}>
+            <Button icon={<Download className="size-3.5" />} onClick={() => void exportCsv()} loading={exporting} disabled={!summary?.entries}>
               Export CSV
             </Button>
             {canAdd && (
@@ -304,6 +336,7 @@ export default function AllTimeEntriesPage() {
           </Select>
         )}
         {org.can('time_off:read') && <Checkbox label="Show leaves" checked={showLeaves} onChange={(e) => setShowLeaves(e.target.checked)} className="text-xs" />}
+        <Input aria-label="Search time entries" placeholder="Search work, project, member…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="h-8 w-56" />
         <Button size="sm" variant="ghost" icon={desc ? <ArrowDown className="size-3.5" /> : <ArrowUp className="size-3.5" />} onClick={() => setDesc((v) => !v)} className="ml-auto">
           {desc ? 'Newest first' : 'Oldest first'}
         </Button>
@@ -330,11 +363,11 @@ export default function AllTimeEntriesPage() {
       <Panel>
         {entriesQ.error ? (
           <ErrorState error={entriesQ.error} onRetry={() => entriesQ.refetch()} />
-        ) : entriesQ.isLoading ? (
+        ) : !entriesQ.data ? (
           <SkeletonRows rows={6} cols={6} />
         ) : !days.length ? (
           <EmptyState
-            title="No time in this range"
+            title={search.term ? 'No time entries match your search' : 'No time in this range'}
             description="Change the dates or filters, or add time."
             action={canAdd && <Button onClick={() => setAdding(range.to > today ? today : range.to)}>Add time</Button>}
           />
@@ -342,11 +375,12 @@ export default function AllTimeEntriesPage() {
           <>
             <div className="flex items-center gap-3 border-b border-border px-4 py-2 text-xs text-text-muted">
               <Checkbox aria-label="Select all editable entries" checked={allSelected} onChange={() => setSelected(allSelected ? new Set() : new Set(selectable.map((e) => e.id)))} />
-              <span>{entries.length} entries</span>
+              <span>{summary?.entries ?? 0} entries</span>
             </div>
             {days.map(([date, list]) => {
-              const secs = list.reduce((s, e) => s + e.duration_seconds, 0);
-              const bill = list.filter((e) => e.billable).reduce((s, e) => s + e.duration_seconds, 0);
+              const day = dayTotals.get(date);
+              const secs = day?.seconds ?? 0;
+              const bill = day?.billable_seconds ?? 0;
               const money = dayMoney.get(date);
               const leaves = showLeaves ? leavesOn(date) : [];
               return (
@@ -372,7 +406,7 @@ export default function AllTimeEntriesPage() {
                         year: 'numeric',
                       })}
                     </h3>
-                    {list.length > 0 && (
+                    {!!day && (
                       <>
                         <span className="text-text-muted">
                           Logged <span className="tabular font-medium text-text">{d(secs)}</span>
@@ -482,6 +516,7 @@ export default function AllTimeEntriesPage() {
                 </section>
               );
             })}
+            <Pagination className="border-t border-border px-4 py-2" {...paging.pagination(entriesQ.data)} />
             <footer className="flex flex-wrap justify-end gap-x-6 gap-y-1 border-t border-border-strong bg-surface-muted/40 px-4 py-2.5 text-sm">
               <span className="text-text-muted">
                 Time logged <span className="tabular font-semibold text-text">{d(total)}</span>

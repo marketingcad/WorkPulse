@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { TrackingPolicy } from '@tallywork/domain';
 
 /** Own-data resources the renderer may read (GET /api/v1/agent/me/<resource>). */
-export const ME_RESOURCES = ['summary', 'sessions', 'timesheet', 'activity', 'tasks', 'schedule', 'time-off', 'notifications', 'client-visibility', 'pay-stubs'] as const;
+export const ME_RESOURCES = ['summary', 'sessions', 'timesheet', 'activity', 'tasks', 'schedule', 'time-off', 'notifications', 'pay-stubs'] as const;
 export type MeResource = (typeof ME_RESOURCES)[number];
 
 /**

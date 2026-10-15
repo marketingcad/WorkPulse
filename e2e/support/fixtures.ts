@@ -23,7 +23,7 @@ export interface DesktopHandle {
 
 async function signInDevice(email: string): Promise<Device> {
   const api = await request.newContext({ baseURL: WEB_URL });
-  const login = await api.post('/api/v1/agent/login', { data: { email, password: PASSWORD, device: { name: `E2E ${email}`, platform: 'windows', agent_version: '0.1.4' } } });
+  const login = await api.post('/api/v1/agent/login', { data: { email, password: PASSWORD, device: { name: `E2E ${email}`, platform: 'windows', agent_version: '0.1.5' } } });
   if (login.status() !== 201) throw new Error(`device sign-in for ${email}: HTTP ${login.status()} ${await login.text()}`);
   const token = (await login.json()).access_token as string;
   const boot = await api.get('/api/v1/agent/bootstrap', { headers: { Authorization: `Bearer ${token}` } });
@@ -41,7 +41,7 @@ function readyState(d: Device): AgentState {
     error: null,
     serverUrl: WEB_URL,
     serverManaged: false,
-    version: '0.1.4',
+    version: '0.1.5',
     account: { name: b.worker.name, email: b.worker.email, organization: b.organization.name, organizationId: b.organization.id, membershipId: b.worker.membership_id, timezone: b.worker.timezone },
     device: b.device,
     policy: b.policy,

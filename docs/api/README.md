@@ -125,7 +125,7 @@ Not under `/orgs/{orgId}`. A client reaches these after accepting an emailed inv
 | Endpoint | Notes |
 |---|---|
 | `GET /orgs/{orgId}/me/client-visibility` | Web. `{ clients: [{ client_name, activity, screenshots }] }` — every client whose portal can currently see this worker's data (through time on that client's included projects), and whether that includes activity level and/or screenshots. |
-| `GET /agent/me/client-visibility` | Desktop, same response shape, for the signed-in worker's device. |
+| `GET /agent/me/client-visibility` | Desktop, same response shape, for the signed-in worker's device. Used by desktop 0.1.4 and earlier; later versions no longer request it. |
 
 Both apps show this as a notice on "What is monitored" whenever the list isn't empty.
 

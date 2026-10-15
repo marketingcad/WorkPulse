@@ -1,14 +1,22 @@
-# Desktop worker dashboard — UI/UX map and simplification guide
+# Desktop worker dashboard — UI/UX map
 
 This documents the **worker's desktop app** dashboard (`apps/desktop/src/renderer`): every screen, where
-its data comes from, how it's driven by the **system admin**, and — the reason for this doc — where it's
-more complex than a worker needs, with concrete ways to simplify.
+its data comes from, and how the **system admin** drives it. Section 5 keeps the simplification analysis
+that led to the current layout and records what was done with each recommendation.
 
 Audience: engineers and designers working on the desktop app. Function and file names are the source of
 truth; line numbers drift.
 
-The whole renderer is **8 files**: `App.tsx`, `Shell.tsx`, `Pages.tsx`, `Dashboard.tsx`, `HomeCards.tsx`,
-`lib.ts`, `types.ts`, `main.tsx`, plus the shared `shared/ipc.ts` and `preload/index.ts`.
+The renderer is **10 files**: `App.tsx`, `Shell.tsx`, `nav.ts`, `Pages.tsx`, `Dashboard.tsx`,
+`HomeCards.tsx`, `lib.ts`, `types.ts`, `main.tsx` and `styles.css`, plus the shared `shared/ipc.ts` and
+`preload/index.ts`.
+
+> **Changed on 15 October 2026 (not in a desktop release yet; the last release is 0.1.4):**
+> - The "What is monitored" screen, its first-run acknowledgement and the rule that blocked the timer
+>   until a worker acknowledged the policy were removed.
+> - The navigation became seven sidebar items with no "Me" group.
+> - Settings lost its technical details.
+> - The profile menu now holds only Sign out.
 
 ---
 
@@ -21,22 +29,29 @@ single `view` string in React state and gates the whole render on `AgentState.ph
 2. `signed_out` / `signing_in` → **Sign in** (progressive: password → MFA → org; "sign in with browser"; collapsible server settings)
 3. no account → loading spinner
 4. `recoveryPrompt` → **Recovery** ("WorkPulse closed unexpectedly")
-5. `!policyAcknowledged` → **forced "What is monitored" gate** — must acknowledge before tracking
-6. otherwise → the selected page inside `Shell`
-7. `idlePrompt` → **Idle** sheet overlaid on top of everything
+5. otherwise → the selected page inside `Shell`
+6. `idlePrompt` → **Idle** sheet overlaid on top of everything
 
-### The navigation rail — 11 destinations
+There is no first-run policy screen: after signing in, a worker lands on Home and can start the timer.
 
-From [Shell.tsx](../apps/desktop/src/renderer/src/Shell.tsx) (`NAV`): **Home, Time Tracking, Projects,
-Tasks, Timesheet, Activity, Reports, Time Off, Schedule, Pay Stubs, Settings.** The rail shows on screens
-≥1024px and collapses to a hamburger drawer below that.
+### The sidebar — 7 items
 
-Two sub-screens are **not in the rail** and are only reachable contextually:
-- **What is monitored** (`monitoring`) — from Settings, the profile menu, the header screenshot chip, and the Home activity card.
-- **Add manual time** (`manual`) — from Time Tracking and Home quick actions.
+The sidebar is plain data in [nav.ts](../apps/desktop/src/renderer/src/nav.ts) (`NAV_GROUPS`), rendered by
+[Shell.tsx](../apps/desktop/src/renderer/src/Shell.tsx) and unit-tested in
+[nav.test.ts](../apps/desktop/test/nav.test.ts). The items are **Home, Track, Timesheet, Time off,
+Schedule, Pay stubs and Settings**. Two of them open a tab bar for related screens:
+
+- **Track** → Projects · Tasks · Sessions (the Time Tracking page)
+- **Timesheet** → Timesheet · Activity · Reports
+
+`GROUP_OF` maps every view to its sidebar item, so the right item stays highlighted on a tab. The sidebar
+shows on screens ≥1024px and collapses to a drawer behind the menu button below that.
+
+One sub-screen is **not in the sidebar**: **Add manual time** (`manual`), reached from Time Tracking and
+the Home quick actions.
 
 The **header bar** carries: org name, Online/Offline pill, sync status ("Synced 2m ago / Syncing… / N
-saved"), a "Screenshots on/off" chip, the notifications bell, and the profile avatar.
+saved"), the notifications bell, and the profile menu (name, email, organization, **Sign out**).
 
 ---
 
@@ -44,29 +59,33 @@ saved"), a "Screenshots on/off" chip, the notifications bell, and the profile av
 
 | Screen | Shows | Reads from | Worker can |
 |---|---|---|---|
-| **Home** | Greeting, Timer card, Quick actions, Current session, Recent sessions, Today summary, Activity card | Live state + `useMe('summary'\|'sessions')` | Start/stop/pause/break, pick project+task, add note, jump to manual time / timesheet |
-| **Time Tracking** | Sessions grouped by day, period selector (7/14/30d) | `useMe('sessions',{from,to})` | Add manual time |
-| **Projects** | Assigned projects (search, expand to tasks), "this week" per project | Live `assignments` + `useMe('summary')` | Click a project/task to start tracking |
-| **Tasks** | Tasks grouped by project; Open/Done/All filter; status, priority, due, tracked time | `useMe('tasks')` | Start / switch to a task |
-| **Timesheet** | Period stepper, totals (expected/billable/manual/activity), hours-by-day matrix, status, rejection banner | `useMe('timesheet',{date})` | Submit / resubmit |
-| **Activity** | Day stepper, tracked/avg-activity/blocks, 10-min blocks by hour, top apps & websites | `useMe('activity',{date})` | — (read-only) |
-| **Reports** | Preset range, worked/billable/manual/activity/idle, hours-by-day chart, by-project list | `useMe('summary',range)` | — (read-only) |
+| **Home** | Greeting, Timer card, Needs attention, Quick actions, Current session, Recent sessions, Today summary, Activity card | Live state + `useMe('summary'\|'sessions')` | Start/stop/pause/break, pick project+task, add note, jump to manual time / timesheet |
+| **Time Tracking** (Track → Sessions) | Sessions grouped by day, period selector (7/14/30d) | `useMe('sessions',{from,to})` | Add manual time |
+| **Projects** (Track) | Assigned projects (search, expand to tasks), "this week" per project | Live `assignments` + `useMe('summary')` | Click a project/task to start tracking |
+| **Tasks** (Track) | Tasks grouped by project; Open/Done/All filter; status, priority, due, tracked time | `useMe('tasks')` | Start / switch to a task |
+| **Timesheet** | Period stepper, totals (expected, added by hand, activity), hours-by-day matrix, status, rejection banner. No billable hours | `useMe('timesheet',{date})` | Submit / resubmit |
+| **Activity** (Timesheet) | Day stepper, tracked/avg-activity/blocks, 10-min blocks by hour, top apps & websites | `useMe('activity',{date})` | — (read-only) |
+| **Reports** (Timesheet) | Preset range, worked/added by hand/activity/away, hours-by-day chart, by-project list | `useMe('summary',range)` | — (read-only) |
 | **Time Off** | Balance cards (balance/used/pending), request form, your requests | `useMe('time-off')` | Request time off |
 | **Schedule** | This/next week shifts, day off, today highlight | `useMe('schedule',{from,to})` | — (read-only) |
 | **Pay Stubs** | Finalized payrolls: period, hours, gross/net, adjustments | `useMe('pay-stubs')` | Download PDF |
-| **Settings** | Signed-in identity, org, server, device status+id, pending sync, capabilities, version | Live state | What is monitored, Sign out, Quit |
-| **What is monitored** | On/Off rows: activity, screenshots, apps, websites, location, idle; warning banners | `policy` + `capabilities` + `useMe('client-visibility')` | Acknowledge policy |
+| **Settings** | Signed in as, organization, this device (status in words), version, sync error if any | Live state | Sign out, Quit |
 | **Add manual time** | Project/task/date/time/reason form, pending requests | Live state | Request manual time |
 
 ### The Home dashboard in detail
 
 A two-column grid ([Dashboard.tsx](../apps/desktop/src/renderer/src/Dashboard.tsx)). Main column, top to
-bottom: **Greeting → Timer card → Quick actions → Current session → Recent sessions**. Aside column:
-**Today summary → Activity card**.
+bottom: **Greeting → Timer card → Needs attention → Quick actions → Current session + Recent sessions**.
+Aside column: **Today summary → Activity card**.
 
-The **Timer card** is the centerpiece and the densest element: a 3-panel grid with a "current project"
-select, a "current task" select, a status pill, a live HH:MM:SS clock, a "Today Xh · Week Yh" line, up to
-three buttons (Start / Break+Pause / Stop / Resume), a break menu, an activity ring, and the start time.
+- **Timer card:** a "Working on" line with project and task. While tracking, the pickers stay behind a
+  "Change" button. It also has the status, a live HH:MM:SS clock, a "Today Xh · Week Yh" line and the
+  Start / Break / Pause / Resume / Stop buttons, with breaks in a menu.
+- **Needs attention:** appears only when the worker has something to act on, either a timesheet to
+  submit or fix, or manual-time requests still waiting to sync.
+- **Quick actions:** a work note (while tracking), **Manual time** (when the policy allows it) and **My
+  timesheet**.
+- **Activity card:** the last hour of activity per minute.
 
 ---
 
@@ -77,19 +96,24 @@ mechanisms:
 
 **(A) Live pushed state — `AgentState`** ([shared/ipc.ts](../apps/desktop/src/shared/ipc.ts), subscribed via
 `useAgentState()` in [lib.ts](../apps/desktop/src/renderer/src/lib.ts)). Main pushes a new state object and
-the UI re-renders. This carries: the timer (state, project, task, started-at, base/segment seconds, note),
-today/week seconds, activity %, recent per-minute activity, what's recording now, idle/recovery prompts,
-sync status, capabilities, policy + acknowledgement, assignments, break types, next shift, timesheet-due,
-and manual requests. The clock is ticked client-side.
+the UI re-renders. This carries:
+- the timer (state, project, task, started-at, base and segment seconds, note);
+- today and week seconds, activity %, recent per-minute activity, and what's recording now;
+- idle and recovery prompts;
+- sync status, capabilities, policy, assignments, break types, next shift, timesheet-due and manual
+  requests.
+
+The clock is ticked client-side.
 
 **(B) Fetched own-data — `useMe`** → `GET /api/v1/agent/me/<resource>`. The allowlist is: `summary`,
 `sessions`, `timesheet`, `activity`, `tasks`, `schedule`, `time-off`, `notifications`, `client-visibility`,
 `pay-stubs`. It keeps the last good result on failure, so pages still show data offline.
+`client-visibility` is still allowlisted, but no screen reads it since "What is monitored" was removed.
 
 **Bridge commands** (mutations) go to the main process, which owns the session and sync: `start`,
-`switchTask`, `stop`, `pause`, `resume`, `takeBreak`, `setNote`, `resolveIdle`, `acknowledgePolicy`,
-`resolveRecovery`, `requestManualTime`, `submitTimesheet`, `requestTimeOff`, `readNotifications`,
-`savePayStub`. The timer verbs are **not** REST calls — they're commands to main.
+`switchTask`, `stop`, `pause`, `resume`, `takeBreak`, `setNote`, `resolveIdle`, `resolveRecovery`,
+`requestManualTime`, `submitTimesheet`, `requestTimeOff`, `readNotifications`, `savePayStub`. The timer
+verbs are **not** REST calls — they're commands to main.
 
 Rule of thumb: **the timer, activity-now, sync, assignments, policy, breaks, shifts, and timesheet-due are
 live; history (sessions, summaries, timesheet, activity, schedule, time-off, pay stubs, notifications) is
@@ -104,8 +128,9 @@ carriers are `AgentState.policy` and `AgentState.assignments`.
 
 | Admin sets (web) | Where it surfaces on the desktop |
 |---|---|
-| Monitoring policy (activity, screenshots, apps, websites, location, idle) | "What is monitored" rows, Home activity card, header screenshot chip. Must be **acknowledged** before tracking. |
-| Time limits (daily/weekly) | Progress bars in Today summary; warning on "What is monitored" |
+| Monitoring policy (activity, screenshots, apps, websites, location, idle) | What the agent records while the timer runs; the Activity page's apps and websites lists say "Not recorded by your organization" when off. The worker is no longer shown a summary of the policy or asked to acknowledge it. |
+| Desktop tracking allowed | Starting the timer is refused when the organization turns desktop tracking off |
+| Time limits (daily/weekly) | Progress bars in Today summary; the timer stops at a limit |
 | Manual-time rules (allowed, needs approval, reason required) | Whether the manual-time buttons appear; required-reason and approval copy |
 | Idle rules (threshold, behavior) | The Idle sheet prompt and its wording |
 | Projects + tasks (membership, assignees) | Every project/task picker, the Projects page, Tasks grouping |
@@ -113,91 +138,79 @@ carriers are `AgentState.policy` and `AgentState.assignments`.
 | Schedule / shifts | Schedule page and "Your shift" / next-shift line |
 | Time-off policies | Time Off balances and request form (empty state tells the worker to ask their admin) |
 | Device approval | Device status in Settings; a PENDING device can't track |
-| Client visibility | Warning banner on "What is monitored" naming which clients can see activity/screenshots |
-| OS capabilities (e.g. Wayland) | Gate what the monitoring rows show as actually On; trigger the Wayland warning |
 
-A change the admin makes server-side reaches the worker through the bootstrap/sync cycle (new `policyHash`),
-and a policy change forces the worker to re-acknowledge.
+A change the admin makes server-side reaches the worker through the bootstrap/sync cycle (new policy
+hash). The desktop shows a "Tracking settings changed" notification and restarts its monitors with the new
+policy. It no longer asks the worker to re-acknowledge.
 
 ---
 
-## 5. Simplification analysis
+## 5. Simplification analysis (history)
 
-The goal is to make the dashboard easier for workers to use and understand. These are the friction points
-the current structure creates, with options to address each. They're ordered by likely impact.
+This was the analysis behind the current layout. Each item ends with what was done.
 
-> **Keep "What is monitored" fully intact and reachable.** It's the transparency disclosure, and (in many
-> places) a legal requirement. Simplification should make the rest of the app calmer, not hide monitoring.
-> It can be made less alarming (see 5.6), but it must stay available to the worker.
+> The original analysis said to keep "What is monitored" and its acknowledgement as the transparency
+> disclosure, which many places require by law. **That was later reversed:** the screen and the
+> acknowledgement were removed on purpose (15 October 2026). If workers must be told what is monitored,
+> that now has to happen outside the desktop app. The server's `/agent/policy/ack` endpoint and the web
+> `/me/monitoring` page still exist.
 
 ### 5.1 Reduce the 11-item nav
 
-Eleven destinations is a lot for a single-worker app, and several are low-interaction, read-only, or overlap:
+Eleven destinations was a lot for a single-worker app, and several were low-interaction, read-only, or
+overlapped. The analysis proposed **Home · Track · Timesheet · Time off · Me (schedule, pay stubs,
+settings)**, with Reports folded under Timesheet.
 
-- **Reports** largely re-presents what **Activity**, **Timesheet** and **Today summary** already show, in
-  another cut. Consider folding it into Timesheet/Activity as a "range" view.
-- **Schedule** and **Pay Stubs** are read-only reference screens. They could live under a single
-  "Me" / "My info" group rather than two top-level items.
-- A workable target: **Home · Track · Timesheet · Time off · Me (schedule, pay stubs, settings)** — five
-  primary items, with Projects/Tasks reachable from Track/Home.
+**Done, then adjusted:** Track and Timesheet group their screens as tabs, as proposed. The "Me" group was
+later split back out, so Schedule, Pay stubs and Settings are separate sidebar items (7 in total).
 
 ### 5.2 Remove duplicated paths
 
-- **Starting work two ways:** the Timer card's project/task selects and the Projects-card list both call the
-  same `bridge.start`. Pick one primary pattern for Home; keep the other only on the Projects page.
-- **Sessions two ways:** Recent sessions on Home vs the full Time Tracking page. Home should show a short
-  preview with a single "View all" into Time Tracking — which it does — so the duplication is mostly in how
-  prominent both are.
-- **"Tracked today / week"** appears on both the Timer card and the Today-summary card. Show it once.
+- **Starting work two ways:** the Timer card's project/task selects and the Projects card both call
+  `bridge.start`. Pick one primary pattern for Home.
+- **Sessions two ways:** Recent sessions on Home vs the full Time Tracking page; Home shows a short preview
+  with "View all".
+- **"Tracked today / week"** appeared on both the Timer card and the Today summary.
+
+**Partly done:** the Projects card is no longer on Home. The Timer card still shows "Today · Week".
 
 ### 5.3 Lighten the Timer card
 
-It currently packs project select, task select, status, clock, today/week, up to three buttons, a break
-menu, an activity ring, and the start time into one card. Options: move the activity ring to the Activity
-card (where activity lives), collapse the break menu behind the Pause button, and show project/task as a
-compact "working on X" line with an edit affordance rather than two always-open selects.
+Proposed: move the activity ring out, collapse the break menu, and show project/task as a compact
+"working on X" line with an edit affordance.
+
+**Done:** "Working on" line with a "Change" button while tracking; no activity ring on the Timer card.
 
 ### 5.4 Translate the jargon
 
-Labels a worker may not parse, with plainer alternatives:
-
-| Current | Plainer |
+| Was | Now |
 |---|---|
-| Billable | (hide from workers, or "Client hours") |
+| Billable | Hidden from workers |
 | Manual | "Added by hand" |
-| Activity % | "Keyboard & mouse use" |
-| Idle | "Away time" |
-| ONE_OFF (extra) | "Extra shift" |
-| late_seconds / "added or changed after you submitted" | "Changed after you submitted" |
-| Supersede | "Replace" |
+| Idle | "Away" |
+
+**Done** for these three. Activity % is still labelled "Activity".
 
 ### 5.5 De-technicalize Settings
 
-Settings currently exposes developer-flavored values: capabilities as `key ✓/✗`, a device-id slice, and
-"Pending sync: N events". Workers don't need these. Move them behind a "Technical details" / "Diagnostics"
-disclosure and keep the main Settings to identity, org, device status (in words), and the sign-out/quit
-actions.
+Proposed: move capabilities, the device ID and pending sync behind a "Technical details" disclosure.
 
-### 5.6 Calm the "What is monitored" screen (without hiding it)
+**Done, then simplified further:** the technical details were removed from Settings entirely.
 
-It can stack up to four warning banners (client visibility, Wayland, time limits) above six policy rows.
-Rather than remove it, make it calmer: lead with a one-line plain summary ("While your timer runs, your
-employer collects …"), show only the signals that are actually On by default with the rest behind "see
-all", and consolidate the warning banners. The acknowledgement and the full detail stay.
+### 5.6 Calm the "What is monitored" screen
+
+**Superseded:** the screen was removed (see the note at the top of this section).
 
 ### 5.7 Reduce interruptive surfaces
 
-The app has many overlays: idle sheet, recovery screen, notifications popover, profile popover, break menu,
-inline time-off form, manual-time sub-screen, and the monitoring gate. Audit which truly need to interrupt.
-The idle sheet and the monitoring gate must; others (manual time, time-off) could be inline pages reachable
-from the nav rather than contextual-only sub-screens, which also fixes the "hard to find again" problem.
+The idle sheet and recovery screen still interrupt, as they must. The monitoring gate is gone. Manual time
+is still a contextual sub-screen.
 
 ### What not to change
 
 - The **two-mechanism data layer** (live state + fetched own-data) is sound and offline-friendly; keep it.
 - The **device-only, own-data** security model is deliberate — don't widen what the renderer can read to
   simplify a screen.
-- The **monitoring disclosure and acknowledgement** stay.
 
 ---
 
@@ -205,12 +218,13 @@ from the nav rather than contextual-only sub-screens, which also fixes the "hard
 
 | Area | File |
 |---|---|
-| Root, phase gating, Sign in, Monitoring, Manual time, Settings, Idle, Recovery | [App.tsx](../apps/desktop/src/renderer/src/App.tsx) |
-| App frame, nav rail, header, notifications, profile menu | [Shell.tsx](../apps/desktop/src/renderer/src/Shell.tsx) |
-| Home dashboard: Timer card, Quick actions, Projects card, Activity card | [Dashboard.tsx](../apps/desktop/src/renderer/src/Dashboard.tsx) |
-| Home aside cards: Today summary, Current/Recent sessions, Session list | [HomeCards.tsx](../apps/desktop/src/renderer/src/HomeCards.tsx) |
+| Root, phase gating, Sign in, Manual time, Settings, Idle, Recovery | [App.tsx](../apps/desktop/src/renderer/src/App.tsx) |
+| App frame, sidebar, sub-tabs, header, notifications, profile menu | [Shell.tsx](../apps/desktop/src/renderer/src/Shell.tsx) |
+| Sidebar model: items, tabs, which item each view belongs to | [nav.ts](../apps/desktop/src/renderer/src/nav.ts) |
+| Home dashboard: Timer card, Needs attention, Quick actions, Projects card, Activity card | [Dashboard.tsx](../apps/desktop/src/renderer/src/Dashboard.tsx) |
+| Home cards: Today summary, Current/Recent sessions, Session list | [HomeCards.tsx](../apps/desktop/src/renderer/src/HomeCards.tsx) |
 | Time Tracking, Projects, Tasks, Timesheet, Activity, Reports, Time Off, Schedule, Pay Stubs | [Pages.tsx](../apps/desktop/src/renderer/src/Pages.tsx) |
-| Bridge, `useMe`, `useAgentState`, formatters | [lib.ts](../apps/desktop/src/renderer/src/lib.ts) |
+| Bridge, `useMe`, `useAgentState`, views, formatters | [lib.ts](../apps/desktop/src/renderer/src/lib.ts) |
 | `AgentState` shape, IPC channel schema, `ME_RESOURCES` | [shared/ipc.ts](../apps/desktop/src/shared/ipc.ts) |
 | Preload bridge | [preload/index.ts](../apps/desktop/src/preload/index.ts) |
 

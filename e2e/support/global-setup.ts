@@ -1,11 +1,12 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { request, type APIRequestContext } from '@playwright/test';
-import { ADMIN_STATE, AUTH_DIR, DATA_FILE, PASSWORD, WEB_URL, WORKER_STATE } from './env';
+import { ADMIN_STATE, AUTH_DIR, DATA_FILE, PASSWORD, VIEWER_STATE, WEB_URL, WORKER_STATE } from './env';
 
 /**
  * Builds this run's test data through the public API, the same way a customer would:
  * an organization (signed up), a team, two projects, a Worker with a finalized payroll
- * (approved time + a bonus and a deduction), and a second Worker with no payroll.
+ * (approved time + a bonus and a deduction), a second Worker with no payroll, and a web user who
+ * may read budgets but nothing about money (for permission checks).
  * Every name is unique per run, so specs never depend on data left by earlier runs.
  */
 
@@ -17,6 +18,8 @@ export interface E2EData {
   worker: { email: string; name: string; membershipId: string };
   /** A Worker with no payroll (empty states). */
   newcomer: { email: string; name: string; membershipId: string };
+  /** Custom role with only `budgets:read`: sees budgets without amounts, and no invoices or payroll. */
+  viewer: { email: string; name: string; membershipId: string };
   teamName: string;
   projects: { website: { id: string; name: string }; app: { id: string; name: string } };
   payStub: { id: string; periodStart: string; periodEnd: string; netMinor: number; grossMinor: number };
@@ -67,6 +70,8 @@ export default async function globalSetup(): Promise<void> {
   const invite = async (who: string, name: string) => json(await admin.post(o('/invitations'), { data: { email: email(who), name, role_id: roleId('WORKER'), team_ids: [team.id], project_ids: [website.id] } }), `invite ${who}`);
   const worker = await accept((await invite('wade', 'Wade Worker')).invite_url, 'Wade Worker');
   const newcomer = await accept((await invite('nina', 'Nina Newcomer')).invite_url, 'Nina Newcomer');
+  const viewerRole = await json(await admin.post(o('/roles'), { data: { name: `Budget viewer ${run}`, grants: { 'budgets:read': 'org' } } }), 'viewer role');
+  const viewer = await accept((await json(await admin.post(o('/invitations'), { data: { email: email('vera'), name: 'Vera Viewer', role_id: viewerRole.id } }), 'invite vera')).invite_url, 'Vera Viewer');
 
   // A finalized weekly payroll for Wade: 3 h approved time at $25/h, plus a bonus and a deduction.
   await json(await admin.post(o('/rates'), { data: { kind: 'PAY', scope: 'WORKER', scope_id: worker.membershipId, amount_minor: 2500, currency: 'USD', effective_from: '2020-01-01' } }), 'pay rate');
@@ -90,6 +95,7 @@ export default async function globalSetup(): Promise<void> {
     admin: { email: email('admin'), name: 'Erin Admin', membershipId: adminId },
     worker: { email: email('wade'), name: 'Wade Worker', membershipId: worker.membershipId },
     newcomer: { email: email('nina'), name: 'Nina Newcomer', membershipId: newcomer.membershipId },
+    viewer: { email: email('vera'), name: 'Vera Viewer', membershipId: viewer.membershipId },
     teamName,
     projects: { website: { id: website.id, name: website.name }, app: { id: app.id, name: app.name } },
     payStub: { id: stub.id, periodStart: finalized.period_start, periodEnd: finalized.period_end, netMinor: stub.net_minor, grossMinor: stub.gross_minor },
@@ -101,6 +107,9 @@ export default async function globalSetup(): Promise<void> {
   state.origins = [{ origin: WEB_URL, localStorage: [{ name: 'tw.lastOrg', value: orgId }] }];
   writeFileSync(ADMIN_STATE, JSON.stringify(state));
   writeFileSync(WORKER_STATE, JSON.stringify(await worker.ctx.storageState()));
+  const viewerState = await viewer.ctx.storageState();
+  viewerState.origins = [{ origin: WEB_URL, localStorage: [{ name: 'tw.lastOrg', value: orgId }] }];
+  writeFileSync(VIEWER_STATE, JSON.stringify(viewerState));
   writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await Promise.all([admin.dispose(), worker.ctx.dispose(), newcomer.ctx.dispose()]);
+  await Promise.all([admin.dispose(), worker.ctx.dispose(), newcomer.ctx.dispose(), viewer.ctx.dispose()]);
 }

@@ -60,7 +60,9 @@ export async function signIn(window: Page, email: string): Promise<void> {
   await expect(window.getByLabel('Email')).toHaveValue(email);
   await expect(window.getByLabel('Password')).toHaveValue(PASSWORD);
   await window.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(window.getByRole('button', { name: 'Profile' })).toBeVisible();
+  // Sign-in hashes the password and loads the worker's data; under a full parallel run the shared
+  // single-connection test database can take longer than the default 10s.
+  await expect(window.getByRole('button', { name: 'Profile' })).toBeVisible({ timeout: 30_000 });
 }
 
 /** Open a page from the navigation at any window width: the sidebar when shown, else the drawer. */

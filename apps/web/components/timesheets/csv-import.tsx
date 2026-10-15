@@ -93,7 +93,8 @@ export function CsvImportDialog({ membershipId, onClose }: { membershipId: strin
           </Button>
           <input ref={input} type="file" accept=".csv,text/csv" hidden onChange={(e) => (void pick(e.target.files?.[0]), (e.target.value = ''))} />
           {fileName && <span className="text-sm text-text-muted">{fileName}</span>}
-          <Button variant="ghost" size="sm" icon={<Download className="size-3.5" />} onClick={template} className="ml-auto">
+          {/* Wait for the projects, so the template's sample row names one the person can log to. */}
+          <Button variant="ghost" size="sm" icon={<Download className="size-3.5" />} onClick={template} disabled={!assignments} className="ml-auto">
             Template
           </Button>
         </div>

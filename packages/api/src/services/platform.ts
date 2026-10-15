@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   apiKeys,
@@ -28,10 +28,50 @@ import { memberNames } from './timer';
 import { decrypt, encrypt, hmac, randomToken } from '../lib/crypto';
 import { assertPublicUrl, postToPublicUrl } from '../lib/ssrf';
 import { iso } from '../lib/http';
+import { likePattern } from '../lib/search';
 
 // ─── Devices ─────────────────────────────────────────────────────────────────
-export async function listDevices(x: Ctx): Promise<DeviceDto[]> {
-  const rows = await x.tx.select().from(devices).where(membershipFilter(x.actor, 'devices:read', devices.membershipId)).orderBy(desc(devices.lastSeenAt));
+type DeviceQuery = { membershipId?: string; id?: string; status?: string; search?: string };
+
+/** Devices the person may see; `search` covers the device name, platform and member. */
+function deviceWhere(x: Ctx, q: DeviceQuery) {
+  const term = q.search ? likePattern(q.search) : null;
+  return and(
+    membershipFilter(x.actor, 'devices:read', devices.membershipId),
+    q.membershipId ? eq(devices.membershipId, q.membershipId) : undefined,
+    q.id ? eq(devices.id, q.id) : undefined,
+    q.status ? eq(devices.status, q.status as 'ACTIVE') : undefined,
+    term
+      ? or(
+          ilike(devices.name, term),
+          ilike(devices.platform, term),
+          inArray(devices.membershipId, x.tx.select({ id: memberships.id }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).where(ilike(users.name, term))),
+        )
+      : undefined,
+  );
+}
+
+const deviceOrder = [sql`${devices.lastSeenAt} desc nulls last`, desc(devices.id)];
+
+/** Devices as a plain array, most recently seen first (every match: use `pageDevices` for a page at a time). */
+export async function listDevices(x: Ctx, q: DeviceQuery = {}): Promise<DeviceDto[]> {
+  const rows = await x.tx.select().from(devices).where(deviceWhere(x, q)).orderBy(...deviceOrder);
+  return toDeviceDtos(x, rows);
+}
+
+/** One numbered page of devices (`page` is 1-based), the total, and how many there are per status. */
+export async function pageDevices(x: Ctx, q: DeviceQuery & { page: number; pageSize: number }): Promise<OffsetPage<DeviceDto> & { summary: { counts: Record<string, number> } }> {
+  const byStatus = await x.tx.select({ status: devices.status, n: sql<number>`count(*)::int` }).from(devices).where(deviceWhere(x, { ...q, status: undefined })).groupBy(devices.status);
+  const rows = await x.tx.select().from(devices).where(deviceWhere(x, q)).orderBy(...deviceOrder).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
+  const counts: Record<string, number> = { ALL: 0 };
+  for (const r of byStatus) {
+    counts[r.status] = r.n;
+    counts.ALL! += r.n;
+  }
+  return { data: await toDeviceDtos(x, rows), total: q.status ? (counts[q.status] ?? 0) : counts.ALL!, page: q.page, page_size: q.pageSize, summary: { counts } };
+}
+
+async function toDeviceDtos(x: Ctx, rows: Array<typeof devices.$inferSelect>): Promise<DeviceDto[]> {
   const names = await memberNames(x, [...new Set(rows.map((r) => r.membershipId))]);
   return rows.map((d) => ({
     id: d.id,
@@ -64,7 +104,7 @@ export async function setDeviceStatus(x: Ctx, id: string, action: 'revoke' | 'ap
     await x.tx.update(devices).set({ status: 'ACTIVE', updatedAt: new Date() }).where(eq(devices.id, id));
   }
   await audit(x, { action: `device.${action}`, targetType: 'device', targetId: id });
-  return (await listDevices(x)).find((dd) => dd.id === id)!;
+  return (await listDevices(x, { id }))[0]!;
 }
 
 // ─── Policies ────────────────────────────────────────────────────────────────

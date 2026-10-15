@@ -266,8 +266,9 @@ function PasswordPanel() {
 function DevicesPanel() {
   const org = useOrg();
   const toast = useToast();
-  const q = useOrgQuery<DeviceDto[]>('/devices');
-  const mine = (q.data ?? []).filter((d) => d.membership_id === org.membership.id);
+  // Only your own devices, filtered by the server.
+  const q = useOrgQuery<DeviceDto[]>(`/devices?membership_id=${org.membership.id}`);
+  const mine = q.data ?? [];
   const [revoking, setRevoking] = useState<DeviceDto | null>(null);
   const revoke = useOrgMutation<{ id: string }>('POST', (b) => `/devices/${b.id}/revoke`, {
     onSuccess: () => {

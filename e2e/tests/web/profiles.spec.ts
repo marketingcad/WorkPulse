@@ -1,4 +1,4 @@
-import { expect, ok, test } from '../../support/fixtures';
+import { expect, ok, test, uid } from '../../support/fixtures';
 import { ADMIN_STATE, VIEWER_STATE } from '../../support/env';
 
 /**
@@ -8,7 +8,7 @@ import { ADMIN_STATE, VIEWER_STATE } from '../../support/env';
 
 /** A 1×1 PNG, enough for the logo editor. */
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-const unique = (prefix: string, run: string) => `${prefix} ${run} ${Date.now() % 100000}`;
+const unique = (prefix: string, run: string) => `${prefix} ${run} ${uid()}`;
 
 test.describe('Client profiles', () => {
   test.use({ storageState: ADMIN_STATE });

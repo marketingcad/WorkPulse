@@ -1,11 +1,12 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { Info } from 'lucide-react';
-import type { WorkerDto } from '@tallywork/contracts';
-import { DataTable, EmptyState, ErrorState, FilterBar, KpiStrip, PageHeader, Panel, PermissionState, PersonCell, SegmentedControl, Select, StatusBadge, fmtDate, fmtTime, type Column } from '@tallywork/ui';
+import type { OffsetPage } from '@tallywork/contracts';
+import { DataTable, EmptyState, ErrorState, FilterBar, Input, KpiStrip, PageHeader, Panel, PermissionState, PersonCell, SegmentedControl, Select, StatusBadge, fmtDate, fmtTime, type Column } from '@tallywork/ui';
 import { qs, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
+import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { DateStepper, dateRangeLabel, type AttendanceRow, type AttendanceStatus } from '@/components/people/shared';
 
 const STATUSES: Array<{ value: AttendanceStatus; label: string }> = [
@@ -28,26 +29,19 @@ export default function AttendancePage() {
   const from = mode === 'day' ? date : weekStartOf(date, org.organization.week_start);
   const to = mode === 'day' ? date : addDays(from, 6);
   const allowed = org.can('attendance:read');
-  const q = useOrgQuery<AttendanceRow[]>(allowed ? `/attendance${qs({ from, to })}` : null);
-  const workersQ = useOrgQuery<WorkerDto[]>(allowed ? '/workers' : null);
-  const tzOf = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const w of workersQ.data ?? []) m.set(w.id, w.timezone);
-    return (id: string) => m.get(id) || org.organization.timezone;
-  }, [workersQ.data, org.organization.timezone]);
-
-  const rows = useMemo(() => (q.data ?? []).filter((r) => !status || r.status === status), [q.data, status]);
-  const kpis = useMemo(() => {
-    const all = q.data ?? [];
-    const count = (s: AttendanceStatus) => all.filter((r) => r.status === s).length;
-    return {
-      present: count('PRESENT'),
-      late: count('LATE'),
-      absent: count('ABSENT'),
-      leave: count('ON_LEAVE'),
-      overtime: all.reduce((s, r) => s + r.overtime_seconds, 0),
-    };
-  }, [q.data]);
+  const search = useSearch();
+  // The server computes everyone's attendance for the range, counts it, and sends one page of rows
+  // (each with the member's time zone), instead of every member-day.
+  const filters = { from, to, status: status || undefined, q: search.term || undefined };
+  const paging = useServerPage(JSON.stringify(filters));
+  const q = useOrgQuery<OffsetPage<AttendanceRow & { timezone: string }> & { summary: { counts: Record<string, number>; overtime_seconds: number } }>(allowed ? `/attendance${qs({ ...filters, ...paging.params })}` : null, {
+    placeholderData: (p) => p,
+  });
+  useClampPage(paging, q.data, q.isPlaceholderData);
+  const tzOf = (id: string) => q.data?.data.find((r) => r.membership_id === id)?.timezone || org.organization.timezone;
+  const counts = q.data?.summary.counts ?? {};
+  const count = (s: AttendanceStatus) => counts[s] ?? 0;
+  const kpis = { present: count('PRESENT'), late: count('LATE'), absent: count('ABSENT'), leave: count('ON_LEAVE'), overtime: q.data?.summary.overtime_seconds ?? 0 };
 
   const d = org.fmtDuration;
   const dash = (s: number) => (s > 0 ? d(s) : <span className="text-text-faint">—</span>);
@@ -107,6 +101,7 @@ export default function AttendancePage() {
             </option>
           ))}
         </Select>
+        <Input aria-label="Search members" placeholder="Search members…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-56" />
       </FilterBar>
 
       <KpiStrip
@@ -133,18 +128,16 @@ export default function AttendancePage() {
           <ErrorState error={q.error} onRetry={() => q.refetch()} />
         ) : (
           <DataTable
-            rows={rows}
-            columns={columns}
+            rows={q.data?.data}
+            columns={columns.map((c) => ({ ...c, sortable: false }))}
             rowKey={(r) => `${r.membership_id}:${r.date}`}
             loading={q.isLoading}
-            searchable
-            searchPlaceholder="Search members…"
+            pagination={paging.pagination(q.data)}
             caption="Attendance roster"
             key={mode}
-            initialSort={mode === 'week' ? { key: 'date', dir: 'desc' } : undefined}
             empty={
               <EmptyState
-                title={status ? 'No members with this status' : 'Nobody was scheduled or tracked time'}
+                title={search.term ? 'No members match your search' : status ? 'No members with this status' : 'Nobody was scheduled or tracked time'}
                 description={
                   status ? (
                     'Try another status filter.'

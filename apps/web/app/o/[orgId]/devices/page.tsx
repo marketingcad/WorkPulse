@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { CheckCircle2, KeyRound, Laptop, MoreHorizontal, ShieldOff } from 'lucide-react';
-import type { DeviceDto } from '@tallywork/contracts';
+import type { DeviceDto, OffsetPage } from '@tallywork/contracts';
 import {
   Badge,
   ConfirmDialog,
@@ -9,6 +9,7 @@ import {
   EmptyState,
   ErrorState,
   IconButton,
+  Input,
   Menu,
   MenuItem,
   MenuSeparator,
@@ -22,8 +23,9 @@ import {
   useToast,
   type Column,
 } from '@tallywork/ui';
-import { errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
+import { errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 
 type Action = 'approve' | 'reauth' | 'revoke';
 const PLATFORM: Record<string, string> = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
@@ -37,7 +39,14 @@ export default function DevicesPage() {
   const org = useOrg();
   const toast = useToast();
   const allowed = org.can('devices:read');
-  const q = useOrgQuery<DeviceDto[]>(allowed ? '/devices' : null, { refetchInterval: 60_000 });
+  const search = useSearch();
+  // The server searches and pages the devices (one or more per member), most recently seen first.
+  const paging = useServerPage(search.term);
+  const q = useOrgQuery<OffsetPage<DeviceDto> & { summary: { counts: Record<string, number> } }>(allowed ? `/devices${qs({ q: search.term || undefined, ...paging.params })}` : null, {
+    refetchInterval: 60_000,
+    placeholderData: (p) => p,
+  });
+  useClampPage(paging, q.data, q.isPlaceholderData);
   const [pending, setPending] = useState<{ device: DeviceDto; action: Action } | null>(null);
   const m = useOrgMutation<{ id: string; action: Action }, DeviceDto>('POST', (b) => `/devices/${b.id}/${b.action}`);
 
@@ -138,7 +147,7 @@ export default function DevicesPage() {
     },
   ];
 
-  const pendingCount = q.data?.filter((d) => d.status === 'PENDING').length ?? 0;
+  const pendingCount = q.data?.summary.counts.PENDING ?? 0;
 
   return (
     <>
@@ -149,15 +158,20 @@ export default function DevicesPage() {
             <ErrorState error={q.error} onRetry={() => void q.refetch()} />
           ) : (
             <DataTable
-              rows={q.data}
-              columns={columns}
+              rows={q.data?.data}
+              columns={columns.map((c) => ({ ...c, sortable: false }))}
               rowKey={(d) => d.id}
               loading={q.isLoading}
-              searchable={(q.data?.length ?? 0) > 8}
-              searchPlaceholder="Search devices…"
+              pagination={paging.pagination(q.data)}
+              toolbar={
+                (q.data?.summary.counts.ALL ?? 0) > 8 || search.term ? (
+                  <Input aria-label="Search devices" placeholder="Search device, platform or member…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="h-7 w-64 text-xs" />
+                ) : undefined
+              }
               rowClassName={(d) => (d.status === 'REVOKED' ? 'opacity-60' : undefined)}
               caption="Registered devices"
-              empty={<EmptyState icon={<Laptop className="size-5" />} title="No devices yet" description="Install the desktop app and sign in. The computer appears here after its first sync." />}
+              empty={search.term ? <EmptyState title="No devices match your search" /> : <EmptyState icon={<Laptop className="size-5" />} title="No devices yet" description="Install the desktop app and sign in. The computer appears here after its first sync." />
+              }
             />
           )}
         </Panel>

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import {
   clientInput,
+  pageQuery,
   clientPortalInviteInput,
   clientPortalSettingsInput,
   inviteInput,
@@ -29,6 +30,7 @@ import {
   listInvitations,
   listRoles,
   listWorkers,
+  pageWorkers,
   orgContext,
   removeWorker,
   revokeInvitation,
@@ -44,6 +46,7 @@ import {
   listClients,
   listProjects,
   listTasks,
+  pageTasks,
   listTeams,
   setClientArchived,
   setProjectArchived,
@@ -54,7 +57,8 @@ import {
   upsertTeam,
   assignmentsFor,
 } from '../services/work';
-import { getEffectivePolicy, getPolicyLayer, listDevices, putPolicyLayer, setDeviceStatus } from '../services/platform';
+import { getEffectivePolicy, getPolicyLayer, listDevices,
+  pageDevices, putPolicyLayer, setDeviceStatus } from '../services/platform';
 import { myAssignments } from '../services/timer';
 import { getPortalSettings, invitePortalViewer, previewAccess, previewScreenshots, revokePortalViewer, updatePortalSettings } from '../services/portal-admin';
 import { clientVisibilityFor, portalSummaryTx } from '../services/portal';
@@ -79,9 +83,11 @@ export const orgRoutes = new Hono<AppEnv>()
   })
 
   // Workers & invitations
+  // Sending `page` returns { data, total, page, page_size }; without it, every member as before.
   .get('/workers', requirePermission('members:read'), async (c) => {
-    const q = query(c, z.object({ include_removed: bool }));
-    return c.json(await listWorkers(ctx(c), { includeRemoved: q.include_removed }));
+    const q = query(c, pageQuery.extend({ include_removed: bool, view: z.enum(['current', 'former']).optional(), status: z.enum(['INVITED', 'ACTIVE', 'SUSPENDED', 'REMOVED']).optional(), role_id: z.uuid().optional() }));
+    const filters = { includeRemoved: q.include_removed, view: q.view, status: q.status, roleId: q.role_id, search: q.q };
+    return c.json(q.page ? await pageWorkers(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listWorkers(ctx(c), filters));
   })
   .get('/workers/:id', requirePermission('members:read'), async (c) => c.json(await getWorker(ctx(c), c.req.param('id'))))
   .patch('/workers/:id', async (c) => c.json(await updateWorker(ctx(c), c.req.param('id'), await body(c, updateWorkerInput))))
@@ -203,8 +209,10 @@ export const orgRoutes = new Hono<AppEnv>()
   .get('/projects/:id/tasks', async (c) => c.json(await listTasks(ctx(c), { projectId: c.req.param('id') })))
   .post('/projects/:id/tasks', async (c) => c.json(await upsertTask(ctx(c), c.req.param('id'), null, await body(c, taskInput)), 201))
   .get('/tasks', async (c) => {
-    const q = query(c, z.object({ project_id: z.uuid().optional(), status: z.enum(['TODO', 'IN_PROGRESS', 'DONE']).optional(), assignee_id: z.uuid().optional(), mine: bool }));
-    return c.json(await listTasks(ctx(c), { projectId: q.project_id, status: q.status, assigneeId: q.assignee_id, mine: q.mine }));
+    // Sending `page` returns { data, total, page, page_size, summary }; without it, the same array as before.
+    const q = query(c, pageQuery.extend({ project_id: z.uuid().optional(), status: z.enum(['TODO', 'IN_PROGRESS', 'DONE']).optional(), assignee_id: z.uuid().optional(), mine: bool }));
+    const filters = { projectId: q.project_id, status: q.status, assigneeId: q.assignee_id, mine: q.mine, search: q.q };
+    return c.json(q.page ? await pageTasks(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listTasks(ctx(c), filters));
   })
   .patch('/tasks/:id', async (c) => {
     const input = await body(c, taskInput.partial().extend({ project_id: z.uuid() }));
@@ -221,9 +229,10 @@ export const orgRoutes = new Hono<AppEnv>()
   // Policies & devices
   .get('/policies/:scopeType/:scopeId', async (c) => c.json(await getPolicyLayer(ctx(c), scopeType.parse(c.req.param('scopeType')), c.req.param('scopeId'))))
   .put('/policies/:scopeType/:scopeId', async (c) => c.json(await putPolicyLayer(ctx(c), scopeType.parse(c.req.param('scopeType')), c.req.param('scopeId'), await body(c, policyDocInput))))
+  // Sending `page` returns { data, total, page, page_size, summary }; without it, every device as before.
   .get('/devices', async (c) => {
-    const m = c.req.query('membership_id');
-    const all = await listDevices(ctx(c));
-    return c.json(m ? all.filter((d) => d.membership_id === m) : all);
+    const q = query(c, pageQuery.extend({ membership_id: z.uuid().optional(), status: z.enum(['PENDING', 'ACTIVE', 'OFFLINE', 'REVOKED']).optional() }));
+    const filters = { membershipId: q.membership_id, status: q.status, search: q.q };
+    return c.json(q.page ? await pageDevices(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listDevices(ctx(c), filters));
   })
   .post('/devices/:id/:action{revoke|approve|reauth}', async (c) => c.json(await setDeviceStatus(ctx(c), c.req.param('id'), c.req.param('action') as 'revoke')));

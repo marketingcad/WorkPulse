@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { test as base, expect, request, type APIRequestContext, type Page } from '@playwright/test';
 import type { AgentBootstrapDto } from '@tallywork/contracts';
@@ -156,3 +157,16 @@ export { expect };
 
 /** Money as the desktop app shows it (en-US, USD). */
 export const usd = (minor: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(minor / 100);
+
+/** A short random id for unique test names: fixed length, so one can never contain another. */
+export const uid = () => randomUUID().slice(0, 8);
+
+/**
+ * Type into a server-side search box and wait until the list for that term has loaded. The search
+ * applies a moment after typing stops, so asserting straight away can still see the unfiltered list.
+ */
+export async function search(page: Page, label: string, term: string, apiPath: string): Promise<void> {
+  const loaded = page.waitForResponse((r) => r.url().includes(apiPath) && new URL(r.url()).searchParams.get('q') === term && r.ok());
+  await page.getByLabel(label).fill(term);
+  await loaded;
+}

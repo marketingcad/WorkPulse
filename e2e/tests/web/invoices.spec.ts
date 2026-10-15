@@ -1,4 +1,4 @@
-import { expect, ok, test, usd } from '../../support/fixtures';
+import { expect, ok, test, usd, uid } from '../../support/fixtures';
 import { ADMIN_STATE, VIEWER_STATE } from '../../support/env';
 
 /**
@@ -72,7 +72,7 @@ test.describe('Invoices (admin)', () => {
   });
 
   test('the invoice composer checks the client, tax rate, lines and dates', async ({ page, data, adminApi }) => {
-    const client = `Globex ${data.run} ${Date.now() % 100000}`;
+    const client = `Globex ${data.run} ${uid()}`;
     await ok(await adminApi.api.post(adminApi.orgApi('/clients'), { data: { name: client } }), 'client');
     await page.goto(`/o/${data.orgId}/finance/invoices/new`);
 
@@ -107,7 +107,7 @@ test.describe('Invoices (admin)', () => {
 
   test('recording a payment needs an amount', async ({ page, data, adminApi }) => {
     const { api, orgApi } = adminApi;
-    const c = await ok<{ id: string }>(await api.post(orgApi('/clients'), { data: { name: `Initech ${data.run} ${Date.now() % 100000}` } }), 'client');
+    const c = await ok<{ id: string }>(await api.post(orgApi('/clients'), { data: { name: `Initech ${data.run} ${uid()}` } }), 'client');
     const inv = await ok<{ id: string }>(
       await api.post(orgApi('/invoices'), {
         data: { client_id: c.id, period_start: '2026-01-01', period_end: '2026-01-31', issue_date: '2026-02-01', due_date: '2026-03-01', group_by: 'project', tax_rate_bps: 0, include_expenses: false, notes: null, extra_lines: [{ description: 'Audit', quantity: 1, unit_price_minor: 30000, tax_rate_bps: 0 }] },

@@ -1,5 +1,5 @@
 import { request } from '@playwright/test';
-import { expect, ok, test, usd } from '../../support/fixtures';
+import { expect, ok, test, usd, uid } from '../../support/fixtures';
 import { ADMIN_STATE, PASSWORD, VIEWER_STATE, WEB_URL } from '../../support/env';
 
 /**
@@ -27,7 +27,7 @@ test.describe('Payroll (admin)', () => {
   });
 
   test('an admin creates a pay group, runs payroll with a bonus, finalizes it and marks it paid', { tag: '@smoke' }, async ({ page, data, adminApi }) => {
-    const suffix = `${data.run}-${Date.now() % 100000}`;
+    const suffix = `${data.run}-${uid()}`;
     const person = `Pat Payroll ${suffix}`;
     const group = `Pat's group ${suffix}`;
     await invitePerson(adminApi, `pat+${suffix}@e2e.test`, person);
@@ -78,7 +78,7 @@ test.describe('Payroll (admin)', () => {
   });
 
   test('the same pay group cannot be paid twice for one period', async ({ page, data, adminApi }) => {
-    const suffix = `${data.run}-${Date.now() % 100000}`;
+    const suffix = `${data.run}-${uid()}`;
     const person = `Quinn Payroll ${suffix}`;
     const group = `Quinn's group ${suffix}`;
     const membershipId = await invitePerson(adminApi, `quinn+${suffix}@e2e.test`, person);

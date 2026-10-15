@@ -2,7 +2,8 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Copy, MailPlus, X } from 'lucide-react';
-import type { ProjectDto, TeamDto, WorkerDto } from '@tallywork/contracts';
+import type { OffsetPage, ProjectDto, TeamDto, WorkerDto } from '@tallywork/contracts';
+import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import {
   Badge,
   Button,
@@ -27,7 +28,7 @@ import {
   useToast,
   type Column,
 } from '@tallywork/ui';
-import { ApiError, errorMessage, useOrgQuery } from '@/lib/api';
+import { ApiError, errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
 import { useOrgAction, type RoleDto } from '@/components/workspace/shared';
@@ -60,15 +61,16 @@ export default function WorkersPage() {
   const [view, setView] = useState<'current' | 'former'>('current');
   const former = view === 'former';
 
-  const workersQ = useOrgQuery<WorkerDto[]>(org.can('members:read') ? (former ? '/workers?include_removed=true' : '/workers') : null);
+  const search = useSearch();
+  // The server filters, searches and pages the members (an organization can have thousands).
+  const filters = { view, role_id: role || undefined, status: former || status === 'ACTIVE_ALL' ? undefined : status, q: search.term || undefined };
+  const paging = useServerPage(JSON.stringify(filters));
+  const workersQ = useOrgQuery<OffsetPage<WorkerDto>>(org.can('members:read') ? `/workers${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  useClampPage(paging, workersQ.data, workersQ.isPlaceholderData);
   const teamsQ = useOrgQuery<TeamDto[]>(org.can('teams:read') ? '/teams' : null);
   const rolesQ = useOrgQuery<RoleDto[]>('/roles');
   const teamName = useMemo(() => new Map((teamsQ.data ?? []).map((t) => [t.id, t.name])), [teamsQ.data]);
 
-  const rows = useMemo(
-    () => (workersQ.data ?? []).filter((w) => (former ? w.status === 'REMOVED' : w.status !== 'REMOVED') && (!role || w.role_id === role) && (former || status === 'ACTIVE_ALL' || w.status === status)),
-    [workersQ.data, role, status, former],
-  );
 
   if (!org.can('members:read')) return <PermissionState />;
 
@@ -127,17 +129,16 @@ export default function WorkersPage() {
           <ErrorState error={workersQ.error} onRetry={() => workersQ.refetch()} />
         ) : (
           <DataTable
-            rows={rows}
-            columns={columns}
+            rows={workersQ.data?.data}
+            columns={columns.map((c) => ({ ...c, sortable: false }))}
             rowKey={(w) => w.id}
             loading={workersQ.isLoading}
             onRowClick={(w) => router.push(`${org.base}/workers/${w.id}`)}
-            searchable
-            searchPlaceholder="Search name or email…"
+            pagination={paging.pagination(workersQ.data)}
             caption="Members"
-            initialSort={{ key: 'name', dir: 'asc' }}
             toolbar={
               <>
+                <Input aria-label="Search members" placeholder="Search name, email or title…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="h-7 w-56 text-xs" />
                 <Select aria-label="Filter by role" value={role} onChange={(e) => setRole(e.target.value)} className="h-7 w-40 text-xs">
                   <option value="">All roles</option>
                   {rolesQ.data?.map((r) => (
@@ -153,12 +154,12 @@ export default function WorkersPage() {
                   <option value="SUSPENDED">Suspended</option>
                 </Select>
                 )}
-                <span className="ml-auto text-xs text-text-muted tabular">{rows.length} members</span>
+                <span className="ml-auto text-xs text-text-muted tabular">{workersQ.data?.total ?? 0} members</span>
               </>
             }
             empty={
               <EmptyState
-                title={former ? 'No former members' : role || status !== 'ACTIVE_ALL' ? 'No members match these filters' : 'No members yet'}
+                title={former ? 'No former members' : role || status !== 'ACTIVE_ALL' || search.term ? 'No members match these filters' : 'No members yet'}
                 description={former ? 'Members you remove are listed here with the date they left.' : canManage ? 'Invite your first member to start tracking time together.' : undefined}
                 action={!former && canManage && <Button onClick={() => setInviteOpen(true)}>Invite member</Button>}
               />

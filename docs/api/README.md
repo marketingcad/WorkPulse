@@ -49,13 +49,13 @@ Date ranges are capped at 400 days.
 
 ## Paging long lists
 
-These lists can be paged: `GET /invoices`, `GET /payments`, `GET /expenses`, `GET /time-entries`, `GET /sessions`, `GET /timesheets/approvals`, `GET /manual-time` and `GET /time-off/requests`. Send `page` (1-based) to get one page:
+These lists can be paged: `GET /invoices`, `GET /payments`, `GET /expenses`, `GET /time-entries`, `GET /sessions`, `GET /timesheets/approvals`, `GET /manual-time`, `GET /time-off/requests`, `GET /workers`, `GET /devices`, `GET /tasks` and `GET /attendance`. Send `page` (1-based) to get one page:
 
 | Parameter | Meaning |
 |---|---|
 | `page` | Page number, from 1. Switches the response to the paged shape below. |
 | `page_size` | Rows per page, 1–200 (default 50). |
-| `q` | Case-insensitive search. Invoices: number or client name. Payments: client, reference, note or the number of an invoice it paid. Expenses: category, description, project, client or member name. Time entries: note, project, task, client or member. Sessions and the approval queue: member (sessions also project). Manual time: reason, note, project, task or member. Time off: member, policy or reason. |
+| `q` | Case-insensitive search. Invoices: number or client name. Payments: client, reference, note or the number of an invoice it paid. Expenses: category, description, project, client or member name. Time entries: note, project, task, client or member. Sessions and the approval queue: member (sessions also project). Manual time: reason, note, project, task or member. Time off: member, policy or reason. Members: name, email or title (filter with `view=current|former`, `status`, `role_id`). Devices: device name, platform or member (filter with `membership_id`, `status`). Tasks: title, description or project. Attendance: member name (filter with `status`). |
 
 ```json
 { "data": [ … ], "total": 1050, "page": 1, "page_size": 50, "summary": { … } }
@@ -66,8 +66,10 @@ These lists can be paged: `GET /invoices`, `GET /payments`, `GET /expenses`, `GE
 - **Expenses:** `counts` per status, and `total_minor` of the matches in the organization's currency.
 - **Time entries:** `entries`, `seconds` and `billable_seconds` for the whole range, and `by_day` with the same per day. `order=asc` lists the oldest day first (default newest).
 - **Sessions:** `worked_seconds` across every matching session.
+- **Devices and tasks:** `counts` per status.
+- **Attendance:** `counts` per status and `overtime_seconds` over every row; each row also has the member's `timezone`.
 
-Without `page`, these endpoints return a plain array, as before, with `status` and `q` applied first. That array is capped: invoices, payments and expenses at 1000, time entries at 5000, and sessions, approvals, manual time and time off at 500. Use `page` to reach everything. `GET /audit-logs` pages the same way.
+Without `page`, these endpoints return a plain array, as before, with `status` and `q` applied first. That array is capped: invoices, payments and expenses at 1000, time entries at 5000, sessions, approvals, manual time and time off at 500, and tasks at 2000. Members, devices and attendance return every match. Use `page` to reach everything. `GET /audit-logs` pages the same way.
 
 `GET /time-entries/totals` (same filters as `GET /time-entries`) returns hours per member and day, `[{ membership_id, date, seconds, billable_seconds, manual_seconds }]`, summed by the server, so you don't need to load the entries.
 

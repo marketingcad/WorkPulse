@@ -722,8 +722,9 @@ function ProjectsTab({ w, teams }: { w: WorkerDto; teams: TeamDto[] }) {
 
 // ─── Devices ─────────────────────────────────────────────────────────────────
 function DevicesTab({ w }: { w: WorkerDto }) {
-  const q = useOrgQuery<DeviceDto[]>('/devices');
-  const rows = useMemo(() => (q.data ?? []).filter((d) => d.membership_id === w.id), [q.data, w.id]);
+  // Only this member's devices, filtered by the server.
+  const q = useOrgQuery<DeviceDto[]>(`/devices?membership_id=${w.id}`);
+  const rows = q.data;
   const columns: Column<DeviceDto>[] = [
     { key: 'name', header: 'Device', priority: 'primary', value: (d) => d.name, cell: (d) => <span className="font-medium">{d.name}</span> },
     { key: 'platform', header: 'Platform', value: (d) => d.platform, cell: (d) => <span className="text-text-muted">{[d.platform, d.os_version].filter(Boolean).join(' ')}</span> },

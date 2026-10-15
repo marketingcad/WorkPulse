@@ -1,4 +1,4 @@
-import { expect, ok, test, usd } from '../../support/fixtures';
+import { expect, ok, search, test, usd, uid } from '../../support/fixtures';
 import { ADMIN_STATE } from '../../support/env';
 
 /**
@@ -8,7 +8,7 @@ import { ADMIN_STATE } from '../../support/env';
  */
 test.use({ storageState: ADMIN_STATE });
 
-const unique = (prefix: string, run: string) => `${prefix} ${run} ${Date.now() % 100000}`;
+const unique = (prefix: string, run: string) => `${prefix} ${run} ${uid()}`;
 
 test('invoices page through, with totals and tab counts over every invoice', { tag: '@smoke' }, async ({ page, data, adminApi }) => {
   const { api, orgApi } = adminApi;
@@ -53,11 +53,11 @@ test('invoices page through, with totals and tab counts over every invoice', { t
 
 test('payments search on the server by reference', async ({ page, data, adminApi }) => {
   const { api, orgApi } = adminApi;
-  const ref = `PAGED-${data.run}-${Date.now() % 100000}`;
+  const ref = `PAGED-${data.run}-${uid()}`;
   for (let i = 0; i < 55; i++) await ok(await api.post(orgApi('/payments'), { data: { client_id: null, amount_minor: 1000, currency: 'USD', received_on: '2026-03-01', provider: 'manual', provider_ref: `${ref}-${String(i).padStart(2, '0')}`, note: null, allocations: [] } }), `payment ${i}`);
 
   await page.goto(`/o/${data.orgId}/finance/invoices/payments`);
-  await page.getByLabel('Search payments').fill(ref);
+  await search(page, 'Search payments', ref, '/payments');
   await expect(page.getByText('Showing 1–50 of 55 results')).toBeVisible();
   await page.getByLabel('Search payments').fill(`${ref}-07`);
   await expect(page.getByText('Showing 1–1 of 1 result')).toBeVisible();
@@ -70,7 +70,7 @@ test('expenses page through, with tab counts and a total over every match', asyn
   for (let i = 0; i < 55; i++) await ok(await api.post(orgApi('/expenses'), { data: { category: 'Travel', description: `${tag} #${i}`, amount_minor: 1000, currency: 'USD', spent_on: '2026-03-02' } }), `expense ${i}`);
 
   await page.goto(`/o/${data.orgId}/finance/expenses`);
-  await page.getByLabel('Search expenses').fill(tag);
+  await search(page, 'Search expenses', tag, '/expenses');
   await expect(page.getByText('Showing 1–50 of 55 results')).toBeVisible();
   // The total covers all 55 matching expenses (55 × 10.00), not the 50 on this page.
   await expect(page.getByText(`Total (USD): ${usd(55 * 1000)}`)).toBeVisible();

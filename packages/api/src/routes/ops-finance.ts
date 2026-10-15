@@ -34,6 +34,7 @@ import {
   deleteHoliday,
   deleteSchedule,
   listAttendance,
+  pageAttendance,
   listHolidays,
   listSchedules,
   listShifts,
@@ -112,9 +113,10 @@ export const opsRoutes = new Hono<AppEnv>()
     const q = query(c, range);
     return c.json(await listShifts(ctx(c), q.from, q.to, q.membership_ids));
   })
+  // Sending `page` returns { data, total, page, page_size, summary }; without it, every row as before.
   .get('/attendance', requirePermission('attendance:read'), async (c) => {
-    const q = query(c, range);
-    return c.json(await listAttendance(ctx(c), q.from, q.to, q.membership_ids));
+    const q = query(c, range.and(pageQuery).and(z.object({ status: z.enum(['PRESENT', 'LATE', 'ABSENT', 'ON_LEAVE', 'HOLIDAY', 'UNSCHEDULED']).optional() })));
+    return c.json(q.page ? await pageAttendance(ctx(c), { from: q.from, to: q.to, membershipIds: q.membership_ids, status: q.status, search: q.q, page: q.page, pageSize: q.page_size }) : await listAttendance(ctx(c), q.from, q.to, q.membership_ids));
   })
   .get('/break-types', async (c) => c.json(await listBreakTypes(ctx(c))))
   .post('/break-types', async (c) => c.json(await upsertBreakType(ctx(c), null, await body(c, breakTypeInput)), 201))

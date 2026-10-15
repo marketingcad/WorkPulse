@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { request } from '@playwright/test';
-import { expect, ok, test } from '../../support/fixtures';
+import { expect, ok, test, uid } from '../../support/fixtures';
 import { ADMIN_STATE, PASSWORD, WEB_URL } from '../../support/env';
 
 /**
@@ -8,7 +8,7 @@ import { ADMIN_STATE, PASSWORD, WEB_URL } from '../../support/env';
  * back to the last workspace used, and paging and exporting the audit log.
  */
 
-const unique = (prefix: string, run: string) => `${prefix} ${run} ${Date.now() % 100000}`;
+const unique = (prefix: string, run: string) => `${prefix} ${run} ${uid()}`;
 
 test.describe('New organization (admin)', () => {
   test.use({ storageState: ADMIN_STATE });
@@ -46,9 +46,9 @@ test.describe('New organization (admin)', () => {
 test.describe('Signing in to the last workspace', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test('someone in two organizations signs in to the one they used last, or the first if it is gone', async ({ page, data, adminApi }) => {
+  test('someone in two organizations signs in to the one they used last, or the first if it is gone', async ({ browser, data, adminApi }) => {
     // A manager of the shared organization who also owns a second one.
-    const email = `mona+${data.run}-${Date.now() % 100000}@e2e.test`;
+    const email = `mona+${data.run}-${uid()}@e2e.test`;
     const roles = await ok<Array<{ id: string; key: string }>>(await adminApi.api.get(adminApi.orgApi('/roles')), 'roles');
     const invite = await ok<{ invite_url: string }>(await adminApi.api.post(adminApi.orgApi('/invitations'), { data: { email, name: 'Mona Manager', role_id: roles.find((r) => r.key === 'TEAM_MANAGER')!.id } }), 'invite');
     const mona = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL }, storageState: { cookies: [], origins: [] } });
@@ -56,25 +56,29 @@ test.describe('Signing in to the last workspace', () => {
     const second = await ok<{ organization_id: string }>(await mona.post('/api/v1/me/organizations', { data: { name: unique('Mona Co', data.run) } }), 'second org');
     await mona.dispose();
 
-    const signIn = async () => {
+    // Each sign-in starts in a fresh, signed-out browser that remembers `lastOrg` as the last
+    // organization used. A fresh context means no redirect left over from a previous session can
+    // interrupt the navigation to /login.
+    const signInRemembering = async (lastOrg: string) => {
+      const ctx = await browser.newContext({ storageState: { cookies: [], origins: [{ origin: WEB_URL, localStorage: [{ name: 'tw.lastOrg', value: lastOrg }] }] } });
+      const page = await ctx.newPage();
       await page.goto('/login');
       await page.getByLabel('Work email').fill(email);
       await page.getByLabel('Password').fill(PASSWORD);
       await page.getByRole('button', { name: 'Sign in' }).click();
+      return { ctx, page };
     };
 
     // The browser remembers the second organization as the last one used.
-    await page.goto('/login');
-    await page.evaluate((id) => localStorage.setItem('tw.lastOrg', id), second.organization_id);
-    await signIn();
-    await expect(page).toHaveURL(new RegExp(`/o/${second.organization_id}`));
+    const first = await signInRemembering(second.organization_id);
+    await expect(first.page).toHaveURL(new RegExp(`/o/${second.organization_id}`));
+    await first.ctx.close();
 
     // A remembered organization they no longer belong to falls back to their first one.
-    await page.context().clearCookies();
-    await page.evaluate(() => localStorage.setItem('tw.lastOrg', '00000000-0000-7000-8000-000000000000'));
-    await signIn();
-    await expect(page).toHaveURL(/\/o\/[0-9a-f-]{36}/);
-    expect(page.url()).not.toContain('00000000-0000-7000-8000-000000000000');
+    const stale = await signInRemembering('00000000-0000-7000-8000-000000000000');
+    await expect(stale.page).toHaveURL(/\/o\/[0-9a-f-]{36}/);
+    expect(stale.page.url()).not.toContain('00000000-0000-7000-8000-000000000000');
+    await stale.ctx.close();
   });
 });
 

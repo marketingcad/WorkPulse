@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   invitations,
@@ -14,7 +14,7 @@ import {
   workerProfiles,
 } from '@tallywork/db';
 import { businessRule, can, conflict, forbidden, localDate, newId, notFound, validation, type Grants } from '@tallywork/domain';
-import type { MemberDetailsDto, OrgContextDto, WorkerDto, inviteInput, memberDetailsInput, roleInput, updateOrgInput, updateWorkerInput } from '@tallywork/contracts';
+import type { MemberDetailsDto, OffsetPage, OrgContextDto, WorkerDto, inviteInput, memberDetailsInput, roleInput, updateOrgInput, updateWorkerInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { ipAllowed, parseCidr } from '../lib/cidr';
 import { audit } from './events';
@@ -22,6 +22,7 @@ import { applyScopedRates, currentScopedRates, rateChanges } from './finance';
 import { membershipFilter, narrowMemberships } from './scope';
 import { randomToken, sha256 } from '../lib/crypto';
 import { iso } from '../lib/http';
+import { isUuid, likePattern } from '../lib/search';
 
 export async function orgContext(x: Ctx): Promise<OrgContextDto> {
   const [o] = await x.tx.select().from(organizations).where(eq(organizations.id, x.org.id));
@@ -149,21 +150,76 @@ export async function deleteRole(x: Ctx, roleId: string) {
 }
 
 // ─── Workers ─────────────────────────────────────────────────────────────────
-export async function listWorkers(x: Ctx, opts: { includeRemoved?: boolean } = {}): Promise<WorkerDto[]> {
-  const filter = membershipFilter(x.actor, 'members:read', memberships.id);
+type WorkerQuery = {
+  includeRemoved?: boolean;
+  /** 'former' lists only removed members; 'current' everyone else (the default). Overrides includeRemoved. */
+  view?: 'current' | 'former';
+  status?: string;
+  roleId?: string;
+  search?: string;
+  id?: string;
+};
+
+/** Members the person may see that match the filters; `search` covers the name, email and title. */
+function workerWhere(x: Ctx, q: WorkerQuery) {
+  const term = q.search ? likePattern(q.search) : null;
+  return and(
+    eq(memberships.organizationId, x.org.id),
+    q.view === 'former' ? eq(memberships.status, 'REMOVED') : q.view === 'current' || !q.includeRemoved ? ne(memberships.status, 'REMOVED') : undefined,
+    q.status ? eq(memberships.status, q.status as 'ACTIVE') : undefined,
+    q.roleId ? eq(memberships.roleId, q.roleId) : undefined,
+    q.id ? eq(memberships.id, q.id) : undefined,
+    term ? or(ilike(users.name, term), ilike(users.email, term), ilike(workerProfiles.title, term)) : undefined,
+    membershipFilter(x.actor, 'members:read', memberships.id),
+  );
+}
+
+const workerFields = {
+  m: memberships,
+  u: { id: users.id, name: users.name, email: users.email },
+  p: workerProfiles,
+  r: { key: roles.key, name: roles.name },
+};
+
+/** Members as a plain array, by name (every match: use `pageWorkers` for a page at a time). */
+export async function listWorkers(x: Ctx, opts: WorkerQuery = {}): Promise<WorkerDto[]> {
   const rows = await x.tx
-    .select({
-      m: memberships,
-      u: { id: users.id, name: users.name, email: users.email },
-      p: workerProfiles,
-      r: { key: roles.key, name: roles.name },
-    })
+    .select(workerFields)
     .from(memberships)
     .innerJoin(users, eq(users.id, memberships.userId))
     .innerJoin(roles, eq(roles.id, memberships.roleId))
     .leftJoin(workerProfiles, eq(workerProfiles.membershipId, memberships.id))
-    .where(and(eq(memberships.organizationId, x.org.id), opts.includeRemoved ? undefined : ne(memberships.status, 'REMOVED'), filter))
-    .orderBy(asc(users.name));
+    .where(workerWhere(x, opts))
+    .orderBy(asc(users.name), asc(memberships.id));
+  return toWorkerDtos(x, rows);
+}
+
+/** One numbered page of members (`page` is 1-based), by name, and the total. */
+export async function pageWorkers(x: Ctx, q: WorkerQuery & { page: number; pageSize: number }): Promise<OffsetPage<WorkerDto>> {
+  const where = workerWhere(x, q);
+  const [count] = await x.tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(memberships)
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .leftJoin(workerProfiles, eq(workerProfiles.membershipId, memberships.id))
+    .where(where);
+  const rows = await x.tx
+    .select(workerFields)
+    .from(memberships)
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .innerJoin(roles, eq(roles.id, memberships.roleId))
+    .leftJoin(workerProfiles, eq(workerProfiles.membershipId, memberships.id))
+    .where(where)
+    .orderBy(asc(users.name), asc(memberships.id))
+    .limit(q.pageSize)
+    .offset((q.page - 1) * q.pageSize);
+  return { data: await toWorkerDtos(x, rows), total: count?.n ?? 0, page: q.page, page_size: q.pageSize };
+}
+
+async function toWorkerDtos(
+  x: Ctx,
+  rows: Array<{ m: typeof memberships.$inferSelect; u: { id: string; name: string; email: string }; p: typeof workerProfiles.$inferSelect | null; r: { key: string; name: string } }>,
+): Promise<WorkerDto[]> {
   const ids = rows.map((r) => r.m.id);
   const tm = ids.length ? await x.tx.select().from(teamMembers).where(inArray(teamMembers.membershipId, ids)) : [];
   const rates = x.actor.grants['rates:read'] ? await currentScopedRates(x, 'WORKER') : null;
@@ -194,8 +250,9 @@ export async function listWorkers(x: Ctx, opts: { includeRemoved?: boolean } = {
 }
 
 export async function getWorker(x: Ctx, membershipId: string): Promise<WorkerDto> {
-  const all = await listWorkers(x, { includeRemoved: true });
-  const w = all.find((r) => r.id === membershipId);
+  // Looked up by id, not by loading every member.
+  if (!isUuid(membershipId)) throw notFound('worker');
+  const [w] = await listWorkers(x, { includeRemoved: true, id: membershipId });
   if (!w) throw notFound('worker');
   return w;
 }

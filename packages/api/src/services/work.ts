@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   clients,
@@ -15,12 +15,13 @@ import {
   users,
 } from '@tallywork/db';
 import { can, forbidden, newId, notFound, businessRule, validation } from '@tallywork/domain';
-import type { ClientDto, ProjectDto, TaskDto, TeamDto, clientInput, projectInput, taskInput, teamInput } from '@tallywork/contracts';
+import type { ClientDto, OffsetPage, ProjectDto, TaskDto, TeamDto, clientInput, projectInput, taskInput, teamInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { audit, emitFrom } from './events';
 import { applyScopedRates, currentScopedRates, rateChanges } from './finance';
 import { membershipFilter, projectFilter } from './scope';
 import { iso } from '../lib/http';
+import { likePattern } from '../lib/search';
 
 // ─── Teams ───────────────────────────────────────────────────────────────────
 export async function listTeams(x: Ctx): Promise<TeamDto[]> {
@@ -297,28 +298,57 @@ export async function workerCanTrackProject(x: Pick<Ctx, 'tx'>, membershipId: st
 }
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
-export async function listTasks(
-  x: Ctx,
-  opts: { projectId?: string; status?: string; assigneeId?: string; includeArchived?: boolean; mine?: boolean } = {},
-): Promise<TaskDto[]> {
+type TaskQuery = { projectId?: string; status?: string; assigneeId?: string; includeArchived?: boolean; mine?: boolean; search?: string };
+
+/** Tasks the person may see that match the filters; `search` covers the title, description and project. */
+function taskWhere(x: Ctx, opts: TaskQuery, withStatus = true) {
+  const term = opts.search ? likePattern(opts.search) : null;
+  return and(
+    eq(tasks.organizationId, x.org.id),
+    opts.includeArchived ? undefined : isNull(tasks.archivedAt),
+    opts.projectId ? eq(tasks.projectId, opts.projectId) : undefined,
+    withStatus && opts.status ? eq(tasks.status, opts.status as 'TODO') : undefined,
+    opts.assigneeId || opts.mine
+      ? inArray(tasks.id, x.tx.select({ id: taskAssignees.taskId }).from(taskAssignees).where(eq(taskAssignees.membershipId, opts.assigneeId ?? x.actor.membershipId)) as never)
+      : undefined,
+    term ? or(ilike(tasks.title, term), ilike(tasks.description, term), ilike(projects.name, term)) : undefined,
+    projectFilter(x.actor, 'tasks:read', tasks.projectId),
+  );
+}
+
+const taskOrder = [asc(tasks.status), desc(tasks.priority), asc(tasks.createdAt), asc(tasks.id)];
+
+/** Tasks as a plain array, capped at 2000; use `pageTasks` to reach every task. */
+export async function listTasks(x: Ctx, opts: TaskQuery = {}): Promise<TaskDto[]> {
+  const rows = await x.tx.select({ t: tasks, projectName: projects.name }).from(tasks).innerJoin(projects, eq(projects.id, tasks.projectId)).where(taskWhere(x, opts)).orderBy(...taskOrder).limit(2000);
+  return toTaskDtos(x, rows);
+}
+
+/** One numbered page of tasks (`page` is 1-based), the total, and how many there are per status. */
+export async function pageTasks(x: Ctx, q: TaskQuery & { page: number; pageSize: number }): Promise<OffsetPage<TaskDto> & { summary: { counts: Record<string, number> } }> {
+  const byStatus = await x.tx
+    .select({ status: tasks.status, n: sql<number>`count(*)::int` })
+    .from(tasks)
+    .innerJoin(projects, eq(projects.id, tasks.projectId))
+    .where(taskWhere(x, q, false))
+    .groupBy(tasks.status);
   const rows = await x.tx
     .select({ t: tasks, projectName: projects.name })
     .from(tasks)
     .innerJoin(projects, eq(projects.id, tasks.projectId))
-    .where(
-      and(
-        eq(tasks.organizationId, x.org.id),
-        opts.includeArchived ? undefined : isNull(tasks.archivedAt),
-        opts.projectId ? eq(tasks.projectId, opts.projectId) : undefined,
-        opts.status ? eq(tasks.status, opts.status as 'TODO') : undefined,
-        opts.assigneeId || opts.mine
-          ? inArray(tasks.id, x.tx.select({ id: taskAssignees.taskId }).from(taskAssignees).where(eq(taskAssignees.membershipId, opts.assigneeId ?? x.actor.membershipId)) as never)
-          : undefined,
-        projectFilter(x.actor, 'tasks:read', tasks.projectId),
-      ),
-    )
-    .orderBy(asc(tasks.status), desc(tasks.priority), asc(tasks.createdAt))
-    .limit(2000);
+    .where(taskWhere(x, q))
+    .orderBy(...taskOrder)
+    .limit(q.pageSize)
+    .offset((q.page - 1) * q.pageSize);
+  const counts: Record<string, number> = { ALL: 0 };
+  for (const r of byStatus) {
+    counts[r.status] = r.n;
+    counts.ALL! += r.n;
+  }
+  return { data: await toTaskDtos(x, rows), total: q.status ? (counts[q.status] ?? 0) : counts.ALL!, page: q.page, page_size: q.pageSize, summary: { counts } };
+}
+
+async function toTaskDtos(x: Ctx, rows: Array<{ t: typeof tasks.$inferSelect; projectName: string }>): Promise<TaskDto[]> {
   if (!rows.length) return [];
   const ids = rows.map((r) => r.t.id);
   const as = await x.tx.select().from(taskAssignees).where(inArray(taskAssignees.taskId, ids));

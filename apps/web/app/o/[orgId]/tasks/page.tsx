@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Archive, MoreHorizontal, Pencil, Plus } from 'lucide-react';
-import type { ProjectDto, TaskDto, WorkerDto } from '@tallywork/contracts';
+import type { OffsetPage, ProjectDto, TaskDto, WorkerDto } from '@tallywork/contracts';
 import {
   Avatar,
   Button,
@@ -11,6 +11,7 @@ import {
   EmptyState,
   ErrorState,
   FilterBar,
+  Input,
   IconButton,
   Menu,
   MenuItem,
@@ -26,6 +27,7 @@ import {
 } from '@tallywork/ui';
 import { errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
+import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { ColorDot, PriorityBadge, TASK_STATUSES, TaskDialog, TaskStatusSelect, useOrgAction } from '@/components/workspace/shared';
 
 export default function TasksPage() {
@@ -41,7 +43,12 @@ export default function TasksPage() {
   const [del, setDel] = useState<TaskDto | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const q = useOrgQuery<TaskDto[]>(org.can('tasks:read') ? `/tasks${qs({ project_id: projectId || undefined, status: status || undefined, mine: mine || undefined })}` : null);
+  const search = useSearch();
+  // The server filters, searches and pages every task (the plain list stops at 2000).
+  const filters = { project_id: projectId || undefined, status: status || undefined, mine: mine || undefined, q: search.term || undefined };
+  const paging = useServerPage(JSON.stringify(filters));
+  const q = useOrgQuery<OffsetPage<TaskDto> & { summary: { counts: Record<string, number> } }>(org.can('tasks:read') ? `/tasks${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  useClampPage(paging, q.data, q.isPlaceholderData);
   const projectsQ = useOrgQuery<ProjectDto[]>(org.can('projects:read') ? '/projects' : null);
   const workersQ = useOrgQuery<WorkerDto[]>(org.can('members:read') ? '/workers' : null);
   const names = useMemo(() => new Map((workersQ.data ?? []).map((w) => [w.id, w.name])), [workersQ.data]);
@@ -180,6 +187,7 @@ export default function TasksPage() {
         </Select>
         <div className="rounded-sm border border-border bg-surface px-3 py-1">
           <Switch checked={mine} onCheckedChange={setMine} label="Assigned to me" />
+        <Input aria-label="Search tasks" placeholder="Search tasks…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-56" />
         </div>
         {filtered && (
           <Button variant="ghost" size="sm" onClick={() => (setProjectId(''), setStatus(''))}>
@@ -192,17 +200,16 @@ export default function TasksPage() {
           <ErrorState error={q.error} onRetry={() => q.refetch()} />
         ) : (
           <DataTable
-            rows={q.data}
+            rows={q.data?.data}
             loading={q.isLoading}
-            columns={columns}
+            columns={columns.map((c) => ({ ...c, sortable: false }))}
             rowKey={(t) => t.id}
             onRowClick={canManage ? (t) => setEdit(t) : undefined}
-            searchable
-            searchPlaceholder="Search tasks…"
+            pagination={paging.pagination(q.data)}
             caption="Tasks"
             empty={
               <EmptyState
-                title={mine ? 'Nothing assigned to you' : filtered ? 'No tasks match these filters' : 'No tasks yet'}
+                title={search.term ? 'No tasks match your search' : mine ? 'Nothing assigned to you' : filtered ? 'No tasks match these filters' : 'No tasks yet'}
                 description={mine ? 'Turn off “Assigned to me” to see every task you can access.' : canCreate ? 'Create a task and assign it so it shows up in everyone’s timer.' : undefined}
                 action={canCreate && !mine && <Button onClick={() => setEdit('new')}>New task</Button>}
               />

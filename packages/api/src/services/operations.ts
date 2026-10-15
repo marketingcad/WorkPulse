@@ -240,6 +240,36 @@ export async function listAttendance(x: Ctx, from: string, to: string, membershi
   return rows.map((r) => ({ ...r, worker_name: names.get(r.membership_id) ?? '' })).sort((a, b) => (a.date === b.date ? a.worker_name.localeCompare(b.worker_name) : a.date < b.date ? 1 : -1));
 }
 
+/**
+ * One numbered page of attendance rows (`page` is 1-based), filtered by status and member name,
+ * plus counts per status and the overtime over every row. Attendance is computed for everyone in
+ * the range (in a few batched queries) so the totals are complete; only one page is sent.
+ * Each row carries the member's time zone, so the page needs no separate member list.
+ */
+export async function pageAttendance(
+  x: Ctx,
+  q: { from: string; to: string; membershipIds?: string[]; status?: string; search?: string; page: number; pageSize: number },
+): Promise<OffsetPage<AttendanceRow & { timezone: string }> & { summary: { counts: Record<string, number>; overtime_seconds: number } }> {
+  const all = await listAttendance(x, q.from, q.to, q.membershipIds);
+  const term = q.search?.toLowerCase();
+  const searched = term ? all.filter((r) => r.worker_name.toLowerCase().includes(term)) : all;
+  const counts: Record<string, number> = { ALL: searched.length };
+  for (const r of searched) counts[r.status] = (counts[r.status] ?? 0) + 1;
+  const matching = q.status ? searched.filter((r) => r.status === q.status) : searched;
+  const rows = matching.slice((q.page - 1) * q.pageSize, q.page * q.pageSize);
+  const ids = [...new Set(rows.map((r) => r.membership_id))];
+  const tz = new Map(
+    ids.length ? (await x.tx.select({ id: workerProfiles.membershipId, tz: workerProfiles.timezone }).from(workerProfiles).where(inArray(workerProfiles.membershipId, ids))).map((p) => [p.id, p.tz]) : [],
+  );
+  return {
+    data: rows.map((r) => ({ ...r, timezone: tz.get(r.membership_id) || x.org.timezone })),
+    total: matching.length,
+    page: q.page,
+    page_size: q.pageSize,
+    summary: { counts, overtime_seconds: searched.reduce((s, r) => s + r.overtime_seconds, 0) },
+  };
+}
+
 // ─── Holidays ────────────────────────────────────────────────────────────────
 export async function listHolidays(x: Ctx, year?: number) {
   const rows = await x.tx

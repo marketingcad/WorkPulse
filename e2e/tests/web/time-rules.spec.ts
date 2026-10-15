@@ -1,4 +1,4 @@
-import { expect, ok, test } from '../../support/fixtures';
+import { expect, ok, test, uid } from '../../support/fixtures';
 import { ADMIN_STATE } from '../../support/env';
 
 /**
@@ -15,7 +15,7 @@ async function newOrganization(adminApi: { api: import('@playwright/test').APIRe
 }
 
 test('an admin adds a time type with a pay multiplier, then archives it', { tag: '@smoke' }, async ({ page, data, adminApi }) => {
-  const orgId = await newOrganization(adminApi, `Rules A ${data.run} ${Date.now() % 100000}`);
+  const orgId = await newOrganization(adminApi, `Rules A ${data.run} ${uid()}`);
   await page.goto(`/o/${orgId}/settings`);
   await expect(page.getByRole('heading', { name: 'Time types' })).toBeVisible();
 
@@ -47,7 +47,7 @@ test('an admin adds a time type with a pay multiplier, then archives it', { tag:
 });
 
 test('an admin locks old time and turns on missing-time reminders', async ({ page, data, adminApi }) => {
-  const orgId = await newOrganization(adminApi, `Rules B ${data.run} ${Date.now() % 100000}`);
+  const orgId = await newOrganization(adminApi, `Rules B ${data.run} ${uid()}`);
   await page.goto(`/o/${orgId}/settings`);
   await expect(page.getByRole('heading', { level: 1, name: 'Organization' })).toBeVisible();
   const saveButton = page.getByRole('button', { name: 'Save changes' });

@@ -64,8 +64,8 @@ function SubTabs({ view, go }: { view: View; go: (v: View) => void }) {
 }
 
 /**
- * App frame. Top: online, sync, screenshot status, notifications, profile.
- * Navigation: a side rail from 1024px; below that, a drawer behind the menu button.
+ * App frame. Top: organization, online, sync, notifications, profile.
+ * Navigation: a sidebar from 1024px; below that, a drawer behind the menu button.
  */
 export function Shell({ s, view, go, children }: { s: AgentState; view: View; go: (v: View) => void; children: ReactNode }) {
   const now = useTick(true);

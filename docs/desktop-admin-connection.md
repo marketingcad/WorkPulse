@@ -53,7 +53,6 @@ sequenceDiagram
 
     Note over Admin,Worker: 3. Work
     Worker->>API: GET /agent/bootstrap → policy + state
-    Worker->>API: POST /agent/policy/ack (must ack before tracking)
     Worker->>API: GET /me/tasks, /me/assignments → assigned work
     loop while tracking
         Worker->>API: POST /agent/ingest/batch (activity, apps, urls, screenshots, session events)
@@ -178,14 +177,17 @@ only speaks through a small, validated channel.
 
 ---
 
-## 4. Policy handshake and transparency gate
+## 4. Policy handshake
 
 - The desktop app fetches policy in the **bootstrap** payload: `GET /agent/bootstrap` → `bootstrap`
   returns `policy`, `policy_hash`, `policy_acknowledged`. It's polled every ~5 min and re-checked
   whenever a sync/heartbeat returns a changed `policy_hash`.
-- **Acknowledgement is required before tracking**: the desktop `start()` throws if the policy isn't
-  acknowledged. The worker acks via `POST /agent/policy/ack`, which verifies the hash still matches
-  and writes `policyAcks`. When the admin changes the policy, the worker is notified and must re-ack.
+- **No acknowledgement on the desktop** (since 15 October 2026): the desktop app no longer shows the
+  policy to the worker or calls `POST /agent/policy/ack`, and `start()` no longer waits for an
+  acknowledgement. The endpoint still exists: it checks the hash still matches and writes `policyAcks`,
+  and `bootstrap` still returns `policy_acknowledged`, but the desktop ignores it. When the admin
+  changes the policy, the worker gets a "Tracking settings changed" notification and the agent restarts
+  its monitors with the new policy.
 - **Policy is enforced twice**: client-side (which monitors start) and **server-side** in
   `processEvent` — activity/app/url/screenshot events are rejected if that signal is disabled by
   policy, and URL rules are re-applied on the server. So the server is the final authority on what is

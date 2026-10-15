@@ -194,7 +194,10 @@ describe('daily digest email', () => {
   });
 });
 
-describe('latency', () => {
+// Latency budgets only mean something without other test files competing for the CPU: CI runs this
+// on its own (LOAD_SMOKE=1, see .github/workflows/ci.yml); the parallel suite skips it, where it
+// failed on busy machines without anything being slow.
+describe.skipIf(!process.env.LOAD_SMOKE)('latency', () => {
   it('admin dashboard widgets stay under 300ms p95 with 10× demo data', async () => {
     // ~10× the demo workspace: 30 workers × 60 days × 3 projects of rollups, plus their time entries.
     const projects = [projectId, (await admin.post(o('/projects'), { name: 'P2' })).body.id, (await admin.post(o('/projects'), { name: 'P3' })).body.id];

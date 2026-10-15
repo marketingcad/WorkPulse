@@ -171,6 +171,14 @@ describe('invoice statuses', () => {
     }
   });
 
+  it('OPEN lists every invoice still waiting for money (sent, partially paid or overdue)', async () => {
+    const expected = ['S-DUE-TODAY', 'S-EUR', 'S-OVERDUE', 'S-PARTIAL', 'S-SENT', 'S-ZERO-PAST'];
+    expect((await admin.get<InvoiceRow[]>(o('/invoices?status=OPEN'))).body.map((i) => i.number).sort()).toEqual(expected);
+    const page = (await admin.get<InvoicePage>(o('/invoices?status=OPEN&page=1'))).body;
+    expect(page.total).toBe(6);
+    expect(page.summary.open_count).toBe(6);
+  });
+
   it('adds up money in the organization’s currency only', async () => {
     const s = (await admin.get<InvoicePage>(o('/invoices?page=1'))).body.summary;
     // Open: overdue 300 + due today 200 + partial 60 + sent 100 + zero 0 (USD); the EUR invoice is counted, not summed.

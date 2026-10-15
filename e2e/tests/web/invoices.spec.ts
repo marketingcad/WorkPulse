@@ -126,6 +126,47 @@ test.describe('Invoices (admin)', () => {
   });
 });
 
+test.describe('Payments across open invoices (admin)', () => {
+  test.use({ storageState: ADMIN_STATE });
+
+  test('a payment is split over the client’s open invoices, and paid or draft ones are not offered', async ({ page, data, adminApi }) => {
+    const { api, orgApi } = adminApi;
+    const c = await ok<{ id: string; name: string }>(await api.post(orgApi('/clients'), { data: { name: `Wayne ${data.run} ${uid()}` } }), 'client');
+    const make = async (amount: number, send: boolean) => {
+      const inv = await ok<{ id: string; number: string }>(
+        await api.post(orgApi('/invoices'), {
+          data: { client_id: c.id, period_start: '2026-01-01', period_end: '2026-01-31', issue_date: '2026-02-01', due_date: '2099-01-01', group_by: 'project', tax_rate_bps: 0, include_expenses: false, notes: null, extra_lines: [{ description: 'Work', quantity: 1, unit_price_minor: amount, tax_rate_bps: 0 }] },
+        }),
+        'invoice',
+      );
+      if (send) await ok(await api.post(orgApi(`/invoices/${inv.id}/send`), { data: {} }), 'send');
+      return inv;
+    };
+    const first = await make(10000, true);
+    const second = await make(20000, true);
+    const draft = await make(5000, false);
+
+    await page.goto(`/o/${data.orgId}/finance/invoices/payments`);
+    await page.getByRole('button', { name: 'Record payment' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'Record payment' });
+    await dialog.getByLabel('Client').selectOption({ label: c.name });
+    // Only open invoices can take the payment; the draft is not offered.
+    await expect(dialog.getByLabel(`Amount for ${first.number}`)).toBeVisible();
+    await expect(dialog.getByLabel(`Amount for ${second.number}`)).toBeVisible();
+    await expect(dialog.getByLabel(`Amount for ${draft.number}`)).toHaveCount(0);
+
+    await dialog.getByLabel('Amount (USD)').fill('250');
+    await dialog.getByRole('button', { name: 'Oldest first' }).click();
+    await expect(dialog.getByText(`${usd(25000)} of ${usd(25000)}`)).toBeVisible();
+    await dialog.getByRole('button', { name: 'Record payment' }).click();
+    await expect(page.getByText('Payment recorded')).toBeVisible();
+
+    // 250.00 paid the first (100.00) in full and 150.00 of the second.
+    const open = await ok<Array<{ number: string; balance_minor: number }>>(await api.get(orgApi(`/invoices?client_id=${c.id}&status=OPEN`)), 'open');
+    expect(open.map((i) => [i.number, i.balance_minor])).toEqual([[second.number, 5000]]);
+  });
+});
+
 test.describe('Invoices (no money access)', () => {
   test.use({ storageState: VIEWER_STATE });
 

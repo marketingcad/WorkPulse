@@ -36,8 +36,14 @@ export function RecordPaymentDialog({ open, onOpenChange, invoice }: { open: boo
   const [err, setErr] = useState<ApiError | null>(null);
 
   const clientsQ = useOrgQuery<ClientDto[]>(open && !invoice ? '/clients' : null);
-  const invoicesQ = useOrgQuery<InvoiceRow[]>(open && !invoice && clientId ? `/invoices${qs({ client_id: clientId })}` : null);
-  const openInvoices = useMemo(() => (invoicesQ.data ?? []).filter(isOpen).sort((a, b) => a.due_date.localeCompare(b.due_date)), [invoicesQ.data]);
+  // Only the client's open invoices, filtered by the server (not the newest 1000 of all their invoices).
+  const invoicesQ = useOrgQuery<InvoiceRow[]>(open && !invoice && clientId ? `/invoices${qs({ client_id: clientId, status: 'OPEN' })}` : null);
+  // Oldest first: by due date, then issue date, then invoice number (invoices due the same day are
+  // otherwise paid newest first).
+  const openInvoices = useMemo(
+    () => (invoicesQ.data ?? []).filter(isOpen).sort((a, b) => a.due_date.localeCompare(b.due_date) || a.issue_date.localeCompare(b.issue_date) || a.number.localeCompare(b.number, undefined, { numeric: true })),
+    [invoicesQ.data],
+  );
   const currency = invoice?.currency ?? openInvoices[0]?.currency ?? org.organization.currency;
   const payable = openInvoices.filter((i) => i.currency === currency);
 

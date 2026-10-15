@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { request } from '@playwright/test';
 import { expect, ok, test, uid } from '../../support/fixtures';
-import { ADMIN_STATE, PASSWORD, WEB_URL } from '../../support/env';
+import { ADMIN_STATE, PASSWORD, VIEWER_STATE, WEB_URL } from '../../support/env';
 
 /**
  * Organizations and the audit log: creating another organization from the switcher, signing in
@@ -40,6 +40,48 @@ test.describe('New organization (admin)', () => {
     await page.getByRole('button', { name: 'Switch organization' }).click();
     await page.getByRole('menuitem', { name: data.orgName }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}`));
+  });
+});
+
+test.describe('Getting started (admin)', () => {
+  test.use({ storageState: ADMIN_STATE });
+
+  test('a new organization shows a setup checklist that ticks steps off from real data and can be hidden', async ({ page, data, adminApi }) => {
+    const org = await ok<{ organization_id: string }>(await adminApi.api.post('/api/v1/me/organizations', { data: { name: unique('Fresh Org', data.run) } }), 'new org');
+    const orgId = org.organization_id;
+    await page.goto(`/o/${orgId}`);
+    const checklist = page.getByRole('list', { name: 'Getting started' });
+    await expect(page.getByText('Get started: 0 of 5 done')).toBeVisible();
+    for (const step of ['Invite your team', 'Create a project', 'Set pay and bill rates', 'Connect the desktop app', 'Review what is tracked']) await expect(checklist.getByRole('link', { name: `${step} (to do)` })).toBeVisible();
+
+    // Creating a project ticks that step off.
+    await ok(await adminApi.api.post(`/api/v1/orgs/${orgId}/projects`, { data: { name: 'First project' } }), 'project');
+    await page.reload();
+    await expect(page.getByText('Get started: 1 of 5 done')).toBeVisible();
+    await expect(checklist.getByRole('link', { name: 'Create a project (done)' })).toBeVisible();
+
+    // Each step links to where it is done.
+    await checklist.getByRole('link', { name: /Invite your team/ }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Members' })).toBeVisible();
+
+    // Hidden for good once dismissed.
+    await page.goto(`/o/${orgId}`);
+    await page.getByRole('button', { name: 'Hide getting started' }).click();
+    await expect(checklist).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
+    await expect(page.getByText(/Get started:/)).toHaveCount(0);
+  });
+});
+
+test.describe('Getting started (no admin access)', () => {
+  test.use({ storageState: VIEWER_STATE });
+
+  test('someone who cannot change the organization never sees the setup checklist', async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}`);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page.getByText(/Get started:/)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Hide getting started' })).toHaveCount(0);
   });
 });
 

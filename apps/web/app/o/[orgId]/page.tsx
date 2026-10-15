@@ -18,6 +18,7 @@ import {
   Spinner,
   StatusBadge,
   WorkerStatus,
+  ConfirmDialog,
   cx,
   fmtDate,
   fmtDateTime,
@@ -31,6 +32,7 @@ import { useOrg } from '@/lib/org';
 import { useCurrentTracking, useLiveSeconds } from '@/components/shell/timer-bar';
 import { StackedBars } from '@/components/charts';
 import { useMemberOptions } from '@/lib/members';
+import { SetupChecklist } from '@/components/workspace/setup-checklist';
 
 type Size = 'S' | 'M' | 'L';
 interface WidgetCfg {
@@ -74,6 +76,7 @@ export default function OverviewPage() {
   const [scope, setScope] = useState<'ALL' | 'ME' | 'WORKER'>(org.isManagerView ? 'ALL' : 'ME');
   const [worker, setWorker] = useState<string>('');
   const [editing, setEditing] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   useOrgStream(['/dashboard/widgets']);
   const layoutQ = useOrgQuery<Layout>(`/dashboard/layout?scope=${scope}`);
   const [draft, setDraft] = useState<WidgetCfg[] | null>(null);
@@ -103,9 +106,15 @@ export default function OverviewPage() {
     }
   };
   const reset = async () => {
-    await api(`/orgs/${org.organization.id}/dashboard/layout?scope=${scope}`, { method: 'DELETE' });
-    await layoutQ.refetch();
-    setDraft(null);
+    try {
+      await api(`/orgs/${org.organization.id}/dashboard/layout?scope=${scope}`, { method: 'DELETE' });
+      await layoutQ.refetch();
+      setDraft(null);
+      setConfirmReset(false);
+      toast.success('Dashboard reset to the default layout');
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
   };
 
   const move = (i: number, d: -1 | 1) => {
@@ -152,9 +161,18 @@ export default function OverviewPage() {
             )}
             {editing ? (
               <>
-                <Button icon={<RotateCcw className="size-3.5" />} onClick={reset}>
+                <Button icon={<RotateCcw className="size-3.5" />} onClick={() => setConfirmReset(true)}>
                   Reset
                 </Button>
+                <ConfirmDialog
+                  open={confirmReset}
+                  onOpenChange={setConfirmReset}
+                  title="Reset the dashboard?"
+                  description="The saved widget layout is removed and the default layout comes back. This cannot be undone."
+                  confirmLabel="Reset dashboard"
+                  danger
+                  onConfirm={reset}
+                />
                 <Button onClick={() => (setDraft(null), setEditing(false))}>Cancel</Button>
                 <Button variant="primary" onClick={save}>
                   Save layout
@@ -168,6 +186,8 @@ export default function OverviewPage() {
           </>
         }
       />
+
+      {org.isManagerView && <SetupChecklist />}
 
       {scope === 'WORKER' && !worker ? (
         <Panel>

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import type { AuditLogDto, OffsetPage } from '@tallywork/contracts';
-import { Badge, Button, DataTable, Drawer, ErrorState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, Select, Stat, cx, fmtDateTime, useToast, type Column, type Tone } from '@tallywork/ui';
+import { Badge, Button, DataTable, Drawer, EmptyState, ErrorState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, Select, Stat, cx, fmtDateTime, useToast, type Column, type Tone } from '@tallywork/ui';
 import { api, errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { downloadText, toCsv } from '@/lib/csv';
@@ -193,6 +193,12 @@ export default function AuditPage() {
               rowKey={(r) => r.id}
               onRowClick={setOpen}
               caption="Audit log"
+              empty={
+                <EmptyState
+                  title={action || targetType || from || to ? 'No entries match these filters' : 'No audit entries yet'}
+                  description={action || targetType || from || to ? 'Clear or widen the filters to see more.' : 'Changes to settings, members, time and money are recorded here as they happen.'}
+                />
+              }
               pagination={{
                 page,
                 pageSize,

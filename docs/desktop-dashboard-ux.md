@@ -106,9 +106,9 @@ the UI re-renders. This carries:
 The clock is ticked client-side.
 
 **(B) Fetched own-data — `useMe`** → `GET /api/v1/agent/me/<resource>`. The allowlist is: `summary`,
-`sessions`, `timesheet`, `activity`, `tasks`, `schedule`, `time-off`, `notifications`, `client-visibility`,
-`pay-stubs`. It keeps the last good result on failure, so pages still show data offline.
-`client-visibility` is still allowlisted, but no screen reads it since "What is monitored" was removed.
+`sessions`, `timesheet`, `activity`, `tasks`, `schedule`, `time-off`, `notifications`, `pay-stubs`. It
+keeps the last good result on failure, so pages still show data offline. (`client-visibility` was removed
+from the allowlist along with "What is monitored".)
 
 **Bridge commands** (mutations) go to the main process, which owns the session and sync: `start`,
 `switchTask`, `stop`, `pause`, `resume`, `takeBreak`, `setNote`, `resolveIdle`, `resolveRecovery`,

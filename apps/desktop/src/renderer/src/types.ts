@@ -1,5 +1,5 @@
 // Shapes returned by the desktop own-data API (/api/v1/agent/me/*).
-export type { ActivityDayDto, ClientVisibilityDto, NotificationDto, PayStubDto, SessionDto, TaskDto, TimesheetDto } from '@tallywork/contracts';
+export type { ActivityDayDto, NotificationDto, PayStubDto, SessionDto, TaskDto, TimesheetDto } from '@tallywork/contracts';
 
 export interface SummaryDto {
   from: string;

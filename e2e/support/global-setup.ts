@@ -18,7 +18,7 @@ export interface E2EData {
   worker: { email: string; name: string; membershipId: string };
   /** A Worker with no payroll (empty states). */
   newcomer: { email: string; name: string; membershipId: string };
-  /** Custom role with only `budgets:read`: sees budgets without amounts, and no invoices or payroll. */
+  /** Custom role with only `budgets:read` and their own time: sees budgets without amounts, no money elsewhere. */
   viewer: { email: string; name: string; membershipId: string };
   teamName: string;
   projects: { website: { id: string; name: string }; app: { id: string; name: string } };
@@ -70,7 +70,7 @@ export default async function globalSetup(): Promise<void> {
   const invite = async (who: string, name: string) => json(await admin.post(o('/invitations'), { data: { email: email(who), name, role_id: roleId('WORKER'), team_ids: [team.id], project_ids: [website.id] } }), `invite ${who}`);
   const worker = await accept((await invite('wade', 'Wade Worker')).invite_url, 'Wade Worker');
   const newcomer = await accept((await invite('nina', 'Nina Newcomer')).invite_url, 'Nina Newcomer');
-  const viewerRole = await json(await admin.post(o('/roles'), { data: { name: `Budget viewer ${run}`, grants: { 'budgets:read': 'org' } } }), 'viewer role');
+  const viewerRole = await json(await admin.post(o('/roles'), { data: { name: `Budget viewer ${run}`, grants: { 'budgets:read': 'org', 'time:read': 'own' } } }), 'viewer role');
   const viewer = await accept((await json(await admin.post(o('/invitations'), { data: { email: email('vera'), name: 'Vera Viewer', role_id: viewerRole.id } }), 'invite vera')).invite_url, 'Vera Viewer');
 
   // A finalized weekly payroll for Wade: 3 h approved time at $25/h, plus a bonus and a deduction.

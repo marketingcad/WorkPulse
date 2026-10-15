@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import type { ElectronApplication } from '@playwright/test';
-import { expect, signIn, test } from '../../support/electron';
+import { expect, openPage, signIn, test } from '../../support/electron';
 import { usd } from '../../support/fixtures';
 
 /**
@@ -33,7 +33,7 @@ async function stubSaveDialog(app: ElectronApplication, answer: { canceled: bool
 test('a worker signs in with email and password and reaches Home', { tag: '@smoke' }, async ({ desktopApp, data }) => {
   const { window } = desktopApp;
   await signIn(window, data.worker.email);
-  await expect(window.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+  await expect(window.getByLabel('Timer')).toBeVisible();
   await expect(window.getByRole('button', { name: 'Profile' })).toContainText(data.worker.name);
   await test.info().attach('home', { body: await window.screenshot(), contentType: 'image/png' });
 });
@@ -41,7 +41,7 @@ test('a worker signs in with email and password and reaches Home', { tag: '@smok
 test('downloads a pay stub through the main process to where the worker chose', { tag: '@smoke' }, async ({ desktopApp, data }) => {
   const { app, window } = desktopApp;
   await signIn(window, data.worker.email);
-  await window.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Pay stubs', exact: true }).click();
+  await openPage(window, 'Pay stubs');
   await expect(window.getByRole('listitem').filter({ hasText: usd(data.payStub.netMinor) })).toBeVisible();
 
   const target = test.info().outputPath('my-pay-stub.pdf');
@@ -62,7 +62,7 @@ test('downloads a pay stub through the main process to where the worker chose', 
 test('cancelling the Save dialog writes nothing and shows no error', async ({ desktopApp, data }) => {
   const { app, window } = desktopApp;
   await signIn(window, data.worker.email);
-  await window.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Pay stubs', exact: true }).click();
+  await openPage(window, 'Pay stubs');
   const save = await stubSaveDialog(app, { canceled: true });
   await window.getByRole('button', { name: 'PDF' }).click();
   await expect.poll(async () => (await save.asked()).length).toBe(1);

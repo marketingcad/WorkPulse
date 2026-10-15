@@ -47,13 +47,31 @@ export const test = base.extend<{ desktopApp: DesktopApp }>({
   },
 });
 
-/** Sign in through the app's own form (email + password); the app opens straight on Home. */
+/**
+ * Sign in through the app's own form (email + password); the app opens straight on Home.
+ * Waits for the header's profile button, not the sidebar: the window can be narrower than the
+ * sidebar breakpoint (1024px) on small screens such as CI runners, where navigation is a drawer.
+ */
 export async function signIn(window: Page, email: string): Promise<void> {
   await expect(window.getByRole('heading', { level: 1, name: 'Sign in to start tracking' })).toBeVisible();
   await window.getByLabel('Email').fill(email);
   await window.getByLabel('Password').fill(PASSWORD);
+  // Submit only once both fields really hold the values, so a re-render can't send stale input.
+  await expect(window.getByLabel('Email')).toHaveValue(email);
+  await expect(window.getByLabel('Password')).toHaveValue(PASSWORD);
   await window.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(window.getByRole('navigation', { name: 'Primary' })).toBeVisible();
+  await expect(window.getByRole('button', { name: 'Profile' })).toBeVisible();
+}
+
+/** Open a page from the navigation at any window width: the sidebar when shown, else the drawer. */
+export async function openPage(window: Page, label: string): Promise<void> {
+  const menu = window.getByRole('button', { name: 'Open navigation' });
+  if (await menu.isVisible()) {
+    await menu.click();
+    await window.getByRole('dialog', { name: 'Navigation' }).getByRole('button', { name: label, exact: true }).click();
+  } else {
+    await window.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: label, exact: true }).click();
+  }
 }
 
 export { expect };

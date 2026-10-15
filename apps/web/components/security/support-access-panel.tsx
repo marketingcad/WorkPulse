@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { LifeBuoy } from 'lucide-react';
-import { Button, Field, Input, Panel, Select, fmtDateTime, useToast } from '@tallywork/ui';
+import { Button, ConfirmDialog, Field, Input, Panel, Select, fmtDateTime, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 
 interface Access {
@@ -28,7 +28,13 @@ export function SupportAccessPanel() {
       setReason('');
     },
   });
-  const revoke = useOrgMutation<void, Access>('DELETE', '/support-access', { onSuccess: () => toast.success('Support access revoked') });
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
+  const revoke = useOrgMutation<void, Access>('DELETE', '/support-access', {
+    onSuccess: () => {
+      toast.success('Support access revoked');
+      setConfirmRevoke(false);
+    },
+  });
   const err = grant.error instanceof ApiError ? grant.error : null;
   const a = q.data;
 
@@ -45,9 +51,19 @@ export function SupportAccessPanel() {
               <div className="font-medium text-warning">Support has read-only access until {fmtDateTime(a.expires_at)}</div>
               <div className="text-text">“{a.reason}”</div>
             </div>
-            <Button variant="danger" size="sm" loading={revoke.isPending} onClick={() => revoke.mutate(undefined)}>
+            <Button variant="danger" size="sm" onClick={() => setConfirmRevoke(true)}>
               Revoke now
             </Button>
+            <ConfirmDialog
+              open={confirmRevoke}
+              onOpenChange={setConfirmRevoke}
+              title="Revoke support access?"
+              description="WorkPulse support loses access straight away, even if they are in the middle of helping you. You can grant access again at any time."
+              confirmLabel="Revoke access"
+              danger
+              loading={revoke.isPending}
+              onConfirm={() => revoke.mutate(undefined)}
+            />
           </div>
         ) : (
           <form

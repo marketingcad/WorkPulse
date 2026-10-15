@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Info, RotateCcw } from 'lucide-react';
 import type { TeamDto } from '@tallywork/contracts';
 import type { TrackingPolicy } from '@tallywork/domain';
-import { Badge, Button, EmptyState, ErrorState, Input, PageHeader, Panel, PermissionState, SegmentedControl, Select, SkeletonRows, Switch, Textarea, cx, fmtDateTime, useToast } from '@tallywork/ui';
+import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, Input, PageHeader, Panel, PermissionState, SegmentedControl, Select, SkeletonRows, Switch, Textarea, cx, fmtDateTime, useToast } from '@tallywork/ui';
 import { ApiError, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { POLICY_SECTIONS, displayPolicyValue, type PolicyField } from '@/components/settings/policy-fields';
@@ -37,6 +37,8 @@ export default function PoliciesPage() {
   const canRead = org.can('policies:read');
   const canEdit = org.can('policies:manage');
   const [scopeType, setScopeType] = useState<ScopeType>('ORG');
+  // A scope change waiting for "discard unsaved changes?" to be confirmed.
+  const [pendingScope, setPendingScope] = useState<ScopeType | null>(null);
   const [teamId, setTeamId] = useState('');
   const [workerId, setWorkerId] = useState('');
   const teamsQ = useOrgQuery<TeamDto[]>(canRead && scopeType === 'TEAM' ? '/teams' : null);
@@ -79,18 +81,27 @@ export default function PoliciesPage() {
       <div className="mb-4 flex items-start gap-2.5 rounded-md border border-info/30 bg-info-soft px-4 py-3 text-sm text-info" role="note">
         <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
         <p>
-          <span className="font-medium">Transparency:</span> when you save, everyone affected by this policy is notified and must acknowledge the change in the desktop app before tracking continues. Members can always see what is monitored on their “What is monitored” page.
+          <span className="font-medium">Transparency:</span> when you save, everyone affected by this policy is notified that their tracking settings changed. Make sure your members know what is monitored where the law requires it.
         </p>
       </div>
 
+      <ConfirmDialog
+        open={pendingScope !== null}
+        onOpenChange={(o) => !o && setPendingScope(null)}
+        title="Discard unsaved policy changes?"
+        description="Your changes to this policy have not been saved. Switching to another scope discards them."
+        confirmLabel="Discard changes"
+        danger
+        onConfirm={() => {
+          if (pendingScope) setScopeType(pendingScope);
+          setPendingScope(null);
+        }}
+      />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SegmentedControl
           label="Policy scope"
           value={scopeType}
-          onChange={(v) => {
-            if (dirty && !window.confirm('Discard unsaved policy changes?')) return;
-            setScopeType(v);
-          }}
+          onChange={(v) => (dirty ? setPendingScope(v) : setScopeType(v))}
           options={[
             { value: 'ORG', label: 'Organization default' },
             { value: 'TEAM', label: 'Team' },

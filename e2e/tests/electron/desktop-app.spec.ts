@@ -48,13 +48,13 @@ test('downloads a pay stub through the main process to where the worker chose', 
   const save = await stubSaveDialog(app, { canceled: false, filePath: target });
   await window.getByRole('button', { name: 'PDF' }).click();
 
-  await expect.poll(() => existsSync(target)).toBe(true);
-  expect(readFileSync(target).subarray(0, 5).toString()).toBe('%PDF-');
+  // The file appears before writeFile finishes, and the main process opens it only afterwards: wait for both.
+  await expect.poll(() => (existsSync(target) ? readFileSync(target).subarray(0, 5).toString() : '')).toBe('%PDF-');
   const [asked] = await save.asked();
   // Suggested name comes from the server's file name, checked against the expected pattern.
   expect(asked!.defaultPath).toMatch(new RegExp(`pay-stub-${data.payStub.periodStart}\\.pdf$`));
   expect(asked!.filters[0]!.extensions).toEqual(['pdf']);
-  expect(await save.opened()).toEqual([target]);
+  await expect.poll(() => save.opened()).toEqual([target]);
   await expect(window.getByText('Could not download the pay stub')).toHaveCount(0);
   await test.info().attach('pay-stubs', { body: await window.screenshot(), contentType: 'image/png' });
 });

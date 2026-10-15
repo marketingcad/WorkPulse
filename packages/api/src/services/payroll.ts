@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, min, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   billingEntries,
@@ -190,6 +190,7 @@ function stubDto(l: typeof payrollRunLines.$inferSelect, r: typeof payrollRuns.$
     status: r.status,
     approved_seconds: l.approvedSeconds,
     unapproved_seconds: l.unapprovedSeconds,
+    carried_seconds: l.carriedSeconds,
     regular_seconds: l.regularSeconds,
     overtime_seconds: l.overtimeSeconds,
     time_pay_minor: l.timePayMinor,
@@ -224,18 +225,40 @@ export async function getPayrollRun(x: Ctx, id: string): Promise<PayrollRunDto> 
 }
 
 /**
- * Pay for each profile member in the period, from approved time only (billing entries snapshot the
- * pay rate at approval), plus paid time off at the member's own pay rate. Time that is not approved
- * yet is reported but not paid; approve it and recalculate the draft to include it.
+ * Earliest date a run of this profile pays: the start of its first payroll. Approved time older than
+ * that predates payroll in WorkPulse and is never picked up.
+ */
+async function payableSince(x: Ctx, profileId: string, from: string): Promise<string> {
+  const [first] = await x.tx.select({ start: min(payrollRuns.periodStart) }).from(payrollRuns).where(eq(payrollRuns.profileId, profileId));
+  return first?.start && first.start < from ? first.start : from;
+}
+
+/**
+ * Approved time a run may pay: not voided, not paid by another payroll yet, dated up to the end of
+ * the period. That includes time from earlier periods approved after their payroll was finalized,
+ * so late approvals are paid by the next run instead of being lost. Time with a pay rate in another
+ * currency is never paid by this profile.
+ */
+async function payableEntries(x: Ctx, profile: typeof payrollProfiles.$inferSelect, members: string[], since: string, to: string) {
+  if (!members.length) return [];
+  const rows = await x.tx
+    .select({ id: billingEntries.id, m: billingEntries.membershipId, d: billingEntries.localDate, s: billingEntries.seconds, pay: billingEntries.payAmountMinor, cur: billingRates.currency })
+    .from(billingEntries)
+    .leftJoin(billingRates, eq(billingRates.id, billingEntries.payRateId))
+    .where(and(isNull(billingEntries.voidedAt), isNull(billingEntries.payrollLineId), inArray(billingEntries.membershipId, members), gte(billingEntries.localDate, since), lte(billingEntries.localDate, to)));
+  return rows.map((r) => ({ ...r, foreign: !!r.cur && r.cur !== profile.currency }));
+}
+
+/**
+ * Pay for each profile member, from approved time only (billing entries snapshot the pay rate at
+ * approval; see payableEntries), plus paid time off in the period at the member's own pay rate. Time
+ * in the period that is not approved yet is reported but not paid; once approved, the draft picks it
+ * up on recalculation, or the next payroll does.
  */
 async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect, from: string, to: string) {
   const members = (await x.tx.select({ m: payrollProfileMembers.membershipId }).from(payrollProfileMembers).where(eq(payrollProfileMembers.profileId, profile.id))).map((r) => r.m);
   if (!members.length) return { lines: [], otherCurrency: false };
-  const approved = await x.tx
-    .select({ m: billingEntries.membershipId, d: billingEntries.localDate, s: billingEntries.seconds, pay: billingEntries.payAmountMinor, cur: billingRates.currency })
-    .from(billingEntries)
-    .leftJoin(billingRates, eq(billingRates.id, billingEntries.payRateId))
-    .where(and(isNull(billingEntries.voidedAt), inArray(billingEntries.membershipId, members), gte(billingEntries.localDate, from), lte(billingEntries.localDate, to)));
+  const approved = await payableEntries(x, profile, members, await payableSince(x, profile.id, from), to);
   const rollups = await x.tx.select().from(rollupWorkerDay).where(and(inArray(rollupWorkerDay.membershipId, members), gte(rollupWorkerDay.localDate, from), lte(rollupWorkerDay.localDate, to)));
   const [ot] = await x.tx.select().from(overtimeRuleSets);
   const rules = ot?.rules ?? DEFAULT_OVERTIME;
@@ -249,13 +272,13 @@ async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect
   let otherCurrency = false;
 
   const lines = members.map((m) => {
-    const mine = approved.filter((a) => a.m === m);
-    let timePay = 0;
-    for (const a of mine) {
-      if (a.cur && a.cur !== profile.currency) otherCurrency = true;
-      else timePay += a.pay;
-    }
+    const all = approved.filter((a) => a.m === m);
+    // Time in another currency is flagged for its own period only, and never paid here.
+    if (all.some((a) => a.foreign && a.d >= from)) otherCurrency = true;
+    const mine = all.filter((a) => !a.foreign);
+    const timePay = mine.reduce((s, a) => s + a.pay, 0);
     const approvedSeconds = mine.reduce((s, a) => s + a.s, 0);
+    const carriedSeconds = mine.filter((a) => a.d < from).reduce((s, a) => s + a.s, 0);
     const worked = rollups.filter((r) => r.membershipId === m);
     const total = worked.reduce((s, r) => s + r.trackedSeconds + r.manualSeconds, 0);
     const weeks = new Map<string, number[]>();
@@ -281,7 +304,7 @@ async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect
       if (rate && rate.currency !== profile.currency) otherCurrency = true;
       else if (rate) offPay += amountForSeconds(Math.round(h * 3600), rate.amountMinor);
     }
-    return { membershipId: m, approvedSeconds, unapprovedSeconds: Math.max(0, total - approvedSeconds), regularSeconds: regular, overtimeSeconds: overtime, timePayMinor: timePay, timeOffHours: Math.round(offHours * 100) / 100, timeOffPayMinor: offPay, grossMinor: timePay + offPay };
+    return { membershipId: m, approvedSeconds, carriedSeconds, unapprovedSeconds: Math.max(0, total - (approvedSeconds - carriedSeconds)), regularSeconds: regular, overtimeSeconds: overtime, timePayMinor: timePay, timeOffHours: Math.round(offHours * 100) / 100, timeOffPayMinor: offPay, grossMinor: timePay + offPay };
   });
   return { lines, otherCurrency };
 }
@@ -310,6 +333,13 @@ export async function createPayrollRun(x: Ctx, input: z.infer<typeof payrollRunI
   const period = periodFor(input.date ?? addDaysToDate(current.start, -1), profile.period, x.org.weekStart);
   const [exists] = await x.tx.select({ id: payrollRuns.id }).from(payrollRuns).where(and(eq(payrollRuns.profileId, profile.id), eq(payrollRuns.periodStart, period.start)));
   if (exists) throw conflict('payroll_exists', `${profile.name} already has a payroll for ${period.start} – ${period.end}`);
+  // A changed pay period must not pay days twice (time off is paid by date).
+  const [overlap] = await x.tx
+    .select({ start: payrollRuns.periodStart, end: payrollRuns.periodEnd })
+    .from(payrollRuns)
+    .where(and(eq(payrollRuns.profileId, profile.id), lte(payrollRuns.periodStart, period.end), gte(payrollRuns.periodEnd, period.start)))
+    .limit(1);
+  if (overlap) throw conflict('payroll_overlap', `${profile.name} already has a payroll for ${overlap.start} – ${overlap.end}, which overlaps ${period.start} – ${period.end}`);
   const id = newId();
   const { lines, otherCurrency } = await computeLines(x, profile, period.start, period.end);
   await x.tx.insert(payrollRuns).values({ id, organizationId: x.org.id, profileId: profile.id, periodStart: period.start, periodEnd: period.end, currency: profile.currency, otherCurrency, notes: input.notes ?? null, createdBy: x.actor.membershipId });
@@ -356,11 +386,36 @@ export async function setPayAdjustments(x: Ctx, runId: string, lineId: string, i
 export async function finalizePayrollRun(x: Ctx, id: string) {
   need(x, 'payroll:manage');
   const run = await loadRun(x, id, 'DRAFT');
+  await claimPaidTime(x, run);
   await x.tx.update(payrollRuns).set({ status: 'FINALIZED', finalizedAt: new Date(), finalizedBy: x.actor.membershipId, updatedAt: new Date() }).where(eq(payrollRuns.id, id));
   const lines = await x.tx.select({ m: payrollRunLines.membershipId }).from(payrollRunLines).where(eq(payrollRunLines.runId, id));
   await notify(x.tx, x.deps, x.org.id, lines.map((l) => l.m), { type: 'payroll.stub_ready', title: 'Your pay stub is ready', body: `Pay period ${run.periodStart} – ${run.periodEnd}`, link: '/pay-stubs' });
   await audit(x, { action: 'payroll.finalized', targetType: 'payroll_run', targetId: id });
   return getPayrollRun(x, id);
+}
+
+/**
+ * Marks the approved time each pay stub pays, so no other payroll pays it again. The draft must match
+ * what is approved and unpaid right now: if time was approved, reopened or paid by another payroll
+ * since it was calculated, it has to be recalculated first.
+ */
+async function claimPaidTime(x: Ctx, run: typeof payrollRuns.$inferSelect) {
+  const [profile] = await x.tx.select().from(payrollProfiles).where(eq(payrollProfiles.id, run.profileId));
+  const lines = await x.tx.select().from(payrollRunLines).where(eq(payrollRunLines.runId, run.id));
+  const entries = (await payableEntries(x, profile!, lines.map((l) => l.membershipId), await payableSince(x, run.profileId, run.periodStart), run.periodEnd)).filter((e) => !e.foreign);
+  const stale = () => businessRule('payroll_stale', 'Approved time changed since this payroll was calculated. Recalculate it, check the totals, then finalize.');
+  for (const l of lines) {
+    const mine = entries.filter((e) => e.m === l.membershipId);
+    if (mine.reduce((s, e) => s + e.s, 0) !== l.approvedSeconds || mine.reduce((s, e) => s + e.pay, 0) !== l.timePayMinor) throw stale();
+    if (!mine.length) continue;
+    // Conditional claim: a payroll finalized at the same moment cannot take the same time.
+    const claimed = await x.tx
+      .update(billingEntries)
+      .set({ payrollLineId: l.id })
+      .where(and(inArray(billingEntries.id, mine.map((e) => e.id)), isNull(billingEntries.payrollLineId), isNull(billingEntries.voidedAt)))
+      .returning({ id: billingEntries.id });
+    if (claimed.length !== mine.length) throw stale();
+  }
 }
 
 export async function markPayrollPaid(x: Ctx, id: string) {

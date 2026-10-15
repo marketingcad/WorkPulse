@@ -14,7 +14,7 @@ import {
   workerProfiles,
 } from '@tallywork/db';
 import { businessRule, can, conflict, forbidden, localDate, newId, notFound, validation, type Grants } from '@tallywork/domain';
-import type { MemberDetailsDto, OffsetPage, OrgContextDto, WorkerDto, inviteInput, memberDetailsInput, roleInput, updateOrgInput, updateWorkerInput } from '@tallywork/contracts';
+import type { MemberDetailsDto, MemberOptionDto, OffsetPage, OrgContextDto, WorkerDto, inviteInput, memberDetailsInput, roleInput, updateOrgInput, updateWorkerInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { ipAllowed, parseCidr } from '../lib/cidr';
 import { audit } from './events';
@@ -192,6 +192,29 @@ export async function listWorkers(x: Ctx, opts: WorkerQuery = {}): Promise<Worke
     .where(workerWhere(x, opts))
     .orderBy(asc(users.name), asc(memberships.id));
   return toWorkerDtos(x, rows);
+}
+
+/** Members for pickers and name lookups, by name: only the fields those need (no rates or team lists). */
+export async function listMemberOptions(x: Ctx, opts: { includeRemoved?: boolean } = {}): Promise<MemberOptionDto[]> {
+  const rows = await x.tx
+    .select({
+      id: memberships.id,
+      name: users.name,
+      email: users.email,
+      roleName: roles.name,
+      status: memberships.status,
+      title: workerProfiles.title,
+      timezone: workerProfiles.timezone,
+      tracking: workerProfiles.trackingEnabled,
+      weekly: workerProfiles.weeklyExpectedSeconds,
+    })
+    .from(memberships)
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .innerJoin(roles, eq(roles.id, memberships.roleId))
+    .leftJoin(workerProfiles, eq(workerProfiles.membershipId, memberships.id))
+    .where(workerWhere(x, { includeRemoved: opts.includeRemoved }))
+    .orderBy(asc(users.name), asc(memberships.id));
+  return rows.map((r) => ({ id: r.id, name: r.name, email: r.email, role_name: r.roleName, status: r.status, title: r.title ?? null, timezone: r.timezone ?? x.org.timezone, tracking_enabled: r.tracking ?? false, weekly_expected_seconds: r.weekly ?? null }));
 }
 
 /** One numbered page of members (`page` is 1-based), by name, and the total. */

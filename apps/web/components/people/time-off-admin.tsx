@@ -1,11 +1,12 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
-import type { WorkerDto } from '@tallywork/contracts';
+import type { MemberOptionDto } from '@tallywork/contracts';
 import { Badge, Button, Checkbox, ConfirmDialog, DataTable, Dialog, EmptyState, ErrorState, Field, IconButton, Input, Panel, Select, Switch, Textarea, fmtDate, useToast, type Column } from '@tallywork/ui';
 import { ApiError, errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { fmtHours, type AccrualType, type HolidayRow, type TimeOffBalance, type TimeOffPolicy } from './shared';
+import { useMemberOptions } from '@/lib/members';
 
 const ACCRUAL_LABEL: Record<AccrualType, string> = {
   none: 'No accrual',
@@ -24,7 +25,7 @@ function accrualSummary(p: TimeOffPolicy): string {
 
 export function TimeOffAdmin() {
   const policiesQ = useOrgQuery<TimeOffPolicy[]>('/time-off/policies');
-  const workersQ = useOrgQuery<WorkerDto[]>('/workers');
+  const workersQ = useMemberOptions();
   const [editing, setEditing] = useState<TimeOffPolicy | 'new' | null>(null);
   const [adjusting, setAdjusting] = useState(false);
   const workers = useMemo(() => (workersQ.data ?? []).filter((w) => w.status === 'ACTIVE' || w.status === 'INVITED'), [workersQ.data]);
@@ -78,7 +79,7 @@ export function TimeOffAdmin() {
 
 type PolicyBody = Omit<TimeOffPolicy, 'id' | 'member_ids'> & { member_ids?: string[] };
 
-function PolicyDialog({ policy, workers, onClose }: { policy: TimeOffPolicy | null; workers: WorkerDto[]; onClose: () => void }) {
+function PolicyDialog({ policy, workers, onClose }: { policy: TimeOffPolicy | null; workers: MemberOptionDto[]; onClose: () => void }) {
   const toast = useToast();
   const [name, setName] = useState(policy?.name ?? '');
   const [paid, setPaid] = useState(policy?.paid ?? true);
@@ -235,7 +236,7 @@ interface AdjustBody {
   note: string | null;
 }
 
-function AdjustDialog({ policies, workers, onClose }: { policies: TimeOffPolicy[]; workers: WorkerDto[]; onClose: () => void }) {
+function AdjustDialog({ policies, workers, onClose }: { policies: TimeOffPolicy[]; workers: MemberOptionDto[]; onClose: () => void }) {
   const toast = useToast();
   const tracked = policies.filter((p) => p.accrual.type !== 'none');
   const [memberId, setMemberId] = useState('');

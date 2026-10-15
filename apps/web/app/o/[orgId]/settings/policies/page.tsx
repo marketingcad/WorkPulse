@@ -1,12 +1,13 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { Info, RotateCcw } from 'lucide-react';
-import type { TeamDto, WorkerDto } from '@tallywork/contracts';
+import type { TeamDto } from '@tallywork/contracts';
 import type { TrackingPolicy } from '@tallywork/domain';
 import { Badge, Button, EmptyState, ErrorState, Input, PageHeader, Panel, PermissionState, SegmentedControl, Select, SkeletonRows, Switch, Textarea, cx, fmtDateTime, useToast } from '@tallywork/ui';
 import { ApiError, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { POLICY_SECTIONS, displayPolicyValue, type PolicyField } from '@/components/settings/policy-fields';
+import { useMemberOptions } from '@/lib/members';
 
 type ScopeType = 'ORG' | 'TEAM' | 'WORKER';
 type Doc = Record<string, Record<string, unknown>>;
@@ -39,7 +40,7 @@ export default function PoliciesPage() {
   const [teamId, setTeamId] = useState('');
   const [workerId, setWorkerId] = useState('');
   const teamsQ = useOrgQuery<TeamDto[]>(canRead && scopeType === 'TEAM' ? '/teams' : null);
-  const workersQ = useOrgQuery<WorkerDto[]>(canRead && scopeType === 'WORKER' && org.can('members:read') ? '/workers' : null);
+  const workersQ = useMemberOptions(canRead && scopeType === 'WORKER' && org.can('members:read'));
   const scopeId = scopeType === 'ORG' ? org.organization.id : scopeType === 'TEAM' ? teamId : workerId;
   const layerQ = useOrgQuery<Layer>(canRead && scopeId ? `/policies/${scopeType}/${scopeId}` : null);
   const [doc, setDoc] = useState<Doc>({});

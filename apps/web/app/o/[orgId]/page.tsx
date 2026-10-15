@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowDown, ArrowUp, Eye, EyeOff, LayoutGrid, RotateCcw } from 'lucide-react';
-import type { CurrentTrackingDto, LiveWorkerDto, SessionDto, WorkerDto } from '@tallywork/contracts';
+import type { CurrentTrackingDto, LiveWorkerDto, SessionDto } from '@tallywork/contracts';
 import {
   ActivityBar,
   Avatar,
@@ -30,6 +30,7 @@ import { useOrgStream } from '@/lib/stream';
 import { useOrg } from '@/lib/org';
 import { useCurrentTracking, useLiveSeconds } from '@/components/shell/timer-bar';
 import { StackedBars } from '@/components/charts';
+import { useMemberOptions } from '@/lib/members';
 
 type Size = 'S' | 'M' | 'L';
 interface WidgetCfg {
@@ -79,7 +80,7 @@ export default function OverviewPage() {
   const widgets = draft ?? layoutQ.data?.widgets ?? [];
   const keys = widgets.map((w) => w.key).join(',');
   const dataQ = useOrgQuery<Record<string, any>>(keys ? `/dashboard/widgets${qs({ keys, scope, membership_id: scope === 'WORKER' ? worker : undefined })}` : null, { refetchInterval: 120_000, enabled: !!keys && (scope !== 'WORKER' || !!worker) });
-  const workersQ = useOrgQuery<WorkerDto[]>(org.isManagerView ? '/workers' : null);
+  const workersQ = useMemberOptions(org.isManagerView);
 
   useEffect(() => {
     try {

@@ -1,9 +1,10 @@
 'use client';
-import type { WorkerDto } from '@tallywork/contracts';
+
 import { Input, Select } from '@tallywork/ui';
 import { useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { daySpan, presetRange, type DateRange, type RangePreset } from './time';
+import { useMemberOptions } from '@/lib/members';
 
 const PRESETS: Array<{ value: RangePreset; label: string }> = [
   { value: 'today', label: 'Today' },
@@ -66,7 +67,7 @@ export function DateRangeFilter({ value, onChange }: { value: DateRange; onChang
 /** Active, tracking-enabled members the viewer may see (managers only; null for workers). */
 export function useTrackedWorkers() {
   const org = useOrg();
-  const q = useOrgQuery<WorkerDto[]>(org.isManagerView && org.can('members:read') ? '/workers' : null, { staleTime: 60_000 });
+  const q = useMemberOptions(org.isManagerView && org.can('members:read'));
   const rows = q.data?.filter((w) => w.tracking_enabled && w.status === 'ACTIVE').sort((a, b) => a.name.localeCompare(b.name));
   return { ...q, rows };
 }

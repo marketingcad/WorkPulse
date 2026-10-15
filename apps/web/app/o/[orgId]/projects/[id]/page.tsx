@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
-import type { BudgetStatusDto, ClientDto, ProjectDto, TaskDto, TeamDto, WorkerDto } from '@tallywork/contracts';
+import type { BudgetStatusDto, ClientDto, ProjectDto, TaskDto, TeamDto, MemberOptionDto } from '@tallywork/contracts';
 import {
   Avatar,
   Badge,
@@ -37,6 +37,7 @@ import { MultiSelect } from '@/components/workspace/multi-select';
 import { ColorDot, PriorityBadge, ProjectFields, ProjectStatusBadge, TaskDialog, TaskStatusSelect, projectPayload, projectToForm, useHoursPerDay, useOrgAction, type ProjectForm } from '@/components/workspace/shared';
 import { BudgetDialog } from '@/components/finance/budget-dialog';
 import { ProjectDocumentsTab } from '@/components/workspace/project-documents';
+import { useMemberOptions } from '@/lib/members';
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -45,7 +46,7 @@ export default function ProjectDetailPage() {
   const projectQ = useOrgQuery<ProjectDto>(`/projects/${id}`);
   const tasksQ = useOrgQuery<TaskDto[]>(org.can('tasks:read') ? `/projects/${id}/tasks` : null);
   const budgetsQ = useOrgQuery<BudgetStatusDto[]>(org.can('budgets:read') ? '/budgets' : null);
-  const workersQ = useOrgQuery<WorkerDto[]>(org.can('members:read') ? '/workers' : null);
+  const workersQ = useMemberOptions(org.can('members:read'));
   const teamsQ = useOrgQuery<TeamDto[]>(org.can('teams:read') ? '/teams' : null);
   const p = projectQ.data;
   const budget = budgetsQ.data?.find((b) => b.subject_type === 'PROJECT' && b.subject_id === id);
@@ -176,7 +177,7 @@ export default function ProjectDetailPage() {
 }
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
-function TasksTab({ project, tasks, loading, error, workers }: { project: ProjectDto; tasks?: TaskDto[]; loading: boolean; error: unknown; workers?: WorkerDto[] }) {
+function TasksTab({ project, tasks, loading, error, workers }: { project: ProjectDto; tasks?: TaskDto[]; loading: boolean; error: unknown; workers?: MemberOptionDto[] }) {
   const org = useOrg();
   const run = useOrgAction();
   const toast = useToast();
@@ -322,7 +323,7 @@ function TasksTab({ project, tasks, loading, error, workers }: { project: Projec
 }
 
 // ─── Members & teams ─────────────────────────────────────────────────────────
-function MembersTab({ project, workers, teams, canManage }: { project: ProjectDto; workers?: WorkerDto[]; teams?: TeamDto[]; canManage: boolean }) {
+function MembersTab({ project, workers, teams, canManage }: { project: ProjectDto; workers?: MemberOptionDto[]; teams?: TeamDto[]; canManage: boolean }) {
   const org = useOrg();
   const run = useOrgAction();
   const toast = useToast();

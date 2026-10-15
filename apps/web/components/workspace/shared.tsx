@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { ClientDto, ProjectDto, TaskDto, TeamDto, WorkerDto } from '@tallywork/contracts';
+import type { ClientDto, ProjectDto, TaskDto, TeamDto, MemberOptionDto } from '@tallywork/contracts';
 import { Plus } from 'lucide-react';
 import { Badge, Button, Checkbox, Dialog, Field, IconButton, Input, Select, StatusBadge, Textarea, cx, useToast, type Tone } from '@tallywork/ui';
 import { ApiError, api, errorMessage, useOrgId } from '@/lib/api';
@@ -123,7 +123,7 @@ export function TaskDialog({
   /** fixed project; otherwise a project picker is shown */
   projectId?: string;
   projects?: ProjectDto[];
-  workers?: WorkerDto[];
+  workers?: MemberOptionDto[];
 }) {
   const run = useOrgAction();
   const toast = useToast();
@@ -344,7 +344,7 @@ export function ProjectFields({
   setF: (f: ProjectForm) => void;
   err: ApiError | null;
   clients?: ClientDto[];
-  workers?: WorkerDto[];
+  workers?: MemberOptionDto[];
   teams?: TeamDto[];
   showAssignments?: boolean;
 }) {
@@ -509,7 +509,7 @@ export function ProjectDialog({
   onOpenChange: (o: boolean) => void;
   project?: ProjectDto | null;
   clients?: ClientDto[];
-  workers?: WorkerDto[];
+  workers?: MemberOptionDto[];
   teams?: TeamDto[];
   onSaved?: (p: ProjectDto) => void;
 }) {

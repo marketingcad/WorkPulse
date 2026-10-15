@@ -1,12 +1,13 @@
 'use client';
 import { useMemo, useState } from 'react';
-import type { ManualTimeDto, TimeEntryDto, TimeTypeDto, WorkerDto } from '@tallywork/contracts';
+import type { ManualTimeDto, TimeEntryDto, TimeTypeDto } from '@tallywork/contracts';
 import { Badge, Button, Checkbox, ConfirmDialog, Dialog, Drawer, EmptyState, ErrorState, Field, Input, SegmentedControl, Select, SkeletonRows, Textarea, fmtDateTime, fmtTime, humanize, useToast } from '@tallywork/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError, api, errorMessage, useOrgId, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { ProjectTaskPicker, type PickerValue } from '@/components/project-task-picker';
 import { fromLocalInput, toLocalInput, useAssignmentsFor, useReasonPolicy, type EntryRevision } from './shared';
+import { useMemberOptions } from '@/lib/members';
 
 function useRefresh() {
   const qc = useQueryClient();
@@ -348,7 +349,7 @@ export function ManualTimeDialog({ membershipId: fixedMember, defaultDate, prefi
   const toast = useToast();
   const refresh = useRefresh();
   const pickMember = !fixedMember;
-  const workersQ = useOrgQuery<WorkerDto[]>(pickMember && org.can('members:read') ? '/workers' : null);
+  const workersQ = useMemberOptions(pickMember && org.can('members:read'));
   const [member, setMember] = useState(fixedMember ?? org.membership.id);
   const membershipId = fixedMember ?? member;
   const isSelf = membershipId === org.membership.id;

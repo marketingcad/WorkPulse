@@ -114,6 +114,19 @@ describe('members', () => {
     expect((await admin.get(o('/workers/not-a-uuid'))).status).toBe(404);
   });
 
+  it('lists every member for pickers with only the light fields, by name', async () => {
+    const r = await admin.get<Array<Record<string, unknown>>>(o('/workers/options'));
+    expect(r.status).toBe(200);
+    expect(r.body).toHaveLength(1047);
+    expect(r.body[0]!.name).toBe('Ada');
+    expect(Object.keys(r.body[0]!).sort()).toEqual(['email', 'id', 'name', 'role_name', 'status', 'timezone', 'title', 'tracking_enabled', 'weekly_expected_seconds']);
+    // No rates or team lists, even for an admin who may see rates.
+    expect(r.body.some((m) => 'pay_rate_minor' in m || 'team_ids' in m)).toBe(false);
+    expect((await admin.get<unknown[]>(o('/workers/options?include_removed=true'))).body).toHaveLength(1052);
+    // A Worker's picker holds only themselves, like the full list.
+    expect((await walt.get<Array<{ name: string }>>(o('/workers/options'))).body.map((m) => m.name)).toEqual(['Walt']);
+  });
+
   it('a Worker only sees themselves', async () => {
     const r = await walt.get<Page<{ name: string }>>(o('/workers?page=1'));
     expect(r.body.total).toBe(1);

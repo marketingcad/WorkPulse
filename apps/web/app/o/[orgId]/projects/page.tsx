@@ -2,7 +2,7 @@
 import { Suspense, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Plus } from 'lucide-react';
-import type { BudgetStatusDto, ClientDto, ProjectDto, TeamDto, WorkerDto } from '@tallywork/contracts';
+import type { BudgetStatusDto, ClientDto, ProjectDto, TeamDto } from '@tallywork/contracts';
 import {
   Badge,
   BudgetProgress,
@@ -29,6 +29,7 @@ import {
 import { errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { ColorDot, PROJECT_STATUSES, ProjectDialog, ProjectStatusBadge, useOrgAction } from '@/components/workspace/shared';
+import { useMemberOptions } from '@/lib/members';
 
 export default function ProjectsPage() {
   return (
@@ -55,7 +56,7 @@ function Projects() {
   const q = useOrgQuery<ProjectDto[]>(org.can('projects:read') ? `/projects${qs({ include_archived: archived || undefined, client_id: clientId || undefined })}` : null);
   const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients' : null);
   const budgetsQ = useOrgQuery<BudgetStatusDto[]>(org.can('budgets:read') ? '/budgets' : null);
-  const workersQ = useOrgQuery<WorkerDto[]>(canManage && org.can('members:read') ? '/workers' : null);
+  const workersQ = useMemberOptions(canManage && org.can('members:read'));
   const teamsQ = useOrgQuery<TeamDto[]>(canManage && org.can('teams:read') ? '/teams' : null);
 
   const budgetByProject = useMemo(() => new Map((budgetsQ.data ?? []).filter((b) => b.subject_type === 'PROJECT').map((b) => [b.subject_id, b])), [budgetsQ.data]);

@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowDown, ArrowUp, CalendarOff, Copy, Download, History, Lock, MoreHorizontal, Pencil, Plus, Save, Scissors, Trash2 } from 'lucide-react';
-import type { ClientDto, InsightsDto, OffsetPage, ProjectDto, TaskDto, TimeEntryDto, TimeEntryPageSummary, TimeTypeDto, WorkerDto } from '@tallywork/contracts';
+import type { ClientDto, InsightsDto, OffsetPage, ProjectDto, TaskDto, TimeEntryDto, TimeEntryPageSummary, TimeTypeDto } from '@tallywork/contracts';
 import {
   Avatar,
   Badge,
@@ -40,6 +40,7 @@ import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { DeleteEntryDialog, EditEntryDialog, ManualTimeDialog, RevisionsDrawer, SplitEntryDialog } from '@/components/timesheets/entry-dialogs';
 import { TimeTypeBadge } from '@/components/settings/time-types-panel';
 import { useQueryClient } from '@tanstack/react-query';
+import { useMemberOptions } from '@/lib/members';
 
 type Preset = 'today' | 'yesterday' | 'this_week' | 'prev_week' | 'this_month' | 'prev_month' | 'custom';
 type Action = {
@@ -115,7 +116,7 @@ export default function AllTimeEntriesPage() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  const workersQ = useOrgQuery<WorkerDto[]>(org.can('members:read') ? '/workers' : null);
+  const workersQ = useMemberOptions(org.can('members:read'));
   const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients' : null);
   const projectsQ = useOrgQuery<ProjectDto[]>('/projects');
   const tasksQ = useOrgQuery<TaskDto[]>(project && org.can('tasks:read') ? `/projects/${project}/tasks` : null);

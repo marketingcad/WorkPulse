@@ -71,6 +71,8 @@ These lists can be paged: `GET /invoices`, `GET /payments`, `GET /expenses`, `GE
 
 Without `page`, these endpoints return a plain array, as before, with `status` and `q` applied first. That array is capped: invoices, payments and expenses at 1000, time entries at 5000, sessions, approvals, manual time and time off at 500, and tasks at 2000. Members, devices and attendance return every match. Use `page` to reach everything. `GET /audit-logs` pages the same way.
 
+`GET /workers/options` returns every member you may see as a light list for pickers, `[{ id, name, email, role_name, status, title, timezone, tracking_enabled, weekly_expected_seconds }]`, without rates or teams (`include_removed=true` adds former members).
+
 `GET /time-entries/totals` (same filters as `GET /time-entries`) returns hours per member and day, `[{ membership_id, date, seconds, billable_seconds, manual_seconds }]`, summed by the server, so you don't need to load the entries.
 
 ## Errors

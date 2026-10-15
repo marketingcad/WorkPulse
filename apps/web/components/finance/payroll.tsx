@@ -1,13 +1,14 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import type { BankDetailsDto, PayStubDto, PayrollProfileDto, PayrollRunDto, WorkerDto } from '@tallywork/contracts';
+import type { BankDetailsDto, PayStubDto, PayrollProfileDto, PayrollRunDto } from '@tallywork/contracts';
 import { Button, Dialog, Field, IconButton, Input, Select, Switch, Textarea, fmtMoney, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
 import { CURRENCIES } from '@/components/workspace/logo-editor';
 import { fromMinor, toMinor } from './types';
+import { useMemberOptions } from '@/lib/members';
 
 type Period = PayrollProfileDto['period'];
 
@@ -19,7 +20,7 @@ export function periodLabel(p: Period): string {
 export function PayrollProfileDialog({ profile, open, onOpenChange }: { profile: PayrollProfileDto | null; open: boolean; onOpenChange: (o: boolean) => void }) {
   const org = useOrg();
   const toast = useToast();
-  const workersQ = useOrgQuery<WorkerDto[]>(open ? '/workers' : null);
+  const workersQ = useMemberOptions(open);
   const [f, setF] = useState({ name: '', type: 'monthly' as Period['type'], anchor: '', currency: org.organization.currency, isDefault: false, members: [] as string[] });
   const create = useOrgMutation<Record<string, unknown>, PayrollProfileDto>('POST', '/payroll/profiles');
   const update = useOrgMutation<Record<string, unknown>, PayrollProfileDto>('PATCH', () => `/payroll/profiles/${profile?.id}`);

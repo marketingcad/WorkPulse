@@ -92,8 +92,8 @@ Updated 15 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - **Live address:** `tallywork-alpha.vercel.app` is a manual alias, so automatic production deploys don't move it. Add it as a domain on the Vercel project so it always follows production (see [Deployment](#deployment)).
 - **Preview builds:** Vercel blocks Preview builds for commits whose author isn't a member of the Vercel team. Add the committing GitHub account to the team, or commit as a member.
 - **Monitoring notice:** the desktop app no longer shows workers what is monitored or records their acknowledgement. The `/agent/policy/ack` endpoint and the web `/me/monitoring` page still exist, but the desktop doesn't use them. Make sure workers are told about monitoring some other way where the law requires it. The server's "Tracking settings were updated" notification still links to `/me/monitoring`, which the desktop app no longer opens.
-- **Tests:** audit log paging (API) and table pagination (unit) have tests, but these screens and the new organization dialog have no E2E specs yet.
-- Fixed since the last update: desktop 0.1.5 is released (Windows, macOS and Linux; the Linux smoke test passed); CI on `main` passes again; Vercel deploys from GitHub.
+- **Tables load every row:** only the audit log pages on the server. The other shared tables fetch all rows and page in the browser, which slows down for large organizations. A few screens (All time entries, Schedules, Roles, invoice lines, the client portal) use plain tables with no paging.
+- Fixed since the last update: desktop 0.1.5 is released (Windows, macOS and Linux; the Linux smoke test passed); CI on `main` passes again; Vercel deploys from GitHub; every feature in the list above now has end-to-end tests (71 Playwright tests, up from 44), and creating an organization has API tests.
 
 **Next / planned**
 
@@ -1059,7 +1059,8 @@ Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgre
 | [apps/desktop/test/agent-start.test.ts](apps/desktop/test/agent-start.test.ts) | Starting the timer: no policy acknowledgement needed, still refused when the organization turns desktop tracking off |
 | [apps/desktop/test/nav.test.ts](apps/desktop/test/nav.test.ts) | Sidebar model: the item order, every screen reachable, no orphan views |
 | [packages/ui/test](packages/ui/test/) | Shared UI: table pagination, translated messages (placeholders, plurals, fallback to English) and the English message catalog |
-| [e2e/tests](e2e/tests/) | Playwright: web sign-in, navigation, invitations and CSV import; the desktop window's navigation and pay stubs; the real Electron app (sign-in, pay stub download, IPC checks, sign-out) |
+| [packages/api/test/new-organization.test.ts](packages/api/test/new-organization.test.ts) | Creating another organization: owner and admin, defaults, kept apart from the first, validation |
+| [e2e/tests](e2e/tests/) | Playwright (71 tests). **Web:** sign-in and the last workspace, navigation, invitations, CSV import, budgets, invoices and payments, payroll, insights, time types, locking and reminders, duration and part-billable entries, client, project and staff profiles, new organizations, the audit log, and who must *not* see money pages. **Desktop window:** navigation and pay stubs. **Electron app:** sign-in, pay stub download, IPC checks, sign-out |
 | [apps/desktop/test/urls.test.ts](apps/desktop/test/urls.test.ts) | URL capture: browser detection, address-bar parsing, extension bridge access control (live HTTP), source selection, domain-only trimming |
 
 **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every push to `main` and on every PR:

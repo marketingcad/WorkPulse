@@ -9,7 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const AUTH_DIR = path.resolve(here, '../.auth');
 export const ADMIN_STATE = path.join(AUTH_DIR, 'admin.json');
 export const WORKER_STATE = path.join(AUTH_DIR, 'worker.json');
-/** A web user who may read budgets but no money pages (custom role: `budgets:read` only). */
+/** A web user who may read budgets and their own time and profile, but nothing about money (custom role). */
 export const VIEWER_STATE = path.join(AUTH_DIR, 'viewer.json');
 export const DATA_FILE = path.join(AUTH_DIR, 'data.json');
 

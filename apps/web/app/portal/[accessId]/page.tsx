@@ -18,7 +18,7 @@ export default function PortalPage() {
   const shots = useQuery({ queryKey: ['portal', accessId, 'screenshots', range], queryFn: () => api<PortalScreenshotDto[]>(`/portal/${accessId}/screenshots${qs}`), enabled: !!summary.data?.sections.screenshots });
   // The toolbar (signed-in email, all dashboards, sign out) belongs to the viewer page, not to PortalDashboard,
   // which the admin "Preview as client" reuses. It also shows on errors, so a revoked viewer can still sign out.
-  const toolbar = <PortalToolbar className="mx-auto max-w-5xl justify-end px-4 pt-4" />;
+  const toolbar = <PortalToolbar className="mx-auto max-w-6xl justify-end px-4 pt-4" />;
   if (summary.error)
     return (
       <>

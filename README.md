@@ -22,7 +22,7 @@ The main flow the product covers is **Organization → People → Work structure
 
 ## Project status
 
-Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.5
+Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.6
 
 ### ✅ Completed
 
@@ -54,6 +54,9 @@ Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - Support console: WorkPulse support can help customers, but can only see their data when the customer allows it, for a limited time.
 - Company-wide desktop rollout: installers and central settings for IT teams.
 - Client portal: a read-only, no-money dashboard per client (hours, tasks, and optionally activity and screenshots), with its own invitations, and a notice to workers when a client can see their monitoring data.
+- **Desktop app 0.1.6** (released 16 October 2026):
+  - Automatic updates work. They never ran in earlier versions (the update check failed silently at start-up), so 0.1.6 has to be installed by hand once; after that, updates download in the background, a notification says when one is ready, and it installs when the app quits from the tray.
+  - On a shared computer, time recorded offline by one person is only ever sent as that person, even after someone else signs in.
 - **Desktop app 0.1.5** (released 15 October 2026):
   - A simpler worker app. The sidebar is Home, Track, Timesheet, Time off, Schedule, Pay stubs and Settings, with Track and Timesheet grouping their related screens as tabs.
   - The profile menu holds only Sign out, and Settings shows the signed-in person, organization, device status and version.
@@ -70,7 +73,7 @@ Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
   - Manual time can no longer overlap a running timer, so time is never counted twice.
   - Sign-in can no longer be used to send people to another website.
   - Payment references (for example cheque numbers) are unique per organization, with a clear message for a repeat; malformed links show "not found" instead of a server error.
-  - On a shared computer, time recorded offline by one person is only ever sent as that person (desktop, in the next release).
+  - On a shared computer, time recorded offline by one person is only ever sent as that person (desktop 0.1.6).
 
 ### 🚧 Work in progress
 
@@ -104,10 +107,10 @@ Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 **Needs attention before the next release**
 
-- **Desktop 0.1.6:** release it so workers get the shared-computer fix above and working automatic updates. Auto-update never ran in 0.1.5 and earlier (the update check failed silently at start-up), so **everyone on 0.1.5 or older must install 0.1.6 once by hand** from the download page; from 0.1.6 on, updates download in the background and install when the app quits.
+- **Install desktop 0.1.6 by hand once:** everyone on 0.1.5 or older needs to download it from the download page (quit the app from the tray first), because those versions cannot update themselves. From 0.1.6 on, updates are automatic.
 - **From the audit, still open:** the "approve new devices" setting is not enforced by the server yet; links in notification emails open a page that doesn't exist (they miss the organization); and Next.js should be updated to 16.3.8 or later for security fixes. The audit's remediation plan lists the rest by priority.
 
-- **Live address:** `tallywork-alpha.vercel.app` is a manual alias, so automatic production deploys don't move it. Add it as a domain on the Vercel project so it always follows production (see [Deployment](#deployment)).
+- **After changing a setting in Vercel:** Vercel moves `tallywork-alpha.vercel.app` to a new deployment only when it comes from a merge to `main` (or `vercel --prod`). A dashboard **Redeploy** (needed after changing an environment variable) is not moved there: open that deployment and choose **⋯ → Promote to Production**, or the live site keeps the old settings.
 - **Preview builds:** Vercel blocks Preview builds for commits whose author isn't a member of the Vercel team. Add the committing GitHub account to the team, or commit as a member.
 - **Monitoring notice:** the desktop app no longer shows workers what is monitored or records their acknowledgement. The `/agent/policy/ack` endpoint and the web `/me/monitoring` page still exist, but the desktop doesn't use them. Make sure workers are told about monitoring some other way where the law requires it. The server's "Tracking settings were updated" notification still links to `/me/monitoring`, which the desktop app no longer opens.
 - **Paging:** person pickers load every member (a light list with no rates or teams). For very large organizations, a search-as-you-type picker would avoid that. A few plain tables (Schedules, Roles, invoice lines, the client portal) have no paging.
@@ -1102,7 +1105,7 @@ The web app and API deploy together to **Vercel** as one project (root directory
    - **From GitHub (normal):** the project is connected to `marketingcad/WorkPulse` with `main` as the production branch. Every merge into `main` deploys production, and every other branch gets a Preview.
    - **Preview builds:** these have no database, because `DATABASE_URL` is set for Production only, so their migrations are skipped and their API returns errors. Vercel blocks a Preview when the commit's author isn't a member of the Vercel team.
    - **By hand:** `npx vercel --prod` from the repo root (the folder is linked to the `tallywork` project in `.vercel/`).
-   - The live address `tallywork-alpha.vercel.app` is a manual alias, so a production deploy doesn't move it. After each deploy, point it at the new deployment with `npx vercel alias set <deployment-url> tallywork-alpha.vercel.app`. Alternatively, add it as a domain on the project (Settings → Domains) so it follows production automatically. To roll back, point the alias at the previous deployment.
+   - The live address `tallywork-alpha.vercel.app` is a project domain with **Auto-assign Custom Production Domains** on, so every merge to `main` moves it to the new deployment. A dashboard **Redeploy** (after changing an environment variable) does not move it: promote that deployment (**⋯ → Promote to Production**). To roll back, promote the previous deployment.
 4. [apps/web/vercel.json](apps/web/vercel.json) registers the cron jobs (`/api/v1/cron/tick` every minute, `/api/v1/cron/daily` at 03:15 UTC) and gives the API function a 300s max duration.
 
 **Desktop releases** (current version 0.1.5, published 15 October 2026): bump `version` in `apps/desktop/package.json`, push, then run the **Desktop release** workflow (GitHub → Actions → Desktop release → Run workflow, `platforms`: `all`, or one platform to redo a failed build). It creates a draft, builds Windows (NSIS `.exe`), macOS (universal `.dmg` + `.zip`) and Linux (`.AppImage` + `.deb`), and publishes them with the auto-update feed as one GitHub Release in the public `marketingcad/tallywork-desktop` repo (no source code there) once every build has succeeded. It refuses to overwrite a published version, and needs the `DESKTOP_RELEASE_TOKEN` secret (fine-grained token, that repo only, Contents: read and write). Windows only, from your own PC: `pnpm --filter @tallywork/desktop release:win` (token from `gh auth token`). The `.msi` and `.pkg` targets aren't built by the workflow. Native modules use their prebuilt N-API binaries (`npmRebuild: false`), so no C++ toolchain is needed.

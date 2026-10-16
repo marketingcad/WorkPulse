@@ -4,7 +4,7 @@ import type { AgentState, MeResource } from '../../shared/ipc';
 export const bridge = window.tallywork;
 
 /** The one card style used across pages. */
-export const card = 'rounded-md border border-border bg-surface';
+export const card = 'rounded-md border border-border bg-surface shadow-card';
 
 /** Pages of the worker app (navigation order), plus the manual-time sub-screen reached from them. */
 export type Page = 'home' | 'tracking' | 'projects' | 'tasks' | 'timesheet' | 'activity' | 'reports' | 'timeoff' | 'schedule' | 'paystubs' | 'settings';

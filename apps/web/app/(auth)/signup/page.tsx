@@ -1,9 +1,10 @@
 'use client';
+import { Building2, Lock, Mail, User } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Button, Field, Input } from '@tallywork/ui';
-import { AuthShell } from '@/components/auth-shell';
+import { Button, Field } from '@tallywork/ui';
+import { AuthInput, AuthShell } from '@/components/auth-shell';
 import { CheckEmail } from '@/components/check-email';
 import { api, ApiError } from '@/lib/api';
 import { t } from '@/lib/i18n';
@@ -65,16 +66,16 @@ export default function SignupPage() {
     >
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
         <Field label={t('auth.yourName')} htmlFor="name" error={err?.field('name')}>
-          <Input id="name" autoComplete="name" value={form.name} onChange={set('name')} required autoFocus />
+          <AuthInput icon={User} id="name" autoComplete="name" value={form.name} onChange={set('name')} required autoFocus />
         </Field>
         <Field label={t('auth.workEmail')} htmlFor="email" error={err?.field('email')}>
-          <Input id="email" type="email" autoComplete="email" value={form.email} onChange={set('email')} required />
+          <AuthInput icon={Mail} id="email" type="email" autoComplete="email" value={form.email} onChange={set('email')} required />
         </Field>
         <Field label={t('auth.password')} htmlFor="password" hint={t('auth.passwordHint')} error={err?.field('password')}>
-          <Input id="password" type="password" autoComplete="new-password" value={form.password} onChange={set('password')} required minLength={10} />
+          <AuthInput icon={Lock} id="password" type="password" autoComplete="new-password" value={form.password} onChange={set('password')} required minLength={10} />
         </Field>
         <Field label={t('auth.signup.orgName')} htmlFor="org" hint={t('auth.signup.orgHint')}>
-          <Input id="org" value={form.organization_name} onChange={set('organization_name')} placeholder={t('auth.signup.orgPlaceholder')} />
+          <AuthInput icon={Building2} id="org" value={form.organization_name} onChange={set('organization_name')} placeholder={t('auth.signup.orgPlaceholder')} />
         </Field>
         {err && !err.errors && (
           <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">

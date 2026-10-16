@@ -1,9 +1,10 @@
 'use client';
+import { Lock } from 'lucide-react';
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Button, Field, Input } from '@tallywork/ui';
-import { AuthShell } from '@/components/auth-shell';
+import { Button, Field } from '@tallywork/ui';
+import { AuthInput, AuthShell } from '@/components/auth-shell';
 import { api, errorMessage } from '@/lib/api';
 import { t } from '@/lib/i18n';
 
@@ -38,7 +39,7 @@ function Form() {
       }}
     >
       <Field label={t('auth.reset.newPassword')} htmlFor="pw" hint={t('auth.passwordHint')} error={error}>
-        <Input id="pw" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={10} required autoFocus />
+        <AuthInput icon={Lock} id="pw" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={10} required autoFocus />
       </Field>
       <Button type="submit" variant="primary" size="md" loading={state === 'loading'}>
         {t('auth.reset.submit')}

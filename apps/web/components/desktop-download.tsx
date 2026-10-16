@@ -61,10 +61,13 @@ export function DesktopDownload({ links }: { links: DownloadLinks }) {
             ))}
           </div>
         )}
-        <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-sm text-text">
-          <li>{t('download.step1')}</li>
-          <li>{t('download.step2')}</li>
-          <li>{t('download.step3')}</li>
+        <ol className="flex flex-col gap-3 text-sm text-text">
+          {(['download.step1', 'download.step2', 'download.step3'] as const).map((key, i) => (
+            <li key={key} className="flex items-start gap-3">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-interactive/10 text-xs font-bold text-interactive">{i + 1}</span>
+              <span className="pt-0.5">{t(key)}</span>
+            </li>
+          ))}
         </ol>
         {/* The Mac build is not notarized yet, and AppImages must be marked executable. */}
         {platform === 'macos' && links.macos && <p className="rounded-sm bg-surface-sunken px-3 py-2 text-xs text-text-muted">{t('download.macNote')}</p>}

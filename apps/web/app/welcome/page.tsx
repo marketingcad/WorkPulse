@@ -1,11 +1,12 @@
 'use client';
+import { Building2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import type { MeDto } from '@tallywork/contracts';
-import { Button, Field, Input, Select } from '@tallywork/ui';
-import { AuthShell } from '@/components/auth-shell';
+import { Button, Field, Select } from '@tallywork/ui';
+import { AuthInput, AuthShell } from '@/components/auth-shell';
 import { ApiError, api } from '@/lib/api';
 import { CURRENCIES, browserTimeZone, timeZones } from '@/components/settings/options';
 
@@ -59,7 +60,7 @@ export default function WelcomePage() {
     >
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
         <Field label="Organization name" htmlFor="org-name" error={error?.field('name')} required>
-          <Input id="org-name" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} placeholder="Acme Studio" autoFocus />
+          <AuthInput icon={Building2} id="org-name" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} placeholder="Acme Studio" autoFocus />
         </Field>
         <Field label="Time zone" htmlFor="org-tz" hint="Defines days, weeks and pay periods. You can change it later." error={error?.field('timezone')}>
           <Select id="org-tz" value={timezone} onChange={(e) => setTimezone(e.target.value)}>

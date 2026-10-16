@@ -4,6 +4,7 @@ import type { AgentState } from '../../shared/ipc';
 import { bridge, fmtTime, initials, useMe, useTick, viewForLink, type View } from './lib';
 import { GROUP_OF, NAV_GROUPS, groupFor } from './nav';
 import type { NotificationsDto } from './types';
+import { Mark } from './brand';
 
 /** Icon for each nav group, keyed by the group's `icon` id (the nav model itself stays icon-free and testable). */
 const GROUP_ICON: Record<string, ReactNode> = {
@@ -28,9 +29,9 @@ function NavList({ view, go, onPick }: { view: View; go: (v: View) => void; onPi
             onPick?.();
           }}
           aria-current={active === i.v ? 'page' : undefined}
-          className={`relative flex h-9 w-full shrink-0 items-center gap-2.5 rounded-sm px-2.5 text-left text-sm transition-colors ${active === i.v ? 'bg-nav-active font-semibold text-white' : 'text-nav-muted hover:bg-white/5 hover:text-nav-fg'}`}
+          className={`relative flex h-9 w-full shrink-0 items-center gap-2.5 rounded-sm px-2.5 text-left text-sm transition-colors ${active === i.v ? 'bg-[#1766ff]/20 font-semibold text-white shadow-[inset_0_0_0_1px_rgba(59,130,255,0.28)] [&>svg]:text-[#6ea2ff]' : 'text-nav-muted hover:bg-white/[0.06] hover:text-nav-fg'}`}
         >
-          {active === i.v && <span className="absolute inset-y-1.5 left-0 w-0.75 rounded-r-full bg-[#8a8df0]" aria-hidden />}
+          {active === i.v && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[#3b82ff]" aria-hidden />}
           {GROUP_ICON[i.icon]}
           {i.label}
         </button>
@@ -73,11 +74,14 @@ export function Shell({ s, view, go, children }: { s: AgentState; view: View; go
   const synced = s.sync.lastSyncAt ? Math.max(0, Math.round((now - Date.parse(s.sync.lastSyncAt)) / 60_000)) : null;
   return (
     <div className="flex h-full flex-col bg-bg">
-      <header className="flex h-12 shrink-0 items-center gap-2 bg-nav px-2 text-nav-fg md:gap-3 md:px-4">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/[0.06] bg-nav px-2 text-nav-fg md:gap-3 md:px-4">
         <button onClick={() => setDrawer(true)} aria-label="Open navigation" className="rounded-sm p-1.5 text-nav-muted hover:bg-white/10 hover:text-nav-fg lg:hidden">
           <Menu className="size-4" />
         </button>
-        <div className="min-w-0 flex-1 truncate text-sm font-semibold">{s.account!.organization}</div>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Mark size={24} />
+          <span className="truncate text-sm font-semibold">{s.account!.organization}</span>
+        </div>
         <span className={`inline-flex items-center gap-1.5 text-xs ${s.sync.online ? 'text-nav-muted' : 'text-[#e3a33b]'}`} title={s.sync.online ? 'Connected' : 'Offline: your time is saved on this computer and syncs when you are back online'}>
           {s.sync.online ? <span className="size-1.5 rounded-full bg-[#3fb27f]" /> : <CloudOff className="size-3.5" />}
           <span className="hidden sm:inline">{s.sync.online ? 'Online' : 'Offline'}</span>
@@ -90,7 +94,7 @@ export function Shell({ s, view, go, children }: { s: AgentState; view: View; go
         <ProfileMenu s={s} />
       </header>
       <div className="flex min-h-0 flex-1">
-        <nav aria-label="Primary" className="hidden w-52 shrink-0 flex-col gap-0.5 overflow-y-auto bg-nav px-2 py-3 text-nav-fg lg:flex">
+        <nav aria-label="Primary" className="hidden w-52 shrink-0 flex-col gap-0.5 overflow-y-auto bg-nav bg-[radial-gradient(140%_55%_at_0%_100%,rgba(23,102,255,0.20),transparent_65%)] px-2 py-3 text-nav-fg lg:flex">
           <NavList view={view} go={go} />
         </nav>
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
@@ -101,7 +105,7 @@ export function Shell({ s, view, go, children }: { s: AgentState; view: View; go
       {drawer && (
         <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
           <button className="absolute inset-0 bg-black/40" aria-label="Close navigation" onClick={() => setDrawer(false)} />
-          <nav className="absolute inset-y-0 left-0 flex w-64 flex-col gap-0.5 overflow-y-auto bg-nav px-2 py-3 text-nav-fg shadow-overlay">
+          <nav className="absolute inset-y-0 left-0 flex w-64 flex-col gap-0.5 overflow-y-auto bg-nav bg-[radial-gradient(140%_55%_at_0%_100%,rgba(23,102,255,0.20),transparent_65%)] px-2 py-3 text-nav-fg shadow-overlay">
             <div className="mb-2 flex items-center justify-between px-2.5">
               <span className="truncate text-sm font-semibold">{s.account!.name}</span>
               <button onClick={() => setDrawer(false)} aria-label="Close navigation" className="rounded-sm p-1 text-nav-muted hover:bg-white/10">

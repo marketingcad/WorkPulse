@@ -38,6 +38,15 @@ Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - Ready for production use: health monitoring, alerts, load tests, recovery procedures and on-call guides.
 - Accessibility: every main screen meets the WCAG 2.1 AA standard, in light and dark mode.
 - Automated end-to-end tests (Playwright) for the web app, the desktop window and the real desktop app, run with one command (`pnpm test:e2e`) and in CI on every change. Every change now ships with tests that were run and passed ([AGENTS.md](AGENTS.md)).
+- **Payroll and pay stubs:** pay groups, payroll runs from approved time and paid time off, bonuses and deductions, encrypted bank details, and PDF pay stubs in the desktop app.
+- **Insights:** time, wages and billable totals by person, client, project and day; members see only their own time and no money.
+- **Time rules:** time types with pay and bill multipliers, locking old time, and missing-time reminder emails.
+- **Time entries:** duration-only and part-billable entries, an "All time entries" page for managers, and CSV import with a template.
+- **Profiles:** client profiles (contacts, language, colour, logo, rates), project details (dates, estimates, rates, documents), staff profiles with private HR notes, and an organization logo.
+- **Invitations** that set a team role and projects, with the link shown when an email can't be sent.
+- **Invoices and payments** under one menu, and budgets edited in a dialog, with money hidden from people who can't see amounts.
+- **Workspaces:** create another organization from the switcher, and sign-in returns you to the last one you used.
+- **Audit log** that pages through every entry and exports all matches; numbered pages and a rows-per-page choice in every table.
 - Fast lists for large organizations: invoices, payments, expenses, time entries, sessions, approvals, manual time, time off, members, devices, tasks and attendance load one page at a time from the server.
 
 ### 🆕 New updates
@@ -73,29 +82,6 @@ Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
   - On a shared computer, time recorded offline by one person is only ever sent as that person (desktop, in the next release).
 
 ### 🚧 Work in progress
-
-**Built, being finalized (not released yet)**
-
-- **Payroll:** pay periods, payroll runs from approved time and paid time off, bonuses and deductions, and encrypted bank details.
-- **Pay stubs:** PDF pay stubs for payroll runs, in the desktop app's Pay Stubs page for workers.
-- **Insights:** time, wages and billable totals by person, client, project and day. Members see only their own time and no money.
-- **Time types:** time types with pay and bill multipliers.
-- **Time entry locking:** stops time being added or edited after a set number of days or before a set date.
-- **Missing-time reminders:** reminder emails when time is missing.
-- **Time entries:** duration-only entries ("2 h on Tuesday"), part-billable entries, and an "All time entries" page for managers.
-- **CSV time import:** import time from a CSV file, with a template to download.
-- **Client profiles:** contact name, document language, colour, logo and client rates.
-- **Project details:** start and end dates, estimates, project rates, and project documents.
-- **Staff profiles:** personal and HR details, with HR notes the member can't see, employment dates and rates. Also an organization logo.
-- **Invitations:** invitations that set a team role and the projects to join.
-- **Invoices:** invoices and payments received under one menu.
-- **Budgets:** budgets edited in a dialog. Money budgets are hidden from people who can't see amounts.
-- **Invitation links:** when an email can't be sent, the invitation link is shown so it can be shared by hand.
-- **Sign-in:** sign-in returns you to the last workspace you used.
-- **UX audit:** a simplification audit of pages, navigation and permissions (`docs/audit/`).
-- **New organization:** create another organization (name, time zone, currency) from the organization switcher, without leaving the app.
-- **Audit log paging:** the audit log pages through every entry with a total, newest or oldest first, and the CSV export covers all matching entries (up to 1,000), not just the page on screen.
-- **Table pagination:** numbered pages, "Showing 1–50 of 230 results" and a rows-per-page choice in the shared table.
 
 **Waiting to be merged**
 

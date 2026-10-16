@@ -187,6 +187,7 @@ export default function ClientPortalSettingsPage() {
               screenshotsLoading={previewQ.data.sections.screenshots && shotsQ.isLoading}
               range={range}
               onRange={setRange}
+              embedded
             />
           </div>
         ))}

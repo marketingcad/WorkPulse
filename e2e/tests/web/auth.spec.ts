@@ -7,9 +7,9 @@ test.use({ storageState: { cookies: [], origins: [] } });
 test.describe('signing in', () => {
   test('an admin signs in and lands in their workspace', { tag: '@smoke' }, async ({ page, data }) => {
     await page.goto('/login');
-    await expect(page.getByRole('heading', { level: 1, name: 'Sign in' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Welcome Back' })).toBeVisible();
     await page.getByLabel('Work email').fill(data.admin.email);
-    await page.getByLabel('Password').fill(PASSWORD);
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
 
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}`));
@@ -21,7 +21,7 @@ test.describe('signing in', () => {
     await page.goto('/login');
     // Not the admin: failed attempts count towards a lockout.
     await page.getByLabel('Work email').fill(data.newcomer.email);
-    await page.getByLabel('Password').fill('not-the-password');
+    await page.getByLabel('Password', { exact: true }).fill('not-the-password');
     await page.getByRole('button', { name: 'Sign in' }).click();
 
     // (Next.js also renders an empty role=alert route announcer.)
@@ -33,10 +33,42 @@ test.describe('signing in', () => {
     await page.goto(`/o/${data.orgId}/teams`);
     await expect(page).toHaveURL(/\/login\?next=/);
     await page.getByLabel('Work email').fill(data.admin.email);
-    await page.getByLabel('Password').fill(PASSWORD);
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/teams`));
     await expect(page.getByRole('heading', { level: 1, name: 'Teams' })).toBeVisible();
+  });
+
+  test('the password can be shown and hidden, and no demo login is advertised', async ({ page }) => {
+    await page.goto('/login');
+    const password = page.getByLabel('Password', { exact: true });
+    await password.fill('not-a-real-password');
+    await expect(password).toHaveAttribute('type', 'password');
+    await page.getByRole('button', { name: 'Show password' }).click();
+    await expect(password).toHaveAttribute('type', 'text');
+    await page.getByRole('button', { name: 'Hide password' }).click();
+    await expect(password).toHaveAttribute('type', 'password');
+    await expect(page.getByText('demo-password-123')).toHaveCount(0);
+  });
+
+  test('"Remember me" keeps the sign-in after the browser closes; unticked, it lasts only this browser session', async ({ browser, data }) => {
+    for (const remember of [true, false]) {
+      const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+      const page = await context.newPage();
+      await page.goto('/login');
+      await page.getByLabel('Work email').fill(data.admin.email);
+      await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+      const box = page.getByRole('checkbox', { name: 'Remember me' });
+      await expect(box).toBeChecked();
+      if (!remember) await box.uncheck();
+      await page.getByRole('button', { name: 'Sign in' }).click();
+      await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}`));
+      const session = (await context.cookies()).find((c) => c.name === 'tw_session')!;
+      // A cookie without an expiry (-1) is dropped when the browser closes.
+      if (remember) expect(session.expires).toBeGreaterThan(Date.now() / 1000);
+      else expect(session.expires).toBe(-1);
+      await context.close();
+    }
   });
 
   test('a return link pointing to another site is ignored (open redirect)', async ({ page, data }) => {
@@ -48,7 +80,7 @@ test.describe('signing in', () => {
     });
     await page.goto(`/login?next=${encodeURIComponent('/\\evil.example/phish')}`);
     await page.getByLabel('Work email').fill(data.admin.email);
-    await page.getByLabel('Password').fill(PASSWORD);
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}`));
     await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
@@ -61,7 +93,7 @@ test.describe('signing out', () => {
     // Its own session: signing out the shared admin session would sign out tests running alongside.
     await page.goto('/login');
     await page.getByLabel('Work email').fill(data.admin.email);
-    await page.getByLabel('Password').fill(PASSWORD);
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
 

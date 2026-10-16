@@ -31,7 +31,13 @@ export const signupInput = z.object({
   organization_name: nonEmpty(100).optional(),
   timezone: timeZone.optional(),
 });
-export const loginInput = z.object({ email: z.email().max(254), password: z.string().min(1).max(200), totp: z.string().regex(/^\d{6}$/).optional() });
+export const loginInput = z.object({
+  email: z.email().max(254),
+  password: z.string().min(1).max(200),
+  totp: z.string().regex(/^\d{6}$/).optional(),
+  /** "Remember me": false keeps the sign-in only until the browser closes. */
+  remember: z.boolean().default(true),
+});
 export const forgotPasswordInput = z.object({ email: z.email().max(254) });
 export const resetPasswordInput = z.object({ token: z.string().min(20).max(200), password });
 export const changePasswordInput = z.object({ current_password: z.string().min(1).max(200), new_password: password });

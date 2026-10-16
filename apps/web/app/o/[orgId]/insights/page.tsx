@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, Download, Info } from 'lucide-react';
+import { Activity, BriefcaseBusiness, ChevronLeft, ChevronRight, Clock3, Download, Info, Palmtree, Receipt, Wallet } from 'lucide-react';
 import type { InsightsDto } from '@tallywork/contracts';
 import { Button, DataTable, EmptyState, ErrorState, KpiStrip, PageHeader, Panel, PermissionState, PersonCell, SegmentedControl, SkeletonRows, fmtDate, fmtMoney, type Column } from '@tallywork/ui';
 import { qs, useOrgQuery } from '@/lib/api';
@@ -94,13 +94,14 @@ export default function InsightsPage() {
       ) : (
         <div className="flex flex-col gap-4">
           <KpiStrip
+            minItemWidth={data.money_visible ? 300 : 210}
             items={[
-              { label: 'Time logged', value: d(data.totals.logged_seconds), hint: plural(data.totals.people_with_time, 'person', 'people') },
-              ...(data.money_visible ? [{ label: 'Est. pay', value: money(data.totals.pay_minor), hint: plural(data.totals.paid_people, 'person', 'people') }] : []),
-              { label: 'Billable time', value: d(data.totals.billable_seconds), hint: `${plural(data.totals.billable_clients, 'client')}, ${plural(data.totals.billable_projects, 'project')}` },
-              ...(data.money_visible ? [{ label: 'Est. billable', value: money(data.totals.bill_minor) }] : []),
-              { label: 'Activity', value: data.totals.activity_pct === null ? '—' : `${data.totals.activity_pct}%` },
-              { label: 'Days off', value: data.totals.days_off },
+              { label: 'Time logged', value: d(data.totals.logged_seconds), hint: plural(data.totals.people_with_time, 'person', 'people'), icon: <Clock3 />, tone: 'blue' as const },
+              ...(data.money_visible ? [{ label: 'Est. pay', value: money(data.totals.pay_minor), hint: plural(data.totals.paid_people, 'person', 'people'), icon: <Wallet />, tone: 'violet' as const }] : []),
+              { label: 'Billable time', value: d(data.totals.billable_seconds), hint: `${plural(data.totals.billable_clients, 'client')}, ${plural(data.totals.billable_projects, 'project')}`, icon: <BriefcaseBusiness />, tone: 'green' as const },
+              ...(data.money_visible ? [{ label: 'Est. billable', value: money(data.totals.bill_minor), icon: <Receipt />, tone: 'amber' as const }] : []),
+              { label: 'Activity', value: data.totals.activity_pct === null ? '—' : `${data.totals.activity_pct}%`, icon: <Activity />, tone: 'rose' as const },
+              { label: 'Days off', value: data.totals.days_off, icon: <Palmtree />, tone: 'teal' as const },
             ]}
           />
           {data.money_visible && (

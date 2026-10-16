@@ -268,6 +268,18 @@ describe('web security', () => {
     expect(unknown.body.title).toBe(r.body.title);
   });
 
+  it('"Remember me" off gives a browser-session cookie; on (the default) a cookie that outlives the browser', async () => {
+    const signIn = (extra: object) =>
+      t.app.request('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'bob@b.test', password: 'correct-horse-battery', ...extra }) });
+    const kept = await signIn({});
+    expect(kept.status).toBe(200);
+    expect(kept.headers.get('set-cookie')).toMatch(/tw_session=[^;]+;.*Expires=/i);
+    const session = await signIn({ remember: false });
+    expect(session.status).toBe(200);
+    expect(session.headers.get('set-cookie')).toMatch(/tw_session=[^;]+;/);
+    expect(session.headers.get('set-cookie')).not.toMatch(/Expires=|Max-Age=/i);
+  });
+
   it('media links are signed and expire', async () => {
     expect((await t.app.request('/api/v1/media/forged.token')).status).toBe(404);
   });

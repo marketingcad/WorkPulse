@@ -39,14 +39,18 @@ function meta(c: Context<AppEnv>) {
   return { ip: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null, userAgent: c.req.header('user-agent') ?? null };
 }
 
-export async function startUserSession(c: Context<AppEnv>, uid: string, mfaPending = false) {
+/**
+ * Starts a session and sets its cookie. With `remember` off ("Remember me" unticked) the cookie has no
+ * expiry, so the browser drops it when it closes; the session itself still ends at its usual time.
+ */
+export async function startUserSession(c: Context<AppEnv>, uid: string, mfaPending = false, remember = true) {
   const { token, expiresAt } = await createSession(c.var.deps, uid, meta(c), { mfaPending });
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     secure: c.var.deps.config.env === 'production',
     sameSite: 'Lax',
     path: '/',
-    expires: expiresAt,
+    ...(remember ? { expires: expiresAt } : {}),
   });
 }
 
@@ -100,10 +104,10 @@ export const authRoutes = new Hono<AppEnv>()
     const { userId: uid } = await login(c.var.deps, input.email, input.password);
     // With two-factor on, the password only opens a short session that can do nothing but the second step.
     if (await hasMfa(c.var.deps, uid)) {
-      await startUserSession(c, uid, true);
+      await startUserSession(c, uid, true, input.remember);
       return c.json({ mfa_required: true });
     }
-    await startUserSession(c, uid);
+    await startUserSession(c, uid, false, input.remember);
     return c.json(await getMe(c.var.deps.db, uid));
   })
   .post('/mfa/verify', rateLimit('mfa-verify', 10, 900), async (c) => {

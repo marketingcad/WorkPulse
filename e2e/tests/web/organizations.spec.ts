@@ -106,7 +106,7 @@ test.describe('Signing in to the last workspace', () => {
       const page = await ctx.newPage();
       await page.goto('/login');
       await page.getByLabel('Work email').fill(email);
-      await page.getByLabel('Password').fill(PASSWORD);
+      await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
       await page.getByRole('button', { name: 'Sign in' }).click();
       return { ctx, page };
     };

@@ -2,9 +2,10 @@
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Button, Field, Input } from '@tallywork/ui';
+import { ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { Button, Checkbox, Field, Input } from '@tallywork/ui';
 import type { MeDto } from '@tallywork/contracts';
-import { AuthShell } from '@/components/auth-shell';
+import { AuthInput, AuthShell } from '@/components/auth-shell';
 import { CheckEmail } from '@/components/check-email';
 import { api, ApiError } from '@/lib/api';
 import { t } from '@/lib/i18n';
@@ -15,6 +16,8 @@ function LoginForm() {
   const params = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   // Accounts with two-factor get a second step after the password.
@@ -40,7 +43,7 @@ function LoginForm() {
     setLoading(true);
     setError(null);
     try {
-      const r = await api<MeDto | { mfa_required: true }>('/auth/login', { body: { email, password } });
+      const r = await api<MeDto | { mfa_required: true }>('/auth/login', { body: { email, password, remember } });
       if ('mfa_required' in r) {
         setStep('code');
         setPassword('');
@@ -83,26 +86,45 @@ function LoginForm() {
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
       <Field label={t('auth.workEmail')} htmlFor="email">
-        <Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
+        <AuthInput icon={Mail} id="email" type="email" autoComplete="email" placeholder={t('auth.login.emailPlaceholder')} required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
       </Field>
       <Field label={t('auth.password')} htmlFor="password">
-        <Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        <AuthInput
+          icon={Lock}
+          id="password"
+          type={showPassword ? 'text' : 'password'}
+          autoComplete="current-password"
+          placeholder={t('auth.login.passwordPlaceholder')}
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          trailing={
+            <button
+              type="button"
+              className="flex size-8 items-center justify-center rounded-md text-text-faint hover:bg-surface-muted hover:text-text"
+              aria-label={showPassword ? t('auth.login.hidePassword') : t('auth.login.showPassword')}
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((v) => !v)}
+            >
+              {showPassword ? <EyeOff className="size-[18px]" aria-hidden /> : <Eye className="size-[18px]" aria-hidden />}
+            </button>
+          }
+        />
       </Field>
       {error && (
         <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
           {error}
         </p>
       )}
-      <Button type="submit" variant="primary" size="md" loading={loading} className="w-full">
+      <Button type="submit" variant="primary" size="md" loading={loading} className="mt-1 w-full gap-2">
+        {!loading && <ArrowRight className="size-4" aria-hidden />}
         {t('auth.signIn')}
       </Button>
-      <div className="flex justify-between text-sm">
-        <Link href="/forgot-password" className="text-interactive hover:underline">
+      <div className="flex items-center justify-between text-sm">
+        <Checkbox label={t('auth.login.remember')} checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+        <Link href="/forgot-password" className="font-medium text-interactive hover:underline">
           {t('auth.login.forgot')}
         </Link>
-      </div>
-      <div className="rounded-sm border border-dashed border-border px-3 py-2 text-xs text-text-muted">
-        {t('auth.login.demo')} <span className="font-mono">admin@demo.tallywork.app</span> / <span className="font-mono">demo-password-123</span>
       </div>
     </form>
   );
@@ -189,11 +211,13 @@ export default function LoginPage() {
       footer={
         <>
           {t('auth.login.newTo')}{' '}
-          <Link href="/signup" className="font-medium text-interactive hover:underline">
+          <Link href="/signup" className="inline-flex items-center gap-1 font-semibold text-interactive hover:underline">
             {t('auth.login.createOrg')}
+            <ArrowRight className="size-3.5" aria-hidden />
           </Link>
         </>
       }
+      secureNote
     >
       <Suspense>
         <LoginForm />

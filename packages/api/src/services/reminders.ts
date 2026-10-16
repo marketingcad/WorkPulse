@@ -15,7 +15,7 @@ import {
 } from '@tallywork/db';
 import { addDaysToDate, dayOfWeek, localDate, startOfWeek, zonedParts } from '@tallywork/domain';
 import type { Deps } from '../context';
-import { notify } from './notify';
+import { notificationEmail, notify } from './notify';
 
 export const MISSING_TIME = 'time.missing';
 const DEFAULT_CHECK_AT = '18:00';
@@ -37,7 +37,7 @@ const hm = (s: number) => {
 export async function runMissingTimeReminders(
   tx: Tx,
   deps: Deps,
-  org: { id: string; timezone: string; weekStart: number; settings: OrgSettings },
+  org: { id: string; name: string; timezone: string; weekStart: number; settings: OrgSettings },
   now: Date,
 ): Promise<number> {
   const s = org.settings;
@@ -104,7 +104,7 @@ export async function runMissingTimeReminders(
     // In-app per the member's preference; email unless they turned this reminder's email off.
     await notify(tx, deps, org.id, [m.id], n);
     const pref = prefs.find((x) => x.membershipId === m.id);
-    if (!pref) await deps.mailer.send({ to: m.email, subject: n.title, text: `${n.body}\n\n${deps.config.appUrl}/o/${org.id}${n.link}` }).catch(() => undefined);
+    if (!pref) await deps.mailer.send(notificationEmail(deps.config.appUrl, org.id, org.name, m.email, n, `You received this reminder because ${org.name} asks for a minimum amount of logged time. You can turn this email off in your notification settings.`)).catch(() => undefined);
     sent++;
   }
   return sent;

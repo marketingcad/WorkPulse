@@ -5,6 +5,7 @@ import type { Deps } from '../context';
 import type { Ctx } from './ctx';
 import { loadActor, loadOrg } from '../middleware/tenant';
 import { narrowMemberships } from './scope';
+import { renderEmail } from '../lib/email';
 
 export const DIGEST_TYPE = 'digest.daily';
 
@@ -76,8 +77,22 @@ export async function sendDigests(tx: Tx, deps: Deps, organizationId: string, to
       if (a?.n) pending.push(`${a.n} time off request${a.n === 1 ? '' : 's'}`);
     }
     if (pending.length) lines.push(`Waiting for your approval: ${pending.join(', ')}.`);
-    lines.push('', `${deps.config.appUrl}/o/${organizationId}`, '', 'You get this email because the daily summary is on in your notification settings.');
-    await deps.mailer.send({ to: m.email, subject: `Your daily summary — ${org.name}`, text: lines.join('\n') }).catch(() => undefined);
+    const [, , ...summary] = lines;
+    await deps.mailer
+      .send(
+        renderEmail(
+          {
+            subject: `Your daily summary — ${org.name}`,
+            preheader: summary[0] ?? `Your WorkPulse summary for ${yesterday}`,
+            heading: `Your summary for ${yesterday}`,
+            paragraphs: summary.length ? summary : ['Nothing to report for yesterday.'],
+            action: { label: 'Open WorkPulse', url: `${deps.config.appUrl}/o/${organizationId}` },
+            reason: `You received this email because the daily summary is on for ${org.name} in your notification settings.`,
+          },
+          { appUrl: deps.config.appUrl, to: m.email },
+        ),
+      )
+      .catch(() => undefined);
     sent++;
   }
   return sent;

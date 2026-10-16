@@ -259,12 +259,12 @@ export async function markDevicesOffline(deps: Deps): Promise<number> {
 export async function runWorkforceAlerts(deps: Deps): Promise<{ shifts: number; breaks: number; missing_time: number }> {
   const now = deps.now();
   const out = { shifts: 0, breaks: 0, missing_time: 0 };
-  const orgs = await withSystem(deps.db, (tx) => tx.select({ id: organizations.id, tz: organizations.timezone, weekStart: organizations.weekStart, settings: organizations.settings }).from(organizations));
+  const orgs = await withSystem(deps.db, (tx) => tx.select({ id: organizations.id, name: organizations.name, tz: organizations.timezone, weekStart: organizations.weekStart, settings: organizations.settings }).from(organizations));
   for (const o of orgs) {
     await withTenant(deps.db, o.id, async (tx) => {
       out.shifts += await runShiftAlerts(tx, deps, o.id, o.tz, o.settings.lateGraceMinutes, now);
       out.breaks += await alertLongBreaks(tx, deps, o.id, now);
-      out.missing_time += await runMissingTimeReminders(tx, deps, { id: o.id, timezone: o.tz, weekStart: o.weekStart, settings: o.settings }, now);
+      out.missing_time += await runMissingTimeReminders(tx, deps, { id: o.id, name: o.name, timezone: o.tz, weekStart: o.weekStart, settings: o.settings }, now);
     });
   }
   return out;

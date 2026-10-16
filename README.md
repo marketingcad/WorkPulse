@@ -22,7 +22,7 @@ The main flow the product covers is **Organization → People → Work structure
 
 ## Project status
 
-Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.7
+Updated 17 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.7
 
 ### ✅ Completed
 
@@ -39,6 +39,12 @@ Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - Accessibility: every main screen meets the WCAG 2.1 AA standard, in light and dark mode.
 - Automated end-to-end tests (Playwright) for the web app, the desktop window and the real desktop app, run with one command (`pnpm test:e2e`) and in CI on every change. Every change now ships with tests that were run and passed ([AGENTS.md](AGENTS.md)).
 - Fast lists for large organizations: invoices, payments, expenses, time entries, sessions, approvals, manual time, time off, members, devices, tasks and attendance load one page at a time from the server.
+- Payroll: pay periods, payroll runs from approved time and paid time off, bonuses and deductions, and encrypted bank details. Each approved hour is paid exactly once: time approved after its payroll was finalized is paid by the next one ("from earlier periods"), and overlapping payrolls are refused.
+- Pay stubs as PDFs, also in the desktop app's Pay stubs page for workers.
+- Insights: time, wages and billable totals by person, client, project and day. Members see only their own time and no money.
+- Time rules: time types with pay and bill multipliers, time entry locking (after a set number of days or before a set date), missing-time reminder emails, duration-only and part-billable entries, an "All time entries" page for managers, and CSV time import with a template.
+- Profiles: clients (contact, document language, colour, logo, rates), projects (dates, estimates, rates, documents) and staff (personal and HR details, private HR notes, employment dates and rates), plus an organization logo.
+- Everyday polish: invitations that set a team role and projects, the invitation link shown when an email can't be sent, sign-in back to the last workspace used, a new organization from the organization switcher, invoices and payments under one menu, budgets in a dialog (money budgets hidden from people who can't see amounts), a fully paged audit log with CSV export, and numbered table pages with a rows-per-page choice.
 
 ### 🆕 New updates
 
@@ -54,9 +60,18 @@ Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - Support console: WorkPulse support can help customers, but can only see their data when the customer allows it, for a limited time.
 - Company-wide desktop rollout: installers and central settings for IT teams.
 - Client portal: a read-only, no-money dashboard per client (hours, tasks, and optionally activity and screenshots), with its own invitations, and a notice to workers when a client can see their monitoring data.
+- **New design everywhere** (16–17 October 2026, rolled out in five phases):
+  - **Sign-in and onboarding:** a new sign-in page (brand panel, icons in the fields, "Remember me"), used on sign-up, password reset, invitations, the download page and the desktop app. With "Remember me" unticked, the session ends when the browser closes.
+  - **One design system** for colours, buttons, cards, shadows and corners, in light and dark mode, with text contrast checked against WCAG AA.
+  - **Admin and manager dashboards:** a navy sidebar, KPI cards with icons and trends, an activity ring on Overview, and clearer Live tracking and Attendance pages. Managers who see only their team read "your team".
+  - **Worker desktop app** (0.1.7): the same look, with the logo, a navy sidebar and blue highlights.
+  - **Client portal:** a branded header and the same cards and tables.
+  - **Documents:** invoice and pay stub PDFs have a cleaner layout: a status label (Paid, Overdue…), a tinted table header, the balance or net pay in a highlighted box, and page numbers with the organization's contact details. They carry only the organization's branding.
+  - **Support console:** a WorkPulse header, so staff always know they are in the internal tool.
 - **Desktop app 0.1.7** (released 17 October 2026):
-  - New look: the sign-in screen and the whole app follow the new WorkPulse design (navy sidebar, blue highlights, light and dark themes).
-  - Installs on its own for everyone on 0.1.6.
+  - The new design, on the sign-in screen and across the whole app.
+  - Installs on its own for everyone on 0.1.6 (checked on a real Windows install).
+- **The repository is public** (17 October 2026), so GitHub Actions runs again: CI checks every change, and the Desktop release workflow builds Windows, macOS and Linux. Before the switch, the full history was checked: it contains no secrets, keys or `.env` files.
 - **Desktop app 0.1.6** (released 16 October 2026):
   - Automatic updates work. They never ran in earlier versions (the update check failed silently at start-up), so 0.1.6 has to be installed by hand once; after that, updates download in the background, a notification says when one is ready, and it installs when the app quits from the tray.
   - On a shared computer, time recorded offline by one person is only ever sent as that person, even after someone else signs in.
@@ -78,48 +93,29 @@ Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
   - Sign-in can no longer be used to send people to another website.
   - Payment references (for example cheque numbers) are unique per organization, with a clear message for a repeat; malformed links show "not found" instead of a server error.
   - On a shared computer, time recorded offline by one person is only ever sent as that person (desktop 0.1.6).
+  - Payroll pays each approved hour exactly once (see Completed).
+  - A deployed demo gets its own private password (`SEED_PASSWORD`), so the public demo password can't open it.
+  - Links in notification emails open the right page.
 
 ### 🚧 Work in progress
 
-**Built, being finalized (not released yet)**
+Everything that was "built, being finalized" on 16 October is merged and live (see Completed), and nothing is waiting to be merged.
 
-- **Payroll:** pay periods, payroll runs from approved time and paid time off, bonuses and deductions, and encrypted bank details.
-- **Pay stubs:** PDF pay stubs for payroll runs, in the desktop app's Pay Stubs page for workers.
-- **Insights:** time, wages and billable totals by person, client, project and day. Members see only their own time and no money.
-- **Time types:** time types with pay and bill multipliers.
-- **Time entry locking:** stops time being added or edited after a set number of days or before a set date.
-- **Missing-time reminders:** reminder emails when time is missing.
-- **Time entries:** duration-only entries ("2 h on Tuesday"), part-billable entries, and an "All time entries" page for managers.
-- **CSV time import:** import time from a CSV file, with a template to download.
-- **Client profiles:** contact name, document language, colour, logo and client rates.
-- **Project details:** start and end dates, estimates, project rates, and project documents.
-- **Staff profiles:** personal and HR details, with HR notes the member can't see, employment dates and rates. Also an organization logo.
-- **Invitations:** invitations that set a team role and the projects to join.
-- **Invoices:** invoices and payments received under one menu.
-- **Budgets:** budgets edited in a dialog. Money budgets are hidden from people who can't see amounts.
-- **Invitation links:** when an email can't be sent, the invitation link is shown so it can be shared by hand.
-- **Sign-in:** sign-in returns you to the last workspace you used.
-- **UX audit:** a simplification audit of pages, navigation and permissions (`docs/audit/`).
-- **New organization:** create another organization (name, time zone, currency) from the organization switcher, without leaving the app.
-- **Audit log paging:** the audit log pages through every entry with a total, newest or oldest first, and the CSV export covers all matching entries (up to 1,000), not just the page on screen.
-- **Table pagination:** numbered pages, "Showing 1–50 of 230 results" and a rows-per-page choice in the shared table.
+**Needs attention**
 
-**Waiting to be merged**
-
-- **Payroll pays each approved hour exactly once** ([#27](https://github.com/marketingcad/WorkPulse/pull/27)): time approved after its payroll was finalized is paid by the next payroll ("from earlier periods"), and overlapping payrolls are refused. After it deploys, check the next payroll draft: hours approved late in the past appear there for the first time.
-- **Private password for a deployed demo** ([#26](https://github.com/marketingcad/WorkPulse/pull/26)): `SEED_PASSWORD` sets the demo accounts' password, so a demo seeded on a live site can't be opened with the public password below.
-
-**Needs attention before the next release**
-
-- **Install desktop 0.1.6 by hand once:** everyone on 0.1.5 or older needs to download it from the download page (quit the app from the tray first), because those versions cannot update themselves. From 0.1.6 on, updates are automatic.
-- **From the audit, still open:** the "approve new devices" setting is not enforced by the server yet; links in notification emails open a page that doesn't exist (they miss the organization); and Next.js should be updated to 16.3.8 or later for security fixes. The audit's remediation plan lists the rest by priority.
-
+- **From the audit, still open** (anyone can read the audit report now that the repository is public, so these come first):
+  - The "approve new devices" setting is not enforced: a new device is marked pending, but the server still accepts its time and screenshots and lets it download pay stubs.
+  - Next.js is on 16.3.6 and should be updated to 16.3.8 or later for security fixes.
+  - The audit's remediation plan lists the rest by priority.
+- **Desktop updates give no sign while downloading.** The installer (about 114 MB) downloads in the background with nothing on screen until "WorkPulse x.y.z is ready" appears. If the app is restarted mid-download, the download starts over. Planned: a "Downloading update…" line, and resuming an interrupted download.
+- **Install desktop 0.1.6 or later by hand once** if a computer still has 0.1.5 or older (quit the app from the tray first): those versions cannot update themselves. From 0.1.6 on, updates are automatic. An update installs when the app is quit from the tray; closing the window with the X leaves it running.
+- **The production database is empty** (cleared on 16 October 2026 for manual QA from scratch; the database structure is kept). Old screenshots from the demo data are still in Supabase Storage (bucket `tallywork`, folder `org`) and can be deleted from the Supabase dashboard.
 - **After changing a setting in Vercel:** Vercel moves `tallywork-alpha.vercel.app` to a new deployment only when it comes from a merge to `main` (or `vercel --prod`). A dashboard **Redeploy** (needed after changing an environment variable) is not moved there: open that deployment and choose **⋯ → Promote to Production**, or the live site keeps the old settings.
 - **Preview builds:** Vercel blocks Preview builds for commits whose author isn't a member of the Vercel team. Add the committing GitHub account to the team, or commit as a member.
+- **Pull requests from outside the team:** now that the repository is public, set **Settings → Actions → General → Require approval for all outside collaborators**, so a stranger's pull request can't run CI without approval.
 - **Monitoring notice:** the desktop app no longer shows workers what is monitored or records their acknowledgement. The `/agent/policy/ack` endpoint and the web `/me/monitoring` page still exist, but the desktop doesn't use them. Make sure workers are told about monitoring some other way where the law requires it. The server's "Tracking settings were updated" notification still links to `/me/monitoring`, which the desktop app no longer opens.
 - **Paging:** person pickers load every member (a light list with no rates or teams). For very large organizations, a search-as-you-type picker would avoid that. A few plain tables (Schedules, Roles, invoice lines, the client portal) have no paging.
-- **End-to-end tests still missing** for time off, timesheet approvals, expenses, report exports, tracking policies, roles, API keys and webhooks, schedules and the client portal (see the audit). There are 84 Playwright tests today.
-- Fixed since the last update: the paging work is finished; the dashboard speed test runs on its own in CI so it no longer fails at random; the audit's most serious findings are fixed (see New updates).
+- **End-to-end tests still missing** for time off, timesheet approvals, expenses, report exports, tracking policies, roles, API keys and webhooks, and schedules (see the audit). There are 91 Playwright tests today.
 
 **Next / planned**
 
@@ -1086,7 +1082,7 @@ Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgre
 | [apps/desktop/test/nav.test.ts](apps/desktop/test/nav.test.ts) | Sidebar model: the item order, every screen reachable, no orphan views |
 | [packages/ui/test](packages/ui/test/) | Shared UI: table pagination, translated messages (placeholders, plurals, fallback to English) and the English message catalog |
 | [packages/api/test/new-organization.test.ts](packages/api/test/new-organization.test.ts) | Creating another organization: owner and admin, defaults, kept apart from the first, validation |
-| [e2e/tests](e2e/tests/) | Playwright (84 tests). **Web:** sign-in, the last workspace and safe return links, navigation, invitations, CSV import, budgets, invoices and payments, payroll, insights, time types, locking and reminders, duration and part-billable entries, client, project and staff profiles, new organizations and the getting-started checklist, the audit log, server paging of every long list, and who must *not* see money pages. **Desktop window:** navigation and pay stubs. **Electron app:** sign-in, pay stub download, IPC checks, sign-out |
+| [e2e/tests](e2e/tests/) | Playwright (91 tests). **Web:** sign-in, the last workspace and safe return links, navigation, invitations, the client portal (the dashboard, no money, and who can't open it), CSV import, budgets, invoices and payments, payroll, insights, time types, locking and reminders, duration and part-billable entries, client, project and staff profiles, new organizations and the getting-started checklist, the audit log, server paging of every long list, and who must *not* see money pages. **Desktop window:** navigation and pay stubs. **Electron app:** sign-in, pay stub download, IPC checks, sign-out |
 | [apps/desktop/test/urls.test.ts](apps/desktop/test/urls.test.ts) | URL capture: browser detection, address-bar parsing, extension bridge access control (live HTTP), source selection, domain-only trimming |
 
 **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every push to `main` and on every PR:

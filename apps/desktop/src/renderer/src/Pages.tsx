@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { CalendarPlus, Check, ChevronLeft, ChevronRight, ClockPlus, Download, PauseCircle, PenLine, Play, RefreshCw, Send } from 'lucide-react';
+import { Activity, CalendarPlus, Check, ChevronLeft, ChevronRight, Clock3, ClockPlus, Coffee, Download, Inbox, LayoutGrid, PauseCircle, PenLine, Play, RefreshCw, Send, type LucideIcon } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
 import { ProjectsCard } from './Dashboard';
 import { SessionList, localDay } from './HomeCards';
@@ -62,16 +62,34 @@ function Status({ loading, error, empty, onRetry, children }: { loading: boolean
         )}
       </div>
     );
-  if (empty) return <p className="px-4 py-8 text-center text-sm text-text-muted">{empty}</p>;
+  if (empty)
+    return (
+      <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+        <span className="flex size-11 items-center justify-center rounded-md bg-interactive-soft text-interactive" aria-hidden>
+          <Inbox className="size-5" />
+        </span>
+        <p className="max-w-sm text-sm text-text-muted">{empty}</p>
+      </div>
+    );
   return <>{children}</>;
 }
 
-function Stat({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: 'warning' }) {
+/** Solid tiles for stat icons, matching the web dashboards (white icon on a brand colour). */
+const TILE = { blue: 'bg-[#1766ff]', violet: 'bg-[#6d4cf5]', green: 'bg-[#0f9f6e]', amber: 'bg-[#e08a00]', teal: 'bg-[#0e98b3]' } as const;
+
+function Stat({ label, value, hint, tone, icon: Icon, color = 'blue' }: { label: string; value: string; hint?: string; tone?: 'warning'; icon?: LucideIcon; color?: keyof typeof TILE }) {
   return (
-    <div className={`${card} px-4 py-3`}>
-      <div className="text-2xs text-text-muted">{label}</div>
-      <div className={`tabular mt-1 text-xl font-semibold ${tone === 'warning' ? 'text-warning' : ''}`}>{value}</div>
-      {hint && <div className="text-2xs text-text-faint">{hint}</div>}
+    <div className={`${card} flex items-start gap-3 px-4 py-3.5`}>
+      {Icon && (
+        <span className={`flex size-9 shrink-0 items-center justify-center rounded-sm text-white shadow-sm ${TILE[color]}`} aria-hidden>
+          <Icon className="size-[18px]" />
+        </span>
+      )}
+      <div className="min-w-0">
+        <div className="text-xs font-medium text-text-muted">{label}</div>
+        <div className={`tabular mt-0.5 text-xl font-bold tracking-tight ${tone === 'warning' ? 'text-warning' : ''}`}>{value}</div>
+        {hint && <div className="text-2xs text-text-faint">{hint}</div>}
+      </div>
     </div>
   );
 }
@@ -315,9 +333,9 @@ export function TimesheetPage({ s }: { s: AgentState }) {
         {ts && (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-              <Stat label="Total" value={fmtHm(ts.total_seconds)} hint={ts.expected_seconds ? `of ${fmtHm(ts.expected_seconds)} expected` : undefined} />
-              <Stat label="Added by hand" value={fmtHm(ts.manual_seconds)} />
-              <Stat label="Activity" value={ts.avg_activity_pct != null ? `${ts.avg_activity_pct}%` : '—'} />
+              <Stat icon={Clock3} color="blue" label="Total" value={fmtHm(ts.total_seconds)} hint={ts.expected_seconds ? `of ${fmtHm(ts.expected_seconds)} expected` : undefined} />
+              <Stat icon={PenLine} color="violet" label="Added by hand" value={fmtHm(ts.manual_seconds)} />
+              <Stat icon={Activity} color="green" label="Activity" value={ts.avg_activity_pct != null ? `${ts.avg_activity_pct}%` : '—'} />
             </div>
             <Card title="Hours by day" right={<Badge tone={TS_TONE[ts.status] ?? 'neutral'}>{ts.status.charAt(0) + ts.status.slice(1).toLowerCase()}</Badge>}>
               {(ts.status === 'REJECTED' || ts.comment) && (
@@ -418,9 +436,9 @@ export function ActivityPage({ s }: { s: AgentState }) {
         {d && (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-              <Stat label="Tracked" value={fmtHm(d.total_seconds)} />
-              <Stat label="Average activity" value={d.blocks.length ? `${d.avg_activity_pct}%` : '—'} />
-              <Stat label="Blocks" value={String(d.blocks.length)} hint="10-minute blocks with time" />
+              <Stat icon={Clock3} color="blue" label="Tracked" value={fmtHm(d.total_seconds)} />
+              <Stat icon={Activity} color="green" label="Average activity" value={d.blocks.length ? `${d.avg_activity_pct}%` : '—'} />
+              <Stat icon={LayoutGrid} color="teal" label="Blocks" value={String(d.blocks.length)} hint="10-minute blocks with time" />
             </div>
             <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_300px] md:gap-4">
               <Card title="Blocks">
@@ -531,17 +549,17 @@ export function ReportsPage() {
         {r && (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-              <Stat label="Worked" value={fmtHm(r.worked_seconds)} hint={`${fmtDay(r.from, { month: 'short', day: 'numeric' })} – ${fmtDay(r.to, { month: 'short', day: 'numeric' })}`} />
-              <Stat label="Added by hand" value={fmtHm(r.manual_seconds)} />
-              <Stat label="Activity" value={r.activity_pct != null ? `${r.activity_pct}%` : '—'} />
-              <Stat label="Away time" value={fmtHm(r.idle_seconds)} tone={r.idle_seconds > 0 ? 'warning' : undefined} />
+              <Stat icon={Clock3} color="blue" label="Worked" value={fmtHm(r.worked_seconds)} hint={`${fmtDay(r.from, { month: 'short', day: 'numeric' })} – ${fmtDay(r.to, { month: 'short', day: 'numeric' })}`} />
+              <Stat icon={PenLine} color="violet" label="Added by hand" value={fmtHm(r.manual_seconds)} />
+              <Stat icon={Activity} color="green" label="Activity" value={r.activity_pct != null ? `${r.activity_pct}%` : '—'} />
+              <Stat icon={Coffee} color="amber" label="Away time" value={fmtHm(r.idle_seconds)} tone={r.idle_seconds > 0 ? 'warning' : undefined} />
             </div>
             <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_320px] md:gap-4">
               <Card title="Hours by day">
                 <div className="flex h-48 items-end gap-1 px-4 pb-2 pt-4" role="img" aria-label="Hours worked per day">
                   {r.days.map((d) => (
                     <div key={d.date} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1" title={`${fmtDay(d.date)} · ${fmtHm(d.seconds)}`}>
-                      <div className={`w-full max-w-10 rounded-t-sm ${d.seconds ? 'bg-interactive' : 'bg-surface-sunken'}`} style={{ height: d.seconds ? `${Math.max(3, (d.seconds / maxDay) * 100)}%` : '2px' }} />
+                      <div className={`w-full max-w-10 rounded-t-[6px] ${d.seconds ? 'bg-gradient-to-t from-[#3b5bff] to-[#7c5cff]' : 'bg-surface-sunken'}`} style={{ height: d.seconds ? `${Math.max(3, (d.seconds / maxDay) * 100)}%` : '2px' }} />
                     </div>
                   ))}
                 </div>

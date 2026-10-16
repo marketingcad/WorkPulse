@@ -1,6 +1,6 @@
 'use client';
 import type { ReactNode } from 'react';
-import { AlertTriangle, CircleCheck, CircleDashed, CircleDot, CircleX, Clock, Inbox, Lock, MinusCircle, PauseCircle } from 'lucide-react';
+import { AlertTriangle, CircleCheck, CircleDashed, CircleDot, CircleX, Clock, Inbox, Lock, MinusCircle, PauseCircle, TrendingDown, TrendingUp } from 'lucide-react';
 import { cx } from './primitives';
 import { t } from './i18n';
 
@@ -160,15 +160,15 @@ export function BudgetProgress({ pct, state, projectedPct, className }: { pct: n
 
 export function Panel({ title, actions, children, className, bodyClassName, footer }: { title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; bodyClassName?: string; footer?: ReactNode }) {
   return (
-    <section className={cx('flex min-w-0 flex-col rounded-md border border-border bg-surface', className)}>
+    <section className={cx('flex min-w-0 flex-col rounded-md border border-border bg-surface shadow-card', className)}>
       {(title || actions) && (
-        <header className="flex min-h-11 items-center justify-between gap-3 border-b border-border px-4 py-2">
-          {typeof title === 'string' ? <h2 className="truncate text-sm font-semibold">{title}</h2> : title}
+        <header className="flex min-h-12 items-center justify-between gap-3 border-b border-border px-5 py-2.5">
+          {typeof title === 'string' ? <h2 className="truncate text-[15px] font-semibold tracking-tight">{title}</h2> : title}
           {actions && <div className="flex shrink-0 items-center gap-1.5">{actions}</div>}
         </header>
       )}
       <div className={cx('min-w-0 flex-1', bodyClassName)}>{children}</div>
-      {footer && <footer className="border-t border-border px-4 py-2 text-xs text-text-muted">{footer}</footer>}
+      {footer && <footer className="border-t border-border px-5 py-2.5 text-xs text-text-muted">{footer}</footer>}
     </section>
   );
 }
@@ -178,25 +178,51 @@ export interface Kpi {
   value: ReactNode;
   delta?: { value: string; direction: 'up' | 'down' | 'flat'; good?: boolean } | null;
   hint?: ReactNode;
+  /** A small icon shown in a coloured tile next to the label. */
+  icon?: ReactNode;
+  tone?: KpiTone;
+}
+
+export type KpiTone = 'blue' | 'violet' | 'green' | 'amber' | 'rose' | 'teal';
+/** Solid tiles for KPI icons, as on the sign-in page (white icon on a brand colour). */
+const KPI_TONE: Record<KpiTone, string> = {
+  blue: 'bg-[#1766ff]',
+  violet: 'bg-[#6d4cf5]',
+  green: 'bg-[#0f9f6e]',
+  amber: 'bg-[#e08a00]',
+  rose: 'bg-[#e0446a]',
+  teal: 'bg-[#0e98b3]',
+};
+
+/** Coloured square holding a white icon (KPI tiles, feature lists). */
+export function IconTile({ tone = 'blue', children, className }: { tone?: KpiTone; children: ReactNode; className?: string }) {
+  return <span className={cx('flex size-9 shrink-0 items-center justify-center rounded-sm text-white shadow-sm [&_svg]:size-[18px]', KPI_TONE[tone], className)} aria-hidden>{children}</span>;
 }
 
 export function KpiStrip({ items, className }: { items: Kpi[]; className?: string }) {
   return (
-    <div className={cx('grid divide-y divide-border overflow-hidden rounded-md border border-border bg-surface sm:divide-x sm:divide-y-0', className)} style={{ gridTemplateColumns: `repeat(auto-fit, minmax(150px, 1fr))` }}>
+    <div className={cx('grid divide-y divide-border overflow-hidden rounded-md border border-border bg-surface shadow-card sm:divide-x sm:divide-y-0', className)} style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 210px), 1fr))` }}>
       {items.map((k) => (
-        <div key={k.label} className="px-4 py-3">
-          <div className="text-xs font-medium text-text-muted">{k.label}</div>
-          <div className="tabular mt-1 text-xl font-semibold tracking-tight">{k.value}</div>
-          {(k.delta || k.hint) && (
-            <div className="mt-0.5 text-xs text-text-faint">
+        <div key={k.label} className="flex items-start gap-3 px-5 py-4">
+          {k.icon && <IconTile tone={k.tone}>{k.icon}</IconTile>}
+          <div className="min-w-0">
+            <div className="text-xs font-medium text-text-muted">{k.label}</div>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="tabular text-xl font-bold tracking-tight sm:text-2xl">{k.value}</span>
               {k.delta && (
-                <span className={cx(k.delta.direction === 'flat' ? 'text-text-faint' : k.delta.good ? 'text-success' : 'text-danger')}>
-                  {k.delta.direction === 'up' ? '▲' : k.delta.direction === 'down' ? '▼' : '■'} {k.delta.value}
+                <span
+                  className={cx(
+                    'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-2xs font-semibold',
+                    k.delta.direction === 'flat' ? 'bg-surface-muted text-text-muted' : k.delta.good ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger',
+                  )}
+                >
+                  {k.delta.direction === 'up' ? <TrendingUp className="size-3" aria-hidden /> : k.delta.direction === 'down' ? <TrendingDown className="size-3" aria-hidden /> : null}
+                  {k.delta.value}
                 </span>
-              )}{' '}
-              {k.hint}
+              )}
             </div>
-          )}
+            {k.hint && <div className="mt-1 text-xs text-text-faint">{k.hint}</div>}
+          </div>
         </div>
       ))}
     </div>
@@ -206,7 +232,7 @@ export function KpiStrip({ items, className }: { items: Kpi[]; className?: strin
 export function EmptyState({ title, description, action, icon, className }: { title: string; description?: ReactNode; action?: ReactNode; icon?: ReactNode; className?: string }) {
   return (
     <div className={cx('flex flex-col items-center justify-center gap-2 px-6 py-12 text-center', className)}>
-      <span className="mb-1 flex size-10 items-center justify-center rounded-full bg-surface-muted text-text-faint">{icon ?? <Inbox className="size-5" />}</span>
+      <span className="mb-1 flex size-11 items-center justify-center rounded-md bg-interactive-soft text-interactive">{icon ?? <Inbox className="size-5" />}</span>
       <p className="text-sm font-semibold">{title}</p>
       {description && <p className="max-w-sm text-sm text-text-muted">{description}</p>}
       {action && <div className="mt-2">{action}</div>}

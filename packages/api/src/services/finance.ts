@@ -47,6 +47,7 @@ import { narrowMemberships } from './scope';
 import { memberNames } from './timer';
 import { membersWith, notify } from './notify';
 import { isUuid, likePattern } from '../lib/search';
+import { renderEmail } from '../lib/email';
 
 
 /** The issuing company as printed on invoices. */
@@ -788,11 +789,24 @@ export async function sendInvoice(x: Ctx, id: string) {
   await x.tx.update(invoices).set({ status: 'SENT', sentAt: new Date(), updatedAt: new Date() }).where(eq(invoices.id, id));
   if (inv.client.email) {
     const fmt = (m: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: inv.currency }).format(m / 100);
-    await x.deps.mailer.send({
-      to: inv.client.email,
-      subject: `Invoice ${inv.number} from ${x.org.name}`,
-      text: `Invoice ${inv.number}\nAmount due: ${fmt(inv.total_minor)}\nDue date: ${inv.due_date}\n\n${inv.lines.map((l) => `- ${l.description}: ${fmt(l.amount_minor)}`).join('\n')}\n`,
-    });
+    await x.deps.mailer.send(
+      renderEmail(
+        {
+          subject: `Invoice ${inv.number} from ${x.org.name}`,
+          preheader: `${fmt(inv.total_minor)} due ${inv.due_date}`,
+          heading: `Invoice ${inv.number}`,
+          paragraphs: [`${x.org.name} sent you invoice ${inv.number}.`],
+          details: [
+            ...inv.lines.map((l) => ({ label: l.description, value: fmt(l.amount_minor) })),
+            { label: 'Amount due', value: fmt(inv.total_minor), strong: true },
+            { label: 'Due date', value: inv.due_date },
+          ],
+          note: `Questions about this invoice? Reply to ${x.org.name} directly.`,
+          reason: `You received this email because ${x.org.name} sent you an invoice through WorkPulse.`,
+        },
+        { appUrl: x.deps.config.appUrl, to: inv.client.email },
+      ),
+    );
   }
   await emitFrom(x, 'invoice.sent', { invoice_id: id, number: inv.number });
   await audit(x, { action: 'invoice.sent', targetType: 'invoice', targetId: id });

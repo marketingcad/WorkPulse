@@ -23,6 +23,7 @@ import { membershipFilter, narrowMemberships } from './scope';
 import { randomToken, sha256 } from '../lib/crypto';
 import { iso } from '../lib/http';
 import { isUuid, likePattern } from '../lib/search';
+import { renderEmail } from '../lib/email';
 
 export async function orgContext(x: Ctx): Promise<OrgContextDto> {
   const [o] = await x.tx.select().from(organizations).where(eq(organizations.id, x.org.id));
@@ -470,7 +471,19 @@ export async function inviteWorker(x: Ctx, input: z.infer<typeof inviteInput>) {
   const url = `${x.deps.config.appUrl}/invite?token=${token}`;
   // A failed send must not lose the invitation: the admin can still share the link.
   let emailSent = x.deps.mailer.delivers !== false;
-  await x.deps.mailer.send({ to: input.email, subject: `You're invited to ${x.org.name} on WorkPulse`, text: `${x.org.name} invited you to join their workspace on WorkPulse.\n\nAccept the invitation: ${url}\n\nThis link expires in 7 days.` }).catch(() => {
+  const mail = renderEmail(
+    {
+      subject: `You're invited to ${x.org.name} on WorkPulse`,
+      preheader: `${x.org.name} invited you to their workspace. The link expires in 7 days.`,
+      heading: `Join ${x.org.name} on WorkPulse`,
+      paragraphs: [`${x.org.name} invited you to their workspace on WorkPulse, where the team tracks time, timesheets and projects.`, `You'll join as ${role.name}. Accept the invitation to choose your password and get started.`],
+      action: { label: 'Accept invitation', url },
+      note: "This link expires in 7 days. If you weren't expecting this invitation, you can ignore this email.",
+      reason: `You received this email because someone at ${x.org.name} invited this address to WorkPulse.`,
+    },
+    { appUrl: x.deps.config.appUrl, to: input.email },
+  );
+  await x.deps.mailer.send(mail).catch(() => {
     emailSent = false;
   });
   await audit(x, { action: 'invitation.created', targetType: 'invitation', targetId: id, after: { email: input.email, role: role.key, teams: teamIds.length, team_role: teamIds.length ? input.team_role : undefined, projects: projectIds.length } });

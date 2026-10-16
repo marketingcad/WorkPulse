@@ -12,6 +12,7 @@ import { audit } from './events';
 import { notify } from './notify';
 import { REPORTS, runReport, type ReportParams } from './reports';
 import { DATA_EXPORT_KEY, collectMemberData } from './privacy';
+import { renderEmail } from '../lib/email';
 
 export type ExportFormat = 'CSV' | 'XLSX' | 'PDF';
 const EXT: Record<ExportFormat | 'JSON', { ext: string; type: string }> = {
@@ -137,7 +138,27 @@ async function executeRun(tx: Tx, deps: Deps, run: RunRow) {
     const to = saved ? await memberEmails(tx, saved.recipients) : [];
     const link = exportLink(deps, run.organizationId, storageKey, fileName, EMAIL_LINK_TTL_SECONDS, true);
     for (const email of to) {
-      await deps.mailer.send({ to: email, subject: `${saved!.name} — ${params.from} to ${params.to}`, text: `${result.title} for ${x.org.name}, ${params.from} – ${params.to} (${result.rows.length} rows).\n\nDownload (link valid for 7 days):\n${link}\n\nYou receive this because you are a recipient of the scheduled report “${saved!.name}”.` }).catch(() => undefined);
+      await deps.mailer
+        .send(
+          renderEmail(
+            {
+              subject: `${saved!.name} — ${params.from} to ${params.to}`,
+              preheader: `${result.title}, ${result.rows.length} rows, ready to download.`,
+              heading: saved!.name,
+              paragraphs: [`Your scheduled report from ${x.org.name} is ready.`],
+              details: [
+                { label: 'Report', value: result.title },
+                { label: 'Period', value: `${params.from} – ${params.to}` },
+                { label: 'Rows', value: String(result.rows.length) },
+              ],
+              action: { label: 'Download report', url: link },
+              note: 'The download link is valid for 7 days.',
+              reason: `You received this email because you are a recipient of the scheduled report “${saved!.name}”.`,
+            },
+            { appUrl: deps.config.appUrl, to: email },
+          ),
+        )
+        .catch(() => undefined);
     }
   }
   await notify(tx, deps, run.organizationId, [run.membershipId], { type: 'report.ready', title: `${result.title} export is ready`, body: `${params.from} – ${params.to}, ${result.rows.length} rows`, link: `/reports?runs=1`, payload: { run_id: run.id } });

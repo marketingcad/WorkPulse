@@ -7,6 +7,7 @@ import { randomToken, sha256 } from '../lib/crypto';
 import type { Ctx } from './ctx';
 import { audit } from './events';
 import { includedProjects, portalScreenshotsTx, type PortalAccess } from './portal';
+import { renderEmail } from '../lib/email';
 
 const INVITE_DAYS = 7;
 
@@ -94,11 +95,20 @@ export async function invitePortalViewer(x: Ctx, clientId: string, input: z.infe
   if (existing) await x.tx.update(clientPortalAccess).set(values).where(eq(clientPortalAccess.id, id));
   else await x.tx.insert(clientPortalAccess).values({ id, organizationId: x.org.id, clientId, email, ...values });
   const inviteUrl = `${x.deps.config.appUrl}/portal-invite?token=${token}`;
-  await x.deps.mailer.send({
-    to: email,
-    subject: `${client.name}’s WorkPulse dashboard from ${x.org.name}`,
-    text: `${x.org.name} invited you to follow the work on ${client.name}'s projects in WorkPulse: who is working on them, hours per task and task progress.\n\nOpen your dashboard (link valid for ${INVITE_DAYS} days): ${inviteUrl}\n`,
-  });
+  await x.deps.mailer.send(
+    renderEmail(
+      {
+        subject: `${client.name}’s WorkPulse dashboard from ${x.org.name}`,
+        preheader: `Follow the work on ${client.name}'s projects.`,
+        heading: `Follow ${client.name}'s projects`,
+        paragraphs: [`${x.org.name} invited you to a dashboard for ${client.name}'s projects in WorkPulse: who is working on them, hours per task and task progress.`],
+        action: { label: 'Open your dashboard', url: inviteUrl },
+        note: `This link expires in ${INVITE_DAYS} days.`,
+        reason: `You received this email because ${x.org.name} invited this address to ${client.name}'s dashboard.`,
+      },
+      { appUrl: x.deps.config.appUrl, to: email },
+    ),
+  );
   await audit(x, { action: 'client_portal.viewer_invited', targetType: 'client', targetId: clientId, after: { email } });
   return { id, invite_url: inviteUrl };
 }

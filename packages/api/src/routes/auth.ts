@@ -33,6 +33,7 @@ import {
   resetPassword,
   revokeSession,
 } from '../services/identity';
+import { renderEmail } from '../lib/email';
 
 function meta(c: Context<AppEnv>) {
   return { ip: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null, userAgent: c.req.header('user-agent') ?? null };
@@ -51,11 +52,20 @@ export async function startUserSession(c: Context<AppEnv>, uid: string, mfaPendi
 
 async function sendVerificationEmail(deps: Deps, uid: string, email: string) {
   const token = await issueEmailToken(deps.db, uid, 'VERIFY_EMAIL', 60 * 24 * 3);
-  await deps.mailer.send({
-    to: email,
-    subject: 'Confirm your WorkPulse email',
-    text: `Welcome to WorkPulse!\n\nConfirm your email (valid for 3 days): ${deps.config.appUrl}/verify-email?token=${token}\n`,
-  });
+  await deps.mailer.send(
+    renderEmail(
+      {
+        subject: 'Confirm your WorkPulse email',
+        preheader: 'Confirm your email address to finish setting up your account.',
+        heading: 'Confirm your email',
+        paragraphs: ['Welcome to WorkPulse! Confirm that this is your email address to finish setting up your account.'],
+        action: { label: 'Confirm email', url: `${deps.config.appUrl}/verify-email?token=${token}` },
+        note: 'This link expires in 3 days.',
+        reason: "You received this email because this address was used to create a WorkPulse account. If that wasn't you, you can ignore it.",
+      },
+      { appUrl: deps.config.appUrl, to: email },
+    ),
+  );
 }
 
 export const authRoutes = new Hono<AppEnv>()
@@ -118,7 +128,20 @@ export const authRoutes = new Hono<AppEnv>()
     // Always 202 so the endpoint does not reveal which emails have accounts.
     if (u) {
       const token = await issueEmailToken(deps.db, u.id, 'RESET_PASSWORD', 60);
-      await deps.mailer.send({ to: u.email, subject: 'Reset your WorkPulse password', text: `Reset your password (valid for 1 hour): ${deps.config.appUrl}/reset-password?token=${token}\n` });
+      await deps.mailer.send(
+        renderEmail(
+          {
+            subject: 'Reset your WorkPulse password',
+            preheader: 'Use this link within 1 hour to choose a new password.',
+            heading: 'Reset your password',
+            paragraphs: ['We received a request to reset the password for your WorkPulse account. Choose a new password with the button below.'],
+            action: { label: 'Reset password', url: `${deps.config.appUrl}/reset-password?token=${token}` },
+            note: "This link expires in 1 hour. If you didn't ask to reset your password, you can ignore this email; your password won't change.",
+            reason: 'You received this email because a password reset was requested for this address.',
+          },
+          { appUrl: deps.config.appUrl, to: u.email },
+        ),
+      );
     }
     return c.json({ ok: true }, 202);
   })

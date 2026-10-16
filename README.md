@@ -65,6 +65,7 @@ Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - Website deploys are automatic: Vercel is connected to GitHub, so every merge into `main` deploys production.
 - CI passes again: the Electron desktop tests had failed since 12 October because the CI screen is narrower than the app's sidebar breakpoint. The tests now work at any window width.
 - Linux desktop packages fixed and tested on Ubuntu 24.04 (the `.deb` is the recommended download). The app now explains what's wrong instead of failing silently when a desktop keyring is missing. On Wayland it reports what can't be tracked instead of recording partial data.
+- **Branded emails:** invitations, sign-up confirmation, password reset, notifications, reminders, the daily summary, invoices, client dashboard invitations and scheduled reports share one WorkPulse design (logo, clear button, details box, and a note on why you got the email), with a plain-text version. Links in notification emails now open the right page.
 - **Getting started checklist:** admins of a new organization see the next steps on the Overview page (invite people, create a project, set rates, connect the desktop app, review tracking), ticked off as they are done.
 - **Safer actions:** resetting the dashboard, removing support access and discarding unsaved tracking settings now ask for confirmation first.
 - **Recording a payment** offers all of a client's open invoices, oldest first.

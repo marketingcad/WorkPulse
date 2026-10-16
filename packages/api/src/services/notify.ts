@@ -1,7 +1,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
-import { memberships, notificationPreferences, notifications, rolePermissions, teamMembers, users, type Tx } from '@tallywork/db';
+import { memberships, notificationPreferences, notifications, organizations, rolePermissions, teamMembers, users, type Tx } from '@tallywork/db';
 import { newId, type Permission } from '@tallywork/domain';
 import type { Deps } from '../context';
+import { renderEmail } from '../lib/email';
 
 export interface NotificationInput {
   type: string;
@@ -26,8 +27,9 @@ export async function notify(tx: Tx, deps: Deps, organizationId: string, members
   const emailIds = ids.filter((id) => prefBy.get(id)?.email);
   if (emailIds.length) {
     const rows = await tx.select({ email: users.email }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).where(inArray(memberships.id, emailIds));
+    const [org] = await tx.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, organizationId));
     for (const r of rows) {
-      await deps.mailer.send({ to: r.email, subject: n.title, text: `${n.body ?? ''}\n\n${n.link ? `${deps.config.appUrl}${n.link}` : ''}` }).catch(() => undefined);
+      await deps.mailer.send(notificationEmail(deps.config.appUrl, organizationId, org?.name ?? 'your organization', r.email, n)).catch(() => undefined);
     }
   }
 }
@@ -58,4 +60,24 @@ export async function membersWith(tx: Tx, organizationId: string, permission: Pe
     .innerJoin(rolePermissions, and(eq(rolePermissions.roleId, memberships.roleId), eq(rolePermissions.permission, permission), eq(rolePermissions.scope, 'org')))
     .where(and(eq(memberships.organizationId, organizationId), eq(memberships.status, 'ACTIVE')));
   return rows.map((r) => r.id);
+}
+
+/** Links in notifications are relative to the organization (`/timesheets/approvals`); emails need the full address. */
+export function orgLink(appUrl: string, organizationId: string, link: string): string {
+  return `${appUrl}/o/${organizationId}${link === '/' ? '' : link}`;
+}
+
+/** A notification as an email, in the shared layout. */
+export function notificationEmail(appUrl: string, organizationId: string, orgName: string, to: string, n: Pick<NotificationInput, 'title' | 'body' | 'link'>, reason?: string) {
+  return renderEmail(
+    {
+      subject: n.title,
+      preheader: n.body ?? n.title,
+      heading: n.title,
+      paragraphs: n.body ? [n.body] : [],
+      action: n.link ? { label: 'Open in WorkPulse', url: orgLink(appUrl, organizationId, n.link) } : undefined,
+      reason: reason ?? `You received this email because email notifications are on for ${orgName} in your WorkPulse notification settings.`,
+    },
+    { appUrl, to },
+  );
 }

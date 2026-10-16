@@ -22,7 +22,7 @@ The main flow the product covers is **Organization → People → Work structure
 
 ## Project status
 
-Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.6
+Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.7
 
 ### ✅ Completed
 
@@ -54,6 +54,9 @@ Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - Support console: WorkPulse support can help customers, but can only see their data when the customer allows it, for a limited time.
 - Company-wide desktop rollout: installers and central settings for IT teams.
 - Client portal: a read-only, no-money dashboard per client (hours, tasks, and optionally activity and screenshots), with its own invitations, and a notice to workers when a client can see their monitoring data.
+- **Desktop app 0.1.7** (released 17 October 2026):
+  - New look: the sign-in screen and the whole app follow the new WorkPulse design (navy sidebar, blue highlights, light and dark themes).
+  - Installs on its own for everyone on 0.1.6.
 - **Desktop app 0.1.6** (released 16 October 2026):
   - Automatic updates work. They never ran in earlier versions (the update check failed silently at start-up), so 0.1.6 has to be installed by hand once; after that, updates download in the background, a notification says when one is ready, and it installs when the app quits from the tray.
   - On a shared computer, time recorded offline by one person is only ever sent as that person, even after someone else signs in.

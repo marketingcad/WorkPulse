@@ -22,7 +22,7 @@ The main flow the product covers is **Organization → People → Work structure
 
 ## Project status
 
-Updated 15 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.5
+Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.5
 
 ### ✅ Completed
 
@@ -38,6 +38,7 @@ Updated 15 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - Ready for production use: health monitoring, alerts, load tests, recovery procedures and on-call guides.
 - Accessibility: every main screen meets the WCAG 2.1 AA standard, in light and dark mode.
 - Automated end-to-end tests (Playwright) for the web app, the desktop window and the real desktop app, run with one command (`pnpm test:e2e`) and in CI on every change. Every change now ships with tests that were run and passed ([AGENTS.md](AGENTS.md)).
+- Fast lists for large organizations: invoices, payments, expenses, time entries, sessions, approvals, manual time, time off, members, devices, tasks and attendance load one page at a time from the server.
 
 ### 🆕 New updates
 
@@ -61,6 +62,15 @@ Updated 15 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - Website deploys are automatic: Vercel is connected to GitHub, so every merge into `main` deploys production.
 - CI passes again: the Electron desktop tests had failed since 12 October because the CI screen is narrower than the app's sidebar breakpoint. The tests now work at any window width.
 - Linux desktop packages fixed and tested on Ubuntu 24.04 (the `.deb` is the recommended download). The app now explains what's wrong instead of failing silently when a desktop keyring is missing. On Wayland it reports what can't be tracked instead of recording partial data.
+- **Getting started checklist:** admins of a new organization see the next steps on the Overview page (invite people, create a project, set rates, connect the desktop app, review tracking), ticked off as they are done.
+- **Safer actions:** resetting the dashboard, removing support access and discarding unsaved tracking settings now ask for confirmation first.
+- **Recording a payment** offers all of a client's open invoices, oldest first.
+- **Full project audit** (16 October 2026, [docs/audit/2026-10-16-full-project-audit.md](docs/audit/2026-10-16-full-project-audit.md)): security, money, desktop, integrations and ease of use, with a prioritized fix list. Fixed since:
+  - A custom role that can manage members can no longer give itself (or anyone) more access than it has.
+  - Manual time can no longer overlap a running timer, so time is never counted twice.
+  - Sign-in can no longer be used to send people to another website.
+  - Payment references (for example cheque numbers) are unique per organization, with a clear message for a repeat; malformed links show "not found" instead of a server error.
+  - On a shared computer, time recorded offline by one person is only ever sent as that person (desktop, in the next release).
 
 ### 🚧 Work in progress
 
@@ -87,13 +97,22 @@ Updated 15 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - **Audit log paging:** the audit log pages through every entry with a total, newest or oldest first, and the CSV export covers all matching entries (up to 1,000), not just the page on screen.
 - **Table pagination:** numbered pages, "Showing 1–50 of 230 results" and a rows-per-page choice in the shared table.
 
+**Waiting to be merged**
+
+- **Payroll pays each approved hour exactly once** ([#27](https://github.com/marketingcad/WorkPulse/pull/27)): time approved after its payroll was finalized is paid by the next payroll ("from earlier periods"), and overlapping payrolls are refused. After it deploys, check the next payroll draft: hours approved late in the past appear there for the first time.
+- **Private password for a deployed demo** ([#26](https://github.com/marketingcad/WorkPulse/pull/26)): `SEED_PASSWORD` sets the demo accounts' password, so a demo seeded on a live site can't be opened with the public password below.
+
 **Needs attention before the next release**
+
+- **Desktop 0.1.6:** release it so workers get the shared-computer fix above.
+- **From the audit, still open:** the "approve new devices" setting is not enforced by the server yet; links in notification emails open a page that doesn't exist (they miss the organization); and Next.js should be updated to 16.3.8 or later for security fixes. The audit's remediation plan lists the rest by priority.
 
 - **Live address:** `tallywork-alpha.vercel.app` is a manual alias, so automatic production deploys don't move it. Add it as a domain on the Vercel project so it always follows production (see [Deployment](#deployment)).
 - **Preview builds:** Vercel blocks Preview builds for commits whose author isn't a member of the Vercel team. Add the committing GitHub account to the team, or commit as a member.
 - **Monitoring notice:** the desktop app no longer shows workers what is monitored or records their acknowledgement. The `/agent/policy/ack` endpoint and the web `/me/monitoring` page still exist, but the desktop doesn't use them. Make sure workers are told about monitoring some other way where the law requires it. The server's "Tracking settings were updated" notification still links to `/me/monitoring`, which the desktop app no longer opens.
-- **Paging (mostly done):** the long lists now page on the server: invoices, payments, expenses, All time entries, sessions, timesheet approvals, manual time, time off requests, members, devices, tasks and attendance. Person pickers and name lookups share a light member list (no rates or teams). For very large organizations, a search-as-you-type picker would avoid loading every member at all. A few plain tables (Schedules, Roles, invoice lines, the client portal) have no paging.
-- Fixed since the last update: desktop 0.1.5 is released (Windows, macOS and Linux; the Linux smoke test passed); CI on `main` passes again; Vercel deploys from GitHub; every feature in the list above now has end-to-end tests (71 Playwright tests, up from 44), and creating an organization has API tests.
+- **Paging:** person pickers load every member (a light list with no rates or teams). For very large organizations, a search-as-you-type picker would avoid that. A few plain tables (Schedules, Roles, invoice lines, the client portal) have no paging.
+- **End-to-end tests still missing** for time off, timesheet approvals, expenses, report exports, tracking policies, roles, API keys and webhooks, schedules and the client portal (see the audit). There are 84 Playwright tests today.
+- Fixed since the last update: the paging work is finished; the dashboard speed test runs on its own in CI so it no longer fails at random; the audit's most serious findings are fixed (see New updates).
 
 **Next / planned**
 
@@ -1060,7 +1079,7 @@ Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgre
 | [apps/desktop/test/nav.test.ts](apps/desktop/test/nav.test.ts) | Sidebar model: the item order, every screen reachable, no orphan views |
 | [packages/ui/test](packages/ui/test/) | Shared UI: table pagination, translated messages (placeholders, plurals, fallback to English) and the English message catalog |
 | [packages/api/test/new-organization.test.ts](packages/api/test/new-organization.test.ts) | Creating another organization: owner and admin, defaults, kept apart from the first, validation |
-| [e2e/tests](e2e/tests/) | Playwright (71 tests). **Web:** sign-in and the last workspace, navigation, invitations, CSV import, budgets, invoices and payments, payroll, insights, time types, locking and reminders, duration and part-billable entries, client, project and staff profiles, new organizations, the audit log, and who must *not* see money pages. **Desktop window:** navigation and pay stubs. **Electron app:** sign-in, pay stub download, IPC checks, sign-out |
+| [e2e/tests](e2e/tests/) | Playwright (84 tests). **Web:** sign-in, the last workspace and safe return links, navigation, invitations, CSV import, budgets, invoices and payments, payroll, insights, time types, locking and reminders, duration and part-billable entries, client, project and staff profiles, new organizations and the getting-started checklist, the audit log, server paging of every long list, and who must *not* see money pages. **Desktop window:** navigation and pay stubs. **Electron app:** sign-in, pay stub download, IPC checks, sign-out |
 | [apps/desktop/test/urls.test.ts](apps/desktop/test/urls.test.ts) | URL capture: browser detection, address-bar parsing, extension bridge access control (live HTTP), source selection, domain-only trimming |
 
 **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every push to `main` and on every PR:

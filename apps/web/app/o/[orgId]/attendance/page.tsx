@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { Clock3, Palmtree, Timer, UserCheck, UserX } from 'lucide-react';
 import { Info } from 'lucide-react';
 import type { OffsetPage } from '@tallywork/contracts';
 import { DataTable, EmptyState, ErrorState, FilterBar, Input, KpiStrip, PageHeader, Panel, PermissionState, PersonCell, SegmentedControl, Select, StatusBadge, fmtDate, fmtTime, type Column } from '@tallywork/ui';
@@ -107,11 +108,11 @@ export default function AttendancePage() {
       <KpiStrip
         className="mb-4"
         items={[
-          { label: 'Present', value: kpis.present, hint: 'on time' },
-          { label: 'Late', value: <span className={kpis.late ? 'text-warning' : undefined}>{kpis.late}</span> },
-          { label: 'Absent', value: <span className={kpis.absent ? 'text-danger' : undefined}>{kpis.absent}</span> },
-          { label: 'On leave', value: kpis.leave },
-          { label: 'Overtime', value: d(kpis.overtime) },
+          { label: 'Present', value: kpis.present, hint: 'on time', icon: <UserCheck />, tone: 'green' },
+          { label: 'Late', value: <span className={kpis.late ? 'text-warning' : undefined}>{kpis.late}</span>, icon: <Clock3 />, tone: 'amber' },
+          { label: 'Absent', value: <span className={kpis.absent ? 'text-danger' : undefined}>{kpis.absent}</span>, icon: <UserX />, tone: 'rose' },
+          { label: 'On leave', value: kpis.leave, icon: <Palmtree />, tone: 'teal' },
+          { label: 'Overtime', value: d(kpis.overtime), icon: <Timer />, tone: 'violet' },
         ]}
       />
 

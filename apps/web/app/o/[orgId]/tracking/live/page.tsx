@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Activity, MoreHorizontal, RefreshCw, Square, Timer } from 'lucide-react';
+import { Activity, MoreHorizontal, PauseCircle, PowerOff, RefreshCw, Square, Timer, Users } from 'lucide-react';
 import type { LiveWorkerDto, SessionDto } from '@tallywork/contracts';
 import {
   ActivityBar,
@@ -138,10 +138,10 @@ export default function LivePage() {
       <KpiStrip
         className="mb-4"
         items={[
-          { label: 'Working', value: <span className="text-success">{counts.WORKING}</span> },
-          { label: 'Idle / paused', value: <span className="text-warning">{counts.IDLE}</span> },
-          { label: 'Offline', value: counts.OFFLINE },
-          { label: 'Members tracked', value: counts.total },
+          { label: 'Working', value: <span className="text-success">{counts.WORKING}</span>, icon: <Activity />, tone: 'green' },
+          { label: 'Idle / paused', value: <span className="text-warning">{counts.IDLE}</span>, icon: <PauseCircle />, tone: 'amber' },
+          { label: 'Offline', value: counts.OFFLINE, icon: <PowerOff />, tone: 'teal' },
+          { label: 'Members tracked', value: counts.total, icon: <Users />, tone: 'blue' },
         ]}
       />
       <Panel

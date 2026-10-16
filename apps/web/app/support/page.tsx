@@ -3,7 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { LifeBuoy, Lock, Search } from 'lucide-react';
-import { Badge, Button, DataTable, EmptyState, ErrorState, Input, PageHeader, Panel, SkeletonRows, Stat, StatusBadge, fmtDate, fmtDateTime, fmtRelative, type Column } from '@tallywork/ui';
+import { Badge, BrandLockup, Button, DataTable, EmptyState, ErrorState, Input, PageHeader, Panel, SkeletonRows, Stat, StatusBadge, fmtDate, fmtDateTime, fmtRelative, type Column } from '@tallywork/ui';
 import { ApiError, api } from '@/lib/api';
 
 interface OrgHit {
@@ -59,44 +59,57 @@ export default function SupportPage() {
   }
 
   return (
-    <main className="mx-auto flex max-w-6xl flex-col gap-4 p-4 sm:p-6">
-      <PageHeader title="Support console" description={`Signed in as ${me.data!.email}. Every organization you open is recorded in its audit log.`} />
-      <Panel title="Find an organization">
-        <form
-          className="flex flex-wrap gap-2 p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setTerm(q.trim());
-            setOrgId(null);
-          }}
-          role="search"
-        >
-          <label htmlFor="support-q" className="sr-only">Organization name, slug, id or owner email</label>
-          <Input id="support-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Organization name, slug, id or owner email" className="min-w-64 flex-1" />
-          <Button type="submit" variant="primary" icon={<Search className="size-3.5" />} disabled={q.trim().length < 2}>
-            Search
-          </Button>
-        </form>
-        {term.length >= 2 &&
-          (hits.error ? (
-            <ErrorState error={hits.error} onRetry={() => hits.refetch()} />
-          ) : (
-            <DataTable
-              rows={hits.data}
-              loading={hits.isLoading}
-              rowKey={(r) => r.id}
-              onRowClick={(r) => setOrgId(r.id)}
-              columns={[
-                { key: 'name', header: 'Organization', priority: 'primary', value: (r) => r.name, cell: (r) => <span className="font-medium">{r.name}</span> },
-                { key: 'slug', header: 'Slug', value: (r) => r.slug, cell: (r) => <span className="font-mono text-xs">{r.slug}</span> },
-                { key: 'created', header: 'Created', value: (r) => r.created_at, cell: (r) => fmtDate(r.created_at) },
-              ]}
-              empty={<EmptyState title="No organizations match" description="Try the owner’s email or part of the name." />}
-            />
-          ))}
-      </Panel>
-      {orgId && <OrgView id={orgId} />}
-    </main>
+    <>
+      {/* Internal tool: a brand bar so staff always know they are in the WorkPulse console, not a customer workspace. */}
+      <div className="relative overflow-hidden bg-[#060d22] text-white">
+        <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(50%_120%_at_100%_100%,rgba(37,84,255,0.45),transparent_70%)]" />
+        <div className="relative mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <BrandLockup size={26} tone="onDark" />
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-xs font-semibold">
+            <LifeBuoy className="size-3.5" aria-hidden />
+            Support console
+          </span>
+        </div>
+      </div>
+      <main className="mx-auto flex max-w-6xl flex-col gap-4 p-4 sm:p-6">
+        <PageHeader title="Support console" description={`Signed in as ${me.data!.email}. Every organization you open is recorded in its audit log.`} />
+        <Panel title="Find an organization">
+          <form
+            className="flex flex-wrap gap-2 p-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setTerm(q.trim());
+              setOrgId(null);
+            }}
+            role="search"
+          >
+            <label htmlFor="support-q" className="sr-only">Organization name, slug, id or owner email</label>
+            <Input id="support-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Organization name, slug, id or owner email" className="min-w-64 flex-1" />
+            <Button type="submit" variant="primary" icon={<Search className="size-3.5" />} disabled={q.trim().length < 2}>
+              Search
+            </Button>
+          </form>
+          {term.length >= 2 &&
+            (hits.error ? (
+              <ErrorState error={hits.error} onRetry={() => hits.refetch()} />
+            ) : (
+              <DataTable
+                rows={hits.data}
+                loading={hits.isLoading}
+                rowKey={(r) => r.id}
+                onRowClick={(r) => setOrgId(r.id)}
+                columns={[
+                  { key: 'name', header: 'Organization', priority: 'primary', value: (r) => r.name, cell: (r) => <span className="font-medium">{r.name}</span> },
+                  { key: 'slug', header: 'Slug', value: (r) => r.slug, cell: (r) => <span className="font-mono text-xs">{r.slug}</span> },
+                  { key: 'created', header: 'Created', value: (r) => r.created_at, cell: (r) => fmtDate(r.created_at) },
+                ]}
+                empty={<EmptyState title="No organizations match" description="Try the owner’s email or part of the name." />}
+              />
+            ))}
+        </Panel>
+        {orgId && <OrgView id={orgId} />}
+      </main>
+    </>
   );
 }
 

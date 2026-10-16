@@ -199,9 +199,10 @@ export function IconTile({ tone = 'blue', children, className }: { tone?: KpiTon
   return <span className={cx('flex size-9 shrink-0 items-center justify-center rounded-sm text-white shadow-sm [&_svg]:size-[18px]', KPI_TONE[tone], className)} aria-hidden>{children}</span>;
 }
 
-export function KpiStrip({ items, className }: { items: Kpi[]; className?: string }) {
+/** `minItemWidth` sets how wide a tile may get before the strip wraps (wider = fewer per row). */
+export function KpiStrip({ items, className, minItemWidth = 210 }: { items: Kpi[]; className?: string; minItemWidth?: number }) {
   return (
-    <div className={cx('grid divide-y divide-border overflow-hidden rounded-md border border-border bg-surface shadow-card sm:divide-x sm:divide-y-0', className)} style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 210px), 1fr))` }}>
+    <div className={cx('grid divide-y divide-border overflow-hidden rounded-md border border-border bg-surface shadow-card sm:divide-x sm:divide-y-0', className)} style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${minItemWidth}px), 1fr))` }}>
       {items.map((k) => (
         <div key={k.label} className="flex items-start gap-3 px-5 py-4">
           {k.icon && <IconTile tone={k.tone}>{k.icon}</IconTile>}

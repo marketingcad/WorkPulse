@@ -74,6 +74,8 @@ export const payrollRunLines = pgTable(
     approvedSeconds: integer().notNull().default(0),
     /** time in the period whose timesheet is not approved yet; not paid by this run */
     unapprovedSeconds: integer().notNull().default(0),
+    /** approved time from earlier periods that no payroll had paid yet (approved late); included in approvedSeconds */
+    carriedSeconds: integer().notNull().default(0),
     regularSeconds: integer().notNull().default(0),
     overtimeSeconds: integer().notNull().default(0),
     timePayMinor: bigint({ mode: 'number' }).notNull().default(0),
@@ -127,6 +129,8 @@ export const billingEntries = pgTable(
     payAmountMinor: bigint({ mode: 'number' }).notNull().default(0),
     currency: text().notNull(),
     invoiceLineId: uuid(),
+    /** the pay stub line that paid this time; set when the payroll is finalized */
+    payrollLineId: uuid(),
     voidedAt: tstz(),
     createdAt: tstz().notNull().default(sql`now()`),
   },

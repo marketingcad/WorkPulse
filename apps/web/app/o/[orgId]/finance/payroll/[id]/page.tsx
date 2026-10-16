@@ -61,7 +61,18 @@ export default function PayrollRunPage() {
 
   const columns: Column<PayStubDto>[] = [
     { key: 'name', header: 'Member', priority: 'primary', value: (l) => l.name, cell: (l) => <span className="font-medium">{l.name}</span> },
-    { key: 'hours', header: 'Approved', align: 'right', value: (l) => l.approved_seconds, cell: (l) => <span className="tabular">{h(l.approved_seconds)}</span> },
+    {
+      key: 'hours',
+      header: 'Approved',
+      align: 'right',
+      value: (l) => l.approved_seconds,
+      cell: (l) => (
+        <span className="tabular">
+          {h(l.approved_seconds)}
+          {l.carried_seconds > 0 && <span className="block text-xs text-text-muted">incl. {h(l.carried_seconds)} from earlier periods</span>}
+        </span>
+      ),
+    },
     { key: 'ot', header: 'Overtime', align: 'right', value: (l) => l.overtime_seconds, cell: (l) => <span className="tabular text-text-muted">{l.overtime_seconds ? h(l.overtime_seconds) : '—'}</span> },
     { key: 'off', header: 'Time off', align: 'right', value: (l) => l.time_off_hours, cell: (l) => <span className="tabular text-text-muted">{l.time_off_hours ? `${l.time_off_hours} h` : '—'}</span> },
     { key: 'gross', header: 'Gross', align: 'right', value: (l) => l.gross_minor, cell: (l) => <span className="tabular">{m(l.gross_minor)}</span> },

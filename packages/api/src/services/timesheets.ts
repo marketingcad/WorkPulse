@@ -839,6 +839,8 @@ export async function decideTimesheet(x: Ctx, timesheetId: string, action: 'APPR
   if (action === 'REOPEN') {
     const [invoiced] = await x.tx.select({ id: billingEntries.id }).from(billingEntries).where(and(eq(billingEntries.timesheetId, ts.id), isNull(billingEntries.voidedAt), sql`${billingEntries.invoiceLineId} is not null`)).limit(1);
     if (invoiced) throw businessRule('timesheet_invoiced', 'This timesheet is on an invoice; void the invoice first');
+    const [paid] = await x.tx.select({ id: billingEntries.id }).from(billingEntries).where(and(eq(billingEntries.timesheetId, ts.id), isNull(billingEntries.voidedAt), sql`${billingEntries.payrollLineId} is not null`)).limit(1);
+    if (paid) throw businessRule('timesheet_paid', 'This time has been paid in a finalized payroll, so the timesheet can no longer be reopened. Correct it with an adjustment on the next payroll.');
     await x.tx.update(billingEntries).set({ voidedAt: new Date() }).where(and(eq(billingEntries.timesheetId, ts.id), isNull(billingEntries.voidedAt)));
   }
   if (action === 'APPROVE') await createBillingEntries(x, ts);

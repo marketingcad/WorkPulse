@@ -139,7 +139,7 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
       <TT.Root>
         <TT.Trigger asChild>{children}</TT.Trigger>
         <TT.Portal>
-          <TT.Content sideOffset={4} className="z-50 max-w-64 rounded-sm bg-[#0f2240] px-2 py-1 text-xs text-white shadow-overlay">
+          <TT.Content sideOffset={4} className="z-50 max-w-64 rounded-sm bg-[#0b1a3a] px-2.5 py-1.5 text-xs text-white shadow-overlay">
             {content}
           </TT.Content>
         </TT.Portal>
@@ -217,7 +217,7 @@ export function SegmentedControl<T extends string>({ value, onChange, options, s
           role="radio"
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
-          className={cx('rounded-[3px] px-2.5 font-medium transition-colors', size === 'xs' ? 'h-6 text-xs' : 'h-7 text-sm', value === o.value ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text')}
+          className={cx('rounded-[6px] px-2.5 font-medium transition-colors', size === 'xs' ? 'h-6 text-xs' : 'h-7 text-sm', value === o.value ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text')}
         >
           {o.label}
         </button>

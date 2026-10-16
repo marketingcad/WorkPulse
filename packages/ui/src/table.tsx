@@ -175,7 +175,7 @@ export function DataTable<T>({
                 }}
                 placeholder={searchPlaceholder}
                 aria-label={t('table.searchLabel')}
-                className="h-7 w-full rounded-sm border border-border bg-surface pl-7 pr-2 text-sm placeholder:text-text-faint focus:border-interactive focus:outline-none"
+                className="h-8 w-full rounded-sm border border-border bg-surface pl-7 pr-2 text-sm placeholder:text-text-faint focus:border-interactive focus:outline-none focus:ring-2 focus:ring-interactive/20"
               />
             </label>
           )}
@@ -218,7 +218,7 @@ export function DataTable<T>({
                         scope="col"
                         style={{ width: c.width }}
                         aria-sort={active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : undefined}
-                        className={cx('h-8 whitespace-nowrap px-3 text-2xs font-semibold uppercase tracking-wide text-text-muted', c.align === 'right' ? 'text-right' : c.align === 'center' ? 'text-center' : 'text-left')}
+                        className={cx('h-10 whitespace-nowrap px-3 text-2xs font-semibold uppercase tracking-wide text-text-muted', c.align === 'right' ? 'text-right' : c.align === 'center' ? 'text-center' : 'text-left')}
                       >
                         {sortable ? (
                           <button
@@ -389,12 +389,12 @@ export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChan
 
 export function PageHeader({ title, description, actions, breadcrumbs, children }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; breadcrumbs?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-col gap-3">
+    <div className="mb-6 flex flex-col gap-3">
       {breadcrumbs && <nav aria-label={t('common.breadcrumb')} className="text-xs text-text-muted">{breadcrumbs}</nav>}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">{title}</h1>
-          {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
+          <h1 className="truncate text-[28px] font-bold leading-tight tracking-tight">{title}</h1>
+          {description && <p className="mt-1.5 text-[15px] text-text-muted">{description}</p>}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>

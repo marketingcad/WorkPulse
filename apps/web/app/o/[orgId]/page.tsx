@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowDown, ArrowUp, Eye, EyeOff, LayoutGrid, RotateCcw } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, BriefcaseBusiness, ClipboardCheck, Clock3, Eye, EyeOff, FileText, HandCoins, LayoutGrid, Receipt, RotateCcw, Timer, Users, Wallet } from 'lucide-react';
 import type { CurrentTrackingDto, LiveWorkerDto, SessionDto } from '@tallywork/contracts';
 import {
   ActivityBar,
@@ -9,6 +9,7 @@ import {
   BudgetProgress,
   Button,
   EmptyState,
+  IconTile,
   KpiStrip,
   PageHeader,
   Panel,
@@ -257,11 +258,11 @@ function Widget({ k, data }: { k: string; data: any }) {
     case 'worked_today':
       return (
         <KpiStrip
-          className="rounded-none border-0"
+          className="rounded-none border-0 shadow-none"
           items={[
-            { label: 'Worked today', value: d(data.seconds) },
-            { label: 'Members tracking today', value: data.workers },
-            { label: 'Billable today', value: d(data.billable_seconds) },
+            { label: 'Worked today', value: d(data.seconds), icon: <Timer />, tone: 'blue' },
+            { label: 'Members tracking today', value: data.workers, icon: <Users />, tone: 'violet' },
+            { label: 'Billable today', value: d(data.billable_seconds), icon: <HandCoins />, tone: 'green' },
           ]}
         />
       );
@@ -272,13 +273,13 @@ function Widget({ k, data }: { k: string; data: any }) {
         <div className="p-4">
           <div className="flex items-baseline gap-3">
             <span className="tabular text-2xl font-semibold tracking-tight">{d(data.seconds)}</span>
-            {delta !== null && <span className={cx('text-xs', delta >= 0 ? 'text-success' : 'text-text-muted')}>{delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}% vs last week</span>}
+            {delta !== null && <span className={cx('rounded-full px-1.5 py-0.5 text-2xs font-semibold', delta >= 0 ? 'bg-success-soft text-success' : 'bg-surface-muted text-text-muted')}>{delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}% vs last week</span>}
           </div>
           <div className="mt-4 flex h-24 items-end gap-2" role="img" aria-label="Hours per day this week">
             {data.by_day.map((x: { date: string; seconds: number }) => (
               <div key={x.date} className="flex flex-1 flex-col items-center gap-1">
                 <div className="flex w-full flex-1 items-end">
-                  <div className="w-full rounded-t-[2px] bg-secondary" style={{ height: `${(x.seconds / max) * 100}%`, minHeight: x.seconds ? 2 : 0 }} title={`${fmtDate(x.date)}: ${d(x.seconds)}`} />
+                  <div className="w-full rounded-t-[6px] bg-gradient-to-t from-[#3b5bff] to-[#7c5cff]" style={{ height: `${(x.seconds / max) * 100}%`, minHeight: x.seconds ? 3 : 0 }} title={`${fmtDate(x.date)}: ${d(x.seconds)}`} />
                 </div>
                 <span className="text-2xs text-text-faint">{fmtDate(x.date, { weekday: 'narrow' })}</span>
               </div>
@@ -291,7 +292,7 @@ function Widget({ k, data }: { k: string; data: any }) {
     case 'activity':
       return (
         <div className="flex items-center gap-4 p-4">
-          <span className="tabular text-2xl font-semibold">{data.pct ?? '—'}{data.pct !== null && '%'}</span>
+          <ActivityRing pct={data.pct} />
           <div className="text-xs text-text-muted">
             Average activity this week
             {data.previous_pct !== null && <div>Last week {data.previous_pct}%</div>}
@@ -304,12 +305,12 @@ function Widget({ k, data }: { k: string; data: any }) {
       return (
         <div>
           <KpiStrip
-            className="rounded-none border-0"
+            className="rounded-none border-0 shadow-none"
             items={[
-              { label: 'Time logged', value: d(t.logged_seconds), hint: `${t.people_with_time} ${t.people_with_time === 1 ? 'person' : 'people'}` },
-              ...(data.money_visible ? [{ label: 'Est. pay', value: money(t.pay_minor), hint: 'From pay rates; final after approval' }] : []),
-              { label: 'Billable time', value: d(t.billable_seconds), hint: `${t.billable_clients} ${t.billable_clients === 1 ? 'client' : 'clients'}, ${t.billable_projects} ${t.billable_projects === 1 ? 'project' : 'projects'}` },
-              ...(data.money_visible ? [{ label: 'Est. billable', value: money(t.bill_minor), hint: 'From bill rates; final after approval' }] : []),
+              { label: 'Time logged', value: d(t.logged_seconds), hint: `${t.people_with_time} ${t.people_with_time === 1 ? 'person' : 'people'}`, icon: <Clock3 />, tone: 'blue' as const },
+              ...(data.money_visible ? [{ label: 'Est. pay', value: money(t.pay_minor), hint: 'From pay rates; final after approval', icon: <Wallet />, tone: 'violet' as const }] : []),
+              { label: 'Billable time', value: d(t.billable_seconds), hint: `${t.billable_clients} ${t.billable_clients === 1 ? 'client' : 'clients'}, ${t.billable_projects} ${t.billable_projects === 1 ? 'project' : 'projects'}`, icon: <BriefcaseBusiness />, tone: 'green' as const },
+              ...(data.money_visible ? [{ label: 'Est. billable', value: money(t.bill_minor), hint: 'From bill rates; final after approval', icon: <Receipt />, tone: 'amber' as const }] : []),
             ]}
           />
           <Link href={`${b}/insights`} className="block border-t border-border px-4 py-2 text-xs font-medium text-interactive hover:underline">
@@ -366,13 +367,23 @@ function Widget({ k, data }: { k: string; data: any }) {
     case 'timesheets_to_approve':
       return (
         <div className="grid grid-cols-2 divide-x divide-border">
-          <Link href={`${b}/timesheets/approvals`} className="p-4 hover:bg-surface-muted">
-            <div className="tabular text-2xl font-semibold">{data.timesheets}</div>
-            <div className="text-xs text-text-muted">timesheets to review</div>
+          <Link href={`${b}/timesheets/approvals`} className="flex items-start gap-3 p-5 hover:bg-surface-muted">
+            <IconTile tone="blue">
+              <ClipboardCheck />
+            </IconTile>
+            <span>
+              <span className="tabular block text-2xl font-bold">{data.timesheets}</span>
+              <span className="block text-xs text-text-muted">timesheets to review</span>
+            </span>
           </Link>
-          <Link href={`${b}/timesheets/manual`} className="p-4 hover:bg-surface-muted">
-            <div className="tabular text-2xl font-semibold">{data.manual_time}</div>
-            <div className="text-xs text-text-muted">manual time requests</div>
+          <Link href={`${b}/timesheets/manual`} className="flex items-start gap-3 p-5 hover:bg-surface-muted">
+            <IconTile tone="violet">
+              <Clock3 />
+            </IconTile>
+            <span>
+              <span className="tabular block text-2xl font-bold">{data.manual_time}</span>
+              <span className="block text-xs text-text-muted">manual time requests</span>
+            </span>
           </Link>
         </div>
       );
@@ -491,13 +502,23 @@ function Widget({ k, data }: { k: string; data: any }) {
     case 'invoices':
       return (
         <div className="grid grid-cols-2 divide-x divide-border">
-          <Link href={`${b}/finance/invoices`} className="p-4 hover:bg-surface-muted">
-            <div className="tabular text-xl font-semibold">{fmtMoney(data.outstanding_minor, data.currency)}</div>
-            <div className="text-xs text-text-muted">outstanding · {data.draft_count} draft</div>
+          <Link href={`${b}/finance/invoices`} className="flex items-start gap-3 p-5 hover:bg-surface-muted">
+            <IconTile tone="teal">
+              <FileText />
+            </IconTile>
+            <span className="min-w-0">
+              <span className="tabular block text-xl font-bold">{fmtMoney(data.outstanding_minor, data.currency)}</span>
+              <span className="block text-xs text-text-muted">outstanding · {data.draft_count} draft</span>
+            </span>
           </Link>
-          <Link href={`${b}/finance/invoices?status=OVERDUE`} className="p-4 hover:bg-surface-muted">
-            <div className={cx('tabular text-xl font-semibold', data.overdue_count && 'text-danger')}>{fmtMoney(data.overdue_minor, data.currency)}</div>
-            <div className="text-xs text-text-muted">{data.overdue_count} overdue</div>
+          <Link href={`${b}/finance/invoices?status=OVERDUE`} className="flex items-start gap-3 p-5 hover:bg-surface-muted">
+            <IconTile tone={data.overdue_count ? 'rose' : 'green'}>
+              <AlertTriangle />
+            </IconTile>
+            <span className="min-w-0">
+              <span className={cx('tabular block text-xl font-bold', data.overdue_count && 'text-danger')}>{fmtMoney(data.overdue_minor, data.currency)}</span>
+              <span className="block text-xs text-text-muted">{data.overdue_count} overdue</span>
+            </span>
           </Link>
         </div>
       );
@@ -534,6 +555,25 @@ function Widget({ k, data }: { k: string; data: any }) {
     default:
       return <EmptyState title="Coming soon" />;
   }
+}
+
+/** Average activity as a ring (blue to violet), like the product preview on the sign-in page. */
+function ActivityRing({ pct }: { pct: number | null }) {
+  return (
+    <span className="relative inline-flex size-16 shrink-0" role="img" aria-label={pct === null ? 'No activity data' : `${pct}% average activity`}>
+      <svg viewBox="0 0 36 36" className="size-full -rotate-90" aria-hidden>
+        <circle cx="18" cy="18" r="15.5" fill="none" className="stroke-surface-sunken" strokeWidth="3.5" />
+        {pct !== null && <circle cx="18" cy="18" r="15.5" fill="none" stroke="url(#wp-activity)" strokeWidth="3.5" strokeLinecap="round" strokeDasharray={`${Math.min(100, pct)} 100`} pathLength="100" />}
+        <defs>
+          <linearGradient id="wp-activity" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#3b82ff" />
+            <stop offset="1" stopColor="#7c5cff" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <span className="tabular absolute inset-0 flex items-center justify-center text-sm font-bold">{pct === null ? '—' : `${pct}%`}</span>
+    </span>
+  );
 }
 
 function CurrentTimerWidget() {

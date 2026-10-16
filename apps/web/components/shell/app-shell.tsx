@@ -40,20 +40,20 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-dvh">
       {/* Desktop / tablet sidebar */}
-      <aside className={cx('sticky top-0 hidden h-dvh shrink-0 flex-col bg-nav text-nav-fg transition-[width] duration-150 md:flex', collapsed ? 'w-16' : 'w-60')} aria-label={t('nav.primary')}>
+      <aside className={cx('sticky top-0 hidden h-dvh shrink-0 flex-col bg-nav bg-[radial-gradient(130%_55%_at_0%_100%,rgba(23,102,255,0.20),transparent_65%),radial-gradient(90%_35%_at_100%_0%,rgba(109,76,245,0.12),transparent_70%)] text-nav-fg transition-[width] duration-150 md:flex', collapsed ? 'w-16' : 'w-60')} aria-label={t('nav.primary')}>
         <Sidebar collapsed={collapsed} onToggle={toggle} />
       </aside>
       {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <button className="absolute inset-0 bg-black/40" aria-label={t('nav.close')} onClick={() => setMobileOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-nav text-nav-fg shadow-overlay">
+          <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-nav bg-[radial-gradient(130%_55%_at_0%_100%,rgba(23,102,255,0.20),transparent_65%),radial-gradient(90%_35%_at_100%_0%,rgba(109,76,245,0.12),transparent_70%)] text-nav-fg shadow-overlay">
             <Sidebar collapsed={false} onClose={() => setMobileOpen(false)} />
           </aside>
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-surface/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-surface/80 sm:px-4">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-surface/90 px-3 shadow-[0_1px_2px_rgb(15_23_42/0.03)] backdrop-blur supports-[backdrop-filter]:bg-surface/75 sm:px-4">
           <IconButton label={t('nav.open')} className="md:hidden" onClick={() => setMobileOpen(true)}>
             <MenuIcon className="size-4" />
           </IconButton>
@@ -124,13 +124,13 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
               title={collapsed ? t(i.label) : undefined}
               aria-current={active ? 'page' : undefined}
               className={cx(
-                'relative flex h-8 items-center gap-2.5 rounded-sm text-sm transition-colors',
+                'relative flex h-9 items-center gap-2.5 rounded-sm text-sm transition-colors',
                 collapsed ? 'justify-center px-0' : 'px-2.5',
-                active ? 'bg-nav-active font-semibold text-white' : 'text-nav-muted hover:bg-white/5 hover:text-nav-fg',
+                active ? 'bg-[#1766ff]/20 font-semibold text-white shadow-[inset_0_0_0_1px_rgba(59,130,255,0.28)]' : 'text-nav-muted hover:bg-white/[0.06] hover:text-nav-fg',
               )}
             >
-              {active && <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-[#8a8df0]" aria-hidden />}
-              <Icon className="size-4 shrink-0" aria-hidden />
+              {active && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[#3b82ff]" aria-hidden />}
+              <Icon className={cx('size-4 shrink-0', active && 'text-[#6ea2ff]')} aria-hidden />
               {!collapsed && <span className="truncate">{t(i.label)}</span>}
             </Link>
           </li>
@@ -172,7 +172,7 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
                 className={cx(
                   'flex h-7 w-full items-center gap-1 rounded-sm px-2.5 text-2xs font-semibold uppercase tracking-wider transition-colors',
                   isOpen ? 'text-nav-fg/90' : 'text-nav-muted',
-                  'hover:bg-white/5 hover:text-nav-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#8a8df0]',
+                  'hover:bg-white/5 hover:text-nav-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#3b82ff]',
                 )}
               >
                 <span className="flex-1 truncate text-left">{t(g.label)}</span>

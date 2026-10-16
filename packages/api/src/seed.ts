@@ -67,6 +67,8 @@ export interface SeedOptions {
   days?: number;
   workers?: number;
   screenshotDays?: number;
+  /** Password for every demo account (the admin and the members). Defaults to the public local-demo password; use a private one anywhere reachable from the internet. */
+  password?: string;
   log?: (m: string) => void;
 }
 
@@ -74,6 +76,7 @@ export async function seedDemo(baseDeps: Deps, opts: SeedOptions = {}): Promise<
   const days = opts.days ?? 14;
   const workerCount = Math.min(opts.workers ?? 30, FIRST.length);
   const shotDays = opts.screenshotDays ?? 2;
+  const password = opts.password ?? DEMO_ADMIN.password;
   const log = opts.log ?? (() => undefined);
   const r = rng(20260925);
   const realNow = baseDeps.now();
@@ -100,7 +103,7 @@ export async function seedDemo(baseDeps: Deps, opts: SeedOptions = {}): Promise<
   };
 
   // ── Admin + org ──
-  const su = await call('POST', '/auth/signup', { name: DEMO_ADMIN.name, email: DEMO_ADMIN.email, password: DEMO_ADMIN.password, organization_name: 'Northwind Creative (Demo)', timezone: 'America/New_York' });
+  const su = await call('POST', '/auth/signup', { name: DEMO_ADMIN.name, email: DEMO_ADMIN.email, password, organization_name: 'Northwind Creative (Demo)', timezone: 'America/New_York' });
   const orgId = su.json.organization_id as string;
   let admin = { cookie: su.cookie! };
   await withSystem(deps.db, (tx) => tx.update(organizations).set({ isDemo: true, timezone: 'America/New_York' }).where(eq(organizations.id, orgId)));
@@ -133,7 +136,7 @@ export async function seedDemo(baseDeps: Deps, opts: SeedOptions = {}): Promise<
     const email = `${FIRST[i]!.toLowerCase()}.${LAST[i]!.toLowerCase().replace(/[^a-z]/g, '')}@demo.tallywork.app`;
     const inv = await call('POST', `${o}/invitations`, { email, name, role_id: roleId(manager ? 'TEAM_MANAGER' : 'WORKER'), team_ids: [teamIds[team]] }, admin);
     const token = new URL(inv.json.invite_url as string).searchParams.get('token')!;
-    const acc = await call('POST', '/auth/invitations/accept', { token, name, password: DEMO_ADMIN.password });
+    const acc = await call('POST', '/auth/invitations/accept', { token, name, password });
     const tz = ZONES[i % ZONES.length]!;
     const id = acc.json.membership_id as string;
     await call('PATCH', `${o}/workers/${id}`, { title: TITLES[team]![i % 4], timezone: tz, weekly_expected_seconds: 40 * 3600 }, admin);
@@ -297,7 +300,7 @@ export async function seedDemo(baseDeps: Deps, opts: SeedOptions = {}): Promise<
 
   clock.now = new Date(realNow.getTime() - 60_000);
   // Sessions created at the start of the simulated period have expired by now: sign in again.
-  const login = async (email: string) => ({ cookie: (await call('POST', '/auth/login', { email, password: DEMO_ADMIN.password })).cookie! });
+  const login = async (email: string) => ({ cookie: (await call('POST', '/auth/login', { email, password })).cookie! });
   admin = await login(DEMO_ADMIN.email);
   for (const w of workers) w.auth = await login(w.email);
   // ── Manual time, timesheets, approvals ──

@@ -135,7 +135,7 @@ export default function OverviewPage() {
     <>
       <PageHeader
         title={org.isManagerView ? 'Overview' : 'Today'}
-        description={org.isManagerView ? `${greeting}. Here is what needs attention across ${scope === 'ME' ? 'your own work' : 'your organization'}.` : `${greeting}. Your time and tasks at a glance.`}
+        description={org.isManagerView ? `${greeting}. Here is what needs attention across ${scope === 'ME' ? 'your own work' : org.grants['tracking:read'] === 'org' ? 'your organization' : 'your team'}.` : `${greeting}. Your time and tasks at a glance.`}
         actions={
           <>
             {org.isManagerView && (
@@ -480,11 +480,17 @@ function Widget({ k, data }: { k: string; data: any }) {
     case 'attendance_today':
       return (
         <div>
-          <div className="grid grid-cols-4 divide-x divide-border border-b border-border text-center">
+          <div className="grid grid-cols-4 gap-2 border-b border-border p-3 text-center">
             {(['present', 'late', 'absent', 'on_leave'] as const).map((key) => (
-              <div key={key} className="px-2 py-3">
-                <div className={cx('tabular text-xl font-semibold', key === 'late' && data[key] ? 'text-warning' : key === 'absent' && data[key] ? 'text-danger' : '')}>{data[key]}</div>
-                <div className="text-2xs uppercase tracking-wide text-text-muted">{key.replace('_', ' ')}</div>
+              <div
+                key={key}
+                className={cx(
+                  'rounded-sm px-2 py-2.5',
+                  key === 'present' ? 'bg-success-soft' : key === 'late' && data[key] ? 'bg-warning-soft' : key === 'absent' && data[key] ? 'bg-danger-soft' : 'bg-surface-muted',
+                )}
+              >
+                <div className={cx('tabular text-xl font-bold', key === 'present' ? 'text-success' : key === 'late' && data[key] ? 'text-warning' : key === 'absent' && data[key] ? 'text-danger' : '')}>{data[key]}</div>
+                <div className="text-2xs font-semibold uppercase tracking-wide text-text-muted">{key.replace('_', ' ')}</div>
               </div>
             ))}
           </div>

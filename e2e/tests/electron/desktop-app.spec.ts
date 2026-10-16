@@ -95,5 +95,17 @@ test('signing out returns to the sign-in screen', async ({ desktopApp, data }) =
   await signIn(window, data.worker.email);
   await window.getByRole('button', { name: 'Profile' }).click();
   await window.getByRole('menuitem', { name: 'Sign out' }).click();
-  await expect(window.getByRole('heading', { level: 1, name: 'Sign in to start tracking' })).toBeVisible();
+  await expect(window.getByRole('heading', { level: 1, name: 'Welcome Back' })).toBeVisible();
+});
+
+test('the sign-in screen can show and hide the password', async ({ desktopApp }) => {
+  const { window } = desktopApp;
+  await expect(window.getByRole('heading', { level: 1, name: 'Welcome Back' })).toBeVisible();
+  const password = window.getByLabel('Password', { exact: true });
+  await password.fill('not-a-real-password');
+  await expect(password).toHaveAttribute('type', 'password');
+  await window.getByRole('button', { name: 'Show password' }).click();
+  await expect(password).toHaveAttribute('type', 'text');
+  await window.getByRole('button', { name: 'Hide password' }).click();
+  await expect(password).toHaveAttribute('type', 'password');
 });

@@ -23,14 +23,14 @@ export function AuthShell({ title, subtitle, children, footer, secureNote = fals
           <Logo size={44} />
           <h1 className="mt-5 text-[28px] font-bold leading-tight tracking-tight text-text">{title}</h1>
           {subtitle && <p className="mt-2 text-[15px] leading-relaxed text-text-muted">{subtitle}</p>}
-          <div className="mt-8 [&_button[type=submit]]:h-11 [&_button[type=submit]]:rounded-lg [&_button[type=submit]]:text-[15px] [&_input:not([type=checkbox]):not([data-auth-input])]:h-11 [&_input:not([type=checkbox]):not([data-auth-input])]:rounded-lg [&_label]:text-[13px] [&_label]:font-semibold [&_label]:text-text">
+          <div className="mt-8 [&_button[type=submit]]:h-11 [&_button[type=submit]]:rounded-lg [&_button[type=submit]]:text-[15px] [&_input:not([type=checkbox]):not([data-auth-input])]:h-11 [&_input:not([type=checkbox]):not([data-auth-input])]:rounded-lg [&_select]:h-11 [&_select]:rounded-lg [&_label]:text-[13px] [&_label]:font-semibold [&_label]:text-text">
             {children}
           </div>
           {footer && (
-            <div className="mt-8 flex items-center gap-3 text-[13px] text-text-muted">
-              <span aria-hidden className="h-px flex-1 bg-border" />
-              <span className="text-center">{footer}</span>
-              <span aria-hidden className="h-px flex-1 bg-border" />
+            <div className="mt-8 flex items-start gap-3 text-[13px] leading-5 text-text-muted">
+              <span aria-hidden className="mt-2.5 h-px min-w-6 flex-1 bg-border" />
+              <span className="max-w-[80%] text-center">{footer}</span>
+              <span aria-hidden className="mt-2.5 h-px min-w-6 flex-1 bg-border" />
             </div>
           )}
           {secureNote && (

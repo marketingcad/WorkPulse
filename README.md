@@ -104,7 +104,7 @@ Updated 16 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 **Needs attention before the next release**
 
-- **Desktop 0.1.6:** release it so workers get the shared-computer fix above.
+- **Desktop 0.1.6:** release it so workers get the shared-computer fix above and working automatic updates. Auto-update never ran in 0.1.5 and earlier (the update check failed silently at start-up), so **everyone on 0.1.5 or older must install 0.1.6 once by hand** from the download page; from 0.1.6 on, updates download in the background and install when the app quits.
 - **From the audit, still open:** the "approve new devices" setting is not enforced by the server yet; links in notification emails open a page that doesn't exist (they miss the organization); and Next.js should be updated to 16.3.8 or later for security fixes. The audit's remediation plan lists the rest by priority.
 
 - **Live address:** `tallywork-alpha.vercel.app` is a manual alias, so automatic production deploys don't move it. Add it as a domain on the Vercel project so it always follows production (see [Deployment](#deployment)).

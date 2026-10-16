@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { IPC, type IpcChannel, type IpcPayload } from '../shared/ipc';
 import { Agent } from './services/agent';
 import { readManagedConfig } from './services/managed-config';
+import { loadAutoUpdater } from './services/updater';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SERVER = process.env.TALLYWORK_SERVER ?? (app.isPackaged ? 'https://tallywork-alpha.vercel.app' : 'http://localhost:3000');
@@ -191,7 +192,9 @@ function registerIpc(): void {
  */
 async function setupUpdater(managedChannel?: 'latest' | 'beta'): Promise<void> {
   if (!app.isPackaged) return;
-  const { autoUpdater } = await import('electron-updater');
+  const autoUpdater = await loadAutoUpdater();
+  // Failures were silent before, which hid that no update check ever ran (up to 0.1.5).
+  autoUpdater.logger = { info: (m: unknown) => console.log('[updater]', m), warn: (m: unknown) => console.warn('[updater]', m), error: (m: unknown) => console.error('[updater]', m) };
   if (process.env.TALLYWORK_UPDATE_URL) autoUpdater.setFeedURL({ provider: 'generic', url: process.env.TALLYWORK_UPDATE_URL });
   const channel = managedChannel ?? (process.env.TALLYWORK_UPDATE_CHANNEL === 'beta' ? 'beta' : 'latest');
   autoUpdater.channel = channel;
@@ -210,9 +213,17 @@ async function setupUpdater(managedChannel?: 'latest' | 'beta'): Promise<void> {
       n.on('click', () => void shell.openExternal(`${agent.state().serverUrl}/download`));
       n.show();
     });
+  } else {
+    // Downloaded in the background; it installs when the app quits, so tell the person once.
+    let announced: string | null = null;
+    autoUpdater.on('update-downloaded', (info) => {
+      if (announced === info.version || !Notification.isSupported()) return;
+      announced = info.version;
+      new Notification({ title: `WorkPulse ${info.version} is ready`, body: 'It installs the next time you quit WorkPulse from the tray. Your tracked time is kept.' }).show();
+    });
   }
   // Never interrupt an active session: download in the background, install on quit.
-  const check = () => void autoUpdater.checkForUpdates().catch(() => undefined);
+  const check = () => void autoUpdater.checkForUpdates().catch((e: unknown) => console.error('[updater] check failed:', e instanceof Error ? e.message : e));
   check();
   setInterval(check, 6 * 3600_000);
 }
@@ -260,7 +271,7 @@ app.whenReady().then(async () => {
     win?.webContents.send('app:navigate', view);
   });
   updateTray();
-  void setupUpdater(managed.updateChannel);
+  setupUpdater(managed.updateChannel).catch((e: unknown) => console.error('[updater] could not start:', e instanceof Error ? e.message : e));
 }).catch((e: unknown) => {
   // Without this, a failed start leaves an invisible process: no window, no tray icon.
   dialog.showErrorBox('WorkPulse could not start', e instanceof Error ? e.message : String(e));

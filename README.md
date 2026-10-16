@@ -70,7 +70,7 @@ Updated 17 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
   - **Support console:** a WorkPulse header, so staff always know they are in the internal tool.
 - **Desktop app 0.1.7** (released 17 October 2026):
   - The new design, on the sign-in screen and across the whole app.
-  - Installs on its own for everyone on 0.1.6 (checked on a real Windows install).
+  - Updates on its own for everyone on 0.1.6 (checked on a real Windows computer: it found and downloaded 0.1.7 by itself).
 - **The repository is public** (17 October 2026), so GitHub Actions runs again: CI checks every change, and the Desktop release workflow builds Windows, macOS and Linux. Before the switch, the full history was checked: it contains no secrets, keys or `.env` files.
 - **Desktop app 0.1.6** (released 16 October 2026):
   - Automatic updates work. They never ran in earlier versions (the update check failed silently at start-up), so 0.1.6 has to be installed by hand once; after that, updates download in the background, a notification says when one is ready, and it installs when the app quits from the tray.

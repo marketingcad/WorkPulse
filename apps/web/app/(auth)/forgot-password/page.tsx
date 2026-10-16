@@ -1,8 +1,9 @@
 'use client';
+import { Mail } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
-import { Button, Field, Input } from '@tallywork/ui';
-import { AuthShell } from '@/components/auth-shell';
+import { Button, Field } from '@tallywork/ui';
+import { AuthInput, AuthShell } from '@/components/auth-shell';
 import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
 
@@ -33,7 +34,7 @@ export default function ForgotPasswordPage() {
           }}
         >
           <Field label={t('auth.workEmail')} htmlFor="email">
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+            <AuthInput icon={Mail} id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
           </Field>
           <Button type="submit" variant="primary" size="md" loading={loading}>
             {t('auth.forgot.submit')}

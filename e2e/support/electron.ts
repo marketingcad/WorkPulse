@@ -53,12 +53,12 @@ export const test = base.extend<{ desktopApp: DesktopApp }>({
  * sidebar breakpoint (1024px) on small screens such as CI runners, where navigation is a drawer.
  */
 export async function signIn(window: Page, email: string): Promise<void> {
-  await expect(window.getByRole('heading', { level: 1, name: 'Sign in to start tracking' })).toBeVisible();
+  await expect(window.getByRole('heading', { level: 1, name: 'Welcome Back' })).toBeVisible();
   await window.getByLabel('Email').fill(email);
-  await window.getByLabel('Password').fill(PASSWORD);
+  await window.getByLabel('Password', { exact: true }).fill(PASSWORD);
   // Submit only once both fields really hold the values, so a re-render can't send stale input.
   await expect(window.getByLabel('Email')).toHaveValue(email);
-  await expect(window.getByLabel('Password')).toHaveValue(PASSWORD);
+  await expect(window.getByLabel('Password', { exact: true })).toHaveValue(PASSWORD);
   await window.getByRole('button', { name: 'Sign in', exact: true }).click();
   // Sign-in hashes the password and loads the worker's data; under a full parallel run the shared
   // single-connection test database can take longer than the default 10s.

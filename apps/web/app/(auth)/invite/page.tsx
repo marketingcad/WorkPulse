@@ -1,8 +1,9 @@
 'use client';
+import { Lock, User } from 'lucide-react';
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Button, Field, Input } from '@tallywork/ui';
-import { AuthShell } from '@/components/auth-shell';
+import { Button, Field } from '@tallywork/ui';
+import { AuthInput, AuthShell } from '@/components/auth-shell';
 import { api, ApiError } from '@/lib/api';
 import { t } from '@/lib/i18n';
 
@@ -36,10 +37,10 @@ function Form() {
       }}
     >
       <Field label={t('auth.yourName')} htmlFor="name">
-        <Input id="name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" autoFocus />
+        <AuthInput icon={User} id="name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" autoFocus />
       </Field>
       <Field label={t('auth.invite.choosePassword')} htmlFor="pw" hint={t('auth.invite.passwordHint')}>
-        <Input id="pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+        <AuthInput icon={Lock} id="pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
       </Field>
       {error && (
         <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">

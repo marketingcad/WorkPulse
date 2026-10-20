@@ -25,10 +25,13 @@ test.describe('on Windows', () => {
     await serveInstallers(page);
     await page.goto('/download');
     await expect(panel(page)).toHaveCount(0);
+    await expect(page.getByText('Download and run the installer.')).toBeVisible();
 
     const download = page.waitForEvent('download');
     await page.getByRole('link', { name: 'Download for Windows' }).click();
     expect((await download).suggestedFilename()).toBe('Tallywork-Setup.exe');
+    // The installer's own steps replace the general ones instead of repeating them.
+    await expect(page.getByText('Download and run the installer.')).toHaveCount(0);
 
     const steps = panel(page);
     await expect(steps.getByRole('heading', { name: 'Your download has started. Install WorkPulse on Windows' })).toBeVisible();
@@ -80,5 +83,6 @@ test.describe('on Linux', () => {
     await download;
     await expect(page.getByText(/Ubuntu and Debian: open the \.deb/)).toBeVisible();
     await expect(panel(page)).toHaveCount(0);
+    await expect(page.getByText('Download and run the installer.')).toBeVisible();
   });
 });

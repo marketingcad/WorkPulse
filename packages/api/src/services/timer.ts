@@ -198,15 +198,16 @@ export async function listEodReports(x: Ctx, q: { from: string; to: string; memb
   const visible = narrowMemberships(x.actor, 'tracking:read', q.membershipIds);
   if (visible !== 'all' && !visible.length) return [];
   const rows = await x.tx
-    .select({ r: eodReports, s: trackingSessions })
+    .select({ r: eodReports, s: trackingSessions, color: projects.color })
     .from(eodReports)
     .innerJoin(trackingSessions, eq(trackingSessions.id, eodReports.sessionId))
+    .leftJoin(projects, eq(projects.id, eodReports.projectId))
     .where(and(gte(eodReports.localDate, q.from), lte(eodReports.localDate, q.to), visible === 'all' ? undefined : inArray(eodReports.membershipId, visible)))
     .orderBy(desc(eodReports.createdAt))
     .limit(500);
   const sessions = new Map((await toSessionDtos(x.tx, rows.map((r) => r.s), x.deps.now())).map((d) => [d.id, d]));
   const names = await memberNames(x, [...new Set(rows.map((r) => r.r.membershipId))]);
-  return rows.map(({ r }) => {
+  return rows.map(({ r, color }) => {
     const s = sessions.get(r.sessionId)!;
     return {
       id: r.id,
@@ -215,6 +216,7 @@ export async function listEodReports(x: Ctx, q: { from: string; to: string; memb
       session_id: r.sessionId,
       project_id: r.projectId,
       project_name: s.project_name ?? '',
+      project_color: color ?? '#4B4FC4',
       task_id: r.taskId,
       task_title: s.task_title ?? null,
       local_date: r.localDate,

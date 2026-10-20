@@ -108,7 +108,7 @@ describe('end-of-day reports', () => {
     const list = await admin.get(`/orgs/${orgId}/eod-reports?from=${today()}&to=${today()}`);
     expect(list.status).toBe(200);
     expect(list.body).toHaveLength(1);
-    expect(list.body[0]).toMatchObject({ membership_id: workerId, worker_name: 'Walt', session_id: sid, project_name: 'Support desk', body: 'Closed 14 tickets, escalated 2.', finished: true, worked_seconds: 7200, local_date: today() });
+    expect(list.body[0]).toMatchObject({ membership_id: workerId, worker_name: 'Walt', session_id: sid, project_name: 'Support desk', project_color: expect.stringMatching(/^#[0-9a-fA-F]{6}$/), body: 'Closed 14 tickets, escalated 2.', finished: true, worked_seconds: 7200, local_date: today() });
   });
 
   it('a report sent after an admin already force-stopped the session is still kept', async () => {

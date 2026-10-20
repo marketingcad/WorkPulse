@@ -7,7 +7,8 @@ import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, FilterBar, Ic
 import { errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
-import { InvoiceSections } from '@/components/finance/invoice-sections';
+import { useListPeriod } from '@/components/finance/list-period';
+import { ExportMenu } from '@/components/reports/export-menu';
 import { RecordPaymentDialog } from '@/components/finance/record-payment-dialog';
 import { methodLabel, type PaymentRow } from '@/components/finance/types';
 
@@ -16,9 +17,11 @@ export default function PaymentsReceivedPage() {
   const toast = useToast();
   const allowed = org.can('payments:read');
   const search = useSearch();
+  const period = useListPeriod();
   // The server searches and pages every payment, not only the newest 1000.
-  const paging = useServerPage(search.term);
-  const q = useOrgQuery<OffsetPage<PaymentRow>>(allowed ? `/payments${qs({ q: search.term || undefined, ...paging.params })}` : null, { placeholderData: (p) => p });
+  const filters = { ...period.filter, q: search.term || undefined };
+  const paging = useServerPage(JSON.stringify(filters));
+  const q = useOrgQuery<OffsetPage<PaymentRow>>(allowed ? `/payments${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
   useClampPage(paging, q.data, q.isPlaceholderData);
   const [open, setOpen] = useState(false);
   const [removing, setRemoving] = useState<PaymentRow | null>(null);
@@ -72,18 +75,21 @@ export default function PaymentsReceivedPage() {
   return (
     <>
       <PageHeader
-        title="Invoices"
+        title="Payments received"
         description="Money received from clients and the invoices it was applied to."
         actions={
-          canManage && (
-            <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setOpen(true)}>
-              Record payment
-            </Button>
-          )
+          <>
+            {org.can('reports:finance') && <ExportMenu reportKey="payments" from={period.from} to={period.to} />}
+            {canManage && (
+              <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setOpen(true)}>
+                Record payment
+              </Button>
+            )}
+          </>
         }
       />
-      <InvoiceSections current="payments" />
       <FilterBar>
+        {period.picker}
         <Input aria-label="Search payments" placeholder="Search client, reference or invoice…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-72" />
       </FilterBar>
       <Panel>

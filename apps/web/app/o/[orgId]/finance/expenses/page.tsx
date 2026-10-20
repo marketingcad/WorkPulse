@@ -30,6 +30,8 @@ import { ApiError, api, errorMessage, qs, useOrgMutation, useOrgQuery } from '@/
 import { todayIn, useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { toMinor, type ExpenseRow, type ExpenseStatus } from '@/components/finance/types';
+import { useListPeriod } from '@/components/finance/list-period';
+import { ExportMenu } from '@/components/reports/export-menu';
 
 const STATUSES: Array<{ value: 'ALL' | ExpenseStatus; label: string }> = [
   { value: 'ALL', label: 'All' },
@@ -48,8 +50,9 @@ export default function ExpensesPage() {
   const [status, setStatus] = useState<'ALL' | ExpenseStatus>('ALL');
   const [creating, setCreating] = useState(false);
   const search = useSearch();
+  const period = useListPeriod();
   // The server filters, pages and adds up every expense the person may see, not only the newest 1000.
-  const filters = { status: status === 'ALL' ? undefined : status, q: search.term || undefined };
+  const filters = { status: status === 'ALL' ? undefined : status, ...period.filter, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
   const q = useOrgQuery<OffsetPage<ExpenseRow> & { summary: ExpensePageSummary }>(org.can('expenses:read') ? `/expenses${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
   useClampPage(paging, q.data, q.isPlaceholderData);
@@ -156,14 +159,18 @@ export default function ExpensesPage() {
         title="Expenses"
         description={canApprove ? 'Submitted expenses from your team. Approve, reject and track reimbursements.' : 'Submit expenses with receipts for approval and reimbursement.'}
         actions={
-          org.can('expenses:create') && (
-            <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setCreating(true)}>
-              New expense
-            </Button>
-          )
+          <>
+            {org.can('reports:read') && <ExportMenu reportKey="expenses" from={period.from} to={period.to} status={status === 'ALL' ? undefined : status} />}
+            {org.can('expenses:create') && (
+              <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setCreating(true)}>
+                New expense
+              </Button>
+            )}
+          </>
         }
       />
       <FilterBar>
+        {period.picker}
         <Input aria-label="Search expenses" placeholder="Search expense, project or member…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-72" />
       </FilterBar>
       {/* The total covers every matching expense, on all pages. */}

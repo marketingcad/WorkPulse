@@ -58,7 +58,7 @@ function ReportsCatalog() {
 
   return (
     <>
-      <PageHeader title="Reports" description="Pick the question you need answered. Every report can be filtered, exported and saved." />
+      <PageHeader title="Report library" description="Pick the question you need answered. Every report can be filtered, exported and saved." />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="flex min-w-0 flex-col gap-4 lg:col-span-8">
           {catalogQ.isLoading ? (

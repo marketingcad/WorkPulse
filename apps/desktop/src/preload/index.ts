@@ -20,10 +20,11 @@ const api = {
   logout: () => call('auth:logout'),
   start: (projectId: string, taskId: string | null) => call('timer:start', { projectId, taskId }),
   switchTask: (projectId: string, taskId: string | null) => call('timer:switch', { projectId, taskId }),
-  stop: () => call('timer:stop'),
+  /** Clock out, with the end-of-day report when the worker wrote one. */
+  stop: (report?: { text: string; finished: boolean }) => call('timer:stop', report ? { report } : undefined),
   pause: () => call('timer:pause'),
   resume: () => call('timer:resume'),
-  takeBreak: (breakTypeId: string | null) => call('timer:break', { breakTypeId }),
+  takeBreak: (breakTypeId: string | null, minutes?: number | null) => call('timer:break', { breakTypeId, minutes: minutes ?? null }),
   setNote: (note: string) => call('notes:set', { note }),
   resolveIdle: (choice: 'KEPT' | 'DISCARDED' | 'REASSIGNED', projectId?: string, taskId?: string | null) => call('idle:resolve', { choice, projectId, taskId }),
   resolveRecovery: (resume: boolean) => call('recovery:resolve', { resume }),

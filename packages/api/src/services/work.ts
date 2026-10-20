@@ -1,8 +1,10 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  breakTypes,
   clients,
   memberships,
+  projectBreaks,
   projectMembers,
   projectTeams,
   projects,
@@ -15,7 +17,7 @@ import {
   users,
 } from '@tallywork/db';
 import { can, forbidden, newId, notFound, businessRule, validation } from '@tallywork/domain';
-import type { ClientDto, OffsetPage, ProjectDto, TaskDto, TeamDto, clientInput, projectInput, taskInput, teamInput } from '@tallywork/contracts';
+import type { ClientDto, OffsetPage, ProjectBreakDto, ProjectDto, TaskDto, TeamDto, clientInput, projectInput, taskInput, teamInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { audit, emitFrom } from './events';
 import { applyScopedRates, currentScopedRates, rateChanges } from './finance';
@@ -166,6 +168,40 @@ export async function setClientArchived(x: Ctx, clientId: string, archived: bool
 }
 
 // ─── Projects ────────────────────────────────────────────────────────────────
+/** Each project's planned breaks, in order. Breaks of an archived break type are left out. */
+export async function projectBreaksFor(x: Pick<Ctx, 'tx'>, projectIds: string[]): Promise<Map<string, ProjectBreakDto[]>> {
+  const out = new Map<string, ProjectBreakDto[]>();
+  if (!projectIds.length) return out;
+  const rows = await x.tx
+    .select({ b: projectBreaks, name: breakTypes.name, paid: breakTypes.paid, maxMinutes: breakTypes.maxMinutes })
+    .from(projectBreaks)
+    .innerJoin(breakTypes, eq(breakTypes.id, projectBreaks.breakTypeId))
+    .where(and(inArray(projectBreaks.projectId, projectIds), isNull(breakTypes.archivedAt)))
+    .orderBy(asc(projectBreaks.position));
+  for (const { b, name, paid, maxMinutes } of rows) {
+    const list = out.get(b.projectId) ?? [];
+    list.push({ break_type_id: b.breakTypeId, name, paid, start_time: b.startTime, duration_minutes: b.durationMinutes ?? maxMinutes });
+    out.set(b.projectId, list);
+  }
+  return out;
+}
+
+/** Replace a project's planned breaks; every break type must be one of this organization's, not archived. */
+async function setProjectBreaks(x: Ctx, projectId: string, breaks: NonNullable<z.infer<typeof projectInput>['breaks']>) {
+  const typeIds = [...new Set(breaks.map((b) => b.break_type_id))];
+  if (typeIds.length) {
+    const found = await x.tx.select({ id: breakTypes.id }).from(breakTypes).where(and(inArray(breakTypes.id, typeIds), isNull(breakTypes.archivedAt)));
+    const known = new Set(found.map((r) => r.id));
+    const bad = breaks.findIndex((b) => !known.has(b.break_type_id));
+    if (bad >= 0) throw validation('Unknown break type', { errors: [{ field: `breaks.${bad}.break_type_id`, message: 'Pick a break type from Settings' }] });
+  }
+  await x.tx.delete(projectBreaks).where(eq(projectBreaks.projectId, projectId));
+  if (breaks.length)
+    await x.tx.insert(projectBreaks).values(
+      breaks.map((b, i) => ({ id: newId(), organizationId: x.org.id, projectId, breakTypeId: b.break_type_id, startTime: b.start_time ?? null, durationMinutes: b.duration_minutes ?? null, position: i })),
+    );
+}
+
 export async function listProjects(x: Ctx, opts: { includeArchived?: boolean; clientId?: string; ids?: string[] } = {}): Promise<ProjectDto[]> {
   const rows = await x.tx
     .select({ p: projects, clientName: clients.name, clientCurrency: clients.currency })
@@ -196,6 +232,7 @@ export async function listProjects(x: Ctx, opts: { includeArchived?: boolean; cl
     .groupBy(rollupWorkerDay.projectId);
   const trackedMap = new Map(tracked.map((t) => [t.projectId, t]));
   const rates = x.actor.grants['rates:read'] ? await currentScopedRates(x, 'PROJECT') : null;
+  const breaks = await projectBreaksFor(x, ids);
   return rows.map(({ p, clientName, clientCurrency }) => ({
     id: p.id,
     name: p.name,
@@ -217,6 +254,7 @@ export async function listProjects(x: Ctx, opts: { includeArchived?: boolean; cl
     estimate_unit: p.estimateUnit,
     currency: clientCurrency ?? x.org.currency,
     ...(rates && { pay_rate_minor: rates.get(`PAY:${p.id}`)?.amountMinor ?? null, bill_rate_minor: rates.get(`BILL:${p.id}`)?.amountMinor ?? null }),
+    breaks: breaks.get(p.id) ?? [],
     created_at: p.createdAt.toISOString(),
   }));
 }
@@ -264,6 +302,7 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
     await x.tx.delete(projectTeams).where(eq(projectTeams.projectId, id));
     if (input.team_ids.length) await x.tx.insert(projectTeams).values(input.team_ids.map((t) => ({ organizationId: x.org.id, projectId: id!, teamId: t })));
   }
+  if (input.breaks) await setProjectBreaks(x, id, input.breaks);
   if (changes.length) {
     // Rates are in the client's currency when it has one, like the invoices for this project.
     const [row] = await x.tx.select({ cur: clients.currency }).from(projects).leftJoin(clients, eq(clients.id, projects.clientId)).where(eq(projects.id, id));
@@ -458,6 +497,7 @@ export async function assignmentsFor(x: Pick<Ctx, 'tx'>, organizationId: string,
         .where(and(inArray(tasks.projectId, ps.map((p) => p.p.id)), isNull(tasks.archivedAt), sql`${tasks.status} <> 'DONE'`))
         .orderBy(asc(tasks.title))
     : [];
+  const breaks = await projectBreaksFor(x, ps.map((p) => p.p.id));
   return ps.map(({ p, clientName }) => ({
     project_id: p.id,
     project_name: p.name,
@@ -465,6 +505,7 @@ export async function assignmentsFor(x: Pick<Ctx, 'tx'>, organizationId: string,
     client_name: clientName,
     billable_default: p.billableDefault,
     tasks: ts.filter((t) => t.projectId === p.id).map((t) => ({ id: t.id, title: t.title, status: t.status })),
+    breaks: breaks.get(p.id) ?? [],
   }));
 }
 

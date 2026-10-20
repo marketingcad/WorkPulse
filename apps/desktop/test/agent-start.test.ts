@@ -44,7 +44,7 @@ function readyAgent(policy = DEFAULT_POLICY) {
     device: { id: 'd', status: 'ACTIVE' },
     policy,
     policy_hash: 'hash',
-    assignments: [{ project_id: PROJECT, project_name: 'Alpha', color: '#000', client_name: null, tasks: [] }],
+    assignments: [{ project_id: PROJECT, project_name: 'Alpha', color: '#000', client_name: null, tasks: [], breaks: [] }],
     current_session: null,
     today_seconds: 0,
     week_seconds: 0,
@@ -71,5 +71,48 @@ describe('starting the timer', () => {
     const agent = readyAgent({ ...DEFAULT_POLICY, tracking: { ...DEFAULT_POLICY.tracking, allowDesktop: false } });
     await expect(agent.start(PROJECT, null)).rejects.toThrow('Desktop tracking is disabled by your organization');
     expect((agent.queue as unknown as { events: unknown[] }).events).toEqual([]);
+  });
+});
+
+describe('picking what is already being tracked', () => {
+  const events = (agent: InstanceType<typeof Agent>) => (agent.queue as unknown as { events: Array<{ type: string; session_id: string }> }).events;
+  const sessionOf = (agent: InstanceType<typeof Agent>) => (agent as unknown as { session: { id: string; state: string; startedAt: string } | null }).session;
+
+  it('keeps the running session when the same project is clicked again (regression: the Home timer restarted)', async () => {
+    const agent = readyAgent();
+    await agent.start(PROJECT, null);
+    const before = { ...sessionOf(agent)! };
+    await agent.start(PROJECT, null);
+    expect(sessionOf(agent)).toMatchObject({ id: before.id, startedAt: before.startedAt, state: 'active' });
+    expect(events(agent).map((e) => e.type)).toEqual(['session.start']);
+  });
+
+  it('resumes a paused session of that project instead of starting a new one', async () => {
+    const agent = readyAgent();
+    await agent.start(PROJECT, null);
+    const id = sessionOf(agent)!.id;
+    agent.pause('MANUAL');
+    await agent.start(PROJECT, null);
+    expect(sessionOf(agent)).toMatchObject({ id, state: 'active' });
+    expect(events(agent).map((e) => e.type)).toEqual(['session.start', 'session.pause', 'session.resume']);
+  });
+
+  it('does not resume an idle pause: the worker answers the idle prompt first', async () => {
+    const agent = readyAgent();
+    await agent.start(PROJECT, null);
+    agent.pause('IDLE');
+    (agent as unknown as { idle: unknown }).idle = { idleId: 'i', startedAt: Date.now(), endedAt: null };
+    await agent.start(PROJECT, null);
+    expect(sessionOf(agent)!.state).toBe('paused');
+    expect(events(agent).map((e) => e.type)).toEqual(['session.start', 'session.pause']);
+  });
+
+  it('still switches when another task or project is picked', async () => {
+    const agent = readyAgent();
+    await agent.start(PROJECT, null);
+    const first = sessionOf(agent)!.id;
+    await agent.start(PROJECT, '0190a000-0000-7000-8000-000000000002');
+    expect(sessionOf(agent)!.id).not.toBe(first);
+    expect(events(agent).map((e) => e.type)).toEqual(['session.start', 'session.stop', 'session.start']);
   });
 });

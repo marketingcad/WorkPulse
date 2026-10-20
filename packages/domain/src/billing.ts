@@ -23,7 +23,8 @@ export interface Rate {
   effectiveTo: string | null; // ISO date exclusive
 }
 
-const PRECEDENCE: Record<RateKind, RateScope[]> = {
+/** Which rate wins, most specific first (the engine and every screen that explains it use this). */
+export const RATE_PRECEDENCE: Record<RateKind, RateScope[]> = {
   BILL: ['PROJECT_WORKER', 'PROJECT', 'WORKER', 'CLIENT', 'ORG'],
   PAY: ['PROJECT_WORKER', 'WORKER', 'PROJECT', 'CLIENT', 'ORG'],
 };
@@ -40,7 +41,7 @@ export function resolveRate(rates: Rate[], kind: RateKind, ctx: RateContext): Ra
   const effective = rates.filter(
     (r) => r.kind === kind && r.effectiveFrom <= ctx.date && (r.effectiveTo === null || ctx.date < r.effectiveTo),
   );
-  for (const scope of PRECEDENCE[kind]) {
+  for (const scope of RATE_PRECEDENCE[kind]) {
     const id =
       scope === 'ORG'
         ? null

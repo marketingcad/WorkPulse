@@ -80,6 +80,11 @@ export class OfflineQueue {
     appendFileSync(this.file, `${this.store.encrypt(JSON.stringify(e))}\n`, { mode: 0o600 });
   }
 
+  /** Whether any unsent event matches. */
+  some(match: (e: QueuedEvent) => boolean): boolean {
+    return this.events.some(match);
+  }
+
   /** Oldest events first, keeping per-session sequence order. */
   peek(limit: number): QueuedEvent[] {
     return this.events.slice(0, limit);

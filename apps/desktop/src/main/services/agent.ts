@@ -6,7 +6,7 @@ import type { AgentState, Assignment, IpcPayload, ManualRequest } from '../../sh
 import { AgentApi, ApiError } from './api';
 import { signIn, signInWithPassword, type PasswordCredentials, type PasswordSignInResult } from './auth';
 import { manualRequestError, reminderKey } from './manual';
-import { limitAction, shiftReminder } from './reminders';
+import { breakOver, breakReminder, limitAction, localClock, shiftReminder } from './reminders';
 import { ActivityMonitor, AppTracker, captureScreens, isWaylandSession, msUntilNextShotSlot, nextShotDelays } from './monitors';
 import { OfflineQueue, queueFileFor, type QueuedEvent } from './queue';
 import { SecureStore } from './secure-store';
@@ -36,6 +36,9 @@ interface LocalSession {
   segmentStartedAt: string | null;
   lastEvidenceAt: string;
   note: string;
+  /** the current break: when it started and its planned length */
+  breakStartedAt?: string | null;
+  breakMinutes?: number | null;
 }
 
 interface Bootstrap {
@@ -217,6 +220,13 @@ export class Agent extends EventEmitter {
     const st = this.state();
     const lim = limitAction(this.boot.policy.limits, st.todaySeconds, st.weekSeconds, this.localToday(), null);
     if (lim?.action === 'stop') throw new Error(`You have reached your ${lim.kind} time limit`);
+    // Picking what is already being tracked (Home, Projects, Tasks) keeps the session running
+    // instead of stopping it and starting a new one; a manual pause or break is resumed.
+    const cur = this.session;
+    if (cur && cur.projectId === projectId && cur.taskId === taskId) {
+      if (cur.state === 'paused' && !this.idle) this.resume();
+      return;
+    }
     if (this.session) await this.stop();
     const now = new Date().toISOString();
     this.session = { id: newId(), projectId, taskId, startedAt: now, seq: 1, state: 'active', baseSeconds: 0, segmentStartedAt: now, lastEvidenceAt: now, note: '' };
@@ -229,14 +239,15 @@ export class Agent extends EventEmitter {
     void this.sync();
   }
 
-  async stop(at = new Date()): Promise<void> {
+  /** Clock out. The end-of-day report goes with the stop, so it is saved offline too. */
+  async stop(at = new Date(), report?: { text: string; finished: boolean }): Promise<void> {
     const s = this.session;
     if (!s) return;
     this.flushObservations();
     this.stopMonitors();
     this.flushObservations();
     s.seq++;
-    this.enqueue({ type: 'session.stop', session_id: s.id, seq: s.seq, occurred_at: at.toISOString() });
+    this.enqueue({ type: 'session.stop', session_id: s.id, seq: s.seq, occurred_at: at.toISOString(), ...(report ? { report } : {}) });
     this.addWorked(at);
     this.session = null;
     this.idle = null;
@@ -255,12 +266,13 @@ export class Agent extends EventEmitter {
   }
 
   /** Take a break of one of the organization's break types (or an untyped break). */
-  takeBreak(breakTypeId: string | null): void {
-    if (breakTypeId && !this.boot?.break_types.some((b) => b.id === breakTypeId)) throw new Error('Unknown break type');
-    this.pause('BREAK', new Date(), breakTypeId);
+  takeBreak(breakTypeId: string | null, minutes: number | null = null): void {
+    const type = this.boot?.break_types.find((b) => b.id === breakTypeId);
+    if (breakTypeId && !type) throw new Error('Unknown break type');
+    this.pause('BREAK', new Date(), breakTypeId, minutes ?? type?.max_minutes ?? null);
   }
 
-  pause(kind: 'MANUAL' | 'BREAK' | 'IDLE' = 'MANUAL', at = new Date(), breakTypeId: string | null = null): void {
+  pause(kind: 'MANUAL' | 'BREAK' | 'IDLE' = 'MANUAL', at = new Date(), breakTypeId: string | null = null, minutes: number | null = null): void {
     const s = this.session;
     if (!s || s.state !== 'active') return;
     this.flushObservations();
@@ -268,6 +280,8 @@ export class Agent extends EventEmitter {
     s.baseSeconds += s.segmentStartedAt ? Math.max(0, (at.getTime() - Date.parse(s.segmentStartedAt)) / 1000) : 0;
     s.segmentStartedAt = null;
     s.state = 'paused';
+    s.breakStartedAt = at.toISOString();
+    s.breakMinutes = kind === 'BREAK' ? minutes : null;
     s.seq++;
     this.enqueue({ type: 'session.pause', session_id: s.id, seq: s.seq, occurred_at: at.toISOString(), kind, ...(breakTypeId ? { break_type_id: breakTypeId } : {}) });
     this.breakTypeId = kind === 'IDLE' ? null : breakTypeId;
@@ -281,6 +295,8 @@ export class Agent extends EventEmitter {
     if (!s || s.state !== 'paused') return;
     s.state = 'active';
     s.segmentStartedAt = at.toISOString();
+    s.breakStartedAt = null;
+    s.breakMinutes = null;
     s.seq++;
     this.breakTypeId = null;
     this.enqueue({ type: 'session.resume', session_id: s.id, seq: s.seq, occurred_at: at.toISOString() });
@@ -374,6 +390,7 @@ export class Agent extends EventEmitter {
       n.on('click', () => this.emit('show'));
       n.show();
     }
+    this.checkBreaks(b);
     if (st.tracking.state !== 'active') return;
     const lim = limitAction(b.policy.limits, st.todaySeconds, st.weekSeconds, this.localToday(), this.store.readJson<string>('limit-warned'));
     if (!lim) return;
@@ -384,6 +401,33 @@ export class Agent extends EventEmitter {
       void this.stop();
       new Notification({ title: 'Tracking stopped: time limit reached', body: `You have reached your ${lim.kind} time limit.` }).show();
     }
+  }
+
+  /** Remind the worker of a planned break when its time comes, and tell them when a break with a set length is over. */
+  private checkBreaks(b: Bootstrap): void {
+    const s = this.session;
+    if (!s) return;
+    if (s.state === 'paused') {
+      const over = breakOver(s.breakStartedAt ?? null, s.breakMinutes ?? null, Date.now(), this.store.readJson<string>('break-over'));
+      if (!over) return;
+      this.store.writeJson('break-over', over);
+      const n = new Notification({ title: 'Your break is over', body: 'Clock back in when you are ready to work.' });
+      n.on('click', () => this.emit('open', 'home'));
+      n.show();
+      return;
+    }
+    const breaks = b.assignments.find((a) => a.project_id === s.projectId)?.breaks ?? [];
+    const reminded = this.store.readJson<string[]>('break-reminded') ?? [];
+    const due = breakReminder(breaks, s.projectId, localClock(Date.now(), b.worker.timezone), reminded);
+    if (!due) return;
+    this.store.writeJson('break-reminded', [...reminded, due.key].slice(-50));
+    const pb = breaks[due.index]!;
+    const n = new Notification({ title: `${pb.name} break · ${pb.start_time}`, body: `${pb.duration_minutes ? `${pb.duration_minutes} minutes. ` : ''}Click to start your break.` });
+    n.on('click', () => {
+      if (this.session?.id === s.id && this.session.state === 'active') this.takeBreak(pb.break_type_id, pb.duration_minutes);
+      this.emit('open', 'home');
+    });
+    n.show();
   }
 
   // ─── Monitors ──────────────────────────────────────────────────────────────
@@ -582,6 +626,7 @@ export class Agent extends EventEmitter {
     if (!this.boot) await this.refreshBootstrap();
     if (!this.boot || accountOf(this.boot) !== this.account) return;
     this.syncing = true;
+    let server: { id: string; state: string; end_reason: string | null } | null | undefined;
     try {
       while (this.queue.size > 0) {
         const batch = this.queue.peek(200);
@@ -590,12 +635,14 @@ export class Agent extends EventEmitter {
         this.settleManualRequests(res.results);
         const rejected = res.results.filter((r) => r.status === 'rejected');
         this.syncError = rejected.length ? (rejected[0]!.message ?? 'Some data was rejected') : null;
-        if (rejected.some((r) => r.code === 'limit_reached' || r.code === 'session_already_running')) this.reconcile(res.session);
+        server = res.session;
         if (this.boot && res.policy_hash !== this.boot.policy_hash) void this.refreshBootstrap();
         if (res.results.length < batch.length) break;
       }
       this.online = true;
       this.lastSyncAt = new Date().toISOString();
+      // Limit reached, started elsewhere, or stopped by an admin: follow the server.
+      if (server !== undefined) this.reconcile(server);
     } catch (e) {
       this.online = !(e instanceof TypeError) && !(e instanceof Error && /fetch|network|ENOTFOUND|ECONN/i.test(e.message));
       if (e instanceof ApiError) this.syncError = e.message;
@@ -608,14 +655,17 @@ export class Agent extends EventEmitter {
   /** Server is authoritative: if it ended our session (limit, supersede, admin), stop locally. */
   private reconcile(server: { id: string; state: string; end_reason: string | null } | null): void {
     const s = this.session;
-    if (!s || this.queue.size > 0) return;
-    if (!server || server.id !== s.id) {
-      this.activity.stop();
-      this.apps.stop();
-      this.session = null;
-      this.persistSession();
-      new Notification({ title: 'Tracking stopped', body: 'Your timer was stopped by the server (limit reached, started elsewhere, or stopped by an admin).' }).show();
-    }
+    // Until its start is delivered the server cannot know this session. Other queued events
+    // (activity minutes are queued every minute) must not hold off an admin's force stop.
+    if (!s || this.queue.some((e) => e.type === 'session.start' && e.session_id === s.id)) return;
+    if (server && server.id === s.id && server.state !== 'STOPPED') return;
+    this.stopMonitors();
+    this.session = null;
+    this.idle = null;
+    if (this.recovery?.sessionId === s.id) this.recovery = null;
+    this.persistSession();
+    new Notification({ title: 'Tracking stopped', body: 'Your timer was stopped by the server (limit reached, started elsewhere, or stopped by an admin).' }).show();
+    this.emitState();
   }
 
   private async heartbeat(): Promise<void> {
@@ -649,7 +699,7 @@ export class Agent extends EventEmitter {
         }
       }
       // Another device/web started a timer: follow the server.
-      if (this.session && b.current_session?.id !== this.session.id && this.queue.size === 0) this.reconcile(b.current_session ? { ...b.current_session, end_reason: null } : null);
+      if (this.session && b.current_session?.id !== this.session.id) this.reconcile(b.current_session ? { ...b.current_session, end_reason: null } : null);
       this.online = true;
       this.phase = 'ready';
     } catch (e) {
@@ -733,6 +783,8 @@ export class Agent extends EventEmitter {
       manualRequests: this.manualRequests,
       breakTypes: this.boot?.break_types.map((bt) => ({ id: bt.id, name: bt.name, paid: bt.paid, maxMinutes: bt.max_minutes })) ?? [],
       breakTypeId: s?.state === 'paused' ? this.breakTypeId : null,
+      breakStartedAt: s?.state === 'paused' ? (s.breakStartedAt ?? null) : null,
+      breakMinutes: s?.state === 'paused' ? (s.breakMinutes ?? null) : null,
       nextShift: this.boot?.next_shift ? { startsAt: this.boot.next_shift.starts_at, endsAt: this.boot.next_shift.ends_at } : null,
     };
   }

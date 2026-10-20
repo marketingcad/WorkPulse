@@ -3,6 +3,8 @@ import { Input, Select } from '@tallywork/ui';
 import { addDays, todayIn, weekStartOf } from '@/lib/org';
 
 export type Preset = 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'last_30' | 'custom';
+/** A list page may also offer "Any date" (no date filter: from and to are empty). */
+export type ListPreset = Preset | 'all';
 
 export const PRESETS: Array<{ value: Preset; label: string }> = [
   { value: 'this_week', label: 'This week' },
@@ -43,7 +45,24 @@ export function isPreset(v: unknown): v is Preset {
   return PRESETS.some((p) => p.value === v);
 }
 
-export function DateRangeFilter({ preset, from, to, onChange, tz, weekStart }: { preset: Preset; from: string; to: string; onChange: (v: { preset: Preset; from: string; to: string }) => void; tz: string; weekStart: number }) {
+export function DateRangeFilter<P extends ListPreset = Preset>({
+  preset,
+  from,
+  to,
+  onChange,
+  tz,
+  weekStart,
+  allowAll = false,
+}: {
+  preset: P;
+  from: string;
+  to: string;
+  onChange: (v: { preset: P; from: string; to: string }) => void;
+  tz: string;
+  weekStart: number;
+  /** offer "Any date" first (list pages, where no date filter is the default) */
+  allowAll?: boolean;
+}) {
   const tooLong = (Date.parse(to) - Date.parse(from)) / 86_400_000 > 400;
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -52,10 +71,14 @@ export function DateRangeFilter({ preset, from, to, onChange, tz, weekStart }: {
         className="w-40"
         value={preset}
         onChange={(e) => {
-          const p = e.target.value as Preset;
-          onChange(p === 'custom' ? { preset: p, from, to } : { preset: p, ...rangeFor(p, tz, weekStart) });
+          const p = e.target.value as P;
+          if (p === 'all') onChange({ preset: p, from: '', to: '' });
+          // Custom starts from the current range, or this month when coming from "Any date".
+          else if (p === 'custom') onChange({ preset: p, ...(from && to ? { from, to } : rangeFor('this_month', tz, weekStart)) });
+          else onChange({ preset: p, ...rangeFor(p as Exclude<Preset, 'custom'>, tz, weekStart) });
         }}
       >
+        {allowAll && <option value="all">Any date</option>}
         {PRESETS.map((p) => (
           <option key={p.value} value={p.value}>
             {p.label}
@@ -69,7 +92,7 @@ export function DateRangeFilter({ preset, from, to, onChange, tz, weekStart }: {
           <Input type="date" aria-label="To" className="w-36" value={to} min={from} onChange={(e) => e.target.value && onChange({ preset, from, to: e.target.value })} aria-invalid={tooLong} />
           {tooLong && <span className="text-xs text-danger">Ranges are limited to 400 days</span>}
         </>
-      ) : (
+      ) : preset === 'all' ? null : (
         <span className="tabular text-xs text-text-muted">
           {from} – {to}
         </span>

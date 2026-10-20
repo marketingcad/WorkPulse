@@ -3,13 +3,14 @@ import { useEffect, useId, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Check, ChevronRight, ChevronsUpDown, LogOut, Menu as MenuIcon, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Plus, Sun, UserRound, X } from 'lucide-react';
+import { Bell, Check, ChevronRight, ChevronsUpDown, Clock, Eye, LogOut, Menu as MenuIcon, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Plus, Sun, UserRound, Wallet, X } from 'lucide-react';
 import type { MeDto, NotificationDto } from '@tallywork/contracts';
 import { Avatar, IconButton, Logo, Menu, MenuItem, MenuLabel, MenuSeparator, Popover, cx, fmtRelative } from '@tallywork/ui';
 import { api, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
-import { filterNav, type NavItem } from './nav';
+import { activeNav, filterNav, type NavItem } from './nav';
+import { SectionTabs } from './section-tabs';
 import { NewOrgDialog } from './new-org-dialog';
 import { TimerBar } from './timer-bar';
 
@@ -63,6 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <UserMenu />
         </header>
         <main id="main" className="mx-auto w-full max-w-[1480px] flex-1 px-4 py-6 sm:px-6">
+          <SectionTabs />
           {children}
         </main>
       </div>
@@ -76,14 +78,9 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
   const org = useOrg();
   const pathname = usePathname();
   const groups = filterNav(org.can, org.grants, org.isManagerView);
-  const hrefs = groups.flatMap((g) => g.items.map((i) => i.href));
-  const isActive = (href: string) => {
-    const full = `${org.base}${href}`;
-    if (href === '') return pathname === org.base;
-    // A parent of other nav items (e.g. /timesheets, /settings) is only active on its own page.
-    if (hrefs.some((h) => h.startsWith(`${href}/`))) return pathname === full;
-    return pathname === full || pathname.startsWith(`${full}/`);
-  };
+  // The item the current page belongs to (an item with tabs is active on any of its tabs).
+  const current = activeNav(groups, pathname.slice(org.base.length))?.item ?? null;
+  const isActive = (href: string) => current?.href === href;
 
   // Labelled groups are collapsible sections. The group holding the current page is always
   // opened; the rest remember what the user chose (per browser).
@@ -155,7 +152,7 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
           if (!g.label || collapsed) {
             return (
               <div key={g.label ?? gi} className="mb-3">
-                {g.label && gi > 0 && <div className="mx-3 mb-2 h-px bg-white/10" />}
+                {gi > 0 && <div className="mx-3 mb-2 h-px bg-white/10" />}
                 {renderItems(g.items)}
               </div>
             );
@@ -357,6 +354,20 @@ function UserMenu() {
       <MenuSeparator />
       <MenuItem icon={<UserRound className="size-3.5" />} onSelect={() => router.push(`${org.base}/me/profile`)}>
         {t('shell.profileDevices')}
+      </MenuItem>
+      {/* Personal pages: the person's own records, kept out of the admin sidebar. */}
+      {org.can('timesheets:submit') && (
+        <>
+          <MenuItem icon={<Clock className="size-3.5" />} onSelect={() => router.push(`${org.base}/timesheets`)}>
+            {t('nav.item.myTimesheet')}
+          </MenuItem>
+          <MenuItem icon={<Wallet className="size-3.5" />} onSelect={() => router.push(`${org.base}/pay-stubs`)}>
+            {t('nav.item.myPayStubs')}
+          </MenuItem>
+        </>
+      )}
+      <MenuItem icon={<Eye className="size-3.5" />} onSelect={() => router.push(`${org.base}/me/monitoring`)}>
+        {t('nav.item.whatIsMonitored')}
       </MenuItem>
       <ThemeSwitch />
       <MenuSeparator />

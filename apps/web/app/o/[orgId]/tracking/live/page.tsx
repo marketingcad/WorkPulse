@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Activity, MoreHorizontal, PauseCircle, PowerOff, RefreshCw, Square, Timer, Users } from 'lucide-react';
+import { Activity, History, MoreHorizontal, PauseCircle, PowerOff, RefreshCw, Square, Timer, Users } from 'lucide-react';
 import type { LiveWorkerDto, SessionDto } from '@tallywork/contracts';
 import {
   ActivityBar,
@@ -130,9 +130,15 @@ export default function LivePage() {
         title="Who is working now"
         description="Live status of members with tracking enabled. Updates automatically."
         actions={
-          <Button icon={<RefreshCw className={q.isFetching ? 'size-3.5 animate-spin' : 'size-3.5'} />} onClick={() => void q.refetch()}>
-            Refresh
-          </Button>
+          <>
+            {/* Past sessions (start, end, how each ended) live here now that Sessions is not in the sidebar. */}
+            <Button icon={<History className="size-3.5" />} onClick={() => router.push(`${org.base}/sessions`)}>
+              Session history
+            </Button>
+            <Button icon={<RefreshCw className={q.isFetching ? 'size-3.5 animate-spin' : 'size-3.5'} />} onClick={() => void q.refetch()}>
+              Refresh
+            </Button>
+          </>
         }
       />
       <KpiStrip

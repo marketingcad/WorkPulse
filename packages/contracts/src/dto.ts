@@ -176,6 +176,39 @@ export interface ProjectDto {
   /** current project-level hourly rates (minor units); absent without rates:read */
   pay_rate_minor?: number | null;
   bill_rate_minor?: number | null;
+  /** planned breaks, in order */
+  breaks: ProjectBreakDto[];
+  created_at: string;
+}
+
+/** A project's planned break (from an organization break type). */
+export interface ProjectBreakDto {
+  break_type_id: string;
+  name: string;
+  paid: boolean;
+  /** local time of day 'HH:MM', or null for any time */
+  start_time: string | null;
+  /** planned length: the project's, else the break type's maximum, else null */
+  duration_minutes: number | null;
+}
+
+/** A worker's end-of-day report, written when clocking out. */
+export interface EodReportDto {
+  id: string;
+  membership_id: string;
+  worker_name: string;
+  session_id: string;
+  project_id: string;
+  project_name: string;
+  task_id: string | null;
+  task_title: string | null;
+  local_date: string;
+  body: string;
+  finished: boolean;
+  /** when the session started and ended, and its worked time */
+  started_at: string;
+  ended_at: string | null;
+  worked_seconds: number;
   created_at: string;
 }
 
@@ -529,7 +562,7 @@ export interface AgentBootstrapDto {
   policy: TrackingPolicy;
   policy_hash: string;
   policy_acknowledged: boolean;
-  assignments: Array<{ project_id: string; project_name: string; color: string; client_name: string | null; tasks: Array<{ id: string; title: string; status: string }> }>;
+  assignments: Array<{ project_id: string; project_name: string; color: string; client_name: string | null; tasks: Array<{ id: string; title: string; status: string }>; breaks: ProjectBreakDto[] }>;
   current_session: { id: string; state: string; project_id: string; task_id: string | null; started_at: string } | null;
   today_seconds: number;
   week_seconds: number;

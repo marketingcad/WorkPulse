@@ -35,6 +35,7 @@ import {
 import { ApiError, errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
 import { ColorDot, ProjectStatusBadge, hoursToSeconds, secondsToHours, useOrgAction, type RoleDto } from '@/components/workspace/shared';
+import { RateNote } from '@/components/finance/rate-note';
 import { AnonymizeDialog } from '@/components/security/anonymize-dialog';
 import { DataExportAction } from '@/components/security/data-export';
 import { fromMinor, toMinor } from '@/components/finance/types';
@@ -406,12 +407,13 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
           </Field>
           {canRates && (
             <>
-              <Field label="Pay rate per hour" htmlFor="wk-pay" hint={`${org.organization.currency}. What you pay this member. Overrides client and workspace rates.`} error={err?.field('pay_rate_minor')}>
+              <Field label="Pay rate per hour" htmlFor="wk-pay" hint={`${org.organization.currency} / hour, what you pay this member`} error={err?.field('pay_rate_minor')}>
                 <Input id="wk-pay" inputMode="decimal" className="tabular" placeholder="0.00" value={f.pay_rate} onChange={(e) => setF({ ...f, pay_rate: e.target.value })} />
               </Field>
-              <Field label="Bill rate per hour" htmlFor="wk-bill" hint={`${org.organization.currency}. What you charge for their time. A project rate still wins.`} error={err?.field('bill_rate_minor')}>
+              <Field label="Bill rate per hour" htmlFor="wk-bill" hint={`${org.organization.currency} / hour, what you charge for their time`} error={err?.field('bill_rate_minor')}>
                 <Input id="wk-bill" inputMode="decimal" className="tabular" placeholder="0.00" value={f.bill_rate} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} />
               </Field>
+              <RateNote scope="WORKER" className="sm:col-span-2" />
             </>
           )}
           <div className="sm:col-span-2">

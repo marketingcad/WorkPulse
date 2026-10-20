@@ -122,8 +122,9 @@ describe('budgets and reports', () => {
     const byKey = new Map(catalog.map((r) => [r.key, r]));
     expect(byKey.get('time-activity')!.filters).toEqual(['dates', 'members', 'teams', 'projects', 'clients', 'billable']);
     expect(byKey.get('invoices')!.filters).toEqual(['dates']);
-    expect(byKey.get('budgets')).toMatchObject({ filters: [], hidden: false });
-    for (const k of ['daily-totals', 'work-breaks', 'project-budgets', 'client-budgets', 'audit-log']) expect(byKey.get(k)?.hidden).toBe(true);
+    expect(byKey.get('budgets')).toMatchObject({ filters: [], hidden: true });
+    // Covered by another report, or exported from their own page (Payroll › Owed, Invoices, Payments received, Expenses, Budgets).
+    for (const k of ['daily-totals', 'work-breaks', 'project-budgets', 'client-budgets', 'audit-log', 'amounts-owed', 'invoices', 'payments', 'expenses', 'budgets']) expect(byKey.get(k)?.hidden).toBe(true);
     // Hidden reports still run (saved and scheduled reports keep working).
     expect((await admin.post(o('/reports/daily-totals/query'), { from: '2026-09-01', to: '2026-09-30' })).status).toBe(200);
     const budgets = await admin.post(o('/reports/budgets/query'), { from: '2026-09-01', to: '2026-09-30' });

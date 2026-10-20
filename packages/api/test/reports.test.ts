@@ -114,10 +114,10 @@ describe('scope on every report', () => {
     expect((await ben.post(o('/reports/payroll/query'), RANGE)).status).toBe(403);
   });
 
-  it('all 19 reports run for an admin; 14 are offered (5 are covered by another report)', async () => {
+  it('all 19 reports run for an admin; 9 are offered (10 are covered by another report or exported from their page)', async () => {
     const catalog = (await admin.get(o('/reports'))).body as Array<{ key: string; hidden: boolean }>;
     expect(catalog).toHaveLength(19);
-    expect(catalog.filter((r) => !r.hidden)).toHaveLength(14);
+    expect(catalog.filter((r) => !r.hidden)).toHaveLength(9);
     for (const { key } of catalog) await run(admin, key);
   });
 });
@@ -264,5 +264,58 @@ describe('scheduled reports', () => {
     expect((await runTick(t.deps)).reports.queued).toBe(1);
     expect(t.mailer.sent.filter((m) => m.subject.startsWith('Daily payroll')).map((m) => m.subject)).toEqual(['Daily payroll — 2026-09-28 to 2026-09-28']);
     expect((await runTick(t.deps)).reports.queued).toBe(0);
+  });
+});
+
+describe('expense and budget reports for team managers', () => {
+  it('are offered to a team manager, who can open the Expenses and Budgets pages; payroll and invoices are not', async () => {
+    const keys = ((await manager.get(o('/reports'))).body as Array<{ key: string }>).map((r) => r.key);
+    expect(keys).toEqual(expect.arrayContaining(['expenses', 'budgets']));
+    for (const k of ['payroll', 'amounts-owed', 'invoices', 'payments', 'billing']) expect(keys).not.toContain(k);
+  });
+
+  it('show only the team’s expenses, the same as the Expenses page', async () => {
+    const page = (await manager.get(o('/expenses'))).body as Array<{ membership_id: string }>;
+    const rows = (await run(manager, 'expenses')).rows as Array<{ membership_id: string; category: string }>;
+    expect(rows.map((r) => r.category)).toEqual(['Travel']);
+    expect(new Set(rows.map((r) => r.membership_id))).toEqual(new Set(page.map((e) => e.membership_id)));
+  });
+
+  it('show the budgets the Budgets page shows, with money amounts hidden as on the page', async () => {
+    const other = (await admin.post(o('/projects'), { name: 'Elsewhere', member_ids: [benId] })).body.id;
+    expect((await admin.put(o('/budgets'), { subject_type: 'PROJECT', subject_id: projectId, kind: 'MONEY', amount: 500000, period: 'TOTAL', warn_pct: 80, include_non_billable: false })).status).toBe(200);
+    expect((await admin.put(o('/budgets'), { subject_type: 'PROJECT', subject_id: other, kind: 'HOURS', amount: 40, period: 'TOTAL', warn_pct: 80, include_non_billable: false })).status).toBe(200);
+
+    const page = ((await manager.get(o('/budgets'))).body as Array<{ subject_id: string }>).map((b) => b.subject_id).sort();
+    const report = (await run(manager, 'budgets')).rows as Array<{ subject_id: string; kind: string; amount: number | null; spent: number | null }>;
+    expect(report.map((b) => b.subject_id).sort()).toEqual(page);
+    for (const b of report.filter((r) => r.kind === 'MONEY')) expect(b).toMatchObject({ amount: null, spent: null });
+
+    const all = (await run(admin, 'budgets')).rows as Array<{ subject_id: string; amount: number | null }>;
+    expect(all.find((b) => b.subject_id === projectId)!.amount).toBe(500000);
+    expect(all.map((b) => b.subject_id)).toContain(other);
+  });
+});
+
+describe('finance list pages export through their report', () => {
+  it('lists filter by period, as the matching report does', async () => {
+    const all = (await admin.get(o('/expenses'))).body as unknown[];
+    const inRange = (await admin.get(o(`/expenses?from=2026-09-16&to=2026-09-16`))).body as unknown[];
+    const none = (await admin.get(o(`/expenses?from=2026-08-01&to=2026-08-31`))).body as unknown[];
+    expect(inRange).toHaveLength(all.length);
+    expect(none).toEqual([]);
+    const pay = await admin.get(o('/payments?from=2026-08-01&to=2026-08-31&page=1&page_size=10'));
+    expect(pay.status).toBe(200);
+    const inv = await admin.get(o('/invoices?from=2026-08-01&to=2026-08-31&page=1&page_size=10'));
+    expect(inv.status).toBe(200);
+    expect(inv.body.total).toBe(0);
+  });
+
+  it('an export of a report hidden from the catalogue still downloads, with the page permission', async () => {
+    const r = await manager.post(o('/reports/expenses/export'), { ...RANGE, format: 'CSV' });
+    expect(r.status).toBe(200);
+    expect(String(r.body)).toContain('Travel');
+    expect(String(r.body)).not.toContain('Meals');
+    expect((await ben.post(o('/reports/invoices/export'), { ...RANGE, format: 'CSV' })).status).toBe(403);
   });
 });

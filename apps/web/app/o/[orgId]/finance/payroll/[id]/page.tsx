@@ -168,7 +168,7 @@ export default function PayrollRunPage() {
         )}
         {r.notes && <p className="text-sm text-text-muted">{r.notes}</p>}
         <Panel title="Pay stubs">
-          <DataTable rows={r.lines} columns={columns} rowKey={(l) => l.id} caption="Pay per member" initialSort={{ key: 'name', dir: 'asc' }} empty={<EmptyState title="Nobody in this payroll" description="Add members to the payroll profile, then recalculate." />} />
+          <DataTable rows={r.lines} columns={columns} rowKey={(l) => l.id} caption="Pay per member" initialSort={{ key: 'name', dir: 'asc' }} empty={<EmptyState title="Nobody in this payroll" description="Add members to the pay group, then recalculate." />} />
         </Panel>
       </div>
 

@@ -235,8 +235,8 @@ export default function AllTimeEntriesPage() {
   return (
     <>
       <PageHeader
-        title="All time entries"
-        description="Everyone's time in one list. Filter, add, correct and bulk-change entries; periods still follow timesheet approval."
+        title="Time entries"
+        description="Time entries for everyone you manage, in one list. Filter, add, correct and bulk-change entries; periods still follow timesheet approval."
         actions={
           <>
             {org.can('reports:read') && (

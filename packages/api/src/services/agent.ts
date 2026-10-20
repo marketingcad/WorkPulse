@@ -6,6 +6,7 @@ import {
   deviceAuthCodes,
   deviceCredentials,
   devices,
+  eodReports,
   ingestReceipts,
   memberships,
   organizations,
@@ -316,6 +317,16 @@ async function recomputeWindows(a: AgentCtx, session: typeof trackingSessions.$i
   }
 }
 
+/** Keep the end-of-day report written when clocking out (once per session; a resend changes nothing). */
+async function saveEodReport(a: AgentCtx, s: typeof trackingSessions.$inferSelect, report: { text: string; finished: boolean }, at: Date) {
+  const [row] = await a.tx
+    .insert(eodReports)
+    .values({ id: newId(), organizationId: a.organizationId, membershipId: a.membershipId, sessionId: s.id, projectId: s.projectId, taskId: s.taskId, localDate: localDate(at, s.timezone), body: report.text, finished: report.finished })
+    .onConflictDoNothing()
+    .returning({ id: eodReports.id });
+  if (row) await emit(a.tx, a.organizationId, 'eod_report.submitted', { report_id: row.id, membership_id: a.membershipId, session_id: s.id, finished: report.finished }, { workerId: a.membershipId, sessionId: s.id, actor: agentActor(a) });
+}
+
 const TRIGGERS: Record<string, SessionTrigger> = {
   'session.pause': 'PAUSE',
   'session.resume': 'RESUME',
@@ -359,6 +370,8 @@ async function processEvent(a: AgentCtx, ev: AgentEvent, correct: (iso: string) 
       if (ev.type !== 'session.interrupted') s = await recoverFromServerInterrupt(a, s, at);
       if (s.state === 'STOPPED') {
         await a.tx.update(trackingSessions).set({ lastSeq: Math.max(s.lastSeq, ev.seq) }).where(eq(trackingSessions.id, s.id));
+        // Stopped already (an admin, a limit): the worker's report still counts. (A Duplicate would roll it back.)
+        if (ev.type === 'session.stop' && ev.report) return saveEodReport(a, s, ev.report, at);
         if (ev.type === 'session.stop') throw new Duplicate();
         throw businessRule('session_stopped', `Session was already stopped (${s.endReason ?? 'unknown'})`);
       }
@@ -373,6 +386,7 @@ async function processEvent(a: AgentCtx, ev: AgentEvent, correct: (iso: string) 
         pauseKind: ev.type === 'session.pause' && ev.kind === 'IDLE' ? 'IDLE' : 'BREAK',
         breakTypeId: ev.type === 'session.pause' && ev.kind !== 'IDLE' ? await assertBreakType(a.tx, ev.break_type_id) : null,
       });
+      if (ev.type === 'session.stop' && ev.report) await saveEodReport(a, s, ev.report, at);
       return;
     }
     case 'session.note': {

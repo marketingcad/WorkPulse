@@ -70,6 +70,7 @@ export function CurrentSessionCard({ s, now }: { s: AgentState; now: number }) {
   const project = s.assignments.find((a) => a.project_id === t.projectId);
   const task = project?.tasks.find((x) => x.id === t.taskId);
   const running = t.state !== 'stopped' && t.startedAt;
+  const onBreak = s.breakTypes.find((b) => b.id === s.breakTypeId);
   return (
     <section className={card} aria-label="Current session">
       <div className="border-b border-border px-4 py-2.5">
@@ -78,14 +79,14 @@ export function CurrentSessionCard({ s, now }: { s: AgentState; now: number }) {
       {running ? (
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3 text-sm">
           <Field label="Started" value={`${fmtTime(t.startedAt!)} · ${fmtHm((now - Date.parse(t.startedAt!)) / 1000)} ago`} />
-          <Field label="Status" value={t.state === 'paused' ? 'Paused' : 'Tracking'} />
+          <Field label="Status" value={t.state === 'paused' ? (onBreak ? `On break · ${onBreak.name}` : 'Paused') : 'Clocked in'} />
           <Field label="Project" value={project?.project_name ?? '—'} />
           <Field label="Task" value={task?.title ?? 'No task'} />
           <Field label="Device" value="This computer" />
           <Field label="Note" value={t.note || '—'} />
         </dl>
       ) : (
-        <p className="px-4 py-6 text-center text-sm text-text-muted">No session running. Start the timer to begin one.</p>
+        <p className="px-4 py-6 text-center text-sm text-text-muted">Not clocked in. Clock in to start a session.</p>
       )}
     </section>
   );

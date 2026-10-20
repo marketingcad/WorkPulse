@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, CircleAlert, ClipboardCheck, ClockPlus, NotebookPen, Pause, Play, Search, Square } from 'lucide-react';
+import { ChevronDown, ChevronRight, CircleAlert, ClipboardCheck, ClockPlus, Coffee, NotebookPen, Pause, Play, Search, Square, UtensilsCrossed } from 'lucide-react';
 import type { AgentState, Assignment } from '../../shared/ipc';
-import { bridge, card, errorText, fmtClock, fmtHm, fmtRange, fmtTime, initials, useTick, type View } from './lib';
+import { bridge, card, errorText, fmtClock, fmtHhmm, fmtHm, fmtMs, fmtRange, fmtTime, initials, openClockOut, useTick, type View } from './lib';
 import { CurrentSessionCard, RecentSessionsCard, TodaySummaryCard } from './HomeCards';
 
 
@@ -72,7 +72,7 @@ function TimerCard({ s, now, run, error }: { s: AgentState; now: number; run: (f
   const project = s.assignments.find((a) => a.project_id === target?.projectId);
   const task = project?.tasks.find((x) => x.id === target?.taskId);
 
-  const status = t.state === 'active' ? { cls: 'bg-success-soft text-success', dot: 'animate-pulse bg-success', label: 'Tracking' } : t.state === 'paused' ? { cls: 'bg-warning-soft text-warning', dot: 'bg-warning', label: currentBreak ? `On break · ${currentBreak.name}` : 'Paused' } : { cls: 'bg-surface-muted text-text-muted', dot: 'bg-text-faint', label: 'Not tracking' };
+  const status = t.state === 'active' ? { cls: 'bg-success-soft text-success', dot: 'animate-pulse bg-success', label: 'Clocked in' } : t.state === 'paused' ? { cls: 'bg-warning-soft text-warning', dot: 'bg-warning', label: currentBreak ? `On break · ${currentBreak.name}` : 'Paused' } : { cls: 'bg-surface-muted text-text-muted', dot: 'bg-text-faint', label: 'Not clocked in' };
 
   const chooseTask = (taskId: string) => {
     if (!project) return;
@@ -162,12 +162,12 @@ function TimerCard({ s, now, run, error }: { s: AgentState; now: number; run: (f
                     {breakMenu && <BreakMenu s={s} onClose={() => setBreakMenu(false)} run={run} />}
                   </div>
                 ) : (
-                  <button onClick={() => void run(bridge.resume)} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-sm bg-interactive-soft text-sm font-semibold text-interactive hover:opacity-90">
-                    <Play className="size-4" /> Resume
+                  <button onClick={() => void run(bridge.resume)} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover">
+                    <Play className="size-4 fill-current" /> Clock back in
                   </button>
                 )}
-                <button onClick={() => void run(bridge.stop)} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-sm bg-danger text-sm font-semibold text-on-accent hover:opacity-90">
-                  <Square className="size-3.5 fill-current" /> Stop
+                <button onClick={openClockOut} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-sm bg-danger text-sm font-semibold text-on-accent hover:opacity-90">
+                  <Square className="size-3.5 fill-current" /> Clock out
                 </button>
               </>
             ) : (
@@ -176,14 +176,67 @@ function TimerCard({ s, now, run, error }: { s: AgentState; now: number; run: (f
                 onClick={() => project && void run(() => bridge.start(project.project_id, task?.id ?? null))}
                 className="flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-50"
               >
-                <Play className="size-4 fill-current" /> {project ? 'Start tracking' : 'Pick a project to start'}
+                <Play className="size-4 fill-current" /> {project ? 'Clock in' : 'Pick a project to clock in'}
               </button>
             )}
           </div>
+          {t.state === 'active' && project && project.breaks.length > 0 && <PlannedBreaks project={project} run={run} />}
+          {t.state === 'paused' && <BreakCountdown s={s} now={now} name={currentBreak?.name ?? null} />}
           {error && <p className="w-full max-w-sm rounded-sm bg-danger-soft px-2.5 py-1.5 text-xs text-danger">{error}</p>}
         </div>
       </div>
     </section>
+  );
+}
+
+const breakIcon = (name: string) => (/lunch|meal|dinner|breakfast|food/i.test(name) ? UtensilsCrossed : Coffee);
+
+/** The project's planned breaks as one-tap buttons (Coffee · 10:30 AM · 15m). */
+function PlannedBreaks({ project, run }: { project: Assignment; run: (fn: () => Promise<unknown>) => Promise<void> }) {
+  return (
+    <div role="group" aria-label="Breaks" className="flex w-full max-w-sm flex-wrap justify-center gap-1.5">
+      {project.breaks.map((b, i) => {
+        const Icon = breakIcon(b.name);
+        return (
+          <button
+            key={i}
+            onClick={() => void run(() => bridge.takeBreak(b.break_type_id, b.duration_minutes))}
+            aria-label={`Start ${b.name} break${b.start_time ? ` (${fmtHhmm(b.start_time)})` : ''}`}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium hover:bg-surface-muted"
+          >
+            <Icon className="size-3.5 text-text-muted" />
+            {b.name}
+            <span className="tabular text-text-faint">
+              {b.start_time ? ` · ${fmtHhmm(b.start_time)}` : ''}
+              {b.duration_minutes ? ` · ${b.duration_minutes}m` : ''}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** While on a break: how long is left (or how far over), so the worker clocks back in on time. */
+function BreakCountdown({ s, now, name }: { s: AgentState; now: number; name: string | null }) {
+  if (!s.breakStartedAt) return null;
+  const elapsed = (now - Date.parse(s.breakStartedAt)) / 1000;
+  const label = name ? `${name} break` : 'Paused';
+  if (!s.breakMinutes)
+    return (
+      <p className="tabular text-xs text-text-muted" aria-label="Break time">
+        {label} · {fmtMs(elapsed)}
+      </p>
+    );
+  const left = s.breakMinutes * 60 - elapsed;
+  return left >= 0 ? (
+    <p className="tabular rounded-full bg-warning-soft px-2.5 py-0.5 text-xs font-medium text-warning" aria-label="Break time">
+      {label} · {fmtMs(left)} left of {s.breakMinutes}m
+    </p>
+  ) : (
+    <p className="tabular rounded-full bg-danger-soft px-2.5 py-0.5 text-xs font-medium text-danger" aria-label="Break time">
+      {label} · {Math.max(1, Math.floor(-left / 60))}m over · clock back in
+    </p>
   );
 }
 

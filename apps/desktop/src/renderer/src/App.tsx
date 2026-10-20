@@ -5,12 +5,15 @@ import { Dashboard } from './Dashboard';
 import { ActivityPage, PayStubsPage, ProjectsPage, ReportsPage, SchedulePage, TasksPage, TimeOffPage, TimesheetPage, TrackingPage } from './Pages';
 import { Mark } from './brand';
 import { Shell } from './Shell';
-import { bridge, errorText, fmtHm, isView, localDateInput, useAgentState, type View } from './lib';
+import { bridge, errorText, fmtHm, isView, localDateInput, onClockOut, useAgentState, type View } from './lib';
 
 export function App() {
   const s = useAgentState();
   const [view, setView] = useState<View>('home');
-  useEffect(() => bridge.onNavigate((v) => isView(v) && setView(v)), []);
+  const [clockOut, setClockOut] = useState(false);
+  // The tray's "Clock out…" asks for the end-of-day report here.
+  useEffect(() => bridge.onNavigate((v) => (v === 'clockout' ? setClockOut(true) : isView(v) && setView(v))), []);
+  useEffect(() => onClockOut(() => setClockOut(true)), []);
   if (!s) return <div className="h-full bg-nav" />;
   if (s.phase === 'signed_out' || s.phase === 'signing_in')
     return (
@@ -63,7 +66,85 @@ export function App() {
         {page}
       </Shell>
       {s.idlePrompt && <IdleSheet s={s} />}
+      {clockOut && s.tracking.state !== 'stopped' && <ClockOutSheet s={s} onClose={() => setClockOut(false)} />}
     </>
+  );
+}
+
+/** Clock out with an end-of-day report: what was completed, and whether the work is finished. */
+function ClockOutSheet({ s, onClose }: { s: AgentState; onClose: () => void }) {
+  const [text, setText] = useState('');
+  const [finished, setFinished] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ids = useId();
+  const t = s.tracking;
+  const project = s.assignments.find((a) => a.project_id === t.projectId);
+  const task = project?.tasks.find((x) => x.id === t.taskId);
+  const worked = t.baseSeconds + (t.segmentStartedAt ? (Date.now() - Date.parse(t.segmentStartedAt)) / 1000 : 0);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !busy && onClose();
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [busy, onClose]);
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await bridge.stop({ text: text.trim(), finished });
+      onClose();
+    } catch (e) {
+      setError(errorText(e, 'Could not clock out'));
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/40 sm:items-center sm:justify-center sm:p-6" role="dialog" aria-modal="true" aria-labelledby={`${ids}-title`}>
+      <form
+        onSubmit={(e) => (e.preventDefault(), text.trim() && void submit())}
+        className="flex w-full flex-col gap-3 rounded-t-lg bg-surface p-5 shadow-overlay sm:max-w-lg sm:rounded-lg"
+      >
+        <div>
+          <h2 id={`${ids}-title`} className="text-base font-semibold">
+            Clock out
+          </h2>
+          <p className="mt-0.5 text-sm text-text-muted">
+            {project?.project_name ?? 'Your session'}
+            {task ? ` · ${task.title}` : ''} · {fmtHm(worked)} this session · {fmtHm(s.todaySeconds)} today
+          </p>
+        </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium">End-of-day report</span>
+          <textarea
+            autoFocus
+            required
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={5000}
+            rows={6}
+            placeholder={'What did you complete?\ne.g. Finished the login page, fixed 3 bugs, started the reports screen.'}
+            className="w-full resize-y rounded-sm border border-border bg-surface px-2.5 py-2 text-sm focus:border-interactive focus:outline-none"
+          />
+          <span className="text-2xs text-text-faint">Your manager reads this with your time. {text.length > 4500 ? `${5000 - text.length} characters left.` : ''}</span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" checked={finished} onChange={(e) => setFinished(e.target.checked)} className="mt-0.5 size-4 accent-[var(--tw-interactive)]" />
+          <span>
+            This work is finished
+            <span className="block text-2xs text-text-muted">Tick when the {task ? 'task' : 'project'} is complete, so your manager knows it is ready.</span>
+          </span>
+        </label>
+        {error && <p className="rounded-sm bg-danger-soft px-2.5 py-1.5 text-xs text-danger">{error}</p>}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} disabled={busy} className="h-10 rounded-sm border border-border px-4 text-sm font-medium hover:bg-surface-muted">
+            Keep working
+          </button>
+          <button type="submit" disabled={busy || !text.trim()} className="h-10 rounded-sm bg-danger px-4 text-sm font-semibold text-on-accent hover:opacity-90 disabled:opacity-50">
+            {busy ? 'Clocking out…' : 'Submit and clock out'}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 

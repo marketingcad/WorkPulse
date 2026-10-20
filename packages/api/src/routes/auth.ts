@@ -190,11 +190,13 @@ export const authRoutes = new Hono<AppEnv>()
 export const meRoutes = new Hono<AppEnv>()
   .use(requireUser)
   .get('/', async (c) => c.json(await getMe(c.var.deps.db, userId(c), await hasMfa(c.var.deps, userId(c)))))
-  /** The person's own settings: display name and locale (languages and formats). */
+  /** The person's own settings: display name, locale (languages and formats) and whether they have seen the product tour. */
   .patch('/', async (c) => {
-    const i = await body(c, z.object({ name: z.string().trim().min(1).max(100).optional(), locale: z.string().max(35).optional() }));
-    const patch: { name?: string; locale?: string; updatedAt: Date } = { updatedAt: new Date() };
+    const i = await body(c, z.object({ name: z.string().trim().min(1).max(100).optional(), locale: z.string().max(35).optional(), tour: z.enum(['done', 'reset']).optional() }));
+    const patch: { name?: string; locale?: string; tourDoneAt?: Date | null; updatedAt: Date } = { updatedAt: new Date() };
     if (i.name !== undefined) patch.name = i.name;
+    // Finished or skipped: don't start it again on its own. Reset: show it again on the next visit.
+    if (i.tour !== undefined) patch.tourDoneAt = i.tour === 'done' ? new Date() : null;
     if (i.locale !== undefined) {
       let canonical: string | undefined;
       try {

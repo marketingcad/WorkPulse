@@ -29,6 +29,7 @@ import { toMinor, type RateKind, type RateRow, type RateScope } from '@/componen
 import { useMemberOptions } from '@/lib/members';
 import { SCOPE_LABEL } from '@/components/finance/rate-precedence';
 import { RATE_PRECEDENCE } from '@tallywork/domain';
+import { HelpLink } from '@/components/help/help-link';
 
 // The order the billing engine applies (most specific first).
 const PRECEDENCE: Record<RateKind, RateScope[]> = RATE_PRECEDENCE;
@@ -47,7 +48,7 @@ export default function RatesPage() {
   if (!canRates) return <PermissionState />;
   return (
     <>
-      <PageHeader title="Rates" description="Hourly bill and pay rates: what you charge clients and what you pay members. What you owe members is on Payroll › Owed." />
+      <PageHeader title="Rates" description="Hourly bill and pay rates: what you charge clients and what you pay members. What you owe members is on Payroll › Owed." actions={<HelpLink article="rates" />} />
       <RatesTab />
     </>
   );

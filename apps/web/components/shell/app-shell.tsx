@@ -11,6 +11,8 @@ import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
 import { activeNav, filterNav, type NavItem } from './nav';
 import { SectionTabs } from './section-tabs';
+import { TourProvider } from '@/components/help/tour';
+import { HelpReturnBar } from '@/components/help/help-return';
 import { NewOrgDialog } from './new-org-dialog';
 import { TimerBar } from './timer-bar';
 
@@ -39,36 +41,39 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="flex min-h-dvh">
-      {/* Desktop / tablet sidebar */}
-      <aside className={cx('sticky top-0 hidden h-dvh shrink-0 flex-col bg-nav bg-[radial-gradient(130%_55%_at_0%_100%,rgba(23,102,255,0.20),transparent_65%),radial-gradient(90%_35%_at_100%_0%,rgba(109,76,245,0.12),transparent_70%)] text-nav-fg transition-[width] duration-150 md:flex', collapsed ? 'w-16' : 'w-60')} aria-label={t('nav.primary')}>
-        <Sidebar collapsed={collapsed} onToggle={toggle} />
-      </aside>
-      {/* Mobile drawer */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <button className="absolute inset-0 bg-black/40" aria-label={t('nav.close')} onClick={() => setMobileOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-nav bg-[radial-gradient(130%_55%_at_0%_100%,rgba(23,102,255,0.20),transparent_65%),radial-gradient(90%_35%_at_100%_0%,rgba(109,76,245,0.12),transparent_70%)] text-nav-fg shadow-overlay">
-            <Sidebar collapsed={false} onClose={() => setMobileOpen(false)} />
-          </aside>
+    <TourProvider>
+      <div className="flex min-h-dvh">
+        {/* Desktop / tablet sidebar */}
+        <aside className={cx('sticky top-0 hidden h-dvh shrink-0 flex-col bg-nav bg-[radial-gradient(130%_55%_at_0%_100%,rgba(23,102,255,0.20),transparent_65%),radial-gradient(90%_35%_at_100%_0%,rgba(109,76,245,0.12),transparent_70%)] text-nav-fg transition-[width] duration-150 md:flex', collapsed ? 'w-16' : 'w-60')} aria-label={t('nav.primary')}>
+          <Sidebar collapsed={collapsed} onToggle={toggle} />
+        </aside>
+        {/* Mobile drawer */}
+        {mobileOpen && (
+          <div className="fixed inset-0 z-50 md:hidden">
+            <button className="absolute inset-0 bg-black/40" aria-label={t('nav.close')} onClick={() => setMobileOpen(false)} />
+            <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-nav bg-[radial-gradient(130%_55%_at_0%_100%,rgba(23,102,255,0.20),transparent_65%),radial-gradient(90%_35%_at_100%_0%,rgba(109,76,245,0.12),transparent_70%)] text-nav-fg shadow-overlay">
+              <Sidebar collapsed={false} onClose={() => setMobileOpen(false)} />
+            </aside>
+          </div>
+        )}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-surface/90 px-3 shadow-[0_1px_2px_rgb(15_23_42/0.03)] backdrop-blur supports-[backdrop-filter]:bg-surface/75 sm:px-4">
+            <IconButton label={t('nav.open')} className="md:hidden" onClick={() => setMobileOpen(true)} data-tour="nav-menu">
+              <MenuIcon className="size-4" />
+            </IconButton>
+            <div className="min-w-0 flex-1">{org.can('tracking:track') && org.membership.tracking_enabled && <TimerBar />}</div>
+            {org.organization.is_demo && <span className="hidden rounded-full border border-warning/40 bg-warning-soft px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide text-warning lg:inline">{t('shell.demoData')}</span>}
+            <Notifications />
+            <UserMenu />
+          </header>
+          <main id="main" className="mx-auto w-full max-w-[1480px] flex-1 px-4 py-6 sm:px-6">
+            <HelpReturnBar />
+            <SectionTabs />
+            {children}
+          </main>
         </div>
-      )}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-surface/90 px-3 shadow-[0_1px_2px_rgb(15_23_42/0.03)] backdrop-blur supports-[backdrop-filter]:bg-surface/75 sm:px-4">
-          <IconButton label={t('nav.open')} className="md:hidden" onClick={() => setMobileOpen(true)}>
-            <MenuIcon className="size-4" />
-          </IconButton>
-          <div className="min-w-0 flex-1">{org.can('tracking:track') && org.membership.tracking_enabled && <TimerBar />}</div>
-          {org.organization.is_demo && <span className="hidden rounded-full border border-warning/40 bg-warning-soft px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide text-warning lg:inline">{t('shell.demoData')}</span>}
-          <Notifications />
-          <UserMenu />
-        </header>
-        <main id="main" className="mx-auto w-full max-w-[1480px] flex-1 px-4 py-6 sm:px-6">
-          <SectionTabs />
-          {children}
-        </main>
       </div>
-    </div>
+    </TourProvider>
   );
 }
 
@@ -117,6 +122,7 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
         return (
           <li key={i.href + i.label}>
             <Link
+              data-tour={i.label}
               href={`${org.base}${i.href}`}
               title={collapsed ? t(i.label) : undefined}
               aria-current={active ? 'page' : undefined}
@@ -163,6 +169,7 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
             <div key={g.label} className="mb-1">
               <button
                 type="button"
+                data-tour={g.label}
                 onClick={() => toggleGroup(g.label!)}
                 aria-expanded={isOpen}
                 aria-controls={panelId}
@@ -261,7 +268,7 @@ function Notifications() {
       align="end"
       className="w-[min(380px,calc(100vw-24px))] p-0"
       trigger={
-        <button className="relative inline-flex size-8 items-center justify-center rounded-sm text-text-muted hover:bg-surface-muted hover:text-text" aria-label={data?.unread ? t('shell.notificationsUnread', { count: data.unread }) : t('shell.notifications')}>
+        <button data-tour="notifications" className="relative inline-flex size-8 items-center justify-center rounded-sm text-text-muted hover:bg-surface-muted hover:text-text" aria-label={data?.unread ? t('shell.notificationsUnread', { count: data.unread }) : t('shell.notifications')}>
           <Bell className="size-4" />
           {!!data?.unread && <span className="tabular absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-on-accent">{data.unread > 9 ? '9+' : data.unread}</span>}
         </button>
@@ -342,7 +349,7 @@ function UserMenu() {
   return (
     <Menu
       trigger={
-        <button className="flex items-center gap-2 rounded-sm p-1 hover:bg-surface-muted" aria-label={t('shell.accountMenu')}>
+        <button data-tour="account-menu" className="flex items-center gap-2 rounded-sm p-1 hover:bg-surface-muted" aria-label={t('shell.accountMenu')}>
           <Avatar name={name || '?'} size={28} />
         </button>
       }

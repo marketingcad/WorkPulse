@@ -12,6 +12,7 @@ import {
   FileText,
   FolderKanban,
   LayoutDashboard,
+  LifeBuoy,
   ListChecks,
   NotebookPen,
   PieChart,
@@ -161,6 +162,8 @@ export const NAV: NavGroup[] = [
           { label: 'nav.item.auditLog', href: '/settings/audit', perms: ['audit:read'] },
         ],
       },
+      // The user manual and the product tour, for everyone.
+      { label: 'nav.item.help', href: '/help', icon: LifeBuoy },
     ],
   },
 ];

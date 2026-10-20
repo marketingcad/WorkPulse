@@ -14,6 +14,8 @@ export const users = pgTable(
     emailVerifiedAt: tstz(),
     avatarUrl: text(),
     locale: text().notNull().default('en-US'),
+    /** when the person finished or skipped the web app's product tour (null = not yet: show it once) */
+    tourDoneAt: tstz(),
     failedLoginCount: integer().notNull().default(0),
     lockedUntil: tstz(),
     /** set when personal data was erased on request; the row stays so history keeps its references */

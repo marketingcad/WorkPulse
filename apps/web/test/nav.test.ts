@@ -19,7 +19,7 @@ const item = (groups: NavGroup[], label: string) => groups.flatMap((g) => g.item
 describe('admin sidebar', () => {
   const nav = navFor(ROLE_PRESETS.SYSTEM_ADMIN);
 
-  it('groups 36 items into 20, with no personal items, Sessions or Developer in the tree', () => {
+  it('groups 36 items into 21 (with Help), with no personal items, Sessions or Developer in the tree', () => {
     expect(labels(nav)).toEqual([
       [null, ['nav.item.overview']],
       ['nav.group.time', ['nav.item.timeEntries', 'nav.item.timesheets', 'nav.item.live', 'nav.item.activity', 'nav.item.eodReports']],
@@ -27,9 +27,9 @@ describe('admin sidebar', () => {
       ['nav.group.work', ['nav.item.clients', 'nav.item.projects', 'nav.item.tasks']],
       ['nav.group.money', ['nav.item.rates', 'nav.item.budgets', 'nav.item.expenses', 'nav.item.invoices', 'nav.item.payroll']],
       ['nav.group.reports', ['nav.item.summary', 'nav.item.reportLibrary']],
-      [null, ['nav.item.settings']],
+      [null, ['nav.item.settings', 'nav.item.help']],
     ]);
-    expect(nav.flatMap((g) => g.items)).toHaveLength(20);
+    expect(nav.flatMap((g) => g.items)).toHaveLength(21);
   });
 
   it('Settings holds every settings page, Devices and the Developer pages as tabs, in one place', () => {

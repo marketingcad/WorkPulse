@@ -10,6 +10,7 @@ import type { CatalogItem, SavedReport } from '@/components/reports/format';
 import { RecentExports } from '@/components/reports/recent-exports';
 import { SaveReportDialog } from '@/components/reports/save-dialog';
 import { describeCron } from '@/components/reports/schedule';
+import { HelpLink } from '@/components/help/help-link';
 
 const CATEGORIES: Array<{ key: CatalogItem['category']; label: string; icon: LucideIcon }> = [
   { key: 'Time', label: 'Time', icon: Clock },
@@ -58,7 +59,7 @@ function ReportsCatalog() {
 
   return (
     <>
-      <PageHeader title="Report library" description="Pick the question you need answered. Every report can be filtered, exported and saved." />
+      <PageHeader title="Report library" description="Pick the question you need answered. Every report can be filtered, exported and saved." actions={<HelpLink article="reports" />} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="flex min-w-0 flex-col gap-4 lg:col-span-8">
           {catalogQ.isLoading ? (

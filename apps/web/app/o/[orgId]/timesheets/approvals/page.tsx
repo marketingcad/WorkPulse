@@ -3,6 +3,7 @@ import { PageHeader, PermissionState } from '@tallywork/ui';
 import { useOrg } from '@/lib/org';
 import { ApprovalQueue } from '@/components/timesheets/approval-queue';
 import { ManualRequests } from '@/components/timesheets/manual-requests';
+import { HelpLink } from '@/components/help/help-link';
 
 /**
  * Everything waiting for a manager's decision on one page: submitted timesheets and manual time
@@ -16,7 +17,7 @@ export default function ApprovalsPage() {
   if (!timesheets && !manual) return <PermissionState message="Approvals need the timesheet or manual time approval permission." />;
   return (
     <>
-      <PageHeader title="Approvals" description="Timesheets and manual time waiting for a decision. Approved time counts toward pay and invoices." />
+      <PageHeader title="Approvals" description="Timesheets and manual time waiting for a decision. Approved time counts toward pay and invoices." actions={<HelpLink article={timesheets ? 'approve-timesheets' : 'manual-time'} />} />
       <div className="flex flex-col gap-6">
         {timesheets && <ApprovalQueue />}
         {manual && <ManualRequests />}

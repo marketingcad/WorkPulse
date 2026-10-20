@@ -8,6 +8,7 @@ import { ApiError, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { POLICY_SECTIONS, displayPolicyValue, type PolicyField } from '@/components/settings/policy-fields';
 import { useMemberOptions } from '@/lib/members';
+import { HelpLink } from '@/components/help/help-link';
 
 type ScopeType = 'ORG' | 'TEAM' | 'WORKER';
 type Doc = Record<string, Record<string, unknown>>;
@@ -65,16 +66,19 @@ export default function PoliciesPage() {
         title="Tracking policies"
         description="Decide what is monitored. Settings flow from the organization default to teams, then to individual members; the most specific override wins."
         actions={
-          canEdit && layerQ.data ? (
-            <>
-              <Button disabled={!dirty || save.isPending} onClick={() => setDoc((layerQ.data?.doc ?? {}) as Doc)}>
-                Discard
-              </Button>
-              <Button variant="primary" disabled={!dirty} loading={save.isPending} onClick={() => save.mutate(doc)}>
-                Save policy
-              </Button>
-            </>
-          ) : undefined
+          <>
+            <HelpLink article="tracking-policies" />
+            {canEdit && layerQ.data && (
+              <>
+                <Button disabled={!dirty || save.isPending} onClick={() => setDoc((layerQ.data?.doc ?? {}) as Doc)}>
+                  Discard
+                </Button>
+                <Button variant="primary" disabled={!dirty} loading={save.isPending} onClick={() => save.mutate(doc)}>
+                  Save policy
+                </Button>
+              </>
+            )}
+          </>
         }
       />
 

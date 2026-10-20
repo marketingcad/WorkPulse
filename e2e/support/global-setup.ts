@@ -101,6 +101,10 @@ export default async function globalSetup(): Promise<void> {
     payStub: { id: stub.id, periodStart: finalized.period_start, periodEnd: finalized.period_end, netMinor: stub.net_minor, grossMinor: stub.gross_minor },
   };
 
+  // These accounts are new, so the product tour would start on their first Overview and cover the
+  // page in every spec. Mark it as seen, like a returning user (tests/web/help.spec.ts covers the tour).
+  for (const ctx of [admin, worker.ctx, newcomer.ctx, viewer.ctx]) await json(await ctx.patch('/api/v1/me', { data: { tour: 'done' } }), 'tour seen');
+
   mkdirSync(AUTH_DIR, { recursive: true });
   // The admin starts each web test signed in on the web, and remembers this org as the last one used.
   const state = await admin.storageState();

@@ -8,13 +8,14 @@ The main flow the product covers is **Organization → People → Work structure
 
 - **Identity & orgs:** sign-up, login, email verification, password reset, invitations, multi-org membership, built-in and custom roles.
 - **Workforce:** workers, teams, clients, projects, tasks, devices.
-- **Time tracking:** a server-side session state machine; a web timer and a desktop timer; idle detection; pause/resume; daily and weekly limits.
+- **Time tracking:** a server-side session state machine; a web timer and a desktop timer (clock in / clock out); breaks planned per project, with reminders; idle detection; pause/resume; daily and weekly limits; an end-of-day report written at clock-out.
 - **Activity monitoring (desktop, set by policy):** keyboard and mouse *counts* (keystrokes are never recorded), 10-minute activity blocks, screenshots of every display (optionally blurred), app usage, and website usage (macOS natively; Windows through the Tallywork browser extension or the address bar).
-- **Worker desktop app:** workers use WorkPulse through the desktop app only; the web app sends them to its download page. Home dashboard (timer, things that need attention, quick actions, current session, recent sessions, today's summary with idle time, live activity), plus Track (Projects, Tasks, Sessions), Timesheet (with submit, Activity, personal Reports), Time Off (with requests), Schedule, Pay Stubs (with PDF download) and Settings. It reads only the signed-in worker's own data.
+- **Worker desktop app:** workers use WorkPulse through the desktop app only; the web app sends them to its download page. Home dashboard (clock in / clock out with one-tap planned breaks and an end-of-day report, things that need attention, quick actions, current session, recent sessions, today's summary with idle time, live activity), plus Track (Projects, Tasks, Sessions), Timesheet (with submit, Activity, personal Reports), Time Off (with requests), Schedule, Pay Stubs (with PDF download) and Settings. It reads only the signed-in worker's own data.
 - **Timesheets:** manual time requests, time edits with full revision history, periods, and submit → approve / reject / request changes.
 - **Operations:** schedules, shifts, attendance, holidays, time-off policies with accruals, a balance ledger, and requests.
 - **Finance:** effective-dated pay and bill rates, billing entries, budgets, expenses with receipts, invoices (PDF), payments.
-- **Insight & platform:** dashboards, reports with CSV/XLSX/PDF export, notifications, API keys, signed webhooks, audit log, retention policies.
+- **Insight & platform:** dashboards, end-of-day reports, reports with CSV/XLSX/PDF export, notifications, API keys, signed webhooks, audit log, retention policies.
+- **Help:** a Help Center in the web app (a plain-language manual with search and links into the app) and a product tour for first-time users.
 
 > The original product and architecture plan is in [docs/plan/](docs/plan/README.md). Parts of it are superseded by **Revision 1 — Vercel-only hosting**, **Revision 2 — Supabase for database and file storage** and **Revision 3 — worker desktop app, website capture, screenshots** in [08-decisions.md](docs/plan/08-decisions.md). This README describes the system **as it is built**.
 
@@ -22,7 +23,7 @@ The main flow the product covers is **Organization → People → Work structure
 
 ## Project status
 
-Updated 17 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.7
+Updated 21 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.8
 
 ### ✅ Completed
 
@@ -32,7 +33,7 @@ Updated 17 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - Workforce tools: schedules, attendance, late and missed-shift alerts, time off with balances, breaks, overtime rules and time limits.
 - Billing: pay and bill rates, invoices, payments, budgets and expenses. Figures match to the cent across invoices and reports.
 - Dashboards that update live, plus an optional daily summary email.
-- 18 reports, with downloads (CSV, Excel, PDF) and scheduled reports by email.
+- Reports with downloads (CSV, Excel, PDF) and scheduled reports by email: 9 in the Report library, and the finance lists (invoices, payments, expenses, budgets, and what members are owed) export straight from their own page.
 - Integrations: API keys and webhooks for connecting other systems.
 - Security and privacy: two-factor sign-in, IP allowlists, a tamper-proof audit log, data retention rules, a personal data export, a right-to-erasure process, and an access review.
 - Ready for production use: health monitoring, alerts, load tests, recovery procedures and on-call guides.
@@ -41,13 +42,33 @@ Updated 17 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - Fast lists for large organizations: invoices, payments, expenses, time entries, sessions, approvals, manual time, time off, members, devices, tasks and attendance load one page at a time from the server.
 - Payroll: pay periods, payroll runs from approved time and paid time off, bonuses and deductions, and encrypted bank details. Each approved hour is paid exactly once: time approved after its payroll was finalized is paid by the next one ("from earlier periods"), and overlapping payrolls are refused.
 - Pay stubs as PDFs, also in the desktop app's Pay stubs page for workers.
-- Insights: time, wages and billable totals by person, client, project and day. Members see only their own time and no money.
-- Time rules: time types with pay and bill multipliers, time entry locking (after a set number of days or before a set date), missing-time reminder emails, duration-only and part-billable entries, an "All time entries" page for managers, and CSV time import with a template.
+- Summary (formerly Insights): time, wages and billable totals by person, client, project and day. Members see only their own time and no money.
+- Time rules: time types with pay and bill multipliers, time entry locking (after a set number of days or before a set date), missing-time reminder emails, duration-only and part-billable entries, a "Time entries" page for managers, and CSV time import with a template.
 - Profiles: clients (contact, document language, colour, logo, rates), projects (dates, estimates, rates, documents) and staff (personal and HR details, private HR notes, employment dates and rates), plus an organization logo.
 - Everyday polish: invitations that set a team role and projects, the invitation link shown when an email can't be sent, sign-in back to the last workspace used, a new organization from the organization switcher, invoices and payments under one menu, budgets in a dialog (money budgets hidden from people who can't see amounts), a fully paged audit log with CSV export, and numbered table pages with a rows-per-page choice.
 
 ### 🆕 New updates
 
+- **20–21 October 2026:**
+  - **Desktop app 0.1.8** (released 20 October 2026, updates on its own from 0.1.6 on):
+    - **Clock in / Clock out**, with the project's **planned breaks** as one-tap buttons (for example "Lunch · 12:00 PM · 60m"), a countdown during a break, a reminder when a break is due, and a note when it is over.
+    - **End-of-day report:** clocking out asks what was completed and whether the work is finished. It is saved on the computer first, so it is never lost offline.
+    - **Force stop works:** when an admin force-stops a timer, the app stops within about a minute (before, it kept running).
+    - Clicking the project that is already running no longer restarts the timer.
+  - **Breaks per project:** on a project (new or Settings tab), admins plan breaks from the organization's break types, with an optional time and length.
+  - **End-of-day reports page** (Time › End-of-day reports): a summary (reports, people reporting, finished, time covered), reports grouped by day, search, and a dialog with the full report, its session, Previous/Next and Copy.
+  - **A simpler admin menu**, from 36 items in 9 groups to 21 in 7 (Overview; Time; People; Work; Money; Reports; Settings and Help), with no page or permission removed and every old address still working:
+    - Related pages are tabs under one item: **Timesheets** (Approvals and Team week), **Members** (Members and Teams), **Schedules & attendance**, **Invoices** (Invoices and Payments received), **Payroll** (Payrolls, Owed and Pay groups) and **Settings** (Organization, Time & pay, Tracking policies, Devices, Roles, Access review, Security, API keys, Webhooks, Audit log).
+    - **Approvals** shows submitted timesheets and manual time requests on one page.
+    - **Rates** (formerly Billing & rates) holds only rates; what members are owed moved to **Payroll › Owed**.
+    - The Organization settings are split into **Organization** and **Time & pay** (pay period, timesheet rules, overtime, time types and break types in one place).
+    - My timesheet, My pay stubs and What is monitored moved to the account menu; Sessions is reached from Live (**Session history**).
+    - Renamed: Time entries, Summary, Report library.
+  - **Help Center and product tour:** **Help** in the menu opens a plain-language manual (44 guides, search, step-by-step instructions with buttons to the right page, FAQs, troubleshooting, and a guide to every menu item). Complex pages have a **Help** link to their own guide. A short product tour starts once for new users and can be restarted from Help.
+  - **Export on the finance pages:** Invoices, Payments received, Expenses, Budgets and Payroll › Owed have a period filter and an **Export** button (CSV, Excel, PDF). The reports that only repeated these lists left the Report library (saved and scheduled ones still run).
+  - **Report access follows the pages:** team managers get the Expenses and Budgets reports (for their own team and projects), and Payroll Export needs payroll access.
+  - **Smaller fixes:** the "Weekly limits" dashboard card works (it said "Coming soon"); a running session can be force-stopped from its details on Session history; the same rate notes on member, client and project forms, with a link to all rates; consistent payroll names; the "Tracking settings were updated" notice no longer links to a page workers can't open; the download page no longer repeats the install steps.
+  - **Safer database updates:** migrations run one at a time (a database lock), and the new ones are safe to run again. This followed a failed deploy on 20 October (migration 0022 met a column that already existed); production kept running on the previous version until the fix was deployed.
 - New name and look: **WorkPulse**, with a new logo and app icon.
 - Sign in to the desktop app with your email and password (browser sign-in is still there).
 - Workers use the desktop app only: after accepting an invitation they land on a download page for their computer.
@@ -99,7 +120,9 @@ Updated 17 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🚧 Work in progress
 
-Everything that was "built, being finalized" on 16 October is merged and live (see Completed), and nothing is waiting to be merged.
+Everything built on 20–21 October is merged and live (see New updates), and nothing is waiting to be merged.
+
+- **QA of the new features in the live app:** desktop 0.1.8 (clock in/out, breaks and reminders, end-of-day reports), the new admin menu and tabs, Approvals, Payroll › Owed, Export, the Help Center and the product tour, and the End-of-day reports page.
 
 **Needs attention**
 
@@ -115,10 +138,13 @@ Everything that was "built, being finalized" on 16 October is merged and live (s
 - **Pull requests from outside the team:** now that the repository is public, set **Settings → Actions → General → Require approval for all outside collaborators**, so a stranger's pull request can't run CI without approval.
 - **Monitoring notice:** the desktop app no longer shows workers what is monitored or records their acknowledgement. The `/agent/policy/ack` endpoint and the web `/me/monitoring` page still exist, but the desktop doesn't use them. Make sure workers are told about monitoring some other way where the law requires it. The server's "Tracking settings were updated" notification no longer links anywhere (workers cannot open the web page); by decision, the desktop app will not show what is monitored again.
 - **Paging:** person pickers load every member (a light list with no rates or teams). For very large organizations, a search-as-you-type picker would avoid that. A few plain tables (Schedules, Roles, invoice lines, the client portal) have no paging.
-- **End-to-end tests still missing** for time off, timesheet approvals, expenses, report exports, tracking policies, roles, API keys and webhooks, and schedules (see the audit). There are 91 Playwright tests today.
+- **Check whether Preview builds can reach the production database:** in Vercel → Settings → Environment Variables, `DATABASE_URL` should be set for **Production** only. If Preview has it, every pull request's preview build runs migrations on the live database before anything is merged (the likely cause of the 20 October failed deploy).
+- **End-to-end tests still missing** for time off, report exports from the Report library, tracking policies, roles, API keys and webhooks, and schedules (see the audit). There are 132 Playwright tests today.
 
 **Next / planned**
 
+- Admin simplification, phase 3 (behind the scenes, no visible change): one shared date-range filter, one time-entry list and one member picker instead of several copies.
+- Help and a product tour in the worker desktop app (the Help Center is in the web app only).
 - Full-scale load test (10,000 devices) on a test environment.
 - A backup restore drill.
 - Public uptime monitoring and a status page.
@@ -1101,14 +1127,14 @@ The web app and API deploy together to **Vercel** as one project (root directory
 
 1. In Supabase, copy the **Session pooler** connection string (Connect → Session pooler, port 5432) into `DATABASE_URL`, and set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` for file storage. Don't use the direct host (IPv6-only) or the transaction pooler (port 6543): the app sets a restricted database role per connection, which transaction pooling doesn't preserve. Disable Supabase's Data API (or stop exposing the `public` schema), since the app doesn't use it.
 2. Set `APP_SECRET` (32+ random characters) and `CRON_SECRET`. Optionally set `APP_URL`, an email provider (`RESEND_API_KEY` or `SMTP_*`, plus `MAIL_FROM`; see [Send real email](#send-real-email)), `REQUIRE_EMAIL_VERIFICATION=true`, and the `DESKTOP_DOWNLOAD_URL_*` links for `/download`.
-3. Deploy. The `vercel-build` script runs `pnpm --filter @tallywork/db migrate` **before** `next build`, so every deploy applies migrations and RLS.
+3. Deploy. The `vercel-build` script runs `pnpm --filter @tallywork/db migrate` **before** `next build`, so every deploy applies migrations and RLS. Migrations run one at a time (a Postgres advisory lock), so two deploys starting together wait for each other. If a migration fails, the build stops and production keeps serving the previous deployment.
    - **From GitHub (normal):** the project is connected to `marketingcad/WorkPulse` with `main` as the production branch. Every merge into `main` deploys production, and every other branch gets a Preview.
-   - **Preview builds:** these have no database, because `DATABASE_URL` is set for Production only, so their migrations are skipped and their API returns errors. Vercel blocks a Preview when the commit's author isn't a member of the Vercel team.
+   - **Preview builds:** these should have no database (`DATABASE_URL` set for Production only), so their migrations are skipped and their API returns errors. If Preview is given `DATABASE_URL`, its builds migrate the production database before a merge; see Needs attention. Vercel blocks a Preview when the commit's author isn't a member of the Vercel team.
    - **By hand:** `npx vercel --prod` from the repo root (the folder is linked to the `tallywork` project in `.vercel/`).
    - The live address `tallywork-alpha.vercel.app` is a project domain with **Auto-assign Custom Production Domains** on, so every merge to `main` moves it to the new deployment. A dashboard **Redeploy** (after changing an environment variable) does not move it: promote that deployment (**⋯ → Promote to Production**). To roll back, promote the previous deployment.
 4. [apps/web/vercel.json](apps/web/vercel.json) registers the cron jobs (`/api/v1/cron/tick` every minute, `/api/v1/cron/daily` at 03:15 UTC) and gives the API function a 300s max duration.
 
-**Desktop releases** (current version 0.1.5, published 15 October 2026): bump `version` in `apps/desktop/package.json`, push, then run the **Desktop release** workflow (GitHub → Actions → Desktop release → Run workflow, `platforms`: `all`, or one platform to redo a failed build). It creates a draft, builds Windows (NSIS `.exe`), macOS (universal `.dmg` + `.zip`) and Linux (`.AppImage` + `.deb`), and publishes them with the auto-update feed as one GitHub Release in the public `marketingcad/tallywork-desktop` repo (no source code there) once every build has succeeded. It refuses to overwrite a published version, and needs the `DESKTOP_RELEASE_TOKEN` secret (fine-grained token, that repo only, Contents: read and write). Windows only, from your own PC: `pnpm --filter @tallywork/desktop release:win` (token from `gh auth token`). The `.msi` and `.pkg` targets aren't built by the workflow. Native modules use their prebuilt N-API binaries (`npmRebuild: false`), so no C++ toolchain is needed.
+**Desktop releases** (current version 0.1.8, published 20 October 2026): bump `version` in `apps/desktop/package.json`, push, then run the **Desktop release** workflow (GitHub → Actions → Desktop release → Run workflow, `platforms`: `all`, or one platform to redo a failed build). It creates a draft, builds Windows (NSIS `.exe`), macOS (universal `.dmg` + `.zip`) and Linux (`.AppImage` + `.deb`), and publishes them with the auto-update feed as one GitHub Release in the public `marketingcad/tallywork-desktop` repo (no source code there) once every build has succeeded. It refuses to overwrite a published version, and needs the `DESKTOP_RELEASE_TOKEN` secret (fine-grained token, that repo only, Contents: read and write). Windows only, from your own PC: `pnpm --filter @tallywork/desktop release:win` (token from `gh auth token`). The `.msi` and `.pkg` targets aren't built by the workflow. Native modules use their prebuilt N-API binaries (`npmRebuild: false`), so no C++ toolchain is needed.
 
 Installer names are stable (`Tallywork-Setup.exe`, `Tallywork-mac.dmg`, `Tallywork-mac.zip`, `Tallywork-linux.AppImage`, `Tallywork-linux.deb`), so `https://github.com/marketingcad/tallywork-desktop/releases/latest/download/<file>` always serves the newest; use these for `DESKTOP_DOWNLOAD_URL_*`. Installed apps check every 6 hours, download in the background and install on quit, never interrupting a timer (the `.deb` asks for the password). Builds are **not signed yet**: Windows shows SmartScreen (**More info → Run anyway**); Macs are ad-hoc signed and not notarized, so the first launch needs **System Settings → Privacy & Security → Open Anyway**, and updates arrive as a notification linking to `/download` instead of installing. IT rollout: [docs/ops/desktop-deployment.md](docs/ops/desktop-deployment.md). Release steps: [docs/ops/runbooks.md](docs/ops/runbooks.md#desktop-release-staged).
 

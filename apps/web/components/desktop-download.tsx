@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
 
 // Matches the md Button, for links that start a download.
-const LINK_BUTTON = 'inline-flex h-9 w-full items-center justify-center gap-2 rounded-sm border border-transparent px-3.5 text-sm font-medium transition-colors';
+const LINK_BUTTON = 'inline-flex h-9 w-full items-center justify-center gap-2 rounded-sm border px-3.5 text-sm font-medium transition-colors';
 
 export interface DownloadLinks {
   windows: string | null;
@@ -74,27 +74,31 @@ export function DesktopDownload({ links }: { links: DownloadLinks }) {
         ) : (
           <div className="flex flex-col gap-2">
             {primary && (
-              <a href={links[primary]!} download onClick={() => setDownloaded(primary)} className={`${LINK_BUTTON} bg-interactive text-on-accent hover:bg-interactive-hover`}>
+              <a href={links[primary]!} download onClick={() => setDownloaded(primary)} className={`${LINK_BUTTON} border-transparent bg-interactive text-on-accent hover:bg-interactive-hover`}>
                 <Download className="size-4" aria-hidden />
                 {t('download.for', { platform: LABELS[primary] })}
               </a>
             )}
             {others.map((p) => (
-              <a key={p} href={links[p]!} download onClick={() => setDownloaded(p)} className={`${LINK_BUTTON} border-border bg-surface text-text hover:border-border-strong hover:bg-surface-muted`}>
+              <a key={p} href={links[p]!} download onClick={() => setDownloaded(p)} className={`${LINK_BUTTON} border-border bg-surface text-text shadow-[0_1px_2px_rgb(15_23_42/0.05)] hover:border-border-strong hover:bg-surface-muted`}>
                 {t('download.for', { platform: LABELS[p] })}
               </a>
             ))}
           </div>
         )}
-        {(downloaded === 'windows' || downloaded === 'macos') && <AfterDownload platform={downloaded} />}
-        <ol className="flex flex-col gap-3 text-sm text-text">
-          {(['download.step1', 'download.step2', 'download.step3'] as const).map((key, i) => (
-            <li key={key} className="flex items-start gap-3">
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-interactive/10 text-xs font-bold text-interactive">{i + 1}</span>
-              <span className="pt-0.5">{t(key)}</span>
-            </li>
-          ))}
-        </ol>
+        {/* Once the installer's own steps show, the general steps would only repeat them. */}
+        {downloaded === 'windows' || downloaded === 'macos' ? (
+          <AfterDownload platform={downloaded} />
+        ) : (
+          <ol className="flex flex-col gap-3 text-sm text-text">
+            {(['download.step1', 'download.step2', 'download.step3'] as const).map((key, i) => (
+              <li key={key} className="flex items-start gap-3">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-interactive/10 text-xs font-bold text-interactive">{i + 1}</span>
+                <span className="pt-0.5">{t(key)}</span>
+              </li>
+            ))}
+          </ol>
+        )}
         {/* The Mac build is not notarized yet, and AppImages must be marked executable. */}
         {platform === 'macos' && links.macos && downloaded !== 'macos' && <p className="rounded-sm bg-surface-sunken px-3 py-2 text-xs text-text-muted">{t('download.macNote')}</p>}
         {platform === 'linux' && (links.linux || links.linuxAppImage) && (

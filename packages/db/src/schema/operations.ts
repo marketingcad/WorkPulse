@@ -1,7 +1,8 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, jsonb, numeric, pgTable, primaryKey, text, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, foreignKey, index, integer, jsonb, numeric, pgTable, primaryKey, smallint, text, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import type { AccrualPolicy, AttendanceStatus, OvertimeRules } from '@tallywork/domain';
 import { orgId, pk, timestamps, tstz } from './_helpers';
+import { projects } from './workforce';
 
 /** Recurring weekly schedule. `days` = [{ dow: 1, start: '09:00', end: '17:00' }, ...] */
 export const workSchedules = pgTable(
@@ -154,6 +155,31 @@ export const breakTypes = pgTable(
     ...timestamps,
   },
   (t) => [index().on(t.organizationId)],
+);
+
+/**
+ * The breaks a project plans (e.g. Coffee 10:30 for 15 min, Lunch 12:00 for 60 min), from the
+ * organization's break types. Shown to the worker as one-tap break buttons and reminders.
+ */
+export const projectBreaks = pgTable(
+  'project_breaks',
+  {
+    id: pk(),
+    organizationId: orgId(),
+    projectId: uuid().notNull(),
+    breakTypeId: uuid().notNull(),
+    /** local time of day, 'HH:MM' (null = any time) */
+    startTime: text(),
+    /** planned length (null = the break type's maximum) */
+    durationMinutes: integer(),
+    position: smallint().notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [
+    foreignKey({ columns: [t.organizationId, t.projectId], foreignColumns: [projects.organizationId, projects.id] }).onDelete('cascade'),
+    foreignKey({ columns: [t.breakTypeId], foreignColumns: [breakTypes.id] }),
+    index().on(t.organizationId, t.projectId),
+  ],
 );
 
 /** One row per alert sent about a shift, so each alert goes out once. */

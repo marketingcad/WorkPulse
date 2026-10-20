@@ -147,7 +147,7 @@ describe('IPC contract', () => {
 });
 
 describe('manual time requests', () => {
-  const project = { project_id: '0190a000-0000-7000-8000-000000000001', project_name: 'Alpha', color: '#000', client_name: null, tasks: [{ id: '0190a000-0000-7000-8000-000000000002', title: 'Design', status: 'OPEN' }] };
+  const project = { project_id: '0190a000-0000-7000-8000-000000000001', project_name: 'Alpha', color: '#000', client_name: null, tasks: [{ id: '0190a000-0000-7000-8000-000000000002', title: 'Design', status: 'OPEN' }], breaks: [] };
   const now = Date.parse('2026-09-25T18:00:00Z');
   const req = (o: Record<string, unknown> = {}) => ({ projectId: project.project_id, taskId: null, startedAt: '2026-09-25T13:00:00Z', endedAt: '2026-09-25T14:00:00Z', reason: 'Workshop', ...o });
 

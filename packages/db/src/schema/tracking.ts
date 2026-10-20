@@ -46,6 +46,33 @@ export const trackingSessions = pgTable(
   ],
 );
 
+/** The end-of-day report a worker writes when clocking out: what was completed, and whether the work is finished. */
+export const eodReports = pgTable(
+  'eod_reports',
+  {
+    id: pk(),
+    organizationId: orgId(),
+    membershipId: uuid().notNull(),
+    /** the session that was clocked out (one report per session) */
+    sessionId: uuid().notNull(),
+    projectId: uuid().notNull(),
+    taskId: uuid(),
+    /** the worker's local date of the clock-out */
+    localDate: text().notNull(),
+    body: text().notNull(),
+    /** the worker marked the task or project as finished */
+    finished: boolean().notNull().default(false),
+    createdAt: tstz().notNull().default(sql`now()`),
+  },
+  (t) => [
+    uniqueIndex('eod_reports_session_uq').on(t.organizationId, t.sessionId),
+    foreignKey({ columns: [t.organizationId, t.sessionId], foreignColumns: [trackingSessions.organizationId, trackingSessions.id] }).onDelete('cascade'),
+    foreignKey({ columns: [t.organizationId, t.membershipId], foreignColumns: [memberships.organizationId, memberships.id] }).onDelete('cascade'),
+    index().on(t.organizationId, t.localDate),
+    index().on(t.organizationId, t.membershipId, t.localDate),
+  ],
+);
+
 export const sessionTransitions = pgTable(
   'session_transitions',
   {

@@ -1,7 +1,8 @@
-import { and, desc, eq, ilike, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import {
   activityWindows,
   devices,
+  eodReports,
   timeEntries,
   memberships,
   projects,
@@ -13,7 +14,7 @@ import {
   workerProfiles,
 } from '@tallywork/db';
 import { can, forbidden, localDate, notFound, startOfLocalDay, addDaysToDate } from '@tallywork/domain';
-import type { CurrentTrackingDto, LiveWorkerDto, OffsetPage, SessionDto } from '@tallywork/contracts';
+import type { CurrentTrackingDto, EodReportDto, LiveWorkerDto, OffsetPage, SessionDto } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { actorRef } from './ctx';
 import { audit } from './events';
@@ -190,6 +191,41 @@ export async function memberNames(x: Pick<Ctx, 'tx'>, ids: string[]): Promise<Ma
   if (!ids.length) return new Map();
   const rows = await x.tx.select({ id: memberships.id, name: users.name }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).where(inArray(memberships.id, ids));
   return new Map(rows.map((r) => [r.id, r.name]));
+}
+
+/** End-of-day reports written on the local dates [from..to], for the people the actor may see, newest first. */
+export async function listEodReports(x: Ctx, q: { from: string; to: string; membershipIds?: string[] }): Promise<EodReportDto[]> {
+  const visible = narrowMemberships(x.actor, 'tracking:read', q.membershipIds);
+  if (visible !== 'all' && !visible.length) return [];
+  const rows = await x.tx
+    .select({ r: eodReports, s: trackingSessions })
+    .from(eodReports)
+    .innerJoin(trackingSessions, eq(trackingSessions.id, eodReports.sessionId))
+    .where(and(gte(eodReports.localDate, q.from), lte(eodReports.localDate, q.to), visible === 'all' ? undefined : inArray(eodReports.membershipId, visible)))
+    .orderBy(desc(eodReports.createdAt))
+    .limit(500);
+  const sessions = new Map((await toSessionDtos(x.tx, rows.map((r) => r.s), x.deps.now())).map((d) => [d.id, d]));
+  const names = await memberNames(x, [...new Set(rows.map((r) => r.r.membershipId))]);
+  return rows.map(({ r }) => {
+    const s = sessions.get(r.sessionId)!;
+    return {
+      id: r.id,
+      membership_id: r.membershipId,
+      worker_name: names.get(r.membershipId) ?? '',
+      session_id: r.sessionId,
+      project_id: r.projectId,
+      project_name: s.project_name ?? '',
+      task_id: r.taskId,
+      task_title: s.task_title ?? null,
+      local_date: r.localDate,
+      body: r.body,
+      finished: r.finished,
+      started_at: s.started_at,
+      ended_at: s.ended_at,
+      worked_seconds: s.worked_seconds,
+      created_at: r.createdAt.toISOString(),
+    };
+  });
 }
 
 /** "Who is working right now" — scoped to what the actor may see. */

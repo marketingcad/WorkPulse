@@ -229,3 +229,33 @@ describe('schedules and attendance', () => {
     expect(rows[0]).toMatchObject({ status: 'LATE', late_seconds: 1800, worked_seconds: 7200 });
   });
 });
+
+describe('admin force stop', () => {
+  it('stops a desktop session; the device learns it from heartbeat and sync; only managers of that org may do it', async () => {
+    const sid = newId();
+    await ingest([{ event_id: newId(), type: 'session.start', session_id: sid, seq: 1, occurred_at: t.clock.now.toISOString(), project_id: projectId }]);
+    t.clock.advance(5 * 60_000);
+    const live = (await admin.get(`/orgs/${orgId}/tracking/live`)).body.find((w: { membership_id: string }) => w.membership_id === workerId);
+    expect(live.session_id).toBe(sid);
+
+    // Not the worker, and not an admin of another organization.
+    expect((await worker.post(`/orgs/${orgId}/sessions/${sid}/force-stop`)).status).toBe(403);
+    const { client: outsider, orgId: otherOrg } = await signup(t, 'Olga', 'olga@t.test');
+    expect((await outsider.post(`/orgs/${otherOrg}/sessions/${sid}/force-stop`)).status).toBe(404);
+    expect((await agent.post('/agent/heartbeat', { sent_at: t.clock.now.toISOString(), session_id: sid })).body.session.id).toBe(sid);
+
+    const stopped = await admin.post(`/orgs/${orgId}/sessions/${sid}/force-stop`);
+    expect(stopped.status).toBe(200);
+    expect(stopped.body).toMatchObject({ id: sid, state: 'STOPPED' });
+    expect(await entriesTotal(sid)).toBe(5 * 60);
+
+    // The device is told on its next heartbeat, and on its next sync even while it still sends activity.
+    expect((await agent.post('/agent/heartbeat', { sent_at: t.clock.now.toISOString(), session_id: sid })).body.session).toBeNull();
+    const sync = await ingest([{ event_id: newId(), type: 'activity.minutes', session_id: sid, occurred_at: t.clock.now.toISOString(), minutes: [{ minute_start: t.clock.now.toISOString(), keyboard: 1, mouse: 1, active_seconds: 30, tracked_seconds: 60 }] }]);
+    expect(sync.body.session).toBeNull();
+    // Its own stop, sent afterwards, changes nothing.
+    t.clock.advance(60_000);
+    expect((await ingest([{ event_id: newId(), type: 'session.stop', session_id: sid, seq: 2, occurred_at: t.clock.now.toISOString() }])).body.results[0].status).toBe('duplicate');
+    expect(await entriesTotal(sid)).toBe(5 * 60);
+  });
+});

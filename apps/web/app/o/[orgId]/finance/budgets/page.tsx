@@ -4,12 +4,14 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import type { BudgetStatusDto } from '@tallywork/contracts';
 import { Badge, BudgetProgress, Button, ConfirmDialog, DataTable, EmptyState, ErrorState, IconButton, KpiStrip, PageHeader, Panel, PermissionState, StatusBadge, fmtMoney, useToast, type Column } from '@tallywork/ui';
 import { errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
-import { useOrg } from '@/lib/org';
+import { todayIn, useOrg } from '@/lib/org';
+import { ExportMenu } from '@/components/reports/export-menu';
 import { BudgetDialog } from '@/components/finance/budget-dialog';
 
 
 export default function BudgetsPage() {
   const org = useOrg();
+  const today = todayIn(org.organization.timezone);
   const toast = useToast();
   const q = useOrgQuery<BudgetStatusDto[]>(org.can('budgets:read') ? '/budgets' : null);
   const canManage = org.can('budgets:manage');
@@ -93,11 +95,14 @@ export default function BudgetsPage() {
         title="Budgets"
         description="Hours and money budgets for projects and clients, with warnings before they run out."
         actions={
-          canManage && (
-            <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setEditing('new')}>
-              Set budget
-            </Button>
-          )
+          <>
+            {org.can('reports:read') && <ExportMenu reportKey="budgets" from={today} to={today} caption="Status today" />}
+            {canManage && (
+              <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setEditing('new')}>
+                Set budget
+              </Button>
+            )}
+          </>
         }
       />
       {rows.length > 0 && (

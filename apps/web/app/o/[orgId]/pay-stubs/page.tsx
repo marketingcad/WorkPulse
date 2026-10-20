@@ -23,7 +23,7 @@ export default function PayStubsPage() {
 
   const columns: Column<PayStubDto>[] = [
     { key: 'period', header: 'Pay period', priority: 'primary', value: (s) => s.period_start, cell: (s) => <span className="font-medium tabular">{`${fmtDate(s.period_start)} – ${fmtDate(s.period_end)}`}</span> },
-    { key: 'profile', header: 'Payroll', value: (s) => s.profile_name, cell: (s) => <span className="text-text-muted">{s.profile_name}</span> },
+    { key: 'profile', header: 'Pay group', value: (s) => s.profile_name, cell: (s) => <span className="text-text-muted">{s.profile_name}</span> },
     { key: 'hours', header: 'Hours', align: 'right', value: (s) => s.approved_seconds, cell: (s) => <span className="tabular">{org.fmtDuration(s.approved_seconds)}</span> },
     { key: 'gross', header: 'Gross', align: 'right', value: (s) => s.gross_minor, cell: (s) => <span className="tabular">{fmtMoney(s.gross_minor, s.currency)}</span> },
     { key: 'net', header: 'Net pay', align: 'right', priority: 'secondary', value: (s) => s.net_minor, cell: (s) => <span className="tabular font-semibold">{fmtMoney(s.net_minor, s.currency)}</span> },

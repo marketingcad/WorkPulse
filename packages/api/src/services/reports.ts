@@ -24,7 +24,7 @@ import type { Ctx } from './ctx';
 import { narrowMemberships } from './scope';
 import { memberNames } from './timer';
 import { listAttendance } from './operations';
-import { amountsOwed, budgetStatuses, listExpenses, listInvoices, listPayments, loadRates, redactBudgetMoney } from './finance';
+import { amountsOwed, listBudgets, listExpenses, listInvoices, listPayments, loadRates } from './finance';
 import { listManualTime } from './timesheets';
 import { usage } from './activity';
 import { listTimeOffRequests } from './operations';
@@ -323,8 +323,8 @@ async function paymentsReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
 
 function budgetReport(kind: 'PROJECT' | 'CLIENT' | null) {
   return async (x: Ctx): Promise<ReportResult> => {
-    const today = localDate(x.deps.now(), x.org.timezone);
-    const rows = redactBudgetMoney(x, (await budgetStatuses(x.tx, x.org.currency, today)).filter((b) => !kind || b.subject_type === kind)).map((b) => ({ ...b, subject: b.subject_type === 'PROJECT' ? 'Project' : 'Client' }));
+    // The same budgets the Budgets page shows this person (a team manager: their assigned projects).
+    const rows = (await listBudgets(x)).filter((b) => !kind || b.subject_type === kind).map((b) => ({ ...b, subject: b.subject_type === 'PROJECT' ? 'Project' : 'Client', ...(b.amounts_hidden ? { amount: null, spent: null, remaining: null } : {}) }));
     return {
       columns: [{ key: 'subject_name', label: kind === 'PROJECT' ? 'Project' : kind === 'CLIENT' ? 'Client' : 'Budget for', type: 'text' }, ...(kind ? [] : [{ key: 'subject', label: 'Subject', type: 'status' as const }]), { key: 'kind', label: 'Type', type: 'status' }, { key: 'amount', label: 'Budget', type: 'number' }, { key: 'spent', label: 'Spent', type: 'number' }, { key: 'remaining', label: 'Remaining', type: 'number' }, { key: 'pct_used', label: 'Used', type: 'percent' }, { key: 'state', label: 'Status', type: 'status' }],
       rows: rows as unknown as ReportResult['rows'],
@@ -473,7 +473,7 @@ export function timeOffHoursInRange(t: { startDate: string; endDate: string; hou
 
 /** Payroll-ready export: regular/overtime, billable split, time off, earnings, approval status. */
 async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
-  const rows = await rollupRows(x, p, 'billing:read');
+  const rows = await rollupRows(x, p, 'payroll:read');
   const members = [...new Set(rows.map((r) => r.r.membershipId))];
   const names = await memberNames(x, members);
   const [ot] = await x.tx.select().from(overtimeRuleSets);
@@ -527,6 +527,9 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
   };
 }
 
+// Hidden reports still run (saved and scheduled reports keep working) but are not offered in the
+// catalogue: another report covers them, or the list page exports the same rows (Invoices, Payments
+// received, Expenses, Budgets, Payroll › Owed).
 export const REPORTS: ReportDefinition[] = [
   { key: 'time-activity', title: 'Time & Activity', question: 'Where did time go, and how active was it?', category: 'Time', permission: 'reports:read', groupings: ['worker', 'project', 'task', 'client', 'date', 'week'], requires: ['time:read'], run: timeAndActivity },
   { key: 'daily-totals', title: 'Daily Totals', question: 'How much did each person work each day?', category: 'Time', permission: 'reports:read', requires: ['time:read'], hidden: true, run: dailyTotals },
@@ -537,19 +540,20 @@ export const REPORTS: ReportDefinition[] = [
   { key: 'timesheet-approval', title: 'Timesheet Approval', question: 'Which timesheets are approved or pending?', category: 'People', permission: 'reports:read', requires: ['timesheets:read'], filters: ['dates', 'members', 'teams'], run: timesheetApproval },
   { key: 'attendance', title: 'Attendance', question: 'Who was late, absent or in overtime?', category: 'People', permission: 'reports:read', requires: ['attendance:read'], filters: ['dates', 'members', 'teams'], run: attendanceReport },
   { key: 'time-off', title: 'Time Off', question: 'Who took time off and how much?', category: 'People', permission: 'reports:read', requires: ['time_off:read'], filters: ['dates', 'members', 'teams'], run: timeOffReport },
-  { key: 'payroll', title: 'Payroll Export', question: 'What should payroll pay for this period?', category: 'Finance', permission: 'reports:finance', requires: ['billing:read'], filters: ['dates', 'members', 'teams'], run: payroll },
-  { key: 'amounts-owed', title: 'Amounts Owed', question: 'What do we owe each member?', category: 'Finance', permission: 'reports:finance', requires: ['billing:read', 'rates:read'], filters: ['dates'], run: amountsOwedReport },
+  { key: 'payroll', title: 'Payroll Export', question: 'What should payroll pay for this period?', category: 'Finance', permission: 'reports:finance', requires: ['payroll:read'], filters: ['dates', 'members', 'teams'], run: payroll },
+  { key: 'amounts-owed', title: 'Amounts Owed', question: 'What do we owe each member?', category: 'Finance', permission: 'reports:finance', requires: ['billing:read', 'rates:read'], filters: ['dates'], hidden: true, run: amountsOwedReport },
   { key: 'billing', title: 'Billing', question: 'What is billable per client and project?', category: 'Finance', permission: 'reports:finance', requires: ['time:read'], filters: ['dates', 'members', 'teams', 'projects', 'clients'], run: billingReport },
-  { key: 'invoices', title: 'Invoices', question: 'What has been invoiced and what is outstanding?', category: 'Finance', permission: 'reports:finance', requires: ['invoices:read'], filters: ['dates'], run: invoicesReport },
-  { key: 'payments', title: 'Payments', question: 'What payments came in?', category: 'Finance', permission: 'reports:finance', requires: ['payments:read'], filters: ['dates'], run: paymentsReport },
-  { key: 'expenses', title: 'Expenses', question: 'What was spent, and is it billable?', category: 'Finance', permission: 'reports:finance', requires: ['expenses:read'], filters: ['dates'], run: expensesReport },
-  { key: 'budgets', title: 'Budgets', question: 'Which projects and clients are near or over budget?', category: 'Finance', permission: 'reports:finance', filters: [], run: budgetReport(null) },
-  { key: 'project-budgets', title: 'Project Budgets', question: 'Which projects are near or over budget?', category: 'Finance', permission: 'reports:finance', filters: [], hidden: true, run: budgetReport('PROJECT') },
-  { key: 'client-budgets', title: 'Client Budgets', question: 'Which clients are near or over budget?', category: 'Finance', permission: 'reports:finance', filters: [], hidden: true, run: budgetReport('CLIENT') },
+  { key: 'invoices', title: 'Invoices', question: 'What has been invoiced and what is outstanding?', category: 'Finance', permission: 'reports:finance', requires: ['invoices:read'], filters: ['dates'], hidden: true, run: invoicesReport },
+  { key: 'payments', title: 'Payments', question: 'What payments came in?', category: 'Finance', permission: 'reports:finance', requires: ['payments:read'], filters: ['dates'], hidden: true, run: paymentsReport },
+  { key: 'expenses', title: 'Expenses', question: 'What was spent, and is it billable?', category: 'Finance', permission: 'reports:read', requires: ['expenses:read'], filters: ['dates'], hidden: true, run: expensesReport },
+  { key: 'budgets', title: 'Budgets', question: 'Which projects and clients are near or over budget?', category: 'Finance', permission: 'reports:read', requires: ['budgets:read'], filters: [], hidden: true, run: budgetReport(null) },
+  { key: 'project-budgets', title: 'Project Budgets', question: 'Which projects are near or over budget?', category: 'Finance', permission: 'reports:read', requires: ['budgets:read'], filters: [], hidden: true, run: budgetReport('PROJECT') },
+  { key: 'client-budgets', title: 'Client Budgets', question: 'Which clients are near or over budget?', category: 'Finance', permission: 'reports:read', requires: ['budgets:read'], filters: [], hidden: true, run: budgetReport('CLIENT') },
   { key: 'audit-log', title: 'Audit Log', question: 'Who changed what, and when?', category: 'Compliance', permission: 'audit:read', filters: ['dates'], hidden: true, run: auditReport },
 ];
 
-const mayRun = (x: Ctx, r: ReportDefinition) => !!x.actor.grants[r.permission] && (!r.requires || r.requires.some((q) => x.actor.grants[q]));
+/** The report's own permission plus (when listed) one of the permissions its data needs, as on the matching page. */
+export const mayRun = (x: Pick<Ctx, 'actor'>, r: ReportDefinition) => !!x.actor.grants[r.permission] && (!r.requires || r.requires.some((q) => x.actor.grants[q]));
 
 export function reportCatalog(x: Ctx) {
   return REPORTS.filter((r) => mayRun(x, r)).map((r) => ({ key: r.key, title: r.title, question: r.question, category: r.category, groupings: r.groupings ?? [], filters: r.filters ?? ALL_FILTERS, hidden: !!r.hidden }));

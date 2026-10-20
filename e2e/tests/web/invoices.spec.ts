@@ -62,9 +62,10 @@ test.describe('Invoices (admin)', () => {
 
     // Payments live in the same menu item, on the "Payments received" tab.
     await page.goto(`/o/${data.orgId}/finance/invoices`);
-    // The section switcher is a group of toggle buttons, not ARIA tabs.
-    await page.getByRole('button', { name: 'Payments received' }).click();
+    // The section tabs are links to each page (the sidebar's Invoices item carries both).
+    await page.getByRole('navigation', { name: 'Invoices' }).getByRole('link', { name: 'Payments received' }).click();
     await expect(page).toHaveURL(/\/finance\/invoices\/payments/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Payments received' })).toBeVisible();
     const payment = page.getByRole('row', { name: new RegExp(client) });
     await expect(payment).toContainText(`TX-${data.run}`);
     await expect(payment).toContainText(usd(150000));

@@ -10,7 +10,7 @@ import { loadActor, loadOrg } from '../middleware/tenant';
 import type { Ctx } from './ctx';
 import { audit } from './events';
 import { notify } from './notify';
-import { REPORTS, runReport, type ReportParams } from './reports';
+import { REPORTS, mayRun, runReport, type ReportParams } from './reports';
 import { DATA_EXPORT_KEY, collectMemberData } from './privacy';
 import { renderEmail } from '../lib/email';
 
@@ -53,7 +53,7 @@ function formatOf(raw: Record<string, unknown>): ExportFormat {
 function assertReport(x: Pick<Ctx, 'actor'>, key: string) {
   const def = REPORTS.find((r) => r.key === key);
   if (!def) throw notFound('report');
-  if (!x.actor.grants[def.permission]) throw forbidden();
+  if (!mayRun(x, def)) throw forbidden();
   return def;
 }
 
@@ -205,7 +205,7 @@ function savedDto(x: Ctx, r: typeof savedReports.$inferSelect) {
 export async function listSavedReports(x: Ctx) {
   const rows = await x.tx.select().from(savedReports).orderBy(savedReports.name);
   // Shared reports are listed only for members who may run that report.
-  return rows.filter((r) => r.membershipId === x.actor.membershipId || (r.shared && REPORTS.some((d) => d.key === r.reportKey && x.actor.grants[d.permission]))).map((r) => savedDto(x, r));
+  return rows.filter((r) => r.membershipId === x.actor.membershipId || (r.shared && REPORTS.some((d) => d.key === r.reportKey && mayRun(x, d)))).map((r) => savedDto(x, r));
 }
 
 async function validateSaved(x: Ctx, i: z.infer<typeof savedReportInput>) {

@@ -22,7 +22,7 @@ import { body, idList, query } from '../lib/http';
 import { requirePermission } from '../middleware/tenant';
 import { ctx } from '../services/ctx';
 import { activityDay, deleteScreenshot, getScreenshot, listIdleEvents, listScreenshots, rawSpans, resolveIdleByUser, usage } from '../services/activity';
-import { currentTracking, forceStop, getSession, listSessions, liveWorkers, pageSessions, setSessionNote, webPause, webResume, webStart, webStop, webSwitch } from '../services/timer';
+import { currentTracking, forceStop, getSession, listEodReports, listSessions, liveWorkers, pageSessions, setSessionNote, webPause, webResume, webStart, webStop, webSwitch } from '../services/timer';
 import {
   approvalQueue,
   bulkApprove,
@@ -71,6 +71,10 @@ export const timeRoutes = new Hono<AppEnv>()
     const q = query(c, rangeWithMembers.and(pageQuery));
     const filters = { from: q.from, to: q.to, membershipIds: q.membership_ids };
     return c.json(q.page ? await pageSessions(ctx(c), { ...filters, search: q.q, page: q.page, pageSize: q.page_size }) : await listSessions(ctx(c), filters));
+  })
+  .get('/eod-reports', requirePermission('tracking:read'), async (c) => {
+    const q = query(c, rangeWithMembers);
+    return c.json(await listEodReports(ctx(c), { from: q.from, to: q.to, membershipIds: q.membership_ids }));
   })
   .get('/sessions/:id', async (c) => c.json(await getSession(ctx(c), c.req.param('id'))))
   .post('/sessions/:id/force-stop', async (c) => c.json(await forceStop(ctx(c), c.req.param('id'))))

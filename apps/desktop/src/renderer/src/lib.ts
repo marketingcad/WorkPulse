@@ -79,6 +79,25 @@ export function fmtClock(sec: number): string {
   return `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
+/** Minutes and seconds, e.g. "14:05", for break countdowns. */
+export function fmtMs(sec: number): string {
+  const s = Math.max(0, Math.floor(sec));
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** A local 'HH:MM' as the worker's clock shows it, e.g. "12:30 PM". */
+export function fmtHhmm(hhmm: string): string {
+  return new Date(2000, 0, 1, Number(hhmm.slice(0, 2)), Number(hhmm.slice(3, 5))).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+const CLOCK_OUT_EVENT = 'tallywork:clockout';
+/** Open the Clock out dialog (it asks for the end-of-day report). */
+export const openClockOut = () => window.dispatchEvent(new Event(CLOCK_OUT_EVENT));
+export const onClockOut = (cb: () => void) => {
+  window.addEventListener(CLOCK_OUT_EVENT, cb);
+  return () => window.removeEventListener(CLOCK_OUT_EVENT, cb);
+};
+
 export function fmtHm(sec: number): string {
   const s = Math.max(0, Math.round(sec));
   const h = Math.floor(s / 3600);

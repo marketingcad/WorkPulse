@@ -2,11 +2,12 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ClientDto, ProjectDto, TaskDto, TeamDto, MemberOptionDto } from '@tallywork/contracts';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { Badge, Button, Checkbox, Dialog, Field, IconButton, Input, Select, StatusBadge, Textarea, cx, useToast, type Tone } from '@tallywork/ui';
-import { ApiError, api, errorMessage, useOrgId } from '@/lib/api';
+import { ApiError, api, errorMessage, useOrgId, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { fromMinor, toMinor } from '@/components/finance/types';
+import { RateNote } from '@/components/finance/rate-note';
 import { MultiSelect } from './multi-select';
 import { ClientDialog } from './client-dialog';
 
@@ -278,6 +279,14 @@ export interface ProjectForm {
   estimate_unit: 'HOURS' | 'DAYS';
   pay_rate: string;
   bill_rate: string;
+  /** planned breaks, as typed: time 'HH:MM' or '', minutes or '' */
+  breaks: ProjectBreakForm[];
+}
+
+export interface ProjectBreakForm {
+  break_type_id: string;
+  start_time: string;
+  minutes: string;
 }
 
 /** Working hours in a day, for converting estimates (organization setting, default 8). */
@@ -307,7 +316,104 @@ export function projectToForm(p: ProjectDto | null | undefined, hoursPerDay: num
     estimate_unit: unit,
     pay_rate: p?.pay_rate_minor != null ? fromMinor(p.pay_rate_minor) : '',
     bill_rate: p?.bill_rate_minor != null ? fromMinor(p.bill_rate_minor) : '',
+    breaks: (p?.breaks ?? []).map((b) => ({ break_type_id: b.break_type_id, start_time: b.start_time ?? '', minutes: b.duration_minutes != null ? String(b.duration_minutes) : '' })),
   };
+}
+
+/** The request body's `breaks`; a blank time or length means "any time" / "the break type's maximum". */
+export function breaksPayload(breaks: ProjectBreakForm[]) {
+  return breaks.map((b, i) => {
+    const m = b.minutes.trim() === '' ? null : Number(b.minutes);
+    if (m !== null && !(Number.isInteger(m) && m >= 1 && m <= 480)) throw new ApiError(422, 'validation', 'Enter a valid break length', undefined, [{ field: `breaks.${i}.duration_minutes`, message: 'Whole minutes, 1 to 480' }]);
+    if (!b.break_type_id) throw new ApiError(422, 'validation', 'Pick a break type', undefined, [{ field: `breaks.${i}.break_type_id`, message: 'Pick a break type' }]);
+    return { break_type_id: b.break_type_id, start_time: b.start_time || null, duration_minutes: m };
+  });
+}
+
+/**
+ * The breaks a project plans (Coffee 10:30 for 15 min, Lunch 12:00 for 60 min…), from the break
+ * types in Settings. Workers see them as break buttons in the desktop app, with a reminder at the time.
+ */
+export function ProjectBreaksField({ breaks, onChange, err }: { breaks: ProjectBreakForm[]; onChange: (b: ProjectBreakForm[]) => void; err: ApiError | null }) {
+  const orgId = useOrgId();
+  const types = useOrgQuery<BreakTypeOption[]>('/break-types');
+  const list = types.data ?? [];
+  const set = (i: number, patch: Partial<ProjectBreakForm>) => onChange(breaks.map((b, j) => (j === i ? { ...b, ...patch } : b)));
+  const add = () => list[0] && onChange([...breaks, { break_type_id: list[0].id, start_time: '', minutes: '' }]);
+  const rowError = (i: number) => err?.field(`breaks.${i}.break_type_id`) ?? err?.field(`breaks.${i}.start_time`) ?? err?.field(`breaks.${i}.duration_minutes`);
+
+  return (
+    <section aria-label="Breaks" className="flex flex-col gap-2 sm:col-span-2">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-medium">Breaks</h3>
+          <p className="text-xs text-text-muted">Workers see these as break buttons when they clock in, with a reminder at the time you set.</p>
+        </div>
+        {list.length > 0 && (
+          <Button size="sm" onClick={add} disabled={breaks.length >= 12}>
+            <Plus className="size-3.5" /> Add break
+          </Button>
+        )}
+      </div>
+      {types.isLoading ? (
+        <p className="text-xs text-text-muted">Loading break types…</p>
+      ) : !list.length ? (
+        <p className="rounded-sm border border-dashed border-border px-3 py-2 text-xs text-text-muted">
+          No break types yet. Add Coffee, Lunch and others in{' '}
+          <a href={`/o/${orgId}/settings/time`} className="text-interactive hover:underline">
+            Settings › Time & pay
+          </a>
+          , then plan them here.
+        </p>
+      ) : !breaks.length ? (
+        <p className="rounded-sm border border-dashed border-border px-3 py-2 text-xs text-text-muted">No breaks planned. Workers can still take any break type from the Break menu.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {breaks.map((b, i) => {
+            const type = list.find((t) => t.id === b.break_type_id);
+            const n = i + 1;
+            return (
+              <li key={i} className="flex flex-col gap-1">
+                <div className="grid grid-cols-[minmax(0,1fr)_112px_96px_auto] items-center gap-2">
+                  <Select aria-label={`Break ${n} type`} value={b.break_type_id} onChange={(e) => set(i, { break_type_id: e.target.value })}>
+                    {list.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.paid ? 'paid' : 'unpaid'})
+                      </option>
+                    ))}
+                  </Select>
+                  <Input aria-label={`Break ${n} time`} type="time" value={b.start_time} onChange={(e) => set(i, { start_time: e.target.value })} />
+                  <Input
+                    aria-label={`Break ${n} minutes`}
+                    type="number"
+                    min={1}
+                    max={480}
+                    inputMode="numeric"
+                    className="tabular"
+                    placeholder={type?.max_minutes ? String(type.max_minutes) : 'min'}
+                    value={b.minutes}
+                    onChange={(e) => set(i, { minutes: e.target.value })}
+                  />
+                  <IconButton label={`Remove break ${n}`} onClick={() => onChange(breaks.filter((_, j) => j !== i))}>
+                    <Trash2 className="size-3.5" />
+                  </IconButton>
+                </div>
+                {rowError(i) && <p className="text-xs text-danger">{rowError(i)}</p>}
+              </li>
+            );
+          })}
+          <li className="text-2xs text-text-faint">Blank time = any time. Blank minutes = the break type&apos;s maximum.</li>
+        </ul>
+      )}
+    </section>
+  );
+}
+
+interface BreakTypeOption {
+  id: string;
+  name: string;
+  paid: boolean;
+  max_minutes: number | null;
 }
 
 export function ColorPicker({ value, onChange, label = 'Project colour' }: { value: string; onChange: (c: string) => void; label?: string }) {
@@ -423,6 +529,7 @@ export function ProjectFields({
         <Field label="Description" htmlFor="proj-desc" className="sm:col-span-2">
           <Textarea id="proj-desc" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} maxLength={2000} className="min-h-16" />
         </Field>
+        <ProjectBreaksField breaks={f.breaks} onChange={(breaks) => setF({ ...f, breaks })} err={err} />
       </div>
 
       <section className="flex flex-col gap-3 md:border-l md:border-border md:pl-6" aria-label="Finance">
@@ -444,7 +551,7 @@ export function ProjectFields({
             <Field label="Bill rate per hour" htmlFor="proj-bill" hint={`${currency} / hour, what you charge`} error={err?.field('bill_rate_minor')}>
               <Input id="proj-bill" inputMode="decimal" className="tabular" placeholder="0.00" value={f.bill_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} />
             </Field>
-            <p className="text-xs text-text-muted">Rates apply from today. The bill rate overrides client, member and workspace rates; the pay rate overrides client and workspace rates, but a member's own pay rate still wins. Full order: Finance → Billing &amp; rates.</p>
+            <RateNote scope="PROJECT" />
           </>
         )}
         <Checkbox label="Not billable project" checked={!f.billable_default} onChange={(e) => setF({ ...f, billable_default: !e.target.checked })} />
@@ -491,6 +598,7 @@ export function projectPayload(f: ProjectForm, opts: { workers?: boolean; teams?
     estimate_unit: f.estimate_unit,
     ...rate('pay_rate', 'pay_rate_minor'),
     ...rate('bill_rate', 'bill_rate_minor'),
+    breaks: breaksPayload(f.breaks),
     ...(opts.workers ? { member_ids: f.member_ids } : {}),
     ...(opts.teams ? { team_ids: f.team_ids } : {}),
   };

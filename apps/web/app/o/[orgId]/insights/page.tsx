@@ -54,7 +54,7 @@ export default function InsightsPage() {
   return (
     <>
       <PageHeader
-        title="Insights"
+        title="Summary"
         description="Time, pay and billing for a period, per person, client and project."
         actions={
           <Button icon={<Download className="size-3.5" />} onClick={exportCsv} disabled={!data}>

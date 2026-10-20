@@ -15,15 +15,22 @@ export interface Device {
 export interface DesktopOptions {
   /** Own-data resources whose requests fail as if the computer were offline. */
   offline?: MeResource[];
+  /** Start from this state instead of signed in and stopped, e.g. clocked in or on a break. */
+  state?: (ready: AgentState) => AgentState;
+  /** Main-process actions (start, stop, takeBreak…) to record in `calls` instead of failing. */
+  record?: string[];
 }
 
 export interface DesktopHandle {
   /** PDFs the page saved through the bridge (what the Electron main process would write to disk). */
   savedPdfs: Array<{ id: string; bytes: Buffer }>;
+  /** Recorded main-process actions with their arguments (see `DesktopOptions.record`). */
+  calls: Array<{ op: string; args: unknown[] }>;
 }
 
 async function signInDevice(email: string): Promise<Device> {
-  const api = await request.newContext({ baseURL: WEB_URL });
+  // A device has no browser cookies (a web project's signed-in state would make this a CSRF-checked browser request).
+  const api = await request.newContext({ baseURL: WEB_URL, storageState: { cookies: [], origins: [] } });
   const login = await api.post('/api/v1/agent/login', { data: { email, password: PASSWORD, device: { name: `E2E ${email}`, platform: 'windows', agent_version: '0.1.5' } } });
   if (login.status() !== 201) throw new Error(`device sign-in for ${email}: HTTP ${login.status()} ${await login.text()}`);
   const token = (await login.json()).access_token as string;
@@ -63,6 +70,8 @@ function readyState(d: Device): AgentState {
     manualRequests: [],
     breakTypes: b.break_types.map((x) => ({ id: x.id, name: x.name, paid: x.paid, maxMinutes: x.max_minutes })),
     breakTypeId: null,
+    breakStartedAt: null,
+    breakMinutes: null,
     nextShift: null,
   };
 }
@@ -73,7 +82,7 @@ function readyState(d: Device): AgentState {
  * the server with the device's token. The page code and the API are the real ones.
  */
 async function openDesktop(page: Page, device: Device, opts: DesktopOptions = {}): Promise<DesktopHandle> {
-  const handle: DesktopHandle = { savedPdfs: [] };
+  const handle: DesktopHandle = { savedPdfs: [], calls: [] };
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await fetch(`${WEB_URL}/api/v1${path}`, { method, headers: { Authorization: `Bearer ${device.token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
     if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { title?: string }).title ?? `Request failed (${res.status})`);
@@ -82,7 +91,7 @@ async function openDesktop(page: Page, device: Device, opts: DesktopOptions = {}
   await page.exposeFunction('__e2eBridge', async (op: string, args: any) => {
     switch (op) {
       case 'getState':
-        return readyState(device);
+        return opts.state ? opts.state(readyState(device)) : readyState(device);
       case 'me': {
         if (opts.offline?.includes(args.resource)) throw new Error('Could not reach the server. Check your connection.');
         const q = new URLSearchParams();
@@ -99,12 +108,16 @@ async function openDesktop(page: Page, device: Device, opts: DesktopOptions = {}
         await call('POST', '/agent/me/notifications/read', { ids: args.ids });
         return undefined;
       default:
+        if (opts.record?.includes(op)) {
+          handle.calls.push({ op, args: args ?? [] });
+          return undefined;
+        }
         throw new Error(`"${op}" is not available in the E2E desktop bridge`);
     }
   });
   await page.addInitScript(() => {
     const b = (op: string, args?: unknown) => (window as any).__e2eBridge(op, args);
-    const unavailable = (op: string) => () => b(op);
+    const unavailable = (op: string) => (...args: unknown[]) => b(op, args);
     (window as any).tallywork = {
       getState: () => b('getState'),
       onState: () => () => undefined,

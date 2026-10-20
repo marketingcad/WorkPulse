@@ -128,7 +128,7 @@ async function handleEvent(tx: Tx, deps: Deps, e: Envelope): Promise<void> {
     case 'policy.changed': {
       // Transparency: tell every tracking member that monitoring settings changed.
       const ids = (await tx.execute<{ id: string }>(sql`select m.id from memberships m join worker_profiles w on w.membership_id = m.id where m.status = 'ACTIVE' and w.tracking_enabled`)) as unknown as { rows: Array<{ id: string }> };
-      await notify(tx, deps, org, ids.rows.map((r) => r.id), { type: 'policy.changed', title: 'Tracking settings were updated', body: 'Review what is monitored on your devices.', link: '/me/monitoring' });
+      await notify(tx, deps, org, ids.rows.map((r) => r.id), { type: 'policy.changed', title: 'Tracking settings were updated', body: 'Your organization changed what is tracked on your devices.' });
       break;
     }
     case 'device.offline':

@@ -21,10 +21,11 @@ export const IPC = {
   }),
   'auth:logout': z.void(),
   'timer:start': z.object({ projectId: z.uuid(), taskId: z.uuid().nullable() }),
-  'timer:stop': z.void(),
+  /** Clock out; the end-of-day report is optional so a quit or sign-out can still stop the timer. */
+  'timer:stop': z.object({ report: z.object({ text: z.string().trim().min(1).max(5000), finished: z.boolean() }).optional() }).optional(),
   'timer:pause': z.void(),
   'timer:resume': z.void(),
-  'timer:break': z.object({ breakTypeId: z.uuid().nullable() }),
+  'timer:break': z.object({ breakTypeId: z.uuid().nullable(), minutes: z.number().int().min(1).max(480).nullable().optional() }),
   'timer:switch': z.object({ projectId: z.uuid(), taskId: z.uuid().nullable() }),
   'notes:set': z.object({ note: z.string().max(1000) }),
   'idle:resolve': z.object({ choice: z.enum(['KEPT', 'DISCARDED', 'REASSIGNED']), projectId: z.uuid().optional(), taskId: z.uuid().nullable().optional() }),
@@ -68,6 +69,18 @@ export interface Assignment {
   color: string;
   client_name: string | null;
   tasks: Array<{ id: string; title: string; status: string }>;
+  /** the project's planned breaks, in order */
+  breaks: ProjectBreak[];
+}
+
+/** A planned break of a project (Coffee 10:30 for 15 min…). */
+export interface ProjectBreak {
+  break_type_id: string;
+  name: string;
+  paid: boolean;
+  /** local time 'HH:MM', or null for any time */
+  start_time: string | null;
+  duration_minutes: number | null;
 }
 
 export type TrackingState = 'stopped' | 'active' | 'paused';
@@ -117,6 +130,9 @@ export interface AgentState {
   breakTypes: Array<{ id: string; name: string; paid: boolean; maxMinutes: number | null }>;
   /** break type of the current break, when paused on one */
   breakTypeId: string | null;
+  /** when the current break started and how long it is planned to last (null = no set length) */
+  breakStartedAt: string | null;
+  breakMinutes: number | null;
   /** current or next shift (today/tomorrow) */
   nextShift: { startsAt: string; endsAt: string } | null;
 }

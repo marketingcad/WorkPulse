@@ -186,8 +186,8 @@ export const financeRoutes = new Hono<AppEnv>()
     return c.body(null, 204);
   })
   .get('/invoices', async (c) => {
-    const q = query(c, pageQuery.extend({ status: z.string().max(20).optional(), client_id: z.uuid().optional() }));
-    const filters = { status: q.status, clientId: q.client_id, search: q.q };
+    const q = query(c, pageQuery.extend({ status: z.string().max(20).optional(), client_id: z.uuid().optional(), from: z.iso.date().optional(), to: z.iso.date().optional() }));
+    const filters = { status: q.status, clientId: q.client_id, from: q.from, to: q.to, search: q.q };
     return c.json(q.page ? await pageInvoices(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listInvoices(ctx(c), filters));
   })
   .post('/invoices/preview', async (c) => c.json(await previewInvoice(ctx(c), await body(c, invoiceCreateInput))))
@@ -237,8 +237,9 @@ export const financeRoutes = new Hono<AppEnv>()
     return new Response(new Uint8Array(pdf), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="pay-stub-${stub.period_start}.pdf"`, 'Cache-Control': 'private, no-store' } });
   })
   .get('/payments', async (c) => {
-    const q = query(c, pageQuery);
-    return c.json(q.page ? await pagePayments(ctx(c), { search: q.q, page: q.page, pageSize: q.page_size }) : await listPayments(ctx(c), { search: q.q }));
+    const q = query(c, pageQuery.extend({ from: z.iso.date().optional(), to: z.iso.date().optional() }));
+    const filters = { from: q.from, to: q.to, search: q.q };
+    return c.json(q.page ? await pagePayments(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listPayments(ctx(c), filters));
   })
   .post('/payments', async (c) => c.json(await recordPayment(ctx(c), await body(c, paymentInput)), 201))
   .delete('/payments/:id', async (c) => {

@@ -91,7 +91,7 @@ function updateTray(): void {
   const running = st.tracking.segmentStartedAt ? (Date.now() - Date.parse(st.tracking.segmentStartedAt)) / 1000 : 0;
   const elapsed = st.tracking.baseSeconds + running;
   const project = st.assignments.find((a) => a.project_id === st.tracking.projectId)?.project_name;
-  const label = st.tracking.state === 'stopped' ? 'Not tracking' : `${st.tracking.state === 'paused' ? 'Paused' : 'Tracking'} · ${fmt(elapsed)}${project ? ` · ${project}` : ''}`;
+  const label = st.tracking.state === 'stopped' ? 'Not clocked in' : `${st.tracking.state === 'paused' ? 'On break' : 'Clocked in'} · ${fmt(elapsed)}${project ? ` · ${project}` : ''}`;
   const key = `${st.tracking.state}|${label}|${st.phase}`;
   if (process.platform === 'darwin') tray.setTitle(st.tracking.state === 'stopped' ? '' : fmt(elapsed));
   tray.setToolTip(`WorkPulse — ${label}`);
@@ -104,8 +104,9 @@ function updateTray(): void {
       { label, enabled: false },
       { type: 'separator' },
       st.tracking.state === 'stopped'
-        ? { label: last ? `Start “${last.project_name}”` : 'Start tracking…', enabled: st.phase === 'ready', click: () => (last ? void agent.start(last.project_id, st.lastProject!.taskId).catch(() => showWindow()) : showWindow()) }
-        : { label: 'Stop tracking', click: () => void agent.stop() },
+        ? { label: last ? `Clock in to “${last.project_name}”` : 'Clock in…', enabled: st.phase === 'ready', click: () => (last ? void agent.start(last.project_id, st.lastProject!.taskId).catch(() => showWindow()) : showWindow()) }
+        : // The window asks for the end-of-day report before clocking out.
+          { label: 'Clock out…', click: () => (showWindow(), win?.webContents.send('app:navigate', 'clockout')) },
       { label: 'Open WorkPulse', click: () => showWindow() },
       { type: 'separator' },
       { label: 'Quit', click: () => quit() },
@@ -145,10 +146,10 @@ function registerIpc(): void {
     'auth:loginPassword': (p: IpcPayload<'auth:loginPassword'>) => agent.loginWithPassword(p),
     'auth:logout': () => agent.logout(),
     'timer:start': (p: { projectId: string; taskId: string | null }) => agent.start(p.projectId, p.taskId),
-    'timer:stop': () => agent.stop(),
+    'timer:stop': (p?: IpcPayload<'timer:stop'>) => agent.stop(new Date(), p?.report),
     'timer:pause': () => agent.pause('MANUAL'),
     'timer:resume': () => agent.resume(),
-    'timer:break': (p: IpcPayload<'timer:break'>) => agent.takeBreak(p.breakTypeId),
+    'timer:break': (p: IpcPayload<'timer:break'>) => agent.takeBreak(p.breakTypeId, p.minutes ?? null),
     'timer:switch': (p: { projectId: string; taskId: string | null }) => agent.start(p.projectId, p.taskId),
     'notes:set': (p: { note: string }) => agent.setNote(p.note),
     'idle:resolve': (p: { choice: 'KEPT' | 'DISCARDED' | 'REASSIGNED'; projectId?: string; taskId?: string | null }) => agent.resolveIdle(p.choice, p.projectId, p.taskId),

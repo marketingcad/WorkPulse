@@ -34,7 +34,7 @@ function MyTimesheet() {
         breadcrumbs={
           !isSelf && org.can('timesheets:read', 'team') ? (
             <Link href={`${org.base}/timesheets/team`} className="hover:underline">
-              View & edit
+              Team week
             </Link>
           ) : undefined
         }

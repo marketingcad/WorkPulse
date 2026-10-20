@@ -1,23 +1,40 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Archive, Landmark, Pencil, Plus } from 'lucide-react';
 import type { PayrollProfileDto, PayrollRunDto } from '@tallywork/contracts';
-import { Badge, Button, ConfirmDialog, DataTable, EmptyState, ErrorState, PageHeader, Panel, PermissionState, StatusBadge, Tabs, fmtDate, fmtMoney, useToast, type Column } from '@tallywork/ui';
+import { Badge, Button, ConfirmDialog, DataTable, EmptyState, ErrorState, PageHeader, Panel, PermissionState, SkeletonRows, StatusBadge, Tabs, fmtDate, fmtMoney, useToast, type Column } from '@tallywork/ui';
 import { errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { BankDetailsDialog, PayrollProfileDialog, RunPayrollDialog, periodLabel } from '@/components/finance/payroll';
+import { AmountsOwed } from '@/components/finance/amounts-owed';
+
+type PayrollTab = 'runs' | 'owed' | 'profiles';
 
 export default function PayrollPage() {
+  return (
+    <Suspense fallback={<Panel><SkeletonRows /></Panel>}>
+      <Payroll />
+    </Suspense>
+  );
+}
+
+function Payroll() {
   const org = useOrg();
-  const [tab, setTab] = useState<'runs' | 'profiles'>('runs');
-  if (!org.can('payroll:read')) return <PermissionState />;
+  const canPayroll = org.can('payroll:read');
+  // What is owed to members (estimate and approved, before a payroll is run); billing or rates access, as before.
+  const canOwed = org.can('billing:read') || org.can('rates:read');
+  const tabs = [...(canPayroll ? [{ value: 'runs', label: 'Payrolls' }] : []), ...(canOwed ? [{ value: 'owed', label: 'Owed' }] : []), ...(canPayroll ? [{ value: 'profiles', label: 'Pay groups' }] : [])] as Array<{ value: PayrollTab; label: string }>;
+  const asked = useSearchParams().get('tab') as PayrollTab | null;
+  const [tab, setTab] = useState<PayrollTab | null>(null);
+  const current = tab ?? (tabs.some((t) => t.value === asked) ? asked! : tabs[0]?.value);
+  if (!current) return <PermissionState />;
   const canManage = org.can('payroll:manage');
   return (
     <>
-      <PageHeader title="Payroll" description="Pay members for approved time and paid time off, then publish their pay stubs." />
-      <Tabs value={tab} onValueChange={(v) => setTab(v as 'runs' | 'profiles')} items={[{ value: 'runs', label: 'Payrolls' }, { value: 'profiles', label: 'Pay groups' }]} className="mb-4" />
-      {tab === 'runs' ? <Runs canManage={canManage} /> : <Profiles canManage={canManage} />}
+      <PageHeader title="Payroll" description="What members are owed, paying them for approved time and paid time off, and publishing their pay stubs." />
+      {tabs.length > 1 && <Tabs value={current} onValueChange={(v) => setTab(v as PayrollTab)} items={tabs} className="mb-4" />}
+      {current === 'runs' ? <Runs canManage={canManage} /> : current === 'owed' ? <AmountsOwed /> : <Profiles canManage={canManage} />}
     </>
   );
 }
@@ -95,7 +112,7 @@ function Profiles({ canManage }: { canManage: boolean }) {
       )}
       {!q.isLoading && !profiles.length && (
         <Panel>
-          <EmptyState title="No pay groups" description="A pay group sets the pay period and currency for a group of members." action={canManage && <Button onClick={() => setEdit('new')}>New payroll profile</Button>} />
+          <EmptyState title="No pay groups" description="A pay group sets the pay period and currency for a group of members." action={canManage && <Button onClick={() => setEdit('new')}>New pay group</Button>} />
         </Panel>
       )}
       {profiles.map((p) => {

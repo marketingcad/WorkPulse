@@ -2,13 +2,13 @@ import { expect, ok, search, test, uid } from '../../support/fixtures';
 import { ADMIN_STATE } from '../../support/env';
 
 /**
- * Time lists are paged by the server: All time entries shows one page at a time with day and range
+ * Time lists are paged by the server: Time entries shows one page at a time with day and range
  * totals over every entry, the team timesheet adds up hours on the server, and manual time
  * searches and counts on the server. Each test uses its own past dates or search term.
  */
 test.use({ storageState: ADMIN_STATE });
 
-test('All time entries pages through a busy day with totals over every entry', { tag: '@smoke' }, async ({ page, data, adminApi }) => {
+test('Time entries pages through a busy day with totals over every entry', { tag: '@smoke' }, async ({ page, data, adminApi }) => {
   const { api, orgApi } = adminApi;
   const day = '2025-11-12';
   const note = `Paged work ${data.run}-${uid()}`;
@@ -53,7 +53,9 @@ test('manual time searches every request on the server', async ({ page, data, ad
   const reason = `Offsite ${data.run}-${uid()}`;
   await ok(await api.post(orgApi('/manual-time'), { data: { project_id: data.projects.website.id, started_at: '2025-10-01T09:00:00.000Z', ended_at: '2025-10-01T10:00:00.000Z', reason } }), 'manual time');
 
+  // The old Manual time address opens Timesheets › Approvals, where the requests now live.
   await page.goto(`/o/${data.orgId}/timesheets/manual`);
+  await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/timesheets/approvals$`));
   await page.getByRole('button', { name: /^All/ }).click();
   await page.getByLabel('Search manual time').fill(reason);
   await expect(page.getByRole('table', { name: 'Manual time requests' }).getByRole('row')).toHaveCount(2);

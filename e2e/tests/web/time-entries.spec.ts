@@ -2,17 +2,17 @@ import { expect, test } from '../../support/fixtures';
 import { ADMIN_STATE } from '../../support/env';
 
 /**
- * Time entered as a duration ("2:30 on that day"), part of it billable, and the "All time entries"
+ * Time entered as a duration ("2:30 on that day"), part of it billable, and the "Time entries"
  * page that managers use to find it. Uses a fixed past date no other spec writes to.
  */
 test.use({ storageState: ADMIN_STATE });
 
 const DAY = '2026-01-14';
 
-test('an admin logs a part-billable duration and finds it on All time entries', { tag: '@smoke' }, async ({ page, data }) => {
+test('an admin logs a part-billable duration and finds it on Time entries', { tag: '@smoke' }, async ({ page, data }) => {
   const note = `Workshop prep ${data.run}`;
   await page.goto(`/o/${data.orgId}/timesheets/all`);
-  await expect(page.getByRole('heading', { level: 1, name: 'All time entries' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Time entries' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Add time' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Add time' });

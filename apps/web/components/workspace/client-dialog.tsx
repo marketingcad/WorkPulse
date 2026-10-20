@@ -5,6 +5,7 @@ import { Button, Checkbox, Dialog, Field, Input, Select, Textarea, cx, useToast 
 import { ApiError, errorMessage } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { ColorPicker, useOrgAction } from '@/components/workspace/shared';
+import { RateNote } from '@/components/finance/rate-note';
 import { fromMinor, toMinor } from '@/components/finance/types';
 import { CURRENCIES, LANGUAGES, LogoEditor } from '@/components/workspace/logo-editor';
 
@@ -173,7 +174,7 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
                 </>
               )}
             </div>
-            {canReadRates && <p className="text-xs text-text-muted sm:col-span-2">Client rates apply from today. Project and worker rates still take precedence.</p>}
+            {canReadRates && <RateNote scope="CLIENT" className="sm:col-span-2" />}
           </div>
         </div>
         <button type="submit" hidden />

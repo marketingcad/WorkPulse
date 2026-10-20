@@ -164,7 +164,8 @@ export function Switch({ checked, onCheckedChange, label, description, disabled,
   );
 }
 
-const TAB_CLASS =
+/** Tab look, shared by the tab-like section links in the web app. */
+export const TAB_CLASS =
   'relative -mb-px inline-flex h-9 shrink-0 items-center gap-1.5 border-b-2 border-transparent px-3 text-sm font-medium text-text-muted hover:text-text data-[state=active]:border-interactive data-[state=active]:text-text';
 
 /**

@@ -166,6 +166,13 @@ export const clientInput = z.object({
   pay_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
 });
 
+/** One planned break of a project: an organization break type, optionally at a time of day and for a set length. */
+export const projectBreakInput = z.object({
+  break_type_id: id,
+  start_time: hhmm.nullable().optional(),
+  duration_minutes: z.number().int().min(1).max(8 * 60).nullable().optional(),
+});
+
 export const projectInput = z.object({
   name: nonEmpty(150),
   client_id: id.nullable().optional(),
@@ -184,6 +191,8 @@ export const projectInput = z.object({
   /** project-level hourly rates in minor units; requires rates:manage. null clears, omitted leaves unchanged. */
   pay_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
   bill_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
+  /** planned breaks, in order; replaces the project's list when given */
+  breaks: z.array(projectBreakInput).max(12).optional(),
 });
 
 export const taskInput = z.object({

@@ -10,7 +10,7 @@ import { ADMIN_STATE, VIEWER_STATE } from '../../support/env';
 /** Open Insights on the month that holds the setup's approved time (this month or the previous one). */
 async function openMonthWithWadesTime(page: import('@playwright/test').Page, orgId: string, day: string) {
   await page.goto(`/o/${orgId}/insights`);
-  await expect(page.getByRole('heading', { level: 1, name: 'Insights' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Summary' })).toBeVisible();
   // The setup's organization is in UTC; "Monthly" is the default period.
   if (day.slice(0, 7) !== new Date().toISOString().slice(0, 7)) await page.getByRole('button', { name: 'Previous period' }).click();
 }

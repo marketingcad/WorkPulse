@@ -314,7 +314,7 @@ function Widget({ k, data }: { k: string; data: any }) {
             ]}
           />
           <Link href={`${b}/insights`} className="block border-t border-border px-4 py-2 text-xs font-medium text-interactive hover:underline">
-            Open insights →
+            Open summary →
           </Link>
         </div>
       );
@@ -558,8 +558,35 @@ function Widget({ k, data }: { k: string; data: any }) {
       ) : (
         <EmptyState title="All devices checked in recently" />
       );
+    case 'weekly_limits':
+      return data ? (
+        <ul className="flex flex-col gap-3 px-4 py-3">
+          {(
+            [
+              ['Today', data.daily],
+              ['This week', data.weekly],
+            ] as const
+          ).map(([label, l]: readonly [string, { limit_seconds: number; used_seconds: number } | null]) =>
+            l ? (
+              <li key={label} className="flex flex-col gap-1">
+                <div className="flex items-baseline justify-between gap-2 text-sm">
+                  <span>{label}</span>
+                  <span className="tabular text-text-muted">
+                    {d(l.used_seconds)} of {d(l.limit_seconds)}
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-surface-sunken" role="progressbar" aria-label={`${label} limit used`} aria-valuemin={0} aria-valuemax={l.limit_seconds} aria-valuenow={Math.min(l.used_seconds, l.limit_seconds)}>
+                  <div className={cx('h-full rounded-full', l.used_seconds >= l.limit_seconds ? 'bg-danger' : l.used_seconds >= l.limit_seconds * 0.9 ? 'bg-warning' : 'bg-interactive')} style={{ width: `${Math.min(100, (l.used_seconds / l.limit_seconds) * 100)}%` }} />
+                </div>
+              </li>
+            ) : null,
+          )}
+        </ul>
+      ) : (
+        <EmptyState title="No time limits" description="No daily or weekly maximum applies to you. Set limits in Settings › Tracking policies." />
+      );
     default:
-      return <EmptyState title="Coming soon" />;
+      return <EmptyState title="Not available" />;
   }
 }
 

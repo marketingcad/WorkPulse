@@ -8,8 +8,9 @@ import { Button, DataTable, EmptyState, ErrorState, FilterBar, Input, KpiStrip, 
 import { qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
+import { useListPeriod } from '@/components/finance/list-period';
+import { ExportMenu } from '@/components/reports/export-menu';
 import type { InvoiceRow, InvoiceStatus } from '@/components/finance/types';
-import { InvoiceSections } from '@/components/finance/invoice-sections';
 
 const TABS: Array<{ value: 'ALL' | InvoiceStatus; label: string }> = [
   { value: 'ALL', label: 'All' },
@@ -38,8 +39,9 @@ function InvoicesInner() {
   const [clientId, setClientId] = useState(sp.get('client') ?? '');
   const allowed = org.can('invoices:read');
   const search = useSearch();
+  const period = useListPeriod();
   // The server filters, pages and adds up every matching invoice, so totals and tab counts are never cut short.
-  const filters = { client_id: clientId || undefined, status: status === 'ALL' ? undefined : status, q: search.term || undefined };
+  const filters = { client_id: clientId || undefined, status: status === 'ALL' ? undefined : status, ...period.filter, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
   const q = useOrgQuery<OffsetPage<InvoiceRow> & { summary: InvoicePageSummary }>(allowed ? `/invoices${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
   useClampPage(paging, q.data, q.isPlaceholderData);
@@ -51,6 +53,8 @@ function InvoicesInner() {
     if (paymentsOnly) router.replace(org.base + '/finance/invoices/payments');
   }, [paymentsOnly, org.base, router]);
 
+  // Nothing to show while that redirect runs (no "no access" flash).
+  if (paymentsOnly) return null;
   if (!allowed) return <PermissionState />;
 
   const currency = summary?.currency ?? org.organization.currency;
@@ -83,14 +87,16 @@ function InvoicesInner() {
         title="Invoices"
         description="Invoices built from approved billable time and expenses."
         actions={
-          org.can('invoices:manage') && (
-            <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => router.push(`${org.base}/finance/invoices/new`)}>
-              New invoice
-            </Button>
-          )
+          <>
+            {org.can('reports:finance') && <ExportMenu reportKey="invoices" from={period.from} to={period.to} status={status === 'ALL' ? undefined : status} />}
+            {org.can('invoices:manage') && (
+              <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => router.push(`${org.base}/finance/invoices/new`)}>
+                New invoice
+              </Button>
+            )}
+          </>
         }
       />
-      <InvoiceSections current="invoices" />
       <KpiStrip
         className="mb-4"
         items={[
@@ -101,6 +107,7 @@ function InvoicesInner() {
         ]}
       />
       <FilterBar>
+        {period.picker}
         <Select aria-label="Client" value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-56">
           <option value="">All clients</option>
           {clientsQ.data?.map((c) => (

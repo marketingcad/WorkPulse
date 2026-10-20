@@ -16,7 +16,7 @@ async function newOrganization(adminApi: { api: import('@playwright/test').APIRe
 
 test('an admin adds a time type with a pay multiplier, then archives it', { tag: '@smoke' }, async ({ page, data, adminApi }) => {
   const orgId = await newOrganization(adminApi, `Rules A ${data.run} ${uid()}`);
-  await page.goto(`/o/${orgId}/settings`);
+  await page.goto(`/o/${orgId}/settings/time`);
   await expect(page.getByRole('heading', { name: 'Time types' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Add time type' }).first().click();
@@ -48,8 +48,8 @@ test('an admin adds a time type with a pay multiplier, then archives it', { tag:
 
 test('an admin locks old time and turns on missing-time reminders', async ({ page, data, adminApi }) => {
   const orgId = await newOrganization(adminApi, `Rules B ${data.run} ${uid()}`);
-  await page.goto(`/o/${orgId}/settings`);
-  await expect(page.getByRole('heading', { level: 1, name: 'Organization' })).toBeVisible();
+  await page.goto(`/o/${orgId}/settings/time`);
+  await expect(page.getByRole('heading', { level: 1, name: 'Time & pay' })).toBeVisible();
   const saveButton = page.getByRole('button', { name: 'Save changes' });
 
   // Locking: whole days from 0 to 3650.
@@ -68,7 +68,7 @@ test('an admin locks old time and turns on missing-time reminders', async ({ pag
   await page.getByLabel('Check at').fill('17:30');
 
   await saveButton.click();
-  await expect(page.getByText('Organization settings saved')).toBeVisible();
+  await expect(page.getByText('Time & pay settings saved')).toBeVisible();
 
   // Saved on the server, not only in the form.
   await page.reload();

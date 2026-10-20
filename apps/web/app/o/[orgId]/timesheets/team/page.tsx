@@ -83,7 +83,7 @@ function TeamTimesheets() {
 
   return (
     <>
-      <PageHeader title="View & edit timesheets" description="Pick a member and period to review, correct, or submit their time." />
+      <PageHeader title="Team week" description="Everyone’s hours this week. Pick a member to review, correct or submit their timesheet." />
       <FilterBar>
         <Select value={member ?? ''} onChange={(e) => setParams({ member: e.target.value || null })} className="w-56" aria-label="Member">
           <option value="">Choose a member…</option>
@@ -108,7 +108,7 @@ function TeamTimesheets() {
       ) : null}
 
       <Panel
-        title={`Team week · ${periodLabel(weekFrom, weekTo)}`}
+        title={`Hours per member · ${periodLabel(weekFrom, weekTo)}`}
         actions={
           <>
             <Button size="xs" variant="ghost" aria-label="Previous week" onClick={() => setParams({ date: addDays(weekFrom, -7) })}>

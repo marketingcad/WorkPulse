@@ -31,6 +31,7 @@ import { api, errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { useAutoTour } from '@/components/help/tour';
 import { useOrgStream } from '@/lib/stream';
 import { useOrg } from '@/lib/org';
+import { localDateOf } from '@/components/tracking/time';
 import { useCurrentTracking, useLiveSeconds } from '@/components/shell/timer-bar';
 import { StackedBars } from '@/components/charts';
 import { useMemberOptions } from '@/lib/members';
@@ -425,7 +426,7 @@ function Widget({ k, data }: { k: string; data: any }) {
       return data.length ? (
         <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-4">
           {data.map((s: any) => (
-            <Link key={s.id} href={`${b}/activity?member=${s.membership_id}&date=${s.captured_at.slice(0, 10)}`} className="group block overflow-hidden rounded-sm border border-border">
+            <Link key={s.id} href={`${b}/activity?member=${s.membership_id}&date=${localDateOf(s.captured_at, org.organization.timezone)}`} className="group block overflow-hidden rounded-sm border border-border">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={s.thumb_url} alt={`Screenshot of ${s.worker_name} at ${fmtTime(s.captured_at)}`} className={cx('aspect-[16/10] w-full object-cover transition-opacity group-hover:opacity-90', s.blurred && 'blur-[2px]')} loading="lazy" />
               <div className="flex items-center justify-between gap-1 px-1.5 py-1 text-2xs text-text-muted">

@@ -1,15 +1,18 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { CheckCheck, ExternalLink } from 'lucide-react';
 import type { ApprovalQueueItemDto, OffsetPage } from '@tallywork/contracts';
-import { ActivityBar, Button, DataTable, Drawer, EmptyState, ErrorState, Input, Panel, PersonCell, StatusBadge, Tabs, cx, fmtDateTime, useToast, type Column } from '@tallywork/ui';
+import { ActivityBar, Button, DataTable, Drawer, EmptyState, ErrorState, Input, Panel, PersonCell, SkeletonRows, StatusBadge, Tabs, cx, fmtDateTime, useToast, type Column } from '@tallywork/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
-import { TimesheetView } from '@/components/timesheets/timesheet-view';
 import { FlagBadges, periodLabel, type BulkResult } from '@/components/timesheets/shared';
+
+// Loaded when a timesheet is opened, not with the page: the queue itself loads faster.
+const TimesheetView = dynamic(() => import('@/components/timesheets/timesheet-view').then((m) => m.TimesheetView), { loading: () => <SkeletonRows rows={6} /> });
 
 type Status = 'SUBMITTED' | 'APPROVED' | 'REJECTED';
 

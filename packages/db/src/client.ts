@@ -116,14 +116,22 @@ export function createDb(url: string, opts: { runAsAppRole?: boolean } = {}): Db
     kind: 'pg',
     pool,
     async migrate() {
+      // One migration run at a time: two deploys starting together would otherwise both see the
+      // same migration as pending, and the second fails on what the first just created. The lock
+      // lives on its own connection (session pooler keeps it) and is released when that ends.
+      const lock = new pg.Client({ connectionString: url });
+      await lock.connect();
       const ownerPool = new pg.Pool({ connectionString: url, max: 1 });
       try {
+        await lock.query(`select pg_advisory_lock(hashtext('tallywork:migrations'))`);
         const ownerDb = drizzlePg(ownerPool, { schema, casing: 'snake_case' });
         await migratePg(ownerDb, { migrationsFolder: MIGRATIONS_FOLDER });
         await applyRls(ownerDb as unknown as Db);
         await ownerPool.query(ENSURE_APP_ROLE_SQL);
       } finally {
         await ownerPool.end();
+        await lock.query(`select pg_advisory_unlock(hashtext('tallywork:migrations'))`).catch(() => undefined);
+        await lock.end().catch(() => undefined);
       }
     },
     close: () => pool.end(),

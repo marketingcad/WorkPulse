@@ -200,6 +200,7 @@ export interface EodReportDto {
   session_id: string;
   project_id: string;
   project_name: string;
+  project_color: string;
   task_id: string | null;
   task_title: string | null;
   local_date: string;

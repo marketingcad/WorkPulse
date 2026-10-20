@@ -113,6 +113,58 @@ test.describe('End-of-day reports', () => {
     await expect(page.getByText('No end-of-day reports in this period')).toBeVisible();
   });
 
+  test('reports are grouped by day, previewed on cards, and read in full in a dialog that pages through them', { tag: '@smoke' }, async ({ page, context, data, newcomerDevice }) => {
+    const send = async (events: unknown[]) => {
+      const res = await fetch(`${WEB_URL}/api/v1/agent/ingest/batch`, { method: 'POST', headers: { Authorization: `Bearer ${newcomerDevice.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ sent_at: new Date().toISOString(), events }) });
+      expect(res.status).toBe(200);
+    };
+    const tag = uid();
+    const lines = [`Release notes ${tag}`, 'Fixed the login redirect.', 'Reviewed two pull requests.', 'Paired with Sam on the export.', 'Wrote the onboarding guide.', 'Last line only in the dialog.'];
+    for (const [i, text] of [lines.join('\n'), `Short update ${tag}`].entries()) {
+      const sid = randomUUID();
+      await send([{ event_id: randomUUID(), type: 'session.start', session_id: sid, seq: 1, occurred_at: new Date(Date.now() - (60 - i * 20) * 60_000).toISOString(), project_id: data.projects.website.id }]);
+      await send([{ event_id: randomUUID(), type: 'session.stop', session_id: sid, seq: 2, occurred_at: new Date(Date.now() - (30 - i * 20) * 60_000).toISOString(), report: { text, finished: i === 1 } }]);
+    }
+
+    await page.goto(`/o/${data.orgId}/tracking/reports`);
+    // Summary numbers, and a heading per day.
+    await expect(page.getByText('Reports', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('People reporting')).toBeVisible();
+    // (The test organization and the browser use UTC.)
+    await expect(page.getByRole('heading', { level: 2, name: new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }) })).toBeVisible();
+
+    // Search narrows the cards to the ones that mention the words.
+    await test.info().attach('eod-reports', { body: await page.screenshot(), contentType: 'image/png' });
+    await page.getByLabel('Search reports').fill(tag);
+    const cards = page.getByRole('article');
+    await expect(cards).toHaveCount(2);
+    const long = cards.filter({ hasText: `Release notes ${tag}` });
+    await expect(long).toContainText(data.projects.website.name);
+
+    // The full report, with its details, in a dialog.
+    await long.getByRole('button', { name: `Read full report from ${data.newcomer.name}` }).click();
+    const dialog = page.getByRole('dialog', { name: data.newcomer.name });
+    await expect(dialog).toContainText('End-of-day report');
+    await expect(dialog.getByRole('region', { name: 'Report' })).toContainText('Last line only in the dialog.');
+    await test.info().attach('eod-report-dialog', { body: await page.screenshot(), contentType: 'image/png' });
+    await expect(dialog).toContainText('30m');
+    await expect(dialog).toContainText(/1 of 2|2 of 2/);
+    const first = (await dialog.textContent())!.includes('1 of 2');
+    await dialog.getByRole('button', { name: first ? 'Next report' : 'Previous report' }).click();
+    await expect(dialog.getByRole('region', { name: 'Report' })).toContainText(`Short update ${tag}`);
+    await expect(dialog).toContainText('Finished: the person marked this work as complete');
+
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await dialog.getByRole('button', { name: 'Copy report' }).click();
+    await expect(page.getByText('Report copied')).toBeVisible();
+    await expect(dialog.getByRole('link', { name: 'View activity for this day' })).toHaveAttribute('href', new RegExp(`/o/${data.orgId}/activity\\?member=${data.newcomer.membershipId}&date=`));
+    await dialog.getByRole('button', { name: 'Close' }).first().click();
+    await expect(dialog).toBeHidden();
+
+    await page.getByLabel('Search reports').fill(`nothing-like-this-${tag}`);
+    await expect(page.getByText(`No reports mention “nothing-like-this-${tag}”`)).toBeVisible();
+  });
+
   test('is in the Time menu for managers', async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}`);
     const nav = page.getByRole('complementary', { name: 'Primary' });

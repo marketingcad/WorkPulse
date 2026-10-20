@@ -193,7 +193,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: 'time',
     title: 'Read end-of-day reports',
     summary: 'What each person completed, written when they clock out.',
-    steps: ['Open End-of-day reports.', 'Choose a date range and, if you like, one member.', 'Set Show to “Finished work only” to see reports where the person marked the task or project as finished.'],
+    steps: [
+      'Open End-of-day reports. The numbers at the top show how many reports, how many people wrote one, how many marked their work finished, and the time covered.',
+      'Choose a date range and, if you like, one member. Reports are grouped by day; use Search reports to find a word in them.',
+      'Click Read full report to open the whole report with its project, clock-in and clock-out times and time worked. Use Previous and Next to read the others, Copy report to paste it elsewhere, or View activity for this day.',
+      'Set Show to “Finished work only” to see reports where the person marked the task or project as finished.',
+    ],
     links: [{ label: 'Open End-of-day reports', href: '/tracking/reports' }],
     keywords: ['eod', 'end of day', 'daily report', 'clock out', 'finished'],
   },

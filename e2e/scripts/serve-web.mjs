@@ -39,6 +39,11 @@ const env = {
   APP_URL: `http://localhost:${port}`,
   CRON_SECRET: 'e2e-cron-secret',
   NEXT_TELEMETRY_DISABLED: '1',
+  // Installer links for the /download page. Nothing is served here: download.spec intercepts them.
+  DESKTOP_DOWNLOAD_URL_WINDOWS: `http://localhost:${port}/e2e-installers/Tallywork-Setup.exe`,
+  DESKTOP_DOWNLOAD_URL_MACOS: `http://localhost:${port}/e2e-installers/Tallywork-mac.dmg`,
+  DESKTOP_DOWNLOAD_URL_LINUX: `http://localhost:${port}/e2e-installers/Tallywork-linux.deb`,
+  DESKTOP_DOWNLOAD_URL_LINUX_APPIMAGE: '',
 };
 
 if (process.env.E2E_SKIP_BUILD !== '1') {

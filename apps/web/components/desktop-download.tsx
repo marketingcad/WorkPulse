@@ -30,12 +30,37 @@ function detectPlatform(): Platform | null {
   return null;
 }
 
+/** Shown once the installer download starts: what to do with the file, first install or update. */
+const AFTER_DOWNLOAD = {
+  windows: ['download.after.windows.title', ['download.after.windows.step1', 'download.after.windows.step2', 'download.after.windows.step3'], 'download.after.windows.update'],
+  macos: ['download.after.macos.title', ['download.after.macos.step1', 'download.after.macos.step2', 'download.after.macos.step3'], 'download.after.macos.update'],
+} as const;
+
+function AfterDownload({ platform }: { platform: keyof typeof AFTER_DOWNLOAD }) {
+  const [title, steps, update] = AFTER_DOWNLOAD[platform];
+  return (
+    <section role="status" aria-labelledby="after-download-title" className="flex flex-col gap-3 rounded-sm border border-border bg-surface-sunken px-4 py-3">
+      <h2 id="after-download-title" className="text-sm font-semibold text-text">
+        {t(title)}
+      </h2>
+      <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-text">
+        {steps.map((key) => (
+          <li key={key}>{t(key)}</li>
+        ))}
+      </ol>
+      <p className="text-xs text-text-muted">{t(update)}</p>
+    </section>
+  );
+}
+
 /** Workers use Tallywork through the desktop app only: this page is where they get it. */
 export function DesktopDownload({ links }: { links: DownloadLinks }) {
   const router = useRouter();
   const welcome = useSearchParams().get('welcome') === '1';
   const [platform, setPlatform] = useState<Platform | null>(null);
   useEffect(() => setPlatform(detectPlatform()), []);
+  // The installer the person clicked, so the steps match the file they got.
+  const [downloaded, setDownloaded] = useState<Platform | null>(null);
 
   const available = PLATFORMS.filter((p) => links[p]);
   const primary = platform && links[platform] ? platform : null;
@@ -49,18 +74,19 @@ export function DesktopDownload({ links }: { links: DownloadLinks }) {
         ) : (
           <div className="flex flex-col gap-2">
             {primary && (
-              <a href={links[primary]!} download className={`${LINK_BUTTON} bg-interactive text-on-accent hover:bg-interactive-hover`}>
+              <a href={links[primary]!} download onClick={() => setDownloaded(primary)} className={`${LINK_BUTTON} bg-interactive text-on-accent hover:bg-interactive-hover`}>
                 <Download className="size-4" aria-hidden />
                 {t('download.for', { platform: LABELS[primary] })}
               </a>
             )}
             {others.map((p) => (
-              <a key={p} href={links[p]!} download className={`${LINK_BUTTON} border-border bg-surface text-text hover:border-border-strong hover:bg-surface-muted`}>
+              <a key={p} href={links[p]!} download onClick={() => setDownloaded(p)} className={`${LINK_BUTTON} border-border bg-surface text-text hover:border-border-strong hover:bg-surface-muted`}>
                 {t('download.for', { platform: LABELS[p] })}
               </a>
             ))}
           </div>
         )}
+        {(downloaded === 'windows' || downloaded === 'macos') && <AfterDownload platform={downloaded} />}
         <ol className="flex flex-col gap-3 text-sm text-text">
           {(['download.step1', 'download.step2', 'download.step3'] as const).map((key, i) => (
             <li key={key} className="flex items-start gap-3">
@@ -70,7 +96,7 @@ export function DesktopDownload({ links }: { links: DownloadLinks }) {
           ))}
         </ol>
         {/* The Mac build is not notarized yet, and AppImages must be marked executable. */}
-        {platform === 'macos' && links.macos && <p className="rounded-sm bg-surface-sunken px-3 py-2 text-xs text-text-muted">{t('download.macNote')}</p>}
+        {platform === 'macos' && links.macos && downloaded !== 'macos' && <p className="rounded-sm bg-surface-sunken px-3 py-2 text-xs text-text-muted">{t('download.macNote')}</p>}
         {platform === 'linux' && (links.linux || links.linuxAppImage) && (
           <p className="rounded-sm bg-surface-sunken px-3 py-2 text-xs text-text-muted">
             {t('download.linuxNote')}

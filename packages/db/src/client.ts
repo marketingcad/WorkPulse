@@ -57,6 +57,24 @@ const ENSURE_APP_ROLE_SQL = `
   grant execute on function tallywork_scrub_audit_actor(uuid) to ${APP_ROLE};
 `;
 
+/** Arbitrary constant shared by every process that migrates this database. */
+export const MIGRATION_LOCK_KEY = 7_202_604_211;
+
+/**
+ * Drizzle's migrator takes no lock: two builds migrating at once both see the same
+ * pending migration and the loser fails with "relation already exists". Holding a
+ * session advisory lock makes them queue; the second then finds nothing pending.
+ * The lock is tied to the connection, so it also goes away if the process dies.
+ */
+export async function withMigrationLock<T>(conn: Pick<pg.Client, 'query'>, run: () => Promise<T>): Promise<T> {
+  await conn.query('select pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
+  try {
+    return await run();
+  } finally {
+    await conn.query('select pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY]);
+  }
+}
+
 export interface DbHandle {
   db: Db;
   kind: 'pg' | 'pglite';
@@ -116,14 +134,17 @@ export function createDb(url: string, opts: { runAsAppRole?: boolean } = {}): Db
     kind: 'pg',
     pool,
     async migrate() {
-      const ownerPool = new pg.Pool({ connectionString: url, max: 1 });
+      const owner = new pg.Client({ connectionString: url });
+      await owner.connect();
       try {
-        const ownerDb = drizzlePg(ownerPool, { schema, casing: 'snake_case' });
-        await migratePg(ownerDb, { migrationsFolder: MIGRATIONS_FOLDER });
-        await applyRls(ownerDb as unknown as Db);
-        await ownerPool.query(ENSURE_APP_ROLE_SQL);
+        await withMigrationLock(owner, async () => {
+          const ownerDb = drizzlePg(owner, { schema, casing: 'snake_case' });
+          await migratePg(ownerDb, { migrationsFolder: MIGRATIONS_FOLDER });
+          await applyRls(ownerDb as unknown as Db);
+          await owner.query(ENSURE_APP_ROLE_SQL);
+        });
       } finally {
-        await ownerPool.end();
+        await owner.end();
       }
     },
     close: () => pool.end(),

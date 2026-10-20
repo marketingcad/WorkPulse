@@ -162,9 +162,10 @@ export function Panel({ title, actions, children, className, bodyClassName, foot
   return (
     <section className={cx('flex min-w-0 flex-col rounded-md border border-border bg-surface shadow-card', className)}>
       {(title || actions) && (
-        <header className="flex min-h-12 items-center justify-between gap-3 border-b border-border px-5 py-2.5">
-          {typeof title === 'string' ? <h2 className="truncate text-[15px] font-semibold tracking-tight">{title}</h2> : title}
-          {actions && <div className="flex shrink-0 items-center gap-1.5">{actions}</div>}
+        // Wraps on narrow screens: the actions move below the title instead of overflowing.
+        <header className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border px-5 py-2.5">
+          {typeof title === 'string' ? <h2 className="min-w-0 truncate text-[15px] font-semibold tracking-tight">{title}</h2> : title}
+          {actions && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">{actions}</div>}
         </header>
       )}
       <div className={cx('min-w-0 flex-1', bodyClassName)}>{children}</div>

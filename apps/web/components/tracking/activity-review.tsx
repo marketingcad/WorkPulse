@@ -30,7 +30,7 @@ import { DayRibbon } from '@/components/charts';
 import { BLOCK_MS, BlockDetail, blockRange, groupCaptures, isLow } from './block-detail';
 import { useTrackedWorkers } from './filters';
 import { SpansDrawer } from './spans-drawer';
-import { dayStartMs } from './time';
+import { dayStartMs, localDateOf } from './time';
 
 type Level = 'all' | 'lt25' | '25_50' | '50_75' | 'gt75';
 const LEVELS: Array<{ value: Level; label: string }> = [
@@ -70,15 +70,27 @@ export function ActivityReview({ member: memberParam, date, onChange }: { member
   const live = useOrgQuery<LiveWorkerDto[]>(org.isManagerView ? '/tracking/live' : null, { refetchInterval: 60_000 });
   const liveBy = useMemo(() => new Map((live.data ?? []).map((w) => [w.membership_id, w.status])), [live.data]);
 
-  // Workers only ever see themselves. Managers who don't track default to their first member.
-  // Managers review their team: default to someone working now, else the first member other than themselves.
-  const firstOther = (live.data ?? []).find((w) => w.status === 'WORKING' && w.membership_id !== self)?.membership_id ?? workers.rows?.find((w) => w.id !== self)?.id;
-  const member = !org.isManagerView ? self : memberParam || firstOther || self;
+  // Workers only ever see themselves. Managers review their team: with no member in the link, default
+  // to someone working now, else on a break, else who tracked most today, else whose device was seen
+  // last, so the page opens on real activity.
+  const others = (live.data ?? []).filter((w) => w.membership_id !== self);
+  const seenAt = (w: LiveWorkerDto) => (w.last_seen_at ? Date.parse(w.last_seen_at) : 0);
+  const recent =
+    others.find((w) => w.status === 'WORKING') ??
+    others.find((w) => w.status === 'IDLE') ??
+    [...others].filter((w) => w.today_seconds > 0).sort((a, b) => b.today_seconds - a.today_seconds)[0] ??
+    [...others].sort((a, b) => seenAt(b) - seenAt(a)).find((w) => w.last_seen_at);
+  const firstOther = recent?.membership_id ?? workers.rows?.find((w) => w.id !== self)?.id;
+  // Wait for who is working before choosing, so the page doesn't open on the wrong person first.
+  const member = !org.isManagerView ? self : memberParam || (live.isLoading ? null : firstOther || self);
   const worker = workers.rows?.find((w) => w.id === member);
   const memberName = member === self ? 'You' : (worker?.name ?? 'Member');
   const fallbackTz = worker?.timezone || org.membership.timezone || org.organization.timezone;
   const today = todayIn(fallbackTz);
-  const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : today;
+  // With no date in the link, open on the member's last day of activity when nothing is tracked today.
+  const seen = live.data?.find((w) => w.membership_id === member);
+  const lastDay = seen && seen.status === 'OFFLINE' && !seen.today_seconds && seen.last_seen_at ? localDateOf(seen.last_seen_at, fallbackTz) : null;
+  const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : (lastDay ?? today);
 
   const dayQ = useOrgQuery<ActivityDayDto>(member ? `/activity/day${qs({ membership_id: member, date: day })}` : null, { refetchInterval: 10 * 60_000 });
   const data = dayQ.data;
@@ -344,7 +356,11 @@ export function ActivityReview({ member: memberParam, date, onChange }: { member
           {data && data.timezone !== (org.membership.timezone || org.organization.timezone) && <span className="text-xs text-text-faint">Times shown in {data.timezone}</span>}
         </div>
 
-        {!member ? (
+        {!member && live.isLoading ? (
+          <Panel>
+            <SkeletonRows rows={8} cols={6} />
+          </Panel>
+        ) : !member ? (
           <Panel>
             <EmptyState title="Pick a member" description="Choose someone from the member list to review their day." />
           </Panel>

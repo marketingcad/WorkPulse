@@ -28,6 +28,7 @@ import {
   useToast,
 } from '@tallywork/ui';
 import { api, errorMessage, qs, useOrgQuery } from '@/lib/api';
+import { useAutoTour } from '@/components/help/tour';
 import { useOrgStream } from '@/lib/stream';
 import { useOrg } from '@/lib/org';
 import { useCurrentTracking, useLiveSeconds } from '@/components/shell/timer-bar';
@@ -80,6 +81,8 @@ export default function OverviewPage() {
   const [confirmReset, setConfirmReset] = useState(false);
   useOrgStream(['/dashboard/widgets']);
   const layoutQ = useOrgQuery<Layout>(`/dashboard/layout?scope=${scope}`);
+  // First visit (or Restart from Help): the product tour, once the dashboard is on screen.
+  useAutoTour(layoutQ.isSuccess);
   const [draft, setDraft] = useState<WidgetCfg[] | null>(null);
   const widgets = draft ?? layoutQ.data?.widgets ?? [];
   const keys = widgets.map((w) => w.key).join(',');
@@ -180,7 +183,7 @@ export default function OverviewPage() {
                 </Button>
               </>
             ) : (
-              <Button icon={<LayoutGrid className="size-3.5" />} onClick={() => setEditing(true)}>
+              <Button data-tour="overview-customize" icon={<LayoutGrid className="size-3.5" />} onClick={() => setEditing(true)}>
                 Customize
               </Button>
             )}

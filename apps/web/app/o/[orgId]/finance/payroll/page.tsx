@@ -8,6 +8,7 @@ import { errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { BankDetailsDialog, PayrollProfileDialog, RunPayrollDialog, periodLabel } from '@/components/finance/payroll';
 import { AmountsOwed } from '@/components/finance/amounts-owed';
+import { HelpLink } from '@/components/help/help-link';
 
 type PayrollTab = 'runs' | 'owed' | 'profiles';
 
@@ -32,7 +33,7 @@ function Payroll() {
   const canManage = org.can('payroll:manage');
   return (
     <>
-      <PageHeader title="Payroll" description="What members are owed, paying them for approved time and paid time off, and publishing their pay stubs." />
+      <PageHeader title="Payroll" description="What members are owed, paying them for approved time and paid time off, and publishing their pay stubs." actions={<HelpLink article="payroll" />} />
       {tabs.length > 1 && <Tabs value={current} onValueChange={(v) => setTab(v as PayrollTab)} items={tabs} className="mb-4" />}
       {current === 'runs' ? <Runs canManage={canManage} /> : current === 'owed' ? <AmountsOwed /> : <Profiles canManage={canManage} />}
     </>

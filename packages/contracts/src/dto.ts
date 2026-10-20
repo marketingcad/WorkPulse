@@ -5,7 +5,7 @@
 import type { Grants, TrackingPolicy } from '@tallywork/domain';
 
 export interface MeDto {
-  user: { id: string; name: string; email: string; email_verified: boolean; mfa_enabled: boolean; locale: string };
+  user: { id: string; name: string; email: string; email_verified: boolean; mfa_enabled: boolean; locale: string; /** finished or skipped the product tour */ tour_done: boolean };
   organizations: Array<{ id: string; slug: string; name: string; role_key: string; role_name: string; membership_id: string; is_owner: boolean }>;
   /** client portals this person can open (they are a client viewer, not a member) */
   client_portals: Array<{ access_id: string; organization_name: string; client_name: string }>;

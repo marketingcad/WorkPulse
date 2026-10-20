@@ -33,6 +33,18 @@ test.describe('Consolidated pages (admin)', () => {
     await expect(nav.getByRole('link', { name: 'Timesheets' })).toHaveAttribute('aria-current', 'page');
   });
 
+  test('a timesheet opens in a drawer from Approvals (loaded when opened)', async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}/timesheets/approvals`);
+    // The Timesheets panel (the manual time panel below has its own Approved tab).
+    const panel = page.locator('section').filter({ has: page.getByRole('heading', { level: 2, name: 'Timesheets' }) });
+    await panel.getByRole('button', { name: 'Approved', exact: true }).click();
+    await panel.getByRole('table', { name: 'Timesheets' }).getByRole('row', { name: new RegExp(data.worker.name) }).first().click();
+    const drawer = page.getByRole('dialog', { name: data.worker.name });
+    await expect(drawer.getByRole('link', { name: 'Open full page' })).toBeVisible();
+    // The timesheet itself, with its decision buttons (approved, so it can be reopened).
+    await expect(drawer.getByRole('button', { name: 'Reopen' })).toBeVisible();
+  });
+
   test('a manual time request is decided on Approvals', async ({ page, data, adminApi }) => {
     const { api, orgApi } = adminApi;
     const reason = `Client visit ${uid()}`;

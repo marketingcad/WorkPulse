@@ -22,6 +22,7 @@ export const webEn = {
   'nav.item.summary': 'Summary',
   'nav.item.reportLibrary': 'Report library',
   'nav.item.settings': 'Settings',
+  'nav.item.help': 'Help',
   'nav.item.myPayStubs': 'My pay stubs',
   'nav.item.organization': 'Organization',
   'nav.item.timePay': 'Time & pay',

@@ -55,6 +55,7 @@ export const webEn = {
   'nav.item.trackingPolicies': 'Tracking policies',
   'nav.item.roles': 'Roles & permissions',
   'nav.item.security': 'Security & retention',
+  'nav.item.screenshotRetention': 'Screenshot retention',
   'nav.item.accessReview': 'Access review',
   'nav.item.auditLog': 'Audit log',
   'nav.item.whatIsMonitored': 'What is monitored',

@@ -157,6 +157,7 @@ export const NAV: NavGroup[] = [
           { label: 'nav.item.roles', href: '/settings/roles', perms: ['roles:manage'] },
           { label: 'nav.item.accessReview', href: '/settings/access-review', perms: ['members:manage', 'settings:security'] },
           { label: 'nav.item.security', href: '/settings/security', perms: ['retention:manage', 'settings:security'] },
+          { label: 'nav.item.screenshotRetention', href: '/settings/screenshot-retention', perms: ['retention:manage', 'settings:security'] },
           { label: 'nav.item.apiKeys', href: '/developer/api-keys', perms: ['api_keys:manage'] },
           { label: 'nav.item.webhooks', href: '/developer/webhooks', perms: ['webhooks:manage'] },
           { label: 'nav.item.auditLog', href: '/settings/audit', perms: ['audit:read'] },

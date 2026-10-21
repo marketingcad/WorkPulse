@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, jsonb, pgTable, primaryKey, text, uuid } from 'drizzle-orm/pg-core';
+import { bigint, boolean, index, integer, jsonb, pgTable, primaryKey, smallint, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { orgId, pk, timestamps, tstz } from './_helpers';
 
 export const notifications = pgTable(
@@ -179,6 +179,75 @@ export const retentionPolicies = pgTable(
     updatedAt: tstz().notNull().default(sql`now()`),
   },
   (t) => [primaryKey({ columns: [t.organizationId, t.dataClass] })],
+);
+
+/**
+ * Screenshot retention & cleanup, one row per organization (no row = the defaults, not yet approved).
+ * Screenshots are owned here rather than by retention_policies: deletion needs a preview and an
+ * administrator's approval first, and runs on the organization's own schedule.
+ */
+export const screenshotCleanupSettings = pgTable('screenshot_cleanup_settings', {
+  organizationId: uuid().primaryKey(),
+  enabled: boolean().notNull().default(true),
+  retentionDays: integer().notNull().default(30),
+  frequency: text().$type<'DAILY' | 'WEEKLY'>().notNull().default('DAILY'),
+  /** local wall time 'HH:MM' */
+  runAt: text().notNull().default('02:00'),
+  /** for WEEKLY: 0 = Sunday … 6 = Saturday */
+  weekday: smallint().notNull().default(0),
+  /** null = the organization's time zone */
+  timezone: text(),
+  retryFailed: boolean().notNull().default(true),
+  /** bumped when the retention period gets shorter; an approval is for one version */
+  policyVersion: integer().notNull().default(1),
+  approvedAt: tstz(),
+  approvedBy: uuid(),
+  approvedPolicyVersion: integer(),
+  approvedPreviewId: uuid(),
+  nextRunAt: tstz(),
+  lastRunId: uuid(),
+  /** the open incident already notified about (repeated failures, stalled run…), so it is sent once */
+  alertKey: text(),
+  updatedBy: uuid(),
+  ...timestamps,
+});
+
+export const screenshotCleanupRuns = pgTable(
+  'screenshot_cleanup_runs',
+  {
+    id: pk(),
+    organizationId: orgId(),
+    trigger: text().$type<'SCHEDULED' | 'MANUAL' | 'PREVIEW'>().notNull(),
+    status: text().$type<'PREVIEWED' | 'RUNNING' | 'SUCCEEDED' | 'PARTIAL' | 'FAILED' | 'CANCELLED'>().notNull(),
+    retentionDays: integer().notNull(),
+    policyVersion: integer().notNull(),
+    /** fixed when the run starts; only screenshots captured strictly before it are deleted */
+    cutoff: tstz().notNull(),
+    requestedBy: uuid(),
+    startedAt: tstz().notNull().default(sql`now()`),
+    /** updated after every batch; a running run with an old heartbeat has stalled */
+    heartbeatAt: tstz().notNull().default(sql`now()`),
+    finishedAt: tstz(),
+    scanned: integer().notNull().default(0),
+    deleted: integer().notNull().default(0),
+    objectsRemoved: integer().notNull().default(0),
+    /** sum of the recorded image sizes of deleted screenshots (thumbnails are not measured) */
+    bytesReclaimed: bigint({ mode: 'number' }).notNull().default(0),
+    failed: integer().notNull().default(0),
+    retries: integer().notNull().default(0),
+    /** preview only: what the run would delete when it was made */
+    eligibleCount: integer(),
+    eligibleBytes: bigint({ mode: 'number' }),
+    oldestEligibleAt: tstz(),
+    newestEligibleAt: tstz(),
+    excludedCount: integer(),
+    error: text(),
+  },
+  (t) => [
+    index().on(t.organizationId, t.startedAt),
+    // At most one destructive run at a time per organization.
+    uniqueIndex('screenshot_cleanup_runs_active_uq').on(t.organizationId).where(sql`${t.status} = 'RUNNING'`),
+  ],
 );
 
 export const idempotencyKeys = pgTable(

@@ -260,6 +260,10 @@ export const screenshots = pgTable(
     windowStart: tstz().notNull(),
     deletedAt: tstz(),
     deletedBy: uuid(),
+    /** retention cleanup: failed storage deletions, and when the next try is allowed */
+    purgeAttempts: smallint().notNull().default(0),
+    purgeNextAt: tstz(),
+    purgeError: text(),
     createdAt: tstz().notNull().default(sql`now()`),
   },
   (t) => [index().on(t.organizationId, t.membershipId, t.capturedAt), index().on(t.sessionId), index().on(t.organizationId, t.capturedAt)],

@@ -1,6 +1,6 @@
-import { asc, count, eq, inArray, lt, sql } from 'drizzle-orm';
+import { asc, count, lt, sql } from 'drizzle-orm';
 import type { z } from 'zod';
-import { activityMinutes, appSpans, auditLogs, retentionPolicies, screenshots, urlSpans, type Tx } from '@tallywork/db';
+import { activityMinutes, appSpans, auditLogs, retentionPolicies, urlSpans, type Tx } from '@tallywork/db';
 import { forbidden, validation } from '@tallywork/domain';
 import type { retentionInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
@@ -12,7 +12,9 @@ type DataClass = (typeof retentionPolicies.$inferSelect)['dataClass'];
 /** Legal lower bounds: financial records at least 7 years, the audit log at least a year. */
 export const MIN_KEEP_DAYS: Partial<Record<DataClass, number>> = { INVOICES: 2555, TIMESHEETS: 2555, AUDIT: 365 };
 /** Classes the daily job deletes. Timesheets, invoices, sessions and location are kept (the settings record intent only). */
-export const PURGED: DataClass[] = ['SCREENSHOTS', 'ACTIVITY', 'APPS', 'URLS', 'AUDIT'];
+export const PURGED: DataClass[] = ['ACTIVITY', 'APPS', 'URLS', 'AUDIT'];
+/** Screenshots have their own cleanup, with a preview and approval (services/screenshot-cleanup.ts). */
+const OWN_CLEANUP: DataClass[] = ['SCREENSHOTS'];
 /** A shorter keep period takes effect only after this delay, so a mistaken change can be undone before data is lost. */
 export const GRACE_DAYS = 7;
 
@@ -40,7 +42,7 @@ function assertRead(x: Ctx) {
 
 export async function getRetention(x: Ctx) {
   assertRead(x);
-  return (await x.tx.select().from(retentionPolicies).orderBy(asc(retentionPolicies.dataClass))).map(dto);
+  return (await x.tx.select().from(retentionPolicies).orderBy(asc(retentionPolicies.dataClass))).filter((p) => !OWN_CLEANUP.includes(p.dataClass)).map(dto);
 }
 
 /**
@@ -50,7 +52,10 @@ export async function getRetention(x: Ctx) {
 export async function setRetention(x: Ctx, input: z.infer<typeof retentionInput>) {
   if (!x.actor.grants['retention:manage']) throw forbidden();
   const now = x.deps.now();
-  const errors = input.policies.filter((p) => p.keep_days < (MIN_KEEP_DAYS[p.data_class] ?? 1)).map((p) => ({ field: `policies.${p.data_class}`, message: `${p.data_class.toLowerCase()} must be kept at least ${MIN_KEEP_DAYS[p.data_class]} days` }));
+  const errors = [
+    ...input.policies.filter((p) => OWN_CLEANUP.includes(p.data_class)).map((p) => ({ field: `policies.${p.data_class}`, message: 'Screenshot retention is set under Settings › Screenshot retention' })),
+    ...input.policies.filter((p) => p.keep_days < (MIN_KEEP_DAYS[p.data_class] ?? 1)).map((p) => ({ field: `policies.${p.data_class}`, message: `${p.data_class.toLowerCase()} must be kept at least ${MIN_KEEP_DAYS[p.data_class]} days` })),
+  ];
   if (errors.length) throw validation(errors[0]!.message, { errors });
   const current = new Map((await x.tx.select().from(retentionPolicies)).map((p) => [p.dataClass, p]));
   for (const p of input.policies) {
@@ -71,10 +76,9 @@ export async function setRetention(x: Ctx, input: z.infer<typeof retentionInput>
 const cutoffFor = (keepDays: number, now: Date) => new Date(now.getTime() - keepDays * 86400_000);
 
 async function countOlder(tx: Tx, cls: DataClass, cutoff: Date): Promise<number> {
-  const q = (t: typeof screenshots | typeof activityMinutes | typeof appSpans | typeof urlSpans | typeof auditLogs, col: Parameters<typeof lt>[0]) => tx.select({ n: count() }).from(t).where(lt(col, cutoff));
+  const q = (t: typeof activityMinutes | typeof appSpans | typeof urlSpans | typeof auditLogs, col: Parameters<typeof lt>[0]) => tx.select({ n: count() }).from(t).where(lt(col, cutoff));
   const [r] =
-    cls === 'SCREENSHOTS' ? await q(screenshots, screenshots.capturedAt)
-    : cls === 'ACTIVITY' ? await q(activityMinutes, activityMinutes.minuteStart)
+    cls === 'ACTIVITY' ? await q(activityMinutes, activityMinutes.minuteStart)
     : cls === 'APPS' ? await q(appSpans, appSpans.startedAt)
     : cls === 'URLS' ? await q(urlSpans, urlSpans.startedAt)
     : await q(auditLogs, auditLogs.createdAt);
@@ -113,14 +117,7 @@ export async function applyRetention(tx: Tx, deps: Deps): Promise<Record<string,
     }
     if (!PURGED.includes(p.dataClass) || keep >= 36500) continue;
     const cut = cutoffFor(Math.max(keep, MIN_KEEP_DAYS[p.dataClass] ?? 1), now);
-    if (p.dataClass === 'SCREENSHOTS') {
-      const old = await tx.select({ id: screenshots.id, key: screenshots.storageKey }).from(screenshots).where(lt(screenshots.capturedAt, cut)).limit(5000);
-      if (old.length) {
-        await deps.storage.delete(old.flatMap((s) => [s.key, `${s.key}.thumb`])).catch(() => undefined);
-        await tx.delete(screenshots).where(inArray(screenshots.id, old.map((s) => s.id)));
-      }
-      deleted.screenshots = old.length;
-    } else if (p.dataClass === 'ACTIVITY') deleted.activity_minutes = (await tx.delete(activityMinutes).where(lt(activityMinutes.minuteStart, cut)).returning({ s: activityMinutes.sessionId })).length;
+    if (p.dataClass === 'ACTIVITY') deleted.activity_minutes = (await tx.delete(activityMinutes).where(lt(activityMinutes.minuteStart, cut)).returning({ s: activityMinutes.sessionId })).length;
     else if (p.dataClass === 'APPS') deleted.app_spans = (await tx.delete(appSpans).where(lt(appSpans.startedAt, cut)).returning({ id: appSpans.id })).length;
     else if (p.dataClass === 'URLS') deleted.url_spans = (await tx.delete(urlSpans).where(lt(urlSpans.startedAt, cut)).returning({ id: urlSpans.id })).length;
     else if (p.dataClass === 'AUDIT') {

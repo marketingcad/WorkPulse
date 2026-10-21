@@ -663,3 +663,54 @@ export interface PortalScreenshotDto {
 export interface ClientVisibilityDto {
   clients: Array<{ client_name: string; activity: boolean; screenshots: boolean }>;
 }
+
+/** Screenshot retention & cleanup settings for an organization. */
+export interface ScreenshotCleanupSettingsDto {
+  enabled: boolean;
+  retention_days: number;
+  frequency: 'DAILY' | 'WEEKLY';
+  run_at: string;
+  weekday: number;
+  /** null = the organization's time zone */
+  timezone: string | null;
+  effective_timezone: string;
+  retry_failed: boolean;
+  policy_version: number;
+  /** the first deletion needs an approved preview for the current policy version */
+  approval: { approved: boolean; approved_at: string | null; approved_by_name: string | null; preview_id: string | null };
+  next_run_at: string | null;
+  last_run: ScreenshotCleanupRunDto | null;
+  active_run: ScreenshotCleanupRunDto | null;
+  can_manage: boolean;
+}
+
+export interface ScreenshotCleanupRunDto {
+  id: string;
+  trigger: 'SCHEDULED' | 'MANUAL' | 'PREVIEW';
+  status: 'PREVIEWED' | 'RUNNING' | 'SUCCEEDED' | 'PARTIAL' | 'FAILED' | 'CANCELLED';
+  retention_days: number;
+  policy_version: number;
+  cutoff: string;
+  requested_by_name: string | null;
+  started_at: string;
+  finished_at: string | null;
+  scanned: number;
+  deleted: number;
+  objects_removed: number;
+  /** from the recorded image sizes; thumbnails are not measured */
+  bytes_reclaimed: number;
+  failed: number;
+  retries: number;
+  preview: { eligible: number; eligible_bytes: number; oldest_at: string | null; newest_at: string | null; excluded: number } | null;
+  error: string | null;
+}
+
+/** Screenshot storage, from the sizes recorded at upload (an estimate: thumbnails are not measured). */
+export interface ScreenshotStorageDto {
+  screenshots: number;
+  recorded_bytes: number;
+  reclaimable_screenshots: number;
+  reclaimable_bytes: number;
+  /** screenshots whose storage deletion keeps failing and needs attention */
+  stuck: number;
+}

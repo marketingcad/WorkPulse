@@ -48,6 +48,14 @@ async function shot(daysAgo: number) {
   return { id, key };
 }
 
+async function appSpan(daysAgo: number) {
+  const id = newId();
+  const at = new Date(t.clock.now.getTime() - daysAgo * 86400_000).toISOString();
+  await asOwner(sql`insert into app_spans (id, organization_id, session_id, membership_id, client_span_id, app_name, started_at, ended_at, duration_seconds) values (${id}, ${orgId}, ${sessionId}, ${benId}, ${newId()}, 'Editor', ${at}, ${at}, 60)`);
+  return id;
+}
+const appSpanIds = async () => (await asOwner<{ id: string }>(sql`select id from app_spans where organization_id = ${orgId} order by started_at`)).map((r) => r.id);
+
 beforeAll(async () => {
   t = await createHarness();
   t.clock.set(new Date('2026-09-23T20:00:00Z'));
@@ -94,29 +102,38 @@ describe('retention', () => {
   });
 
   it('a shorter period waits 7 days (dry run shows what will go), then deletes exactly the expired data', async () => {
-    const old1 = await shot(45);
-    const old2 = await shot(31);
-    const keep = await shot(29);
-    const r = (await admin.put(o('/retention-policies'), { policies: [{ data_class: 'SCREENSHOTS', keep_days: 30 }] })).body.find((p: { data_class: string }) => p.data_class === 'SCREENSHOTS');
+    const old1 = await appSpan(45);
+    const old2 = await appSpan(31);
+    const keep = await appSpan(29);
+    const r = (await admin.put(o('/retention-policies'), { policies: [{ data_class: 'APPS', keep_days: 30 }] })).body.find((p: { data_class: string }) => p.data_class === 'APPS');
     expect(r).toMatchObject({ pending_keep_days: 30, pending_from: '2026-09-30T20:00:00.000Z', purged_automatically: true });
-    const preview = (await admin.get(o('/retention-policies/preview'))).body.find((p: { data_class: string }) => p.data_class === 'SCREENSHOTS');
+    const preview = (await admin.get(o('/retention-policies/preview'))).body.find((p: { data_class: string }) => p.data_class === 'APPS');
     expect(preview).toMatchObject({ next_run_deletes: 0, pending_deletes: 2 });
 
     await runDaily(t.deps); // inside the grace period: nothing is deleted
-    expect(t.storage.objects.has(old1.key)).toBe(true);
+    expect(await appSpanIds()).toEqual(expect.arrayContaining([old1, old2, keep]));
 
     t.clock.set(new Date('2026-10-01T06:00:00Z'));
     const summary = (await runDaily(t.deps)) as Record<string, { deleted: Record<string, number> }>;
     // 45 and 31 days old when the change was made, and the 29-day-old one is now 37 days old.
-    expect(summary[orgId]!.deleted.screenshots).toBe(3);
-    const left = await asOwner<{ id: string }>(sql`select id from screenshots where organization_id = ${orgId}`);
-    expect(left).toEqual([]);
-    for (const s of [old1, old2, keep]) expect(t.storage.objects.has(s.key)).toBe(false);
+    expect(summary[orgId]!.deleted.app_spans).toBe(3);
+    expect(await appSpanIds()).toEqual([]);
     // A newer one stays.
-    const fresh = await shot(10);
+    const fresh = await appSpan(10);
     await runDaily(t.deps);
-    expect(t.storage.objects.has(fresh.key)).toBe(true);
-    expect((await admin.get(o('/retention-policies'))).body.find((p: { data_class: string }) => p.data_class === 'SCREENSHOTS')).toMatchObject({ keep_days: 30, pending_keep_days: null });
+    expect(await appSpanIds()).toEqual([fresh]);
+    expect((await admin.get(o('/retention-policies'))).body.find((p: { data_class: string }) => p.data_class === 'APPS')).toMatchObject({ keep_days: 30, pending_keep_days: null });
+    await relogin();
+  });
+
+  it('screenshots are not part of this list: they have their own cleanup, with a preview and approval', async () => {
+    const r = await admin.put(o('/retention-policies'), { policies: [{ data_class: 'SCREENSHOTS', keep_days: 7 }] });
+    expect([r.status, r.body.errors[0].field]).toEqual([400, 'policies.SCREENSHOTS']);
+    expect((await admin.get(o('/retention-policies'))).body.map((p: { data_class: string }) => p.data_class)).not.toContain('SCREENSHOTS');
+    // The daily job leaves screenshots alone, however old.
+    const old = await shot(400);
+    await runDaily(t.deps);
+    expect(t.storage.objects.has(old.key)).toBe(true);
     await relogin();
   });
 

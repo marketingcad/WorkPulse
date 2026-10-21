@@ -513,8 +513,8 @@ All events can also be delivered to customer **webhooks**. Deliveries are HMAC-s
 
 | Job | Schedule | Work |
 |---|---|---|
-| `runTick` | `/api/v1/cron/tick` — every minute | Sweep sessions (confirm / pause / recovery timeouts, limits), mark silent devices offline, dispatch outbox, deliver webhooks |
-| `runDaily` | `/api/v1/cron/daily` — 03:15 UTC | Retention cleanup (screenshots, activity, app / URL data, audit, …), time-off accruals, overdue invoices, housekeeping |
+| `runTick` | `/api/v1/cron/tick` — every minute | Sweep sessions (confirm / pause / recovery timeouts, limits), mark silent devices offline, dispatch outbox, deliver webhooks, start and continue screenshot cleanups ([docs/ops/screenshot-retention.md](docs/ops/screenshot-retention.md)) |
+| `runDaily` | `/api/v1/cron/daily` — 03:15 UTC | Retention cleanup (activity, app / URL data, audit, …), overdue screenshot-cleanup alerts, time-off accruals, overdue invoices, housekeeping |
 
 Both cron endpoints require `Authorization: Bearer $CRON_SECRET`.
 

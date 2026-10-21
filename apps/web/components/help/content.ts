@@ -527,6 +527,21 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     keywords: ['security', 'two-factor', '2fa', 'mfa', 'password', 'audit', 'retention', 'ip'],
   },
+  {
+    id: 'screenshot-retention',
+    category: 'settings',
+    title: 'Keep screenshots for a set time',
+    summary: 'Delete old screenshots automatically so storage does not keep growing.',
+    points: [
+      'Settings › Screenshot retention: choose how long screenshots are kept (30 days to start), and when expired ones are deleted: every day or once a week, at a time in your time zone (02:00 to start).',
+      'Before the first deletion, select Preview cleanup. It shows how many screenshots would go and about how much storage that frees, and deletes nothing. If it looks right, select Approve cleanup.',
+      'From then on the cleanup runs on its own. Run cleanup now starts one straight away. Choosing a shorter period later needs a new preview and approval.',
+      'Only screenshots and their files are deleted. Time, timesheets, invoices and activity stay. Deleted screenshots cannot be restored.',
+      'Cleanup history lists every run: how many were deleted, how much storage was freed, and anything that could not be deleted (it is tried again later).',
+    ],
+    links: [{ label: 'Screenshot retention', href: '/settings/screenshot-retention' }],
+    keywords: ['screenshot', 'retention', 'cleanup', 'delete', 'storage', 'space', 'old'],
+  },
 
   // ─── FAQ ───────────────────────────────────────────────────────────────────
   {

@@ -25,6 +25,7 @@ import { auditSystem, emit } from '../services/events';
 import { sendDigests } from '../services/digest';
 import { runMissingTimeReminders } from '../services/reminders';
 import { applyRetention } from '../services/retention';
+import { checkOverdueCleanups, runScreenshotCleanup } from '../services/screenshot-cleanup';
 import { processReportRuns, runSchedules } from '../services/report-runs';
 import { runSyncs } from '../services/integrations';
 import { checkBudgets } from '../services/finance';
@@ -281,7 +282,8 @@ export async function runTick(deps: Deps) {
   const dispatched = await dispatchOutbox(deps, 200);
   const webhooks = await deliverWebhooks(deps, 50);
   const integrations = await runSyncs(deps);
-  return { sessions, workforce, reports, offline, dispatched, webhooks, integrations };
+  const screenshotCleanup = await runScreenshotCleanup(deps);
+  return { sessions, workforce, reports, offline, dispatched, webhooks, integrations, screenshotCleanup };
 }
 
 /** Daily: retention cleanup, accruals, overdue invoices, housekeeping. */
@@ -312,5 +314,6 @@ export async function runDaily(deps: Deps) {
     });
   }
   await withSystem(deps.db, (tx) => tx.delete(rateLimitBuckets).where(lt(rateLimitBuckets.windowStart, new Date(deps.now().getTime() - 2 * 86400_000))));
+  await checkOverdueCleanups(deps);
   return summary;
 }

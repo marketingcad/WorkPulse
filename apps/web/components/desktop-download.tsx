@@ -1,9 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Download } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { BookOpen, Download } from 'lucide-react';
+import { Button, Dialog } from '@tallywork/ui';
 import { AuthShell } from '@/components/auth-shell';
-import { api } from '@/lib/api';
+import { GUIDES } from '@/components/download/guides';
 import { t } from '@/lib/i18n';
 
 // Matches the md Button, for links that start a download.
@@ -34,33 +36,59 @@ function detectPlatform(): Platform | null {
 const AFTER_DOWNLOAD = {
   windows: ['download.after.windows.title', ['download.after.windows.step1', 'download.after.windows.step2', 'download.after.windows.step3'], 'download.after.windows.update'],
   macos: ['download.after.macos.title', ['download.after.macos.step1', 'download.after.macos.step2', 'download.after.macos.step3'], 'download.after.macos.update'],
+  linux: ['download.after.linux.title', ['download.after.linux.step1', 'download.after.linux.step2', 'download.after.linux.step3'], 'download.after.linux.update'],
 } as const;
 
-function AfterDownload({ platform }: { platform: keyof typeof AFTER_DOWNLOAD }) {
+/** Opens when an installer download starts: the short steps, and the full guide with screenshots. */
+function AfterDownloadDialog({ platform, open, onOpenChange }: { platform: keyof typeof AFTER_DOWNLOAD; open: boolean; onOpenChange: (o: boolean) => void }) {
   const [title, steps, update] = AFTER_DOWNLOAD[platform];
   return (
-    <section role="status" aria-labelledby="after-download-title" className="flex flex-col gap-3 rounded-sm border border-border bg-surface-sunken px-4 py-3">
-      <h2 id="after-download-title" className="text-sm font-semibold text-text">
-        {t(title)}
-      </h2>
-      <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-text">
-        {steps.map((key) => (
-          <li key={key}>{t(key)}</li>
-        ))}
-      </ol>
-      <p className="text-xs text-text-muted">{t(update)}</p>
-    </section>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t(title)}
+      width={520}
+      footer={
+        <Button size="md" onClick={() => onOpenChange(false)}>
+          {t('common.close')}
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-text">
+          {steps.map((key) => (
+            <li key={key}>{t(key)}</li>
+          ))}
+        </ol>
+        <p className="text-xs text-text-muted">{t(update)}</p>
+        <GuideLink platform={platform} />
+      </div>
+    </Dialog>
+  );
+}
+
+/** The full setup guide: every step with a screenshot. */
+function GuideLink({ platform }: { platform: keyof typeof AFTER_DOWNLOAD }) {
+  return (
+    <Link href={`/download/guide/${platform}`} className={`${LINK_BUTTON} border-transparent bg-interactive text-on-accent hover:bg-interactive-hover`}>
+      <BookOpen className="size-4" aria-hidden />
+      {t('download.guide', { platform: GUIDES[platform].name })}
+    </Link>
   );
 }
 
 /** Workers use Tallywork through the desktop app only: this page is where they get it. */
 export function DesktopDownload({ links }: { links: DownloadLinks }) {
-  const router = useRouter();
   const welcome = useSearchParams().get('welcome') === '1';
   const [platform, setPlatform] = useState<Platform | null>(null);
   useEffect(() => setPlatform(detectPlatform()), []);
   // The installer the person clicked, so the steps match the file they got.
   const [downloaded, setDownloaded] = useState<Platform | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const started = (p: Platform) => {
+    setDownloaded(p);
+    setDialogOpen(true);
+  };
 
   const available = PLATFORMS.filter((p) => links[p]);
   const primary = platform && links[platform] ? platform : null;
@@ -74,21 +102,30 @@ export function DesktopDownload({ links }: { links: DownloadLinks }) {
         ) : (
           <div className="flex flex-col gap-2">
             {primary && (
-              <a href={links[primary]!} download onClick={() => setDownloaded(primary)} className={`${LINK_BUTTON} border-transparent bg-interactive text-on-accent hover:bg-interactive-hover`}>
+              <a href={links[primary]!} download onClick={() => started(primary)} className={`${LINK_BUTTON} border-transparent bg-interactive text-on-accent hover:bg-interactive-hover`}>
                 <Download className="size-4" aria-hidden />
                 {t('download.for', { platform: LABELS[primary] })}
               </a>
             )}
             {others.map((p) => (
-              <a key={p} href={links[p]!} download onClick={() => setDownloaded(p)} className={`${LINK_BUTTON} border-border bg-surface text-text shadow-[0_1px_2px_rgb(15_23_42/0.05)] hover:border-border-strong hover:bg-surface-muted`}>
+              <a key={p} href={links[p]!} download onClick={() => started(p)} className={`${LINK_BUTTON} border-border bg-surface text-text shadow-[0_1px_2px_rgb(15_23_42/0.05)] hover:border-border-strong hover:bg-surface-muted`}>
                 {t('download.for', { platform: LABELS[p] })}
               </a>
             ))}
           </div>
         )}
-        {/* Once the installer's own steps show, the general steps would only repeat them. */}
-        {downloaded === 'windows' || downloaded === 'macos' ? (
-          <AfterDownload platform={downloaded} />
+        {/* Once the installer's own steps have been shown, the general steps would only repeat them. */}
+        {downloaded ? (
+          <>
+            <AfterDownloadDialog platform={downloaded} open={dialogOpen} onOpenChange={setDialogOpen} />
+            <section aria-labelledby="after-download-title" className="flex flex-col gap-3 rounded-sm border border-border bg-surface-sunken px-4 py-3">
+              <h2 id="after-download-title" className="text-sm font-semibold text-text">
+                {t(AFTER_DOWNLOAD[downloaded][0])}
+              </h2>
+              <p className="text-sm text-text-muted">{t('download.guideHint')}</p>
+              <GuideLink platform={downloaded} />
+            </section>
+          </>
         ) : (
           <ol className="flex flex-col gap-3 text-sm text-text">
             {(['download.step1', 'download.step2', 'download.step3'] as const).map((key, i) => (
@@ -114,16 +151,6 @@ export function DesktopDownload({ links }: { links: DownloadLinks }) {
             )}
           </p>
         )}
-        <button
-          type="button"
-          className="self-start text-sm text-text-muted hover:text-text hover:underline"
-          onClick={async () => {
-            await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
-            router.replace('/login');
-          }}
-        >
-          {t('download.signOut')}
-        </button>
       </div>
     </AuthShell>
   );

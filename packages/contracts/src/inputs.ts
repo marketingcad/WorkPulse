@@ -496,6 +496,17 @@ export const retentionInput = z.object({
     }),
   ),
 });
+export const screenshotCleanupInput = z.object({
+  enabled: z.boolean(),
+  retention_days: z.number().int().min(1).max(3650),
+  frequency: z.enum(['DAILY', 'WEEKLY']),
+  run_at: hhmm,
+  weekday: z.number().int().min(0).max(6).default(0),
+  /** null = the organization's time zone */
+  timezone: timeZone.nullable(),
+  retry_failed: z.boolean(),
+});
+export const screenshotCleanupApproveInput = z.object({ preview_id: id });
 export const dashboardLayoutInput = z.object({
   scope: z.enum(['ALL', 'ME', 'WORKER']),
   widgets: z.array(z.object({ key: z.string().max(60), size: z.enum(['S', 'M', 'L']), settings: z.record(z.string(), z.unknown()).optional() })).max(40),

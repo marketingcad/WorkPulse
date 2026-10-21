@@ -35,7 +35,7 @@ describe('admin sidebar', () => {
   it('Settings holds every settings page, Devices and the Developer pages as tabs, in one place', () => {
     const settings = item(nav, 'nav.item.settings')!;
     expect(settings.href).toBe('/settings');
-    expect(settings.tabs!.map((t) => t.href)).toEqual(['/settings', '/settings/time', '/settings/policies', '/devices', '/settings/roles', '/settings/access-review', '/settings/security', '/developer/api-keys', '/developer/webhooks', '/settings/audit']);
+    expect(settings.tabs!.map((t) => t.href)).toEqual(['/settings', '/settings/time', '/settings/policies', '/devices', '/settings/roles', '/settings/access-review', '/settings/security', '/settings/screenshot-retention', '/developer/api-keys', '/developer/webhooks', '/settings/audit']);
   });
 
   it('Timesheets carries Approvals and Team week; Members carries Teams; Schedules carries Attendance; Invoices carries Payments received', () => {

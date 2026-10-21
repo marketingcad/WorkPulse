@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { newId } from '@tallywork/domain';
 import { createDb, type DbHandle } from '../src/client';
@@ -19,6 +20,11 @@ afterAll(() => h.close());
 
 /** Rows of a raw query (the driver returns { rows }, which the shared Db type does not spell out). */
 const rows = async <T>(q: ReturnType<typeof sql>) => ((await h.db.execute(q)) as unknown as { rows: T[] }).rows;
+/** A migration's `when` from the journal: what the migrator records as `created_at`. */
+const journalWhen = (tag: string): number => {
+  const journal = JSON.parse(readFileSync(new URL('../migrations/meta/_journal.json', import.meta.url), 'utf8')) as { entries: Array<{ tag: string; when: number }> };
+  return journal.entries.find((e) => e.tag === tag)!.when;
+};
 const tracked = async () => (await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations`))[0]!.n;
 
 describe('migrations', () => {
@@ -32,14 +38,30 @@ describe('migrations', () => {
     const id = newId();
     await withSystem(h.db, (tx) => tx.insert(users).values({ id, email: `old-${id}@example.test`, name: 'Existing user', passwordHash: 'x' }));
     // The production state: column present, its migration not in the tracking table.
-    const last = (await rows<{ id: number; created_at: string }>(sql`select id, created_at from drizzle.__drizzle_migrations order by created_at desc limit 1`))[0]!;
-    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where id = ${last.id}`);
+    const when = journalWhen('0022_user_tour_done');
+    // The migrator only runs migrations newer than the latest recorded one: drop this one and any after it.
+    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at >= ${when}`);
     await h.db.execute(sql`update users set tour_done_at = null where id = ${id}`);
 
     await expect(h.migrate()).resolves.toBeUndefined();
 
     const row = (await rows<{ tour_done_at: string | null }>(sql`select tour_done_at from users where id = ${id}`))[0]!;
     expect(row.tour_done_at).not.toBeNull();
-    expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${last.created_at}`))[0]!.n).toBe(1);
+    expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
+  });
+
+  it('0023 (screenshot cleanup) succeeds again when its tables exist but it was not recorded, and keeps their data', async () => {
+    const [org] = await rows<{ id: string }>(sql`select id from organizations limit 1`);
+    const orgId = org?.id ?? newId();
+    if (!org) await h.db.execute(sql`insert into organizations (id, name, slug, timezone, settings) values (${orgId}, 'Org', ${`org-${orgId}`}, 'UTC', '{}'::jsonb)`);
+    await h.db.execute(sql`insert into screenshot_cleanup_settings (organization_id, retention_days) values (${orgId}, 14) on conflict (organization_id) do update set retention_days = 14`);
+    const when = journalWhen('0023_screenshot_cleanup');
+    // The migrator only runs migrations newer than the latest recorded one: drop this one and any after it.
+    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at >= ${when}`);
+
+    await expect(h.migrate()).resolves.toBeUndefined();
+
+    expect((await rows<{ d: number }>(sql`select retention_days as d from screenshot_cleanup_settings where organization_id = ${orgId}`))[0]!.d).toBe(14);
+    expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
   });
 });

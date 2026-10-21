@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { reportRuns, savedReports } from '@tallywork/db';
-import { apiKeyInput, dashboardLayoutInput, dateRangeQuery, exportInput, reportQueryInput, retentionInput, savedReportInput, webhookInput } from '@tallywork/contracts';
+import { apiKeyInput, dashboardLayoutInput, dateRangeQuery, exportInput, reportQueryInput, retentionInput, savedReportInput, screenshotCleanupApproveInput, screenshotCleanupInput, webhookInput } from '@tallywork/contracts';
 import { newId, notFound } from '@tallywork/domain';
 import type { AppEnv } from '../context';
 import { body, idList, query } from '../lib/http';
@@ -13,6 +13,16 @@ import { audit } from '../services/events';
 import { getLayout, resetLayout, saveLayout, widgetData } from '../services/dashboard';
 import { eventReader } from '../services/stream';
 import { getRetention, previewRetention, setRetention } from '../services/retention';
+import {
+  approveScreenshotCleanup,
+  getScreenshotCleanup,
+  getScreenshotCleanupRun,
+  listScreenshotCleanupRuns,
+  previewScreenshotCleanup,
+  requestScreenshotCleanup,
+  screenshotStorage,
+  updateScreenshotCleanup,
+} from '../services/screenshot-cleanup';
 import { anonymizeMember, permissionReview, queueDataExport } from '../services/privacy';
 import { getSupportAccess, grantSupportAccess, revokeSupportAccess } from '../services/support';
 import { connectionInput, createConnection, deleteConnection, listConnections, listProviders, requestSync } from '../services/integrations';
@@ -172,6 +182,18 @@ export const platformRoutes = new Hono<AppEnv>()
   .get('/retention-policies', async (c) => c.json(await getRetention(ctx(c))))
   .put('/retention-policies', async (c) => c.json(await setRetention(ctx(c), await body(c, retentionInput))))
   .get('/retention-policies/preview', async (c) => c.json(await previewRetention(ctx(c))))
+  .get('/screenshot-cleanup', async (c) => c.json(await getScreenshotCleanup(ctx(c))))
+  .put('/screenshot-cleanup', async (c) => c.json(await updateScreenshotCleanup(ctx(c), await body(c, screenshotCleanupInput))))
+  .post('/screenshot-cleanup/preview', async (c) => c.json(await previewScreenshotCleanup(ctx(c)), 201))
+  .post('/screenshot-cleanup/approve', async (c) => c.json(await approveScreenshotCleanup(ctx(c), (await body(c, screenshotCleanupApproveInput)).preview_id)))
+  .post('/screenshot-cleanup/runs', async (c) => c.json(await requestScreenshotCleanup(ctx(c)), 202))
+  .get('/screenshot-cleanup/runs', async (c) => c.json(await listScreenshotCleanupRuns(ctx(c))))
+  .get('/screenshot-cleanup/runs/:id', async (c) => {
+    const id = z.uuid().safeParse(c.req.param('id'));
+    if (!id.success) throw notFound('cleanup run');
+    return c.json(await getScreenshotCleanupRun(ctx(c), id.data));
+  })
+  .get('/screenshot-cleanup/storage', async (c) => c.json(await screenshotStorage(ctx(c))))
   .post('/workers/:id/data-export', async (c) => c.json(await queueDataExport(ctx(c), c.req.param('id')), 202))
   .post('/workers/:id/anonymize', async (c) => c.json(await anonymizeMember(ctx(c), c.req.param('id'))))
   .get('/permissions/review', async (c) => c.json(await permissionReview(ctx(c))))

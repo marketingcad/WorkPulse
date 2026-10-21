@@ -282,7 +282,15 @@ function RetentionPanel() {
           </>
         ) : undefined
       }
-      footer="A daily cleanup permanently deletes screenshots, activity, application and website usage and audit entries older than their period. A shorter period is scheduled and applies after 7 days, so a mistake can be undone before anything is deleted; a longer one applies at once. Timesheets, invoices, sessions and location are never deleted automatically."
+      footer={
+        <>
+          A daily cleanup permanently deletes activity, application and website usage and audit entries older than their period. A shorter period is scheduled and applies after 7 days, so a mistake can be undone before anything is deleted; a longer one applies at once. Timesheets, invoices, sessions and location are never deleted automatically. Screenshots have their own schedule under{" "}
+          <Link href={`${org.base}/settings/screenshot-retention`} className="text-interactive hover:underline">
+            Screenshot retention
+          </Link>
+          .
+        </>
+      }
     >
       {err && !err.errors?.length && (
         <p role="alert" className="m-4 rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">

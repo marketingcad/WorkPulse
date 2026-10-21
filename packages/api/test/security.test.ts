@@ -85,6 +85,9 @@ const GET_ROUTES = [
   '/webhooks',
   '/audit-logs',
   '/retention-policies',
+  '/screenshot-cleanup',
+  '/screenshot-cleanup/runs',
+  '/screenshot-cleanup/storage',
 ];
 
 describe('tenant isolation (Organization B → Organization A)', () => {
@@ -102,6 +105,9 @@ describe('tenant isolation (Organization B → Organization A)', () => {
       ['PUT', `/policies/ORG/${orgA}`, { screenshots: { enabled: true } }],
       ['POST', '/api-keys', { name: 'k', scopes: ['read:workers'] }],
       ['POST', `/reports/time-activity/query`, { from: day(-7), to: day(0) }],
+      ['PUT', '/screenshot-cleanup', { enabled: true, retention_days: 1, frequency: 'DAILY', run_at: '02:00', weekday: 0, timezone: null, retry_failed: true }],
+      ['POST', '/screenshot-cleanup/preview', {}],
+      ['POST', '/screenshot-cleanup/runs', {}],
     ] as const) {
       const r = await adminB.req(method, `/orgs/${orgA}${path}`, body);
       expect(r.status, `${method} ${path}`).toBe(404);

@@ -29,7 +29,7 @@ test.describe('Admin navigation', () => {
     await sidebar(page).getByRole('link', { name: 'Settings' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Organization' })).toBeVisible();
     const tabs = page.getByRole('navigation', { name: 'Settings' });
-    await expect(tabs.getByRole('link')).toHaveText(['Organization', 'Time & pay', 'Tracking policies', 'Devices', 'Roles & permissions', 'Access review', 'Security & retention', 'API keys', 'Webhooks', 'Audit log']);
+    await expect(tabs.getByRole('link')).toHaveText(['Organization', 'Time & pay', 'Tracking policies', 'Devices', 'Roles & permissions', 'Access review', 'Security & retention', 'Screenshot retention', 'API keys', 'Webhooks', 'Audit log']);
     await expect(tabs.getByRole('link', { name: 'Organization' })).toHaveAttribute('aria-current', 'page');
 
     await tabs.getByRole('link', { name: 'Webhooks' }).click();

@@ -38,6 +38,7 @@ const ROUTES = [
   '/settings/roles',
   '/settings/access-review',
   '/settings/security',
+  '/settings/screenshot-retention',
   '/developer/api-keys',
   '/developer/webhooks',
   '/settings/audit',

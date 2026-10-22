@@ -1,4 +1,4 @@
-﻿# Setup guide screenshots
+# Setup guide screenshots
 
 The desktop setup guides at `/download/guide/macos`, `/download/guide/windows` and `/download/guide/linux` show one
 screenshot per step. The steps and the file names are in
@@ -25,10 +25,10 @@ Tips:
 | `01-open-dmg.png` | The browser downloads list (or Finder's Downloads folder) with `Tallywork-mac.dmg` highlighted |
 | `02-drag-to-applications.png` | The `.dmg` window, with the Tallywork icon being dragged onto the Applications folder |
 | `03-cannot-verify.png` | The macOS message that it cannot verify Tallywork, with the **Done** button |
-| `04-open-anyway.png` | System Settings â†’ Privacy & Security, scrolled to Security, with **Open Anyway** next to the Tallywork message |
+| `04-open-anyway.png` | System Settings → Privacy & Security, scrolled to Security, with **Open Anyway** next to the Tallywork message |
 | `05-sign-in.png` | The WorkPulse desktop sign-in screen |
-| `06-screen-recording.png` | Privacy & Security â†’ Screen & System Audio Recording, with Tallywork turned on |
-| `07-accessibility.png` | Privacy & Security â†’ Accessibility, with Tallywork turned on |
+| `06-screen-recording.png` | Privacy & Security → Screen & System Audio Recording, with Tallywork turned on |
+| `07-accessibility.png` | Privacy & Security → Accessibility, with Tallywork turned on |
 | `08-start-tracking.png` | WorkPulse Home, clocked in on a project with the timer running (captured from the real desktop app) |
 
 ## Windows (`public/download-guides/windows/`)

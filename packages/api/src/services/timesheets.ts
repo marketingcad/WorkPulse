@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   activityWindows,
@@ -176,6 +176,7 @@ export async function timeEntryTotals(x: Ctx, q: TimeEntryQuery): Promise<TimeEn
 
 async function toTimeEntryDtos(x: Ctx, rows: Array<{ e: typeof timeEntries.$inferSelect; projectName: string; clientId: string | null; clientName: string | null; taskTitle: string | null; workerName: string }>): Promise<TimeEntryDto[]> {
   if (!rows.length) return [];
+  const cutoff = await ownLockCutoff(x);
   // Activity only for the members and days on this page, not the whole range.
   const dates = rows.map((r) => r.e.localDate).sort();
   const acts = await x.tx
@@ -214,32 +215,42 @@ async function toTimeEntryDtos(x: Ctx, rows: Array<{ e: typeof timeEntries.$infe
       client_id: clientId,
       client_name: clientName,
       edited: e.edited,
-      locked: !!e.lockedAt || isAgeLocked(x, e.localDate, e.membershipId),
+      locked: !!e.lockedAt || isAgeLocked(x, cutoff, e.localDate, e.membershipId),
       activity_pct: tracked > 0 ? Math.round((active / tracked) * 100) : null,
     };
   });
 }
 
 /** The first date members may still change their own time on (org "lock time entries" setting), or null. */
-export function lockCutoff(x: Pick<Ctx, 'org' | 'deps'>): string | null {
+/** `today` defaults to the organization's date; for a person's own time pass their local date (see ownLockCutoff). */
+export function lockCutoff(x: Pick<Ctx, 'org' | 'deps'>, today = localDate(x.deps.now(), x.org.timezone)): string | null {
   const s = x.org.settings;
   const cutoffs: string[] = [];
-  if (s.lockAfterDays != null) cutoffs.push(addDaysToDate(localDate(x.deps.now(), x.org.timezone), -s.lockAfterDays));
+  if (s.lockAfterDays != null) cutoffs.push(addDaysToDate(today, -s.lockAfterDays));
   if (s.lockBeforeDate) cutoffs.push(s.lockBeforeDate);
   return cutoffs.length ? cutoffs.sort().at(-1)! : null;
 }
 
+/**
+ * The age lock only binds a person's own time, and that time is dated in their timezone, so "N days ago"
+ * counts from their local today (not the organization's, which can be a day apart).
+ */
+async function ownLockCutoff(x: Ctx): Promise<string | null> {
+  const s = x.org.settings;
+  if (s.lockAfterDays == null && !s.lockBeforeDate) return null;
+  return lockCutoff(x, localDate(x.deps.now(), await workerTimezone(x.tx, x.actor.membershipId, x.org.timezone)));
+}
+
 /** Whether the age lock stops this actor changing their own time on `date` (managers are not bound by it). */
-function isAgeLocked(x: Ctx, date: string, ownerMembershipId?: string): boolean {
-  const cutoff = lockCutoff(x);
+function isAgeLocked(x: Ctx, cutoff: string | null, date: string, ownerMembershipId?: string): boolean {
   if (!cutoff || date >= cutoff) return false;
   if (ownerMembershipId && ownerMembershipId !== x.actor.membershipId) return false;
   return x.actor.grants['time:edit'] !== 'org';
 }
 
-function assertNotAgeLocked(x: Ctx, membershipId: string, dates: string[]) {
+export async function assertNotAgeLocked(x: Ctx, membershipId: string, dates: string[]) {
   if (membershipId !== x.actor.membershipId || x.actor.grants['time:edit'] === 'org') return;
-  const cutoff = lockCutoff(x);
+  const cutoff = await ownLockCutoff(x);
   const old = cutoff ? dates.filter((d) => d < cutoff).sort()[0] : undefined;
   if (old) throw businessRule('time_entries_locked', `Time before ${cutoff} is locked. Ask a manager to change it.`, { locked_before: cutoff });
 }
@@ -253,7 +264,7 @@ async function loadEntryForEdit(x: Ctx, entryId: string) {
   const isManager = x.actor.grants['time:edit'] === 'org' || (x.actor.grants['time:edit'] === 'team' && !isSelf);
   if (isSelf && !isManager && !policy.timeEdits.workerCanEdit) throw forbidden('Your organization does not allow editing your own time');
   if (e.lockedAt) throw businessRule('time_locked', 'This entry is part of a submitted or approved timesheet');
-  assertNotAgeLocked(x, e.membershipId, [e.localDate]);
+  await assertNotAgeLocked(x, e.membershipId, [e.localDate]);
   await lockWorker(x.tx, e.membershipId);
   return { e, policy, isSelf, isManager };
 }
@@ -291,14 +302,16 @@ async function runningSince(tx: Tx, membershipId: string): Promise<Date | null> 
 }
 
 /** New or moved time may not land in a period whose timesheet is submitted or approved. */
-async function assertPeriodsOpen(x: Ctx, membershipId: string, dates: string[]) {
-  const starts = [...new Set(dates.map((d) => periodOf(x, d).start))];
-  if (!starts.length) return;
-  const [closed] = await x.tx
-    .select({ status: timesheets.status, periodStart: timesheets.periodStart })
+export async function assertPeriodsOpen(x: Ctx, membershipId: string, dates: string[]) {
+  if (!dates.length) return;
+  const sorted = [...dates].sort();
+  // By date range, not by the current period boundaries: a timesheet approved before the pay period or
+  // week start changed still covers its own dates.
+  const candidates = await x.tx
+    .select({ status: timesheets.status, periodStart: timesheets.periodStart, periodEnd: timesheets.periodEnd })
     .from(timesheets)
-    .where(and(eq(timesheets.membershipId, membershipId), inArray(timesheets.periodStart, starts), inArray(timesheets.status, ['SUBMITTED', 'APPROVED'])))
-    .limit(1);
+    .where(and(eq(timesheets.membershipId, membershipId), inArray(timesheets.status, ['SUBMITTED', 'APPROVED']), lte(timesheets.periodStart, sorted[sorted.length - 1]!), gte(timesheets.periodEnd, sorted[0]!)));
+  const closed = candidates.find((t) => dates.some((d) => d >= t.periodStart && d <= t.periodEnd));
   if (closed) throw businessRule('timesheet_locked', `The timesheet for this period is ${closed.status.toLowerCase()}; reopen it before changing its time`, { period_start: closed.periodStart });
 }
 
@@ -317,7 +330,7 @@ export async function updateTimeEntry(x: Ctx, entryId: string, input: z.infer<ty
 
   const pieces = splitAtLocalMidnight({ start, end }, e.timezone);
   if (pieces.length > 1) throw validation('An entry cannot cross midnight; split it into two entries');
-  assertNotAgeLocked(x, e.membershipId, [pieces[0]!.localDate]);
+  await assertNotAgeLocked(x, e.membershipId, [pieces[0]!.localDate]);
   await assertPeriodsOpen(x, e.membershipId, [pieces[0]!.localDate]);
   const type = await checkTimeType(x.tx, input.time_type_id);
   const timeTypeId = type ? type.id : e.timeTypeId;
@@ -505,7 +518,7 @@ export async function requestManualTime(x: Ctx, input: z.infer<typeof manualTime
   if (input.billable_seconds !== undefined && input.billable_seconds > totalSeconds) throw validation('Billable time cannot be more than the time logged', { errors: [{ field: 'billable_seconds', message: 'At most the time logged' }] });
   await assertNoOverlap(x.tx, membershipId, start, end, []);
   const dates = splitAtLocalMidnight({ start, end }, tz).map((pc) => pc.localDate);
-  assertNotAgeLocked(x, membershipId, dates);
+  await assertNotAgeLocked(x, membershipId, dates);
   await assertPeriodsOpen(x, membershipId, dates);
   const type = await checkTimeType(x.tx, input.time_type_id);
   const [p] = await x.tx.select({ billable: projects.billableDefault }).from(projects).where(eq(projects.id, input.project_id));
@@ -737,7 +750,17 @@ async function setEntriesLocked(tx: Tx, membershipId: string, from: string, to: 
   await tx
     .update(timeEntries)
     .set({ lockedAt: locked ? new Date() : null })
-    .where(and(eq(timeEntries.membershipId, membershipId), isNull(timeEntries.deletedAt), sql`${timeEntries.localDate} between ${from} and ${to}`));
+    .where(
+      and(
+        eq(timeEntries.membershipId, membershipId),
+        isNull(timeEntries.deletedAt),
+        sql`${timeEntries.localDate} between ${from} and ${to}`,
+        // Unlocking never frees time that another submitted or approved timesheet still covers.
+        locked
+          ? undefined
+          : sql`not exists (select 1 from ${timesheets} t where t.membership_id = ${membershipId} and t.status in ('SUBMITTED', 'APPROVED') and ${timeEntries.localDate} between t.period_start and t.period_end)`,
+      ),
+    );
 }
 
 async function recordAction(x: Ctx, ts: typeof timesheets.$inferSelect, action: TimesheetAction, to: TimesheetStatus, comment: string | null) {

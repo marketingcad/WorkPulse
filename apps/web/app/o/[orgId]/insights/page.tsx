@@ -43,7 +43,8 @@ export default function InsightsPage() {
 
   const exportCsv = () => {
     if (!data) return;
-    const hours = (s: number) => Math.round((s / 3600) * 100) / 100;
+    // 4 decimals: summed rows stay within 0.0001 h each of the total shown (2 decimals drifted by up to 0.005 h a row).
+    const hours = (s: number) => Math.round((s / 3600) * 10000) / 10000;
     const amount = (m: number | null) => (m === null ? null : m / 100);
     const header = ['Member', 'Title', 'Logged (h)', 'Billable (h)', 'Activity (%)', ...(data.money_visible ? [`Est. pay (${data.currency})`, `Billable amount (${data.currency})`] : []), 'Days off'];
     const rows = data.members.map((m) => [m.name, m.title, hours(m.logged_seconds), hours(m.billable_seconds), m.activity_pct, ...(data.money_visible ? [amount(m.pay_minor), amount(m.bill_minor)] : []), m.days_off]);

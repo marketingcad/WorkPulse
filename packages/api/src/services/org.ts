@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   invitations,
@@ -10,10 +10,11 @@ import {
   roles,
   teamMembers,
   teams,
+  timesheets,
   users,
   workerProfiles,
 } from '@tallywork/db';
-import { businessRule, can, conflict, forbidden, localDate, newId, notFound, validation, type Grants } from '@tallywork/domain';
+import { businessRule, can, conflict, forbidden, localDate, newId, notFound, periodFor, validation, type Grants } from '@tallywork/domain';
 import type { MemberDetailsDto, MemberOptionDto, OffsetPage, OrgContextDto, WorkerDto, inviteInput, memberDetailsInput, roleInput, updateOrgInput, updateWorkerInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { ipAllowed, parseCidr } from '../lib/cidr';
@@ -70,6 +71,13 @@ export async function updateOrg(x: Ctx, input: z.infer<typeof updateOrgInput>) {
   if (input.week_start !== undefined) patch.weekStart = input.week_start;
   if (input.currency !== undefined) patch.currency = input.currency;
   if (input.pay_period !== undefined) patch.payPeriod = input.pay_period;
+  const boundariesChange = (input.week_start !== undefined && input.week_start !== before!.weekStart) || (input.pay_period !== undefined && JSON.stringify(input.pay_period) !== JSON.stringify(before!.payPeriod));
+  if (boundariesChange) {
+    // New period boundaries start cleanly only when nothing in the current period (or later) is closed yet.
+    const current = periodFor(localDate(x.deps.now(), before!.timezone), before!.payPeriod, before!.weekStart);
+    const [closed] = await x.tx.select({ id: timesheets.id }).from(timesheets).where(and(inArray(timesheets.status, ['SUBMITTED', 'APPROVED']), gte(timesheets.periodEnd, current.start))).limit(1);
+    if (closed) throw businessRule('period_in_use', 'Timesheets for the current pay period are already submitted or approved. Change the pay period or week start at the beginning of a new period, before anyone submits.');
+  }
   if (input.logo !== undefined) patch.logo = input.logo;
   if (input.brief !== undefined) patch.brief = input.brief;
   if (input.tax_id !== undefined) patch.taxId = input.tax_id;

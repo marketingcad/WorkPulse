@@ -213,7 +213,8 @@ export default function AllTimeEntriesPage() {
       setExporting(false);
     }
     if ((summary?.entries ?? 0) > all.length) toast.info(`Exported the first ${all.length} of ${summary!.entries} entries. Narrow the dates to export the rest.`);
-    const hours = (s: number) => Math.round((s / 3600) * 100) / 100;
+    // 4 decimals: summed rows stay within 0.0001 h each of the total shown (2 decimals drifted by up to 0.005 h a row).
+    const hours = (s: number) => Math.round((s / 3600) * 10000) / 10000;
     const rows = all
       .sort((a, b) => a.started_at.localeCompare(b.started_at))
       .map((e) => [

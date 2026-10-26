@@ -33,7 +33,7 @@ import {
   type TrackingPolicy,
 } from '@tallywork/domain';
 import type { SessionDto } from '@tallywork/contracts';
-import { emit } from './events';
+import { auditSystem, emit } from './events';
 import { workerCanTrackProject } from './work';
 
 export type ActorRef = { type: 'user' | 'agent' | 'system' | 'api_key'; id: string | null };
@@ -72,52 +72,90 @@ async function closeOpenSegment(tx: Tx, s: Session, at: Date): Promise<string[]>
   return deriveEntries(tx, s, { id: open.id, startedAt: open.startedAt, endedAt: end });
 }
 
+/**
+ * The parts of [start, end) that none of this person's live entries cover. Tracked time arriving for
+ * moments that already have time (an offline device syncing late, a recovery after manual time was added,
+ * a second device) is trimmed to these parts: the earlier record stays and no moment is counted twice.
+ * Duration-only entries are ignored, since their clock times are placeholders.
+ */
+export async function uncoveredParts(tx: Tx, membershipId: string, start: Date, end: Date): Promise<Array<{ start: Date; end: Date }>> {
+  const taken = await tx
+    .select({ start: timeEntries.startedAt, end: timeEntries.endedAt })
+    .from(timeEntries)
+    .where(and(eq(timeEntries.membershipId, membershipId), isNull(timeEntries.deletedAt), eq(timeEntries.durationOnly, false), lt(timeEntries.startedAt, end), gt(timeEntries.endedAt, start)))
+    .orderBy(asc(timeEntries.startedAt));
+  const out: Array<{ start: Date; end: Date }> = [];
+  let cursor = start;
+  for (const t of taken) {
+    if (t.start > cursor) out.push({ start: cursor, end: t.start < end ? t.start : end });
+    if (t.end > cursor) cursor = t.end;
+    if (cursor >= end) break;
+  }
+  if (cursor < end) out.push({ start: cursor, end });
+  return out;
+}
+
 /** Turn a closed WORK interval into per-local-day time entries. Returns affected local dates. */
 async function deriveEntries(tx: Tx, s: Session, seg: { id: string | null; startedAt: Date; endedAt: Date }, opts: { projectId?: string; taskId?: string | null } = {}): Promise<string[]> {
   const projectId = opts.projectId ?? s.projectId;
   const taskId = opts.taskId === undefined ? s.taskId : opts.taskId;
   const [p] = await tx.select({ billable: projects.billableDefault }).from(projects).where(eq(projects.id, projectId));
   const pieces = splitAtLocalMidnight({ start: seg.startedAt, end: seg.endedAt }, s.timezone).filter((pc) => pc.end.getTime() - pc.start.getTime() >= 1000);
-  for (const pc of pieces) {
-    const id = newId();
-    const duration = Math.round((pc.end.getTime() - pc.start.getTime()) / 1000);
-    // Tracked evidence is never dropped, but time arriving after a timesheet was submitted or
-    // approved (e.g. an offline device syncing late) is locked and flagged for the approver.
-    const [closed] = await tx
-      .select({ id: timesheets.id, status: timesheets.status, periodStart: timesheets.periodStart, periodEnd: timesheets.periodEnd })
-      .from(timesheets)
-      .where(and(eq(timesheets.membershipId, s.membershipId), inArray(timesheets.status, ['SUBMITTED', 'APPROVED']), lte(timesheets.periodStart, pc.localDate), gte(timesheets.periodEnd, pc.localDate)))
-      .limit(1);
-    await tx.insert(timeEntries).values({
-      id,
-      organizationId: s.organizationId,
-      membershipId: s.membershipId,
-      projectId,
-      taskId,
-      sessionId: s.id,
-      segmentId: seg.id,
-      source: 'TRACKED',
-      trackingSource: s.source,
-      startedAt: pc.start,
-      endedAt: pc.end,
-      durationSeconds: duration,
-      localDate: pc.localDate,
-      timezone: s.timezone,
-      billable: p?.billable ?? true,
-      note: s.note,
-      lockedAt: closed ? new Date() : null,
-    });
-    if (closed) {
-      await emit(tx, s.organizationId, 'timesheet.late_time', { timesheet_id: closed.id, membership_id: s.membershipId, status: closed.status, period_start: closed.periodStart, period_end: closed.periodEnd, seconds: duration, time_entry_id: id }, { workerId: s.membershipId, sessionId: s.id });
+  let trimmedSeconds = 0;
+  for (const piece of pieces) {
+    // Moments already covered by this person's other entries keep that earlier record (see uncoveredParts).
+    const parts = (await uncoveredParts(tx, s.membershipId, piece.start, piece.end)).filter((p) => p.end.getTime() - p.start.getTime() >= 1000);
+    trimmedSeconds += Math.round((piece.end.getTime() - piece.start.getTime()) / 1000) - parts.reduce((n, p) => n + Math.round((p.end.getTime() - p.start.getTime()) / 1000), 0);
+    for (const part of parts) {
+      const pc = { ...part, localDate: piece.localDate };
+      const id = newId();
+      const duration = Math.round((pc.end.getTime() - pc.start.getTime()) / 1000);
+      // Tracked evidence is never dropped, but time arriving after a timesheet was submitted or
+      // approved (e.g. an offline device syncing late) is locked and flagged for the approver.
+      const [closed] = await tx
+        .select({ id: timesheets.id, status: timesheets.status, periodStart: timesheets.periodStart, periodEnd: timesheets.periodEnd })
+        .from(timesheets)
+        .where(and(eq(timesheets.membershipId, s.membershipId), inArray(timesheets.status, ['SUBMITTED', 'APPROVED']), lte(timesheets.periodStart, pc.localDate), gte(timesheets.periodEnd, pc.localDate)))
+        .limit(1);
+      await tx.insert(timeEntries).values({
+        id,
+        organizationId: s.organizationId,
+        membershipId: s.membershipId,
+        projectId,
+        taskId,
+        sessionId: s.id,
+        segmentId: seg.id,
+        source: 'TRACKED',
+        trackingSource: s.source,
+        startedAt: pc.start,
+        endedAt: pc.end,
+        durationSeconds: duration,
+        localDate: pc.localDate,
+        timezone: s.timezone,
+        billable: p?.billable ?? true,
+        note: s.note,
+        lockedAt: closed ? new Date() : null,
+      });
+      if (closed) {
+        await emit(tx, s.organizationId, 'timesheet.late_time', { timesheet_id: closed.id, membership_id: s.membershipId, status: closed.status, period_start: closed.periodStart, period_end: closed.periodEnd, seconds: duration, time_entry_id: id }, { workerId: s.membershipId, sessionId: s.id });
+      }
+      await tx.insert(timeEntryRevisions).values({
+        id: newId(),
+        organizationId: s.organizationId,
+        timeEntryId: id,
+        revision: 1,
+        action: 'CREATE',
+        after: { started_at: pc.start, ended_at: pc.end, project_id: projectId, task_id: taskId },
+        actorType: 'system',
+      });
     }
-    await tx.insert(timeEntryRevisions).values({
-      id: newId(),
-      organizationId: s.organizationId,
-      timeEntryId: id,
-      revision: 1,
-      action: 'CREATE',
-      after: { started_at: pc.start, ended_at: pc.end, project_id: projectId, task_id: taskId },
-      actorType: 'system',
+  }
+  if (trimmedSeconds > 0) {
+    await auditSystem(tx, s.organizationId, {
+      action: 'time.overlap_trimmed',
+      targetType: 'tracking_session',
+      targetId: s.id,
+      metadata: { membership_id: s.membershipId, segment_id: seg.id, started_at: seg.startedAt.toISOString(), ended_at: seg.endedAt.toISOString(), trimmed_seconds: trimmedSeconds },
     });
   }
   if (seg.id) await tx.update(timeSegments).set({ derivedAt: new Date() }).where(eq(timeSegments.id, seg.id));
@@ -441,12 +479,21 @@ export async function resolveIdle(
 
   // Paused on idle (policy = pause): the IDLE segment is open.
   const [openIdle] = await tx.select().from(timeSegments).where(and(eq(timeSegments.sessionId, s.id), isNull(timeSegments.endedAt), eq(timeSegments.kind, 'IDLE')));
+  // Paused on idle, then resumed before the answer came (e.g. Resume on the web): the IDLE segment is
+  // already closed. Keeping it still credits that span.
+  const [closedIdle] = openIdle
+    ? []
+    : await tx.select().from(timeSegments).where(and(eq(timeSegments.sessionId, s.id), eq(timeSegments.kind, 'IDLE'), eq(timeSegments.startedAt, start), isNull(timeSegments.derivedAt), sql`${timeSegments.endedAt} is not null`));
   if (openIdle && current.state === 'PAUSED') {
     current = await applyTrigger(tx, current, 'RESUME', { at: end, actor: params.actor, cause: `idle_${params.resolution.toLowerCase()}` });
     if (params.resolution === 'KEPT') {
       const dates = await deriveEntries(tx, current, { id: null, startedAt: start, endedAt: end });
       await markTimeChanged(tx, s.organizationId, s.membershipId, dates, params.actor);
     }
+  } else if (closedIdle && params.resolution === 'KEPT') {
+    const dates = await deriveEntries(tx, current, { id: null, startedAt: closedIdle.startedAt, endedAt: closedIdle.endedAt! });
+    await tx.update(timeSegments).set({ derivedAt: new Date() }).where(eq(timeSegments.id, closedIdle.id));
+    await markTimeChanged(tx, s.organizationId, s.membershipId, dates, params.actor);
   } else if (params.resolution !== 'KEPT') {
     // Tracking continued during idle: close the running segment so the idle span is derived, then carve it out.
     if (current.state === 'ACTIVE') {

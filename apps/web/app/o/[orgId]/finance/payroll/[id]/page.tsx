@@ -179,9 +179,9 @@ export default function PayrollRunPage() {
         title={confirm === 'finalize' ? 'Finalize payroll?' : confirm === 'paid' ? 'Mark payroll as paid?' : 'Delete draft payroll?'}
         description={
           confirm === 'finalize'
-            ? 'Amounts are locked and every member gets their pay stub. Time approved later goes into the next payroll.'
+            ? 'This cannot be undone. Amounts are locked and every member gets their pay stub. Time approved later goes into the next payroll; to correct an amount, add a bonus or deduction on the next payroll.'
             : confirm === 'paid'
-              ? 'Record that everyone in this payroll has been paid.'
+              ? 'Record that everyone in this payroll has been paid. This cannot be undone.'
               : 'The draft and its adjustments are removed. You can run it again.'
         }
         confirmLabel={confirm === 'finalize' ? 'Finalize' : confirm === 'paid' ? 'Mark as paid' : 'Delete draft'}

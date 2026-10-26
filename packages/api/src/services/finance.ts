@@ -50,6 +50,7 @@ import { memberNames } from './timer';
 import { priceEntries } from './pay-figures';
 import { timeTypeCoefficients } from './time-types';
 import { membersWith, notify } from './notify';
+import { lockWorker } from './tracking';
 import { isUuid, likePattern } from '../lib/search';
 import { renderEmail } from '../lib/email';
 
@@ -467,8 +468,13 @@ async function toExpenseRows(x: Ctx, rows: Array<{ e: typeof expenses.$inferSele
 export async function createExpense(x: Ctx, input: z.infer<typeof expenseInput>) {
   if (!x.actor.grants['expenses:create']) throw forbidden();
   if (input.receipt_file_id) {
+    // A receipt backs one claim, by the person who uploaded it (two submissions at once are
+    // serialized by the member lock, so both cannot pass the check).
+    await lockWorker(x.tx, x.actor.membershipId);
     const [f] = await x.tx.select().from(fileObjects).where(eq(fileObjects.id, input.receipt_file_id));
-    if (!f || f.purpose !== 'RECEIPT') throw notFound('receipt');
+    if (!f || f.purpose !== 'RECEIPT' || f.uploadedBy !== x.actor.membershipId) throw notFound('receipt');
+    const [used] = await x.tx.select({ id: expenses.id }).from(expenses).where(eq(expenses.receiptFileId, f.id)).limit(1);
+    if (used) throw businessRule('receipt_in_use', 'This receipt is already attached to another expense', { errors: [{ field: 'receipt_file_id', message: 'Upload the receipt for this expense' }] });
   }
   let clientId = input.client_id ?? null;
   // Only a project the person can see and that is still in use; the client must be the project's
@@ -513,10 +519,14 @@ export async function decideExpense(x: Ctx, id: string, action: 'APPROVE' | 'REJ
   const allowed = { APPROVE: ['SUBMITTED', 'REJECTED'], REJECT: ['SUBMITTED', 'APPROVED'], REIMBURSE: ['APPROVED'] }[action];
   if (!allowed.includes(e.status)) throw businessRule('invalid_expense_transition', `Cannot ${action.toLowerCase()} an expense that is ${e.status.toLowerCase()}`);
   if (e.invoiceLineId && action === 'REJECT') throw businessRule('expense_invoiced', 'This expense is on an invoice');
-  await x.tx
+  if (action === 'REIMBURSE' && !e.reimbursable) throw businessRule('expense_not_reimbursable', 'This expense was submitted as not reimbursable');
+  // Conditional on the status read above: two decisions sent at once cannot both apply (e.g. reimbursed twice).
+  const [done] = await x.tx
     .update(expenses)
     .set({ status: next, decidedBy: x.actor.membershipId, decidedAt: new Date(), ...(action === 'REIMBURSE' ? { reimbursedAt: new Date() } : {}), updatedAt: new Date() })
-    .where(eq(expenses.id, id));
+    .where(and(eq(expenses.id, id), eq(expenses.status, e.status)))
+    .returning({ id: expenses.id });
+  if (!done) throw conflict('expense_changed', 'This expense was just decided by someone else. Refresh to see its status.');
   await emitFrom(x, `expense.${next.toLowerCase()}`, { expense_id: id, membership_id: e.membershipId }, { workerId: e.membershipId });
   await audit(x, { action: `expense.${next.toLowerCase()}`, targetType: 'expense', targetId: id });
 }

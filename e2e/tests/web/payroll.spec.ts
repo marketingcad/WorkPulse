@@ -67,6 +67,8 @@ test.describe('Payroll (admin)', () => {
     await expect(line).toContainText(usd(15000));
 
     await page.getByRole('button', { name: 'Finalize' }).click();
+    // Finalizing is irreversible and says so (money audit M17); corrections go on the next payroll.
+    await expect(page.getByRole('alertdialog').or(page.getByRole('dialog')).getByText(/This cannot be undone.*bonus or deduction on the next payroll/)).toBeVisible();
     await page.getByRole('button', { name: 'Finalize' }).last().click();
     await expect(page.getByText('Payroll finalized; members can see their pay stubs')).toBeVisible();
     await expect(line.getByRole('link', { name: 'Stub' })).toBeVisible();

@@ -13,6 +13,7 @@ import {
   rollupWorkerDay,
   timeOffPolicies,
   timeOffRequests,
+  users,
   type PayAdjustment,
 } from '@tallywork/db';
 import { DEFAULT_OVERTIME, addDaysToDate, amountForSeconds, businessRule, conflict, forbidden, localDate, newId, notFound, periodFor, resolveRate } from '@tallywork/domain';
@@ -21,7 +22,7 @@ import type { BankDetailsDto, PayStubDto, PayrollProfileDto, PayrollRunDto, bank
 import type { Ctx } from './ctx';
 import { audit } from './events';
 import { loadRates } from './finance';
-import { notify } from './notify';
+import { membersWith, notificationEmail, notify } from './notify';
 import { timeOffHoursInRange } from './reports';
 import { memberNames } from './timer';
 import { decrypt, encrypt } from '../lib/crypto';
@@ -122,7 +123,29 @@ export async function getBankDetails(x: Ctx, profileId: string, membershipId: st
   bankAccess(x, membershipId);
   const [m] = await x.tx.select().from(payrollProfileMembers).where(and(eq(payrollProfileMembers.profileId, profileId), eq(payrollProfileMembers.membershipId, membershipId)));
   if (!m) throw notFound('payroll_profile_member');
+  // Someone else opening the full details is on the audit trail (the details themselves never are).
+  if (membershipId !== x.actor.membershipId && m.bankDetailsEnc) await audit(x, { action: 'payroll.bank_details_viewed', targetType: 'membership', targetId: membershipId, metadata: { profile_id: profileId } });
   return openBank(x, m.bankDetailsEnc);
+}
+
+/**
+ * Payout details changing is how pay gets redirected, so nobody changes them unseen: when someone
+ * else changes a person's details, that person is told in the app and always by email; when people
+ * change their own, the payroll managers are told.
+ */
+async function announceBankChange(x: Ctx, profileId: string, membershipId: string) {
+  const [p] = await x.tx.select({ name: payrollProfiles.name }).from(payrollProfiles).where(eq(payrollProfiles.id, profileId));
+  const names = await memberNames(x, [membershipId, x.actor.membershipId]);
+  const group = p?.name ?? 'your pay group';
+  if (membershipId !== x.actor.membershipId) {
+    const n = { type: 'payroll.bank_details_changed', title: 'Your payout details were changed', body: `${names.get(x.actor.membershipId) ?? 'A payroll manager'} changed your payout details for ${group}. If you did not expect this, contact your payroll manager now.`, link: '/pay-stubs' };
+    await notify(x.tx, x.deps, x.org.id, [membershipId], n);
+    const [u] = await x.tx.select({ email: users.email }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).where(eq(memberships.id, membershipId));
+    if (u) await x.deps.mailer.send(notificationEmail(x.deps.config.appUrl, x.org.id, x.org.name, u.email, n, 'You received this email because the payout details of your WorkPulse account changed. It is always sent, whatever your notification settings.')).catch(() => undefined);
+  } else {
+    const managers = (await membersWith(x.tx, x.org.id, 'payroll:manage')).filter((m) => m !== membershipId);
+    await notify(x.tx, x.deps, x.org.id, managers, { type: 'payroll.bank_details_changed', title: `${names.get(membershipId) ?? 'A member'} changed their payout details`, body: `For ${group}. Check them before the next payroll is paid.`, link: '/finance/payroll' });
+  }
 }
 
 export async function setBankDetails(x: Ctx, profileId: string, membershipId: string, input: z.infer<typeof bankDetailsInput>) {
@@ -145,6 +168,7 @@ export async function setBankDetails(x: Ctx, profileId: string, membershipId: st
   if (!r.length) throw notFound('payroll_profile_member');
   // Account numbers never go to the audit trail.
   await audit(x, { action: 'payroll.bank_details_updated', targetType: 'membership', targetId: membershipId, metadata: { profile_id: profileId } });
+  await announceBankChange(x, profileId, membershipId);
   return details;
 }
 

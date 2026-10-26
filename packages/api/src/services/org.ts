@@ -16,7 +16,7 @@ import {
   users,
   workerProfiles,
 } from '@tallywork/db';
-import { businessRule, can, conflict, forbidden, localDate, newId, notFound, periodFor, validation, type Grants } from '@tallywork/domain';
+import { ORG_ONLY_PERMISSIONS, businessRule, can, conflict, forbidden, localDate, newId, notFound, periodFor, validation, type Grants, type Permission } from '@tallywork/domain';
 import type { MemberDetailsDto, MemberOptionDto, OffsetPage, OrgContextDto, WorkerDto, inviteInput, memberDetailsInput, roleInput, updateOrgInput, updateWorkerInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { ipAllowed, parseCidr } from '../lib/cidr';
@@ -148,6 +148,7 @@ export async function upsertRole(x: Ctx, roleId: string | null, input: z.infer<t
   for (const [perm, scope] of Object.entries(input.grants)) {
     if (!holdsGrant(x, perm, scope)) throw forbidden(`You cannot grant ${perm} at ${scope} scope`);
     if (perm === 'agent:ingest') throw forbidden('agent:ingest is reserved for devices');
+    if (ORG_ONLY_PERMISSIONS.includes(perm as Permission) && scope !== 'org') throw validation(`${perm} can only be granted for the whole organization`, { errors: [{ field: `grants.${perm}`, message: 'Organization scope only' }] });
   }
   let id = roleId;
   if (id) {

@@ -1,7 +1,7 @@
 'use client';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Lock, Pencil, Plus, Trash2 } from 'lucide-react';
-import { PERMISSIONS, SCOPES, type Grants, type Permission, type Scope } from '@tallywork/domain';
+import { ORG_ONLY_PERMISSIONS, PERMISSIONS, SCOPES, type Grants, type Permission, type Scope } from '@tallywork/domain';
 import { Badge, Button, ConfirmDialog, Dialog, EmptyState, ErrorState, Field, IconButton, Input, PageHeader, Panel, PermissionState, Select, SkeletonRows, Textarea, cx, humanize, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
@@ -171,6 +171,7 @@ function RoleDialog({ open, role, roles, onOpenChange }: { open: boolean; role: 
   const allowedScopes = (p: Permission): Scope[] => {
     const mine = org.grants[p];
     if (!mine) return [];
+    if (ORG_ONLY_PERMISSIONS.includes(p)) return mine === 'org' ? ['org'] : [];
     return mine === 'org' ? [...SCOPES] : [mine];
   };
   const count = Object.keys(grants).length;

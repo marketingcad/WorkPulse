@@ -73,6 +73,12 @@ export const PERMISSIONS = [
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
+/**
+ * Permissions that only make sense for the whole organization. Payroll runs, pay stubs and bank
+ * details are not narrowed to a team or to assigned work, so these are granted at org scope or not at all.
+ */
+export const ORG_ONLY_PERMISSIONS: readonly Permission[] = ['payroll:read', 'payroll:manage'];
+
 export const BUILTIN_ROLES = ['SYSTEM_ADMIN', 'TEAM_MANAGER', 'WORKER', 'AGENT'] as const;
 export type BuiltinRole = (typeof BUILTIN_ROLES)[number];
 

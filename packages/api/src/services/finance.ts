@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   billingEntries,
@@ -346,23 +346,23 @@ export async function amountsOwed(x: Ctx, from: string, to: string) {
   // Approved time at its approved amounts, the rest per entry at today's rates: with everything
   // approved, "estimated" equals "approved" to the cent.
   const priced = await priceEntries(x.tx, x.org.currency, from, to, visible);
-  const approved = await x.tx
-    .select({ m: billingEntries.membershipId, s: sql<number>`sum(${billingEntries.seconds})::int`, pay: sql<number>`sum(${billingEntries.payAmountMinor})::bigint` })
-    .from(billingEntries)
-    .where(and(isNull(billingEntries.voidedAt), gte(billingEntries.localDate, from), lte(billingEntries.localDate, to)))
-    .groupBy(billingEntries.membershipId);
-  const byWorker = new Map<string, { seconds: number; estimated: number }>();
+  // Both figures come from the same priced entries, so pay in another currency is left out of both
+  // (it used to be added to "approved" as if it were in the org currency).
+  const byWorker = new Map<string, { seconds: number; estimated: number; approvedSeconds: number; approved: number }>();
   for (const e of priced) {
-    const w = byWorker.get(e.membershipId) ?? { seconds: 0, estimated: 0 };
+    const w = byWorker.get(e.membershipId) ?? { seconds: 0, estimated: 0, approvedSeconds: 0, approved: 0 };
     w.seconds += e.seconds;
     w.estimated += e.payMinor;
+    if (e.approved) {
+      w.approvedSeconds += e.seconds;
+      w.approved += e.payMinor;
+    }
     byWorker.set(e.membershipId, w);
   }
   const names = await memberNames(x, [...byWorker.keys()]);
   return [...byWorker.entries()]
     .map(([m, w]) => {
-      const a = approved.find((ap) => ap.m === m);
-      return { membership_id: m, worker_name: names.get(m) ?? '', tracked_seconds: w.seconds, approved_seconds: a?.s ?? 0, approved_amount_minor: Number(a?.pay ?? 0), estimated_amount_minor: w.estimated, currency: x.org.currency };
+      return { membership_id: m, worker_name: names.get(m) ?? '', tracked_seconds: w.seconds, approved_seconds: w.approvedSeconds, approved_amount_minor: w.approved, estimated_amount_minor: w.estimated, currency: x.org.currency };
     })
     .sort((a, b) => a.worker_name.localeCompare(b.worker_name));
 }
@@ -843,12 +843,23 @@ export async function voidInvoice(x: Ctx, id: string) {
   const inv = await getInvoice(x, id);
   if (inv.status === 'VOID') return inv;
   if (inv.paid_minor > 0) throw businessRule('invoice_has_payments', 'Remove payments before voiding this invoice');
+  // Conditional: a payment recorded at the same moment either lands first (and the void is refused)
+  // or finds the invoice void (and is refused). Before, both could commit: a void invoice holding money.
+  const [voided] = await x.tx
+    .update(invoices)
+    .set({ status: 'VOID', voidedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(invoices.id, id), ne(invoices.status, 'VOID'), eq(invoices.paidMinor, 0)))
+    .returning({ id: invoices.id });
+  if (!voided) {
+    const [now] = await x.tx.select({ status: invoices.status }).from(invoices).where(eq(invoices.id, id));
+    if (now?.status === 'VOID') return getInvoice(x, id);
+    throw businessRule('invoice_has_payments', 'Remove payments before voiding this invoice');
+  }
   const lineIds = inv.lines.map((l) => l.id);
   if (lineIds.length) {
     await x.tx.update(billingEntries).set({ invoiceLineId: null }).where(inArray(billingEntries.invoiceLineId, lineIds));
     await x.tx.update(expenses).set({ invoiceLineId: null }).where(inArray(expenses.invoiceLineId, lineIds));
   }
-  await x.tx.update(invoices).set({ status: 'VOID', voidedAt: new Date(), updatedAt: new Date() }).where(eq(invoices.id, id));
   await emitFrom(x, 'invoice.voided', { invoice_id: id });
   await audit(x, { action: 'invoice.voided', targetType: 'invoice', targetId: id });
   return getInvoice(x, id);
@@ -936,13 +947,18 @@ export async function recordPayment(x: Ctx, input: z.infer<typeof paymentInput>)
     if (inv.status === 'VOID' || inv.status === 'DRAFT') throw businessRule('invoice_not_payable', `Invoice ${inv.number} is not open`);
     if (inv.currency !== input.currency) throw businessRule('currency_mismatch', `Invoice ${inv.number} is in ${inv.currency}`);
     if (input.client_id && inv.clientId !== input.client_id) throw businessRule('client_mismatch', `Invoice ${inv.number} belongs to another client`);
-    // Conditional increment: two payments recorded at once cannot push an invoice past its total.
+    // Conditional increment: two payments recorded at once cannot push an invoice past its total, and
+    // an invoice voided meanwhile takes no money.
     const [paid] = await x.tx
       .update(invoices)
       .set({ paidMinor: sql`${invoices.paidMinor} + ${a.amount_minor}`, updatedAt: new Date() })
-      .where(and(eq(invoices.id, a.invoice_id), sql`${invoices.paidMinor} + ${a.amount_minor} <= ${invoices.totalMinor}`))
+      .where(and(eq(invoices.id, a.invoice_id), eq(invoices.status, 'SENT'), sql`${invoices.paidMinor} + ${a.amount_minor} <= ${invoices.totalMinor}`))
       .returning({ paidMinor: invoices.paidMinor, totalMinor: invoices.totalMinor });
-    if (!paid) throw businessRule('overpayment', `Payment exceeds the balance of ${inv.number}`);
+    if (!paid) {
+      const [now] = await x.tx.select({ status: invoices.status }).from(invoices).where(eq(invoices.id, a.invoice_id));
+      if (now?.status !== 'SENT') throw businessRule('invoice_not_payable', `Invoice ${inv.number} is not open`);
+      throw businessRule('overpayment', `Payment exceeds the balance of ${inv.number}`);
+    }
     await x.tx.insert(paymentAllocations).values({ id: newId(), organizationId: x.org.id, paymentId: id, invoiceId: a.invoice_id, amountMinor: a.amount_minor });
     if (paid.paidMinor >= paid.totalMinor) await emitFrom(x, 'invoice.paid', { invoice_id: inv.id, number: inv.number });
   }
@@ -954,13 +970,14 @@ export async function recordPayment(x: Ctx, input: z.infer<typeof paymentInput>)
 /** Delete a payment and reverse its allocations (e.g. recorded by mistake). */
 export async function deletePayment(x: Ctx, id: string) {
   if (!x.actor.grants['payments:manage']) throw forbidden();
-  const [p] = await x.tx.select().from(payments).where(eq(payments.id, id));
-  if (!p) throw notFound('payment');
   const allocs = await x.tx.select().from(paymentAllocations).where(eq(paymentAllocations.paymentId, id));
+  // Delete first: of two deletes sent at once only one gets the row back and reverses the allocations
+  // (before, both did and the invoice lost the payment twice).
+  const [p] = await x.tx.delete(payments).where(eq(payments.id, id)).returning();
+  if (!p) throw notFound('payment');
   for (const a of allocs) {
     await x.tx.update(invoices).set({ paidMinor: sql`greatest(0, ${invoices.paidMinor} - ${a.amountMinor})`, updatedAt: new Date() }).where(eq(invoices.id, a.invoiceId));
   }
-  await x.tx.delete(payments).where(eq(payments.id, id));
   await audit(x, { action: 'payment.deleted', targetType: 'payment', targetId: id, before: { ...p, allocations: allocs } });
 }
 

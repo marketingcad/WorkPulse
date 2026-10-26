@@ -1,5 +1,5 @@
 import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
-import { billingEntries, holidays, projects, rollupWorkerDay, timeEntries, workSchedules, type Tx } from '@tallywork/db';
+import { billingEntries, billingRates, holidays, projects, rollupWorkerDay, timeEntries, timeOffPolicies, timeOffRequests, workSchedules, type Tx } from '@tallywork/db';
 import { addDaysToDate, amountForSeconds, dayOfWeek, overtimeByDay, resolveRate, startOfWeek, type OvertimeRules } from '@tallywork/domain';
 import { loadRates } from './finance';
 import { computeShifts } from './operations';
@@ -43,10 +43,12 @@ export async function priceEntries(tx: Tx, currency: string, from: string, to: s
       bBill: billingEntries.billAmountMinor,
       bBillable: billingEntries.billable,
       bCurrency: billingEntries.currency,
+      bPayCurrency: billingRates.currency,
     })
     .from(timeEntries)
     .innerJoin(projects, eq(projects.id, timeEntries.projectId))
     .leftJoin(billingEntries, and(eq(billingEntries.timeEntryId, timeEntries.id), isNull(billingEntries.voidedAt)))
+    .leftJoin(billingRates, eq(billingRates.id, billingEntries.payRateId))
     .where(
       and(
         isNull(timeEntries.deletedAt),
@@ -60,8 +62,11 @@ export async function priceEntries(tx: Tx, currency: string, from: string, to: s
   return rows.map((r) => {
     const base = { membershipId: r.m, projectId: r.p, clientId: r.c, localDate: r.d, seconds: r.s };
     if (r.bPay !== null) {
-      const foreign = r.bCurrency !== currency;
-      return { ...base, billable: !!r.bBillable, payMinor: foreign ? 0 : r.bPay, billMinor: foreign ? 0 : (r.bBill ?? 0), approved: true, payForeign: foreign, billForeign: foreign && !!r.bBillable };
+      // An approved entry keeps one currency, the bill rate's when it is billable; its pay is in the
+      // pay rate's currency (as payroll reads it), which can differ.
+      const payForeign = !!r.bPayCurrency && r.bPayCurrency !== currency;
+      const billForeign = !!r.bBillable && r.bCurrency !== currency;
+      return { ...base, billable: !!r.bBillable, payMinor: payForeign ? 0 : r.bPay, billMinor: billForeign ? 0 : (r.bBill ?? 0), approved: true, payForeign, billForeign };
     }
     const rc = { date: r.d, membershipId: r.m, projectId: r.p, clientId: r.c };
     const k = coef(r.type);
@@ -85,16 +90,29 @@ export async function priceEntries(tx: Tx, currency: string, from: string, to: s
  * Paid holidays in [from, to] and the hours each person is paid for them: their scheduled hours that
  * day (none when it is not one of their working days), or, without a schedule, a standard 8-hour
  * weekday (the same default time off uses). Holidays not marked paid pay nothing.
+ *
+ * A day is paid once: when paid time off already covers the holiday because it was requested before
+ * the holiday was added (so its hours count that day as a working day), the time off pays it and the
+ * holiday adds nothing. Time off requested after the holiday leaves the day out, and the holiday pays it.
  */
 export async function paidHolidayHours(tx: Tx, membershipIds: string[], from: string, to: string): Promise<Map<string, Array<{ date: string; hours: number }>>> {
   const out = new Map<string, Array<{ date: string; hours: number }>>();
   if (!membershipIds.length) return out;
-  const days = (await tx.select({ d: holidays.date }).from(holidays).where(and(eq(holidays.paid, true), gte(holidays.date, from), lte(holidays.date, to)))).map((h) => h.d).sort();
+  const hols = await tx.select({ d: holidays.date, at: holidays.createdAt }).from(holidays).where(and(eq(holidays.paid, true), gte(holidays.date, from), lte(holidays.date, to)));
+  const days = hols.map((h) => h.d).sort();
   if (!days.length) return out;
   const scheds = await tx.select().from(workSchedules).where(inArray(workSchedules.membershipId, membershipIds));
   const shifts = await computeShifts(tx, membershipIds, days[0]!, days[days.length - 1]!);
+  const off = await tx
+    .select({ m: timeOffRequests.membershipId, start: timeOffRequests.startDate, end: timeOffRequests.endDate, at: timeOffRequests.createdAt })
+    .from(timeOffRequests)
+    .innerJoin(timeOffPolicies, eq(timeOffPolicies.id, timeOffRequests.policyId))
+    .where(and(inArray(timeOffRequests.membershipId, membershipIds), eq(timeOffRequests.status, 'APPROVED'), eq(timeOffPolicies.paid, true), lte(timeOffRequests.startDate, days[days.length - 1]!), gte(timeOffRequests.endDate, days[0]!)));
+  const addedAt = new Map(hols.map((h) => [h.d, h.at.getTime()]));
+  const paidAsTimeOff = (m: string, d: string) => off.some((o) => o.m === m && o.start <= d && d <= o.end && o.at.getTime() < addedAt.get(d)!);
   for (const m of membershipIds) {
     for (const d of days) {
+      if (paidAsTimeOff(m, d)) continue;
       const scheduled = scheds.some((s) => s.membershipId === m && s.effectiveFrom <= d && (!s.effectiveTo || d < s.effectiveTo));
       const secs = shifts.filter((s) => s.membership_id === m && s.date === d).reduce((n, s) => n + (Date.parse(s.ends_at) - Date.parse(s.starts_at)) / 1000, 0);
       const hours = scheduled || secs > 0 ? Math.round((secs / 3600) * 100) / 100 : [0, 6].includes(dayOfWeek(d)) ? 0 : 8;

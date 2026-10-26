@@ -123,11 +123,14 @@ export function methodLabel(v: string): string {
   return PAYMENT_METHODS.find((m) => m.value === v)?.label ?? v;
 }
 
-/** Parse a decimal money string ("12.50") into integer minor units; null when invalid. */
+/**
+ * Parse a decimal money string ("12.50", "1,250.00") into integer minor units; null when invalid.
+ * A comma is only accepted as a thousands separator: "12,50" is refused rather than read as 1250.
+ */
 export function toMinor(v: string): number | null {
-  const t = v.trim().replace(/,/g, '');
-  if (!/^\d+(\.\d{0,2})?$/.test(t)) return null;
-  return Math.round(Number(t) * 100);
+  const s = v.trim();
+  if (!/^(\d+|\d{1,3}(,\d{3})+)(\.\d{0,2})?$/.test(s)) return null;
+  return Math.round(Number(s.replace(/,/g, '')) * 100);
 }
 
 export function fromMinor(minor: number): string {

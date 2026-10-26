@@ -1,12 +1,12 @@
 import { and, eq, gte, lte } from 'drizzle-orm';
-import { projects, rollupWorkerDay } from '@tallywork/db';
-import { addDaysToDate, forbidden, localDate, startOfWeek, type Grants, type Permission, type Scope } from '@tallywork/domain';
+import { idleEvents, projects, rollupWorkerDay, trackingSessions } from '@tallywork/db';
+import { addDaysToDate, forbidden, localDate, startOfLocalDay, startOfWeek, type Grants, type Permission, type Scope } from '@tallywork/domain';
 import type { timeOffRequestInput } from '@tallywork/contracts';
 import type { z } from 'zod';
 import type { AgentCtx } from './agent';
 import { memberCtx } from './agent';
 import type { Ctx } from './ctx';
-import { activityDay } from './activity';
+import { activityDay, idleEndFromActivity } from './activity';
 import { companyProfile } from './finance';
 import { balances, listShifts, listTimeOffRequests, requestTimeOff } from './operations';
 import { getPayStub, myPayStubs as ownPayStubs } from './payroll';
@@ -127,11 +127,24 @@ export async function mySummary(a: AgentCtx, q: { from?: string; to?: string }) 
     if (r.billable) t.billable += worked;
     t.active += r.activeSeconds;
     t.activity_tracked += r.activityTrackedSeconds;
-    t.idle += r.idleSeconds;
     byDay.set(r.localDate, (byDay.get(r.localDate) ?? 0) + worked);
     const p = byProject.get(r.projectId) ?? { project_id: r.projectId, project_name: name, color, seconds: 0 };
     p.seconds += worked;
     byProject.set(r.projectId, p);
+  }
+  // "Away": the idle periods detected on these days, whatever was decided about them (kept idle is
+  // still time away from the keyboard). An unanswered one ends when input resumed, or now if it hasn't.
+  const now = a.deps.now();
+  const idle = await a.tx
+    .select({ sessionId: idleEvents.sessionId, startedAt: idleEvents.startedAt, endedAt: idleEvents.endedAt, tz: trackingSessions.timezone })
+    .from(idleEvents)
+    .innerJoin(trackingSessions, eq(trackingSessions.id, idleEvents.sessionId))
+    .where(and(eq(idleEvents.membershipId, a.membershipId), gte(idleEvents.startedAt, startOfLocalDay(addDaysToDate(from, -1), 'UTC')), lte(idleEvents.startedAt, startOfLocalDay(addDaysToDate(to, 2), 'UTC'))));
+  for (const ev of idle) {
+    const d = localDate(ev.startedAt, ev.tz);
+    if (d < from || d > to) continue;
+    const end = ev.endedAt ?? (await idleEndFromActivity(a.tx, ev, now));
+    t.idle += Math.max(0, Math.round((end.getTime() - ev.startedAt.getTime()) / 1000));
   }
   const days: Array<{ date: string; seconds: number }> = [];
   for (let d = from; d <= to && days.length < 93; d = addDaysToDate(d, 1)) days.push({ date: d, seconds: byDay.get(d) ?? 0 });

@@ -227,6 +227,8 @@ export async function computeAttendance(tx: Tx, orgId: string, lateGraceMinutes:
       const r = classifyAttendance({
         scheduledStart,
         scheduledEnd,
+        // The shifts' own lengths: the gap between split shifts (e.g. lunch) is not scheduled time.
+        scheduledSeconds: dayShifts.reduce((n, s) => n + Math.max(0, (Date.parse(s.ends_at) - Date.parse(s.starts_at)) / 1000), 0),
         firstIn,
         lastOut,
         workedSeconds: worked,

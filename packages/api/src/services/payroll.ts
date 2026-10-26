@@ -16,7 +16,7 @@ import {
   type PayAdjustment,
 } from '@tallywork/db';
 import { DEFAULT_OVERTIME, addDaysToDate, amountForSeconds, businessRule, conflict, forbidden, localDate, newId, notFound, periodFor, resolveRate } from '@tallywork/domain';
-import { overtimeInRange } from './pay-figures';
+import { overtimeInRange, paidHolidayHours } from './pay-figures';
 import type { BankDetailsDto, PayStubDto, PayrollProfileDto, PayrollRunDto, bankDetailsInput, payAdjustmentsInput, payrollProfileInput, payrollRunInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { audit } from './events';
@@ -270,6 +270,7 @@ async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect
     .innerJoin(timeOffPolicies, eq(timeOffPolicies.id, timeOffRequests.policyId))
     .where(and(inArray(timeOffRequests.membershipId, members), eq(timeOffRequests.status, 'APPROVED'), lte(timeOffRequests.startDate, to), gte(timeOffRequests.endDate, from)));
   const hols = new Set((await x.tx.select({ d: holidays.date }).from(holidays).where(and(gte(holidays.date, from), lte(holidays.date, to)))).map((h) => h.d));
+  const holidayPay = await paidHolidayHours(x.tx, members, from, to);
   const rates = await loadRates(x.tx);
   let otherCurrency = false;
 
@@ -291,6 +292,13 @@ async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect
       const h = timeOffHoursInRange(o.t, from, to, hols, o.hpd || 8);
       offHours += h;
       const rate = resolveRate(rates, 'PAY', { date: o.t.startDate < from ? from : o.t.startDate, membershipId: m, projectId: null, clientId: null });
+      if (rate && rate.currency !== profile.currency) otherCurrency = true;
+      else if (rate) offPay += amountForSeconds(Math.round(h * 3600), rate.amountMinor);
+    }
+    // Paid holidays are paid time off too: the hours the person would normally work that day.
+    for (const { date: d, hours: h } of holidayPay.get(m) ?? []) {
+      offHours += h;
+      const rate = resolveRate(rates, 'PAY', { date: d, membershipId: m, projectId: null, clientId: null });
       if (rate && rate.currency !== profile.currency) otherCurrency = true;
       else if (rate) offPay += amountForSeconds(Math.round(h * 3600), rate.amountMinor);
     }

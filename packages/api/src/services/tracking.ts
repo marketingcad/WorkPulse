@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
 import {
+  breakTypes,
   idleEvents,
   memberships,
   projects,
@@ -68,6 +69,7 @@ async function closeOpenSegment(tx: Tx, s: Session, at: Date): Promise<string[]>
   if (!open) return [];
   const end = at < open.startedAt ? open.startedAt : at;
   await tx.update(timeSegments).set({ endedAt: end }).where(eq(timeSegments.id, open.id));
+  if (open.kind === 'BREAK' && open.breakTypeId) return derivePaidBreak(tx, s, { id: open.id, startedAt: open.startedAt, endedAt: end, breakTypeId: open.breakTypeId });
   if (open.kind !== 'WORK') return [];
   return deriveEntries(tx, s, { id: open.id, startedAt: open.startedAt, endedAt: end });
 }
@@ -95,8 +97,20 @@ export async function uncoveredParts(tx: Tx, membershipId: string, start: Date, 
   return out;
 }
 
+/**
+ * A break of a paid break type is paid time: it becomes time entries on the session's project, never
+ * billed to the client, up to the break type's maximum length (longer is unpaid, as the worker was warned).
+ */
+async function derivePaidBreak(tx: Tx, s: Session, seg: { id: string; startedAt: Date; endedAt: Date; breakTypeId: string }): Promise<string[]> {
+  const [bt] = await tx.select({ name: breakTypes.name, paid: breakTypes.paid, maxMinutes: breakTypes.maxMinutes }).from(breakTypes).where(eq(breakTypes.id, seg.breakTypeId));
+  if (!bt?.paid) return [];
+  const cap = bt.maxMinutes != null ? new Date(seg.startedAt.getTime() + bt.maxMinutes * 60_000) : seg.endedAt;
+  const endedAt = cap < seg.endedAt ? cap : seg.endedAt;
+  return deriveEntries(tx, s, { id: seg.id, startedAt: seg.startedAt, endedAt }, { billable: false, note: `Paid break: ${bt.name}` });
+}
+
 /** Turn a closed WORK interval into per-local-day time entries. Returns affected local dates. */
-async function deriveEntries(tx: Tx, s: Session, seg: { id: string | null; startedAt: Date; endedAt: Date }, opts: { projectId?: string; taskId?: string | null } = {}): Promise<string[]> {
+async function deriveEntries(tx: Tx, s: Session, seg: { id: string | null; startedAt: Date; endedAt: Date }, opts: { projectId?: string; taskId?: string | null; billable?: boolean; note?: string | null } = {}): Promise<string[]> {
   const projectId = opts.projectId ?? s.projectId;
   const taskId = opts.taskId === undefined ? s.taskId : opts.taskId;
   const [p] = await tx.select({ billable: projects.billableDefault }).from(projects).where(eq(projects.id, projectId));
@@ -132,8 +146,8 @@ async function deriveEntries(tx: Tx, s: Session, seg: { id: string | null; start
         durationSeconds: duration,
         localDate: pc.localDate,
         timezone: s.timezone,
-        billable: p?.billable ?? true,
-        note: s.note,
+        billable: opts.billable ?? p?.billable ?? true,
+        note: opts.note !== undefined ? opts.note : s.note,
         lockedAt: closed ? new Date() : null,
       });
       if (closed) {

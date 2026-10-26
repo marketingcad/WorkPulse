@@ -115,7 +115,9 @@ describe('API keys', () => {
 
   it('are shown once and never stored or logged in clear', async () => {
     const r = await admin.post(o('/api-keys'), { name: 'Once', scopes: ['read:projects'] });
-    const secretPart = r.body.key.split('_').pop() as string;
+    // tw_live_<prefix>_<secret>: the secret is base64url and can itself contain "_".
+    const secretPart = (r.body.key as string).split('_').slice(3).join('_');
+    expect(secretPart.length).toBeGreaterThanOrEqual(40);
     const listed = JSON.stringify((await admin.get(o('/api-keys'))).body);
     expect(listed).not.toContain(secretPart);
     expect(listed).toContain(r.body.key.split('_').slice(0, 3).join('_')); // prefix only

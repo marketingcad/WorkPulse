@@ -66,6 +66,7 @@ The platform is **Vercel** (web app, API and cron) plus **Supabase** (Postgres a
 
 - **Desktop apps keep tracking.** They save events on the device, encrypted, and replay them when the API is back. Nothing is lost.
 - Check the Supabase status and the project's dashboard (connections, CPU, disk). Connection-limit errors mean the Session pooler is saturated: lower the pool size or upgrade the plan.
+- Requests that wait too long for a connection, or run a query past its limit, return **503 `service_busy`** with `Retry-After: 5` and are logged as errors. Many of them mean the pool is too small for the traffic or a query is slow. `DB_POOL_MAX` sets connections per instance; keep instances × `DB_POOL_MAX` under the Session pooler's pool size (Supabase → Database → Settings → Connection pooling). Change it in Vercel, then redeploy and promote.
 - When the database is back, run the tick by hand to drain the backlog quickly, then watch `outbox_pending` fall to 0.
 
 ## Deploy rollback

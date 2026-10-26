@@ -35,7 +35,7 @@ describe('support console', () => {
     expect((await customer.get('/support/orgs?q=acme')).status).toBe(404);
     const r = await staff.get('/support/orgs?q=acme');
     expect([r.status, r.body.title]).toEqual([403, 'The support console needs a session verified with two-factor authentication']);
-    const s = await staff.post('/me/mfa/totp/setup');
+    const s = await staff.post('/me/mfa/totp/setup', { password: 'correct-horse-battery' });
     expect((await staff.post('/me/mfa/totp/confirm', { code: totpCode(s.body.secret, t.clock.now) })).status).toBe(200);
     expect((await staff.get('/support/me')).body).toMatchObject({ email: 'sam@tallywork.test' });
   });

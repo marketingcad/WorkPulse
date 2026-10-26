@@ -61,6 +61,7 @@ import {
 import { getEffectivePolicy, getPolicyLayer, listDevices,
   pageDevices, putPolicyLayer, setDeviceStatus } from '../services/platform';
 import { myAssignments } from '../services/timer';
+import { ownerResetMfa } from '../services/mfa';
 import { getPortalSettings, invitePortalViewer, previewAccess, previewScreenshots, revokePortalViewer, updatePortalSettings } from '../services/portal-admin';
 import { clientVisibilityFor, portalSummaryTx } from '../services/portal';
 import { archiveTimeType, listTimeTypes, upsertTimeType } from '../services/time-types';
@@ -97,6 +98,12 @@ export const orgRoutes = new Hono<AppEnv>()
   })
   .get('/workers/:id', requirePermission('members:read'), async (c) => c.json(await getWorker(ctx(c), c.req.param('id'))))
   .patch('/workers/:id', async (c) => c.json(await updateWorker(ctx(c), c.req.param('id'), await body(c, updateWorkerInput))))
+  /** Owner only: reset a member's two-factor after they lost their phone and recovery codes. */
+  .post('/workers/:id/mfa/reset', async (c) => {
+    const { password } = await body(c, z.object({ password: z.string().min(1).max(200) }));
+    await ownerResetMfa(ctx(c), c.req.param('id'), password);
+    return c.body(null, 204);
+  })
   .get('/time-types', async (c) => c.json(await listTimeTypes(ctx(c), { includeArchived: query(c, z.object({ include_archived: bool })).include_archived })))
   .post('/time-types', async (c) => c.json(await upsertTimeType(ctx(c), null, await body(c, timeTypeInput)), 201))
   .patch('/time-types/:id', async (c) => c.json(await upsertTimeType(ctx(c), c.req.param('id'), await body(c, timeTypeInput))))

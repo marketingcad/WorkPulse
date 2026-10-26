@@ -138,7 +138,7 @@ export async function sessionTtlFor(deps: Deps, userIdValue: string): Promise<nu
   return Math.min(deps.config.sessionTtlHours, ...rows.map((r) => r.settings.sessionTtlHours ?? deps.config.sessionTtlHours));
 }
 
-export async function createSession(deps: Deps, userIdValue: string, meta: { ip: string | null; userAgent: string | null }, opts: { ttlHours?: number; mfaPending?: boolean } = {}) {
+export async function createSession(deps: Deps, userIdValue: string, meta: { ip: string | null; userAgent: string | null }, opts: { ttlHours?: number; mfaPending?: boolean; mfaVerified?: boolean } = {}) {
   const token = randomToken(32);
   // A pending second step gets 10 minutes; a full session the strictest organization lifetime.
   const ttlHours = opts.mfaPending ? 1 / 6 : (opts.ttlHours ?? (await sessionTtlFor(deps, userIdValue)));
@@ -151,6 +151,7 @@ export async function createSession(deps: Deps, userIdValue: string, meta: { ip:
     userAgent: meta.userAgent?.slice(0, 300) ?? null,
     expiresAt,
     mfaPending: !!opts.mfaPending,
+    mfaVerified: !!opts.mfaVerified,
   });
   return { token, expiresAt };
 }

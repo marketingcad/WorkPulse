@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { Activity, ArrowRight, Check, Clock, Eraser, Lock, Pencil, UserX, X } from 'lucide-react';
+import { Activity, ArrowRight, Check, Clock, Eraser, KeyRound, Lock, Pencil, UserX, X } from 'lucide-react';
 import type { DeviceDto, EffectivePolicyDto, MemberDetailsDto, ProjectDto, TeamDto, TimeEntryDto, WorkerDto } from '@tallywork/contracts';
 import {
   Avatar,
@@ -38,6 +38,7 @@ import { ColorDot, ProjectStatusBadge, hoursToSeconds, secondsToHours, useOrgAct
 import { RateNote } from '@/components/finance/rate-note';
 import { AnonymizeDialog } from '@/components/security/anonymize-dialog';
 import { DataExportAction } from '@/components/security/data-export';
+import { MfaResetDialog } from '@/components/security/mfa-reset-dialog';
 import { fromMinor, toMinor } from '@/components/finance/types';
 
 export default function WorkerDetailPage() {
@@ -118,6 +119,7 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
   const [editing, setEditing] = useState(false);
   const [confirm, setConfirm] = useState<'suspend' | 'remove' | null>(null);
   const [erasing, setErasing] = useState(false);
+  const [resettingMfa, setResettingMfa] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const act = async (kind: 'suspend' | 'restore' | 'remove') => {
@@ -224,6 +226,14 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
                     Remove
                   </Button>
                 </div>
+                {org.membership.is_owner && (
+                  <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+                    <p className="text-sm text-text-muted">Lost their phone and their recovery codes? Reset their two-factor sign-in.</p>
+                    <Button size="sm" icon={<KeyRound className="size-3.5" />} onClick={() => setResettingMfa(true)}>
+                      Reset two-factor
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </Panel>
@@ -255,6 +265,8 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
           </Panel>
         )}
       </div>
+
+      <MfaResetDialog open={resettingMfa} onOpenChange={setResettingMfa} member={w} />
 
       <AnonymizeDialog
         open={erasing}

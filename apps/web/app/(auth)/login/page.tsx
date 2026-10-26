@@ -75,6 +75,7 @@ function LoginForm() {
     return (
       <CodeStep
         email={email}
+        remember={remember}
         onVerified={finish}
         onRestart={(message) => {
           setStep('password');
@@ -131,7 +132,7 @@ function LoginForm() {
 }
 
 /** Second sign-in step: a 6-digit authenticator code, or a one-time recovery code. */
-function CodeStep({ email, onVerified, onRestart }: { email: string; onVerified: (me: MeDto) => void; onRestart: (message?: string) => void }) {
+function CodeStep({ email, remember, onVerified, onRestart }: { email: string; remember: boolean; onVerified: (me: MeDto) => void; onRestart: (message?: string) => void }) {
   const [recovery, setRecovery] = useState(false);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -144,7 +145,8 @@ function CodeStep({ email, onVerified, onRestart }: { email: string; onVerified:
     setLoading(true);
     setError(null);
     try {
-      onVerified(await api<MeDto>('/auth/mfa/verify', { body: { code: code.trim() } }));
+      // The server replaces the session after this step; "Remember me" decides the new cookie's lifetime.
+      onVerified(await api<MeDto>('/auth/mfa/verify', { body: { code: code.trim(), remember } }));
     } catch (err) {
       setLoading(false);
       // The short pending session expired or was signed out: start again with the password.

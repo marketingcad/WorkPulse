@@ -99,6 +99,24 @@ Supabase keeps point-in-time recovery (PITR) for the project's retention window.
   Rotate it only after a suspected leak, and announce it.
 - **`SUPABASE_SERVICE_ROLE_KEY`:** create a new secret key in Supabase, set it in Vercel, redeploy, then revoke the old key.
 
+## Two-factor: someone can't sign in
+
+**Locked after wrong codes** (`mfa_locked`): 10 wrong codes in 15 minutes lock the second step for that account, on the web and the desktop app alike. It unlocks by itself after 15 minutes. Don't reset anything.
+
+**Lost their phone, but has recovery codes:** they sign in with a recovery code (each works once), then use **Replace authenticator app** in their profile. Replacing asks for their password and a code, and a recovery code counts.
+
+**Lost both their phone and their recovery codes:**
+
+1. The organization's **owner** opens the person in People and clicks **Reset two-factor**, then confirms with the owner's own password.
+2. The person is signed out everywhere and gets an email. They sign in with their password and set two-factor up again. If their organization requires it, they're asked to straight away.
+3. The reset is in the organization's audit log (`member.mfa_reset`).
+
+This is refused when the person also belongs to another organization (`mfa_reset_other_orgs`): their two-factor protects access to the other organization too, so no single owner can remove it. It is also refused for the owner's own account (`mfa_reset_self`).
+
+There is no reset from the support console or by email, by design. If an owner is locked out of their own account without recovery codes, an engineer verifies their identity outside the app and deletes their `mfa_factors` row in a database session. Record who did it and why in the incident log.
+
+**Every change sends an email:** two-factor turned on, turned off or moved to a new app, new recovery codes, or an owner reset. Someone who gets one they didn't expect should reset their password.
+
 ## Desktop release (staged)
 
 1. Bump `version` in `apps/desktop/package.json` and push. The workflow refuses to overwrite a version that is already published.

@@ -82,12 +82,13 @@ export function otpauthUrl(secretB32: string, account: string, issuer = 'WorkPul
   return `otpauth://totp/${label}?secret=${secretB32}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=${DIGITS}&period=${STEP_SECONDS}`;
 }
 
-/** Ten single-use recovery codes like `k7p2-9xqm`. */
+/** Ten single-use recovery codes like `k7p2x-9xqmr` (10 characters from 31, about 49 bits each). */
 export function newRecoveryCodes(n = 10): string[] {
   const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
   return Array.from({ length: n }, () => {
-    const b = randomBytes(8);
-    const s = [...b].map((x) => alphabet[x % alphabet.length]).join('');
-    return `${s.slice(0, 4)}-${s.slice(4)}`;
+    let s = '';
+    // Rejection sampling: 248 is the largest multiple of 31 below 256, so every character is equally likely.
+    while (s.length < 10) for (const x of randomBytes(16)) if (x < 248 && s.length < 10) s += alphabet[x % alphabet.length];
+    return `${s.slice(0, 5)}-${s.slice(5)}`;
   });
 }

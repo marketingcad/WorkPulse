@@ -145,6 +145,7 @@ export async function widgetData(x: Ctx, keys: string[], scope: 'ALL' | 'ME' | '
     const liveByProject = new Map<string, number>();
     const liveWorkersToday = new Set<string>();
     let liveBillableToday = 0;
+    let liveBillableWeek = 0;
     for (const r of running) {
       if (now <= r.start) continue;
       for (const pc of splitAtLocalMidnight({ start: r.start, end: now }, r.tz)) {
@@ -152,6 +153,7 @@ export async function widgetData(x: Ctx, keys: string[], scope: 'ALL' | 'ME' | '
         const secs = Math.round((pc.end.getTime() - pc.start.getTime()) / 1000);
         liveByDay.set(pc.localDate, (liveByDay.get(pc.localDate) ?? 0) + secs);
         liveByProject.set(r.projectId, (liveByProject.get(r.projectId) ?? 0) + secs);
+        if (r.billable) liveBillableWeek += secs;
         if (pc.localDate === today) {
           liveWorkersToday.add(r.m);
           if (r.billable) liveBillableToday += secs;
@@ -168,7 +170,7 @@ export async function widgetData(x: Ctx, keys: string[], scope: 'ALL' | 'ME' | '
     out.tracked_week = {
       seconds: weekS,
       previous_seconds: sum(prevWeek),
-      billable_seconds: sum(week, (r) => r.billable),
+      billable_seconds: sum(week, (r) => r.billable) + liveBillableWeek,
       by_day: Array.from({ length: 7 }, (_, i) => {
         const d = addDaysToDate(weekStart, i);
         return { date: d, seconds: sum(week, (r) => r.localDate === d) + (liveByDay.get(d) ?? 0) };

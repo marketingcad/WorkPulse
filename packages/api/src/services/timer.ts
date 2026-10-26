@@ -53,6 +53,7 @@ export async function webStart(x: Ctx, input: { projectId: string; taskId: strin
   await startSession(x.tx, {
     organizationId: x.org.id,
     orgTimezone: x.org.timezone,
+    orgWeekStart: x.org.weekStart,
     membershipId: x.actor.membershipId,
     projectId: input.projectId,
     taskId: input.taskId,

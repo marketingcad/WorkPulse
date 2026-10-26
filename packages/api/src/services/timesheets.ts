@@ -60,7 +60,7 @@ import { likePattern } from '../lib/search';
 import { lockWorker, markTimeChanged, validateTrackTarget, workerTimezone, type ActorRef } from './tracking';
 import { memberNames } from './timer';
 import { accrueForTimesheet } from './operations';
-import { checkTimeType, timeTypeCoefficients } from './time-types';
+import { checkTimeType, isNotBillableType, timeTypeCoefficients } from './time-types';
 
 function ref(x: Ctx): ActorRef {
   const a = actorRef(x);
@@ -321,13 +321,15 @@ export async function updateTimeEntry(x: Ctx, entryId: string, input: z.infer<ty
   await assertPeriodsOpen(x, e.membershipId, [pieces[0]!.localDate]);
   const type = await checkTimeType(x.tx, input.time_type_id);
   const timeTypeId = type ? type.id : e.timeTypeId;
-  const before = { started_at: e.startedAt, ended_at: e.endedAt, project_id: e.projectId, task_id: e.taskId, billable: e.billable, note: e.note, time_type_id: e.timeTypeId };
+  // The entry's type decides, whether it was just chosen or already set (e.g. a bulk "billable" change).
+  const notBillable = type ? type.notBillable : await isNotBillableType(x.tx, e.timeTypeId);
+  const before ={ started_at: e.startedAt, ended_at: e.endedAt, project_id: e.projectId, task_id: e.taskId, billable: e.billable, note: e.note, time_type_id: e.timeTypeId };
   const after = {
     started_at: start,
     ended_at: end,
     project_id: projectId,
     task_id: taskId,
-    billable: type?.notBillable ? false : (input.billable ?? e.billable),
+    billable: notBillable ? false : (input.billable ?? e.billable),
     note: input.note !== undefined ? input.note : e.note,
     time_type_id: timeTypeId,
   };
@@ -615,11 +617,13 @@ async function toManualTimeDtos(x: Ctx, rows: Array<{ r: typeof manualTimeReques
 }
 
 export async function decideManualTime(x: Ctx, id: string, approve: boolean, comment: string | null) {
-  const [r] = await x.tx.select().from(manualTimeRequests).where(eq(manualTimeRequests.id, id));
-  if (!r) throw notFound('manual_time');
-  if (!can(x.actor, 'manual_time:approve', { ownerMembershipId: r.membershipId }) || r.membershipId === x.actor.membershipId) throw forbidden();
+  const [found] = await x.tx.select().from(manualTimeRequests).where(eq(manualTimeRequests.id, id));
+  if (!found) throw notFound('manual_time');
+  if (!can(x.actor, 'manual_time:approve', { ownerMembershipId: found.membershipId }) || found.membershipId === x.actor.membershipId) throw forbidden();
+  await lockWorker(x.tx, found.membershipId);
+  // Read again under the lock: another approver may have decided it while we waited.
+  const [r] = (await x.tx.select().from(manualTimeRequests).where(eq(manualTimeRequests.id, id))) as [typeof found];
   if (r.status !== 'PENDING') throw businessRule('already_decided', 'This request has already been decided');
-  await lockWorker(x.tx, r.membershipId);
   const status = approve ? 'APPROVED' : 'REJECTED';
   const [updated] = await x.tx.update(manualTimeRequests).set({ status, decidedBy: x.actor.membershipId, decidedAt: new Date(), decisionComment: comment }).where(eq(manualTimeRequests.id, id)).returning();
   if (approve) {
@@ -780,13 +784,15 @@ export async function submitTimesheet(x: Ctx, membershipId: string, date: string
 }
 
 async function loadTimesheetForDecision(x: Ctx, timesheetId: string) {
-  const [ts] = await x.tx.select().from(timesheets).where(eq(timesheets.id, timesheetId));
-  if (!ts || !can(x.actor, 'timesheets:read', { ownerMembershipId: ts.membershipId })) throw notFound('timesheet');
-  if (!can(x.actor, 'timesheets:approve', { ownerMembershipId: ts.membershipId })) throw forbidden();
+  const [found] = await x.tx.select().from(timesheets).where(eq(timesheets.id, timesheetId));
+  if (!found || !can(x.actor, 'timesheets:read', { ownerMembershipId: found.membershipId })) throw notFound('timesheet');
+  if (!can(x.actor, 'timesheets:approve', { ownerMembershipId: found.membershipId })) throw forbidden();
   // Nobody approves their own timesheet unless they are the org owner.
-  if (ts.membershipId === x.actor.membershipId && !x.actor.isOwner) throw forbidden('You cannot approve your own timesheet');
-  await lockWorker(x.tx, ts.membershipId);
-  return ts;
+  if (found.membershipId === x.actor.membershipId && !x.actor.isOwner) throw forbidden('You cannot approve your own timesheet');
+  await lockWorker(x.tx, found.membershipId);
+  // Read again under the lock: another approver may have decided it while we waited.
+  const [ts] = await x.tx.select().from(timesheets).where(eq(timesheets.id, timesheetId));
+  return ts!;
 }
 
 /** Price approved time: one billing entry per time entry, snapshotting the rates. */

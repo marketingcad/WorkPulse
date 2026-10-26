@@ -47,6 +47,7 @@ import type { OffsetPage, breakTypeInput, holidayInput, overtimeRulesInput, sche
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
 import { audit, emitFrom } from './events';
+import { lockWorker } from './tracking';
 import { approversFor, notify } from './notify';
 import { narrowMemberships } from './scope';
 import { likePattern } from '../lib/search';
@@ -429,6 +430,8 @@ async function approveRequestLedger(tx: Tx, orgId: string, r: typeof timeOffRequ
 export async function requestTimeOff(x: Ctx, input: z.infer<typeof timeOffRequestInput>) {
   if (!x.actor.grants['time_off:request']) throw forbidden();
   if (input.end_date < input.start_date) throw validation('End date must be on or after the start date');
+  // Two requests sent at once must not both pass the overlap and balance checks.
+  await lockWorker(x.tx, x.actor.membershipId);
   const ps = await policiesForMember(x.tx, x.actor.membershipId);
   const p = ps.find((pp) => pp.id === input.policy_id);
   if (!p) throw notFound('time_off_policy');
@@ -463,8 +466,11 @@ export async function requestTimeOff(x: Ctx, input: z.infer<typeof timeOffReques
 }
 
 export async function decideTimeOff(x: Ctx, id: string, action: 'APPROVE' | 'REJECT' | 'CANCEL', comment: string | null) {
-  const [r] = await x.tx.select().from(timeOffRequests).where(eq(timeOffRequests.id, id));
-  if (!r || !can(x.actor, 'time_off:read', { ownerMembershipId: r.membershipId })) throw notFound('time_off_request');
+  const [found] = await x.tx.select().from(timeOffRequests).where(eq(timeOffRequests.id, id));
+  if (!found || !can(x.actor, 'time_off:read', { ownerMembershipId: found.membershipId })) throw notFound('time_off_request');
+  // One decision at a time per person, then read again: a second approve or cancel must see the first.
+  await lockWorker(x.tx, found.membershipId);
+  const [r] = (await x.tx.select().from(timeOffRequests).where(eq(timeOffRequests.id, id))) as [typeof found];
   const own = r.membershipId === x.actor.membershipId;
   if (action === 'CANCEL') {
     if (!own && !can(x.actor, 'time_off:approve', { ownerMembershipId: r.membershipId })) throw forbidden();

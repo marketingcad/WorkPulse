@@ -18,17 +18,18 @@ import {
   trackingSessions,
   users,
 } from '@tallywork/db';
-import { DEFAULT_OVERTIME, addDaysToDate, dayOfWeek, eachDate, forbidden, notFound, splitOvertime, startOfLocalDay, startOfWeek, type Permission } from '@tallywork/domain';
+import { DEFAULT_OVERTIME, addDaysToDate, dayOfWeek, eachDate, forbidden, notFound, startOfLocalDay, startOfWeek, type Permission } from '@tallywork/domain';
 import type { reportQueryInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { narrowMemberships } from './scope';
 import { memberNames } from './timer';
+import { overtimeInRange, priceEntries } from './pay-figures';
 import { listAttendance } from './operations';
-import { amountsOwed, listBudgets, listExpenses, listInvoices, listPayments, loadRates } from './finance';
+import { amountsOwed, listBudgets, listExpenses, listInvoices, listPayments } from './finance';
 import { listManualTime } from './timesheets';
 import { usage } from './activity';
 import { listTimeOffRequests } from './operations';
-import { resolveRate, amountForSeconds, localDate } from '@tallywork/domain';
+import { localDate } from '@tallywork/domain';
 
 export type ColumnType = 'text' | 'duration' | 'money' | 'percent' | 'date' | 'datetime' | 'number' | 'status';
 export interface Column {
@@ -383,7 +384,6 @@ async function billingReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
         projectIds ? inArray(billingEntries.projectId, projectIds.length ? projectIds : ['00000000-0000-7000-8000-000000000000']) : undefined,
       ),
     );
-  const rates = await loadRates(x.tx);
   type Row = { client: string; project: string; seconds: number; approved_seconds: number; approved: number; invoiced: number; unapproved_estimate: number };
   const agg = new Map<string, Row>();
   const row = (projectId: string, client: string | null, project: string) => {
@@ -391,26 +391,18 @@ async function billingReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
     if (!a) agg.set(projectId, (a = { client: client ?? '(no client)', project, seconds: 0, approved_seconds: 0, approved: 0, invoiced: 0, unapproved_estimate: 0 }));
     return a;
   };
-  const approvedSecs = new Map<string, number>();
   for (const { b, projectName, clientName } of entries) {
     const a = row(b.projectId, clientName, projectName);
     a.approved_seconds += b.seconds;
     a.approved += b.billAmountMinor;
     if (b.invoiceLineId) a.invoiced += b.billAmountMinor;
-    const k = `${b.membershipId}|${b.projectId}|${b.localDate}`;
-    approvedSecs.set(k, (approvedSecs.get(k) ?? 0) + b.seconds);
   }
-  for (const r of rows) {
-    const a = row(r.r.projectId, r.clientName, r.projectName);
-    const secs = r.r.trackedSeconds + r.r.manualSeconds;
-    a.seconds += secs;
-    const k = `${r.r.membershipId}|${r.r.projectId}|${r.r.localDate}`;
-    const covered = Math.min(secs, approvedSecs.get(k) ?? 0);
-    approvedSecs.set(k, (approvedSecs.get(k) ?? 0) - covered);
-    const rate = secs - covered > 0 ? resolveRate(rates, 'BILL', { date: r.r.localDate, membershipId: r.r.membershipId, projectId: r.r.projectId, clientId: r.clientId }) : null;
-    // Unapproved time carries the row's time-type bill weighting.
-    const weighted = secs ? Math.round(((secs - covered) * r.r.billWeightedSeconds) / secs) : 0;
-    a.unapproved_estimate += rate ? amountForSeconds(weighted, rate.amountMinor) : 0;
+  for (const r of rows) row(r.r.projectId, r.clientName, r.projectName).seconds += r.r.trackedSeconds + r.r.manualSeconds;
+  // Time not approved yet, priced per entry as approving it now would (see priceEntries).
+  for (const e of await priceEntries(x.tx, x.org.currency, p.from, p.to, members)) {
+    if (e.approved || !e.billable || (projectIds && !projectIds.includes(e.projectId))) continue;
+    const a = agg.get(e.projectId);
+    if (a) a.unapproved_estimate += e.billMinor;
   }
   const out = [...agg.values()].sort((a, b) => a.client.localeCompare(b.client) || a.project.localeCompare(b.project));
   const sum = (k: keyof Row) => out.reduce((s, r) => s + (r[k] as number), 0);
@@ -478,34 +470,23 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
   const names = await memberNames(x, members);
   const [ot] = await x.tx.select().from(overtimeRuleSets);
   const rules = ot?.rules ?? DEFAULT_OVERTIME;
-  const rates = await loadRates(x.tx);
+  const split = await overtimeInRange(x.tx, x.org.weekStart, rules, members, p.from, p.to);
+  const priced = await priceEntries(x.tx, x.org.currency, p.from, p.to, members);
   const timeOff = members.length ? await x.tx.select().from(timeOffRequests).where(and(inArray(timeOffRequests.membershipId, members), eq(timeOffRequests.status, 'APPROVED'), lte(timeOffRequests.startDate, p.to), gte(timeOffRequests.endDate, p.from))) : [];
   const hols = new Set((await x.tx.select({ d: holidays.date }).from(holidays).where(and(gte(holidays.date, p.from), lte(holidays.date, p.to)))).map((h) => h.d));
   const hoursPerDay = new Map((await x.tx.select({ id: timeOffPolicies.id, h: timeOffPolicies.hoursPerDay }).from(timeOffPolicies)).map((r) => [r.id, r.h]));
   const ts = members.length ? await x.tx.select().from(timesheets).where(and(inArray(timesheets.membershipId, members), gte(timesheets.periodEnd, p.from), lte(timesheets.periodStart, p.to))) : [];
   const out = members.map((m) => {
     const mine = rows.filter((r) => r.r.membershipId === m);
-    const weeks = new Map<string, number[]>();
-    for (const r of mine) {
-      const wk = startOfWeek(r.r.localDate, x.org.weekStart);
-      const days = weeks.get(wk) ?? Array(7).fill(0);
-      const idx = Math.round((Date.parse(r.r.localDate) - Date.parse(wk)) / 86400000);
-      days[idx] += r.r.trackedSeconds + r.r.manualSeconds;
-      weeks.set(wk, days);
-    }
-    let regular = 0;
-    let overtime = 0;
-    for (const days of weeks.values()) {
-      const s = splitOvertime(days, rules);
-      regular += s.regular;
-      overtime += s.overtime;
-    }
+    // Overtime on whole weeks: a week split by the range keeps the overtime worked on its days here.
+    const { regular, overtime } = split.get(m) ?? { regular: 0, overtime: 0 };
     const billable = mine.filter((r) => r.r.billable).reduce((s, r) => s + r.r.trackedSeconds + r.r.manualSeconds, 0);
     const total = mine.reduce((s, r) => s + r.r.trackedSeconds + r.r.manualSeconds, 0);
-    const earnings = mine.reduce((s, r) => {
-      const rate = resolveRate(rates, 'PAY', { date: r.r.localDate, membershipId: m, projectId: r.r.projectId, clientId: r.clientId });
-      return s + (rate ? amountForSeconds(r.r.payWeightedSeconds, rate.amountMinor) : 0);
-    }, 0);
+    const myPriced = priced.filter((e) => e.membershipId === m);
+    // Approved pay is the official figure (what a payroll pays for this time); the estimate adds the
+    // time not approved yet, priced per entry at today's rates.
+    const approvedPay = myPriced.filter((e) => e.approved).reduce((s, e) => s + e.payMinor, 0);
+    const earnings = myPriced.reduce((s, e) => s + e.payMinor, 0);
     const statuses = ts.filter((t) => t.membershipId === m).map((t) => t.status);
     return {
       worker: names.get(m) ?? '',
@@ -514,15 +495,16 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
       billable,
       non_billable: total - billable,
       time_off_hours: Math.round(timeOff.filter((t) => t.membershipId === m).reduce((s, t) => s + timeOffHoursInRange(t, p.from, p.to, hols, hoursPerDay.get(t.policyId) ?? 8), 0) * 100) / 100,
+      approved_pay: approvedPay,
       earnings,
       approval: statuses.length === 0 ? 'NOT_SUBMITTED' : statuses.every((s) => s === 'APPROVED') ? 'APPROVED' : statuses.some((s) => s === 'SUBMITTED') ? 'PENDING' : 'PARTIAL',
     };
   });
   return {
-    columns: [{ key: 'worker', label: 'Member', type: 'text' }, { key: 'regular', label: 'Regular', type: 'duration' }, { key: 'overtime', label: 'Overtime', type: 'duration' }, { key: 'billable', label: 'Billable', type: 'duration' }, { key: 'non_billable', label: 'Non-billable', type: 'duration' }, { key: 'time_off_hours', label: 'Time off (h)', type: 'number' }, { key: 'earnings', label: 'Earnings', type: 'money' }, { key: 'approval', label: 'Approval', type: 'status' }],
+    columns: [{ key: 'worker', label: 'Member', type: 'text' }, { key: 'regular', label: 'Regular', type: 'duration' }, { key: 'overtime', label: 'Overtime', type: 'duration' }, { key: 'billable', label: 'Billable', type: 'duration' }, { key: 'non_billable', label: 'Non-billable', type: 'duration' }, { key: 'time_off_hours', label: 'Time off (h)', type: 'number' }, { key: 'approved_pay', label: 'Approved pay', type: 'money' }, { key: 'earnings', label: 'Estimated earnings', type: 'money' }, { key: 'approval', label: 'Approval', type: 'status' }],
     rows: out.sort((a, b) => a.worker.localeCompare(b.worker)),
-    totals: { regular: out.reduce((s, r) => s + r.regular, 0), overtime: out.reduce((s, r) => s + r.overtime, 0), earnings: out.reduce((s, r) => s + r.earnings, 0) },
-    summary: [{ label: 'Regular', value: out.reduce((s, r) => s + r.regular, 0), type: 'duration' }, { label: 'Overtime', value: out.reduce((s, r) => s + r.overtime, 0), type: 'duration' }, { label: 'Earnings', value: out.reduce((s, r) => s + r.earnings, 0), type: 'money' }],
+    totals: { regular: out.reduce((s, r) => s + r.regular, 0), overtime: out.reduce((s, r) => s + r.overtime, 0), approved_pay: out.reduce((s, r) => s + r.approved_pay, 0), earnings: out.reduce((s, r) => s + r.earnings, 0) },
+    summary: [{ label: 'Regular', value: out.reduce((s, r) => s + r.regular, 0), type: 'duration' }, { label: 'Overtime', value: out.reduce((s, r) => s + r.overtime, 0), type: 'duration' }, { label: 'Approved pay', value: out.reduce((s, r) => s + r.approved_pay, 0), type: 'money' }, { label: 'Estimated earnings', value: out.reduce((s, r) => s + r.earnings, 0), type: 'money' }],
     currency: x.org.currency,
   };
 }

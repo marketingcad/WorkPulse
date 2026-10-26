@@ -59,19 +59,33 @@ export const DEFAULT_OVERTIME: OvertimeRules = { dailyThresholdSeconds: null, we
  * Daily overtime is computed first; weekly overtime applies to the remaining regular hours.
  */
 export function splitOvertime(dailySeconds: number[], rules: OvertimeRules): { regular: number; overtime: number } {
-  let overtime = 0;
-  let regular = 0;
-  for (const d of dailySeconds) {
+  return overtimeByDay(dailySeconds, rules).reduce((s, d) => ({ regular: s.regular + d.regular, overtime: s.overtime + d.overtime }), { regular: 0, overtime: 0 });
+}
+
+/**
+ * The same split, day by day in date order: daily overtime on its own day, and weekly overtime on the
+ * days its hours were worked (the hours past the weekly threshold, so at the end of the week). A pay
+ * period holding part of a week then counts exactly the overtime worked on its own days.
+ */
+export function overtimeByDay(dailySeconds: number[], rules: OvertimeRules): Array<{ regular: number; overtime: number }> {
+  let weekRegular = 0;
+  return dailySeconds.map((d) => {
+    let regular = d;
+    let overtime = 0;
     if (rules.dailyThresholdSeconds !== null && d > rules.dailyThresholdSeconds) {
-      overtime += d - rules.dailyThresholdSeconds;
-      regular += rules.dailyThresholdSeconds;
-    } else regular += d;
-  }
-  if (rules.weeklyThresholdSeconds !== null && regular > rules.weeklyThresholdSeconds) {
-    overtime += regular - rules.weeklyThresholdSeconds;
-    regular = rules.weeklyThresholdSeconds;
-  }
-  return { regular, overtime };
+      overtime = d - rules.dailyThresholdSeconds;
+      regular = rules.dailyThresholdSeconds;
+    }
+    if (rules.weeklyThresholdSeconds !== null) {
+      const room = Math.max(0, rules.weeklyThresholdSeconds - weekRegular);
+      if (regular > room) {
+        overtime += regular - room;
+        regular = room;
+      }
+    }
+    weekRegular += regular;
+    return { regular, overtime };
+  });
 }
 
 /** Time-off accrual policy. Balance is always the sum of a ledger. */

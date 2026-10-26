@@ -261,6 +261,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'Open Time off. To ask for time off, click Request time off, choose the policy and dates, and click Send request.',
       'To decide on requests, open the Requests tab and click Approve or Reject (you can tick several and approve them together).',
       'On Policies & holidays, click New policy to create a kind of leave (hours per day, paid or not, approval needed or not), add holidays, or adjust someone’s balance.',
+      'Payroll pays a paid holiday as the hours the person is scheduled to work that day (8 hours on a weekday if they have no schedule). It appears with paid time off.',
     ],
     links: [{ label: 'Open Time off', href: '/time-off' }],
     keywords: ['leave', 'vacation', 'holiday', 'sick', 'pto', 'balance', 'time off'],
@@ -293,6 +294,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'Open the project (or New project) and find Breaks. Click Add break.',
       'Choose the break type, and optionally a time (such as 12:00) and a length. Leave the time empty for “any time”, or the length empty to use the break type’s maximum.',
       'Save the project. Members on it now see one-tap buttons for these breaks after clocking in, and a reminder when a break is due.',
+      'A paid break counts as paid time on the project (never billed to the client), up to the break type’s maximum length. An unpaid break is not counted.',
     ],
     links: [
       { label: 'Break types', href: '/settings/time' },

@@ -1,7 +1,8 @@
 import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
-import { billingEntries, projects, rollupWorkerDay, timeEntries, type Tx } from '@tallywork/db';
-import { addDaysToDate, amountForSeconds, overtimeByDay, resolveRate, startOfWeek, type OvertimeRules } from '@tallywork/domain';
+import { billingEntries, holidays, projects, rollupWorkerDay, timeEntries, workSchedules, type Tx } from '@tallywork/db';
+import { addDaysToDate, amountForSeconds, dayOfWeek, overtimeByDay, resolveRate, startOfWeek, type OvertimeRules } from '@tallywork/domain';
 import { loadRates } from './finance';
+import { computeShifts } from './operations';
 import { timeTypeCoefficients } from './time-types';
 
 const NONE = ['00000000-0000-7000-8000-000000000000'];
@@ -78,6 +79,29 @@ export async function priceEntries(tx: Tx, currency: string, from: string, to: s
       billForeign,
     };
   });
+}
+
+/**
+ * Paid holidays in [from, to] and the hours each person is paid for them: their scheduled hours that
+ * day (none when it is not one of their working days), or, without a schedule, a standard 8-hour
+ * weekday (the same default time off uses). Holidays not marked paid pay nothing.
+ */
+export async function paidHolidayHours(tx: Tx, membershipIds: string[], from: string, to: string): Promise<Map<string, Array<{ date: string; hours: number }>>> {
+  const out = new Map<string, Array<{ date: string; hours: number }>>();
+  if (!membershipIds.length) return out;
+  const days = (await tx.select({ d: holidays.date }).from(holidays).where(and(eq(holidays.paid, true), gte(holidays.date, from), lte(holidays.date, to)))).map((h) => h.d).sort();
+  if (!days.length) return out;
+  const scheds = await tx.select().from(workSchedules).where(inArray(workSchedules.membershipId, membershipIds));
+  const shifts = await computeShifts(tx, membershipIds, days[0]!, days[days.length - 1]!);
+  for (const m of membershipIds) {
+    for (const d of days) {
+      const scheduled = scheds.some((s) => s.membershipId === m && s.effectiveFrom <= d && (!s.effectiveTo || d < s.effectiveTo));
+      const secs = shifts.filter((s) => s.membership_id === m && s.date === d).reduce((n, s) => n + (Date.parse(s.ends_at) - Date.parse(s.starts_at)) / 1000, 0);
+      const hours = scheduled || secs > 0 ? Math.round((secs / 3600) * 100) / 100 : [0, 6].includes(dayOfWeek(d)) ? 0 : 8;
+      if (hours > 0) out.set(m, [...(out.get(m) ?? []), { date: d, hours }]);
+    }
+  }
+  return out;
 }
 
 /**

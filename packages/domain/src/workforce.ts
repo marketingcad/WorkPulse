@@ -7,6 +7,8 @@ export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'ON_LEAVE' | 'HOL
 export interface AttendanceInput {
   scheduledStart: Date | null;
   scheduledEnd: Date | null;
+  /** the day's shift time in seconds; with split shifts (09–12 and 13–17) less than end − start */
+  scheduledSeconds?: number;
   firstIn: Date | null;
   lastOut: Date | null;
   workedSeconds: number;
@@ -26,7 +28,7 @@ export interface AttendanceResult {
 
 export function classifyAttendance(i: AttendanceInput): AttendanceResult {
   const scheduledSeconds =
-    i.scheduledStart && i.scheduledEnd ? Math.max(0, (i.scheduledEnd.getTime() - i.scheduledStart.getTime()) / 1000) : 0;
+    i.scheduledStart && i.scheduledEnd ? (i.scheduledSeconds ?? Math.max(0, (i.scheduledEnd.getTime() - i.scheduledStart.getTime()) / 1000)) : 0;
   const base = { lateSeconds: 0, earlyLeaveSeconds: 0, scheduledSeconds, overtimeSeconds: 0 };
   if (i.isHoliday && !i.firstIn) return { ...base, status: 'HOLIDAY' };
   if (i.onLeave && !i.firstIn) return { ...base, status: 'ON_LEAVE' };

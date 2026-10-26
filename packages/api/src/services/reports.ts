@@ -23,7 +23,7 @@ import type { reportQueryInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { narrowMemberships } from './scope';
 import { memberNames } from './timer';
-import { overtimeInRange, priceEntries } from './pay-figures';
+import { overtimeInRange, paidHolidayHours, priceEntries } from './pay-figures';
 import { listAttendance } from './operations';
 import { amountsOwed, listBudgets, listExpenses, listInvoices, listPayments } from './finance';
 import { listManualTime } from './timesheets';
@@ -472,6 +472,7 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
   const rules = ot?.rules ?? DEFAULT_OVERTIME;
   const split = await overtimeInRange(x.tx, x.org.weekStart, rules, members, p.from, p.to);
   const priced = await priceEntries(x.tx, x.org.currency, p.from, p.to, members);
+  const holidayPay = await paidHolidayHours(x.tx, members, p.from, p.to);
   const timeOff = members.length ? await x.tx.select().from(timeOffRequests).where(and(inArray(timeOffRequests.membershipId, members), eq(timeOffRequests.status, 'APPROVED'), lte(timeOffRequests.startDate, p.to), gte(timeOffRequests.endDate, p.from))) : [];
   const hols = new Set((await x.tx.select({ d: holidays.date }).from(holidays).where(and(gte(holidays.date, p.from), lte(holidays.date, p.to)))).map((h) => h.d));
   const hoursPerDay = new Map((await x.tx.select({ id: timeOffPolicies.id, h: timeOffPolicies.hoursPerDay }).from(timeOffPolicies)).map((r) => [r.id, r.h]));
@@ -494,7 +495,11 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
       overtime,
       billable,
       non_billable: total - billable,
-      time_off_hours: Math.round(timeOff.filter((t) => t.membershipId === m).reduce((s, t) => s + timeOffHoursInRange(t, p.from, p.to, hols, hoursPerDay.get(t.policyId) ?? 8), 0) * 100) / 100,
+      // Paid time off, including paid holidays (as a payroll run pays them).
+      time_off_hours:
+        Math.round(
+          (timeOff.filter((t) => t.membershipId === m).reduce((s, t) => s + timeOffHoursInRange(t, p.from, p.to, hols, hoursPerDay.get(t.policyId) ?? 8), 0) + (holidayPay.get(m) ?? []).reduce((s, h) => s + h.hours, 0)) * 100,
+        ) / 100,
       approved_pay: approvedPay,
       earnings,
       approval: statuses.length === 0 ? 'NOT_SUBMITTED' : statuses.every((s) => s === 'APPROVED') ? 'APPROVED' : statuses.some((s) => s === 'SUBMITTED') ? 'PENDING' : 'PARTIAL',

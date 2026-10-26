@@ -471,14 +471,26 @@ export function timeOffHoursInRange(t: { startDate: string; endDate: string; hou
 /** Payroll-ready export: regular/overtime, billable split, time off, earnings, approval status. */
 async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
   const rows = await rollupRows(x, p, 'payroll:read');
-  const members = [...new Set(rows.map((r) => r.r.membershipId))];
+  // Paid time off is paid without tracked time, so someone on leave all period is still listed
+  // (time off has no project or client, so those filters leave it out).
+  const scoped = await scopedMembers(x, 'payroll:read', p);
+  const onLeave =
+    p.project_ids?.length || p.client_ids?.length
+      ? []
+      : await x.tx
+          .selectDistinct({ m: timeOffRequests.membershipId })
+          .from(timeOffRequests)
+          .innerJoin(timeOffPolicies, eq(timeOffPolicies.id, timeOffRequests.policyId))
+          .where(and(eq(timeOffRequests.status, 'APPROVED'), eq(timeOffPolicies.paid, true), lte(timeOffRequests.startDate, p.to), gte(timeOffRequests.endDate, p.from), scoped === 'all' ? undefined : inArray(timeOffRequests.membershipId, scoped.length ? scoped : ['00000000-0000-7000-8000-000000000000'])));
+  const members = [...new Set([...rows.map((r) => r.r.membershipId), ...onLeave.map((r) => r.m)])];
   const names = await memberNames(x, members);
   const [ot] = await x.tx.select().from(overtimeRuleSets);
   const rules = ot?.rules ?? DEFAULT_OVERTIME;
   const split = await overtimeInRange(x.tx, x.org.weekStart, rules, members, p.from, p.to);
   const priced = await priceEntries(x.tx, x.org.currency, p.from, p.to, members);
   const holidayPay = await paidHolidayHours(x.tx, members, p.from, p.to);
-  const timeOff = members.length ? await x.tx.select().from(timeOffRequests).where(and(inArray(timeOffRequests.membershipId, members), eq(timeOffRequests.status, 'APPROVED'), lte(timeOffRequests.startDate, p.to), gte(timeOffRequests.endDate, p.from))) : [];
+  // Paid time off only, as a payroll run pays it (unpaid leave was counted here too).
+  const timeOff = members.length ? (await x.tx.select({ t: timeOffRequests }).from(timeOffRequests).innerJoin(timeOffPolicies, eq(timeOffPolicies.id, timeOffRequests.policyId)).where(and(inArray(timeOffRequests.membershipId, members), eq(timeOffRequests.status, 'APPROVED'), eq(timeOffPolicies.paid, true), lte(timeOffRequests.startDate, p.to), gte(timeOffRequests.endDate, p.from)))).map((r) => r.t) : [];
   const hols = new Set((await x.tx.select({ d: holidays.date }).from(holidays).where(and(gte(holidays.date, p.from), lte(holidays.date, p.to)))).map((h) => h.d));
   const hoursPerDay = new Map((await x.tx.select({ id: timeOffPolicies.id, h: timeOffPolicies.hoursPerDay }).from(timeOffPolicies)).map((r) => [r.id, r.h]));
   const ts = members.length ? await x.tx.select().from(timesheets).where(and(inArray(timesheets.membershipId, members), gte(timesheets.periodEnd, p.from), lte(timesheets.periodStart, p.to))) : [];

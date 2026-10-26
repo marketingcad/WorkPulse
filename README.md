@@ -23,7 +23,7 @@ The main flow the product covers is **Organization → People → Work structure
 
 ## Project status
 
-Updated 21 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.8
+Updated 26 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.9
 
 ### ✅ Completed
 
@@ -35,7 +35,7 @@ Updated 21 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - Dashboards that update live, plus an optional daily summary email.
 - Reports with downloads (CSV, Excel, PDF) and scheduled reports by email: 9 in the Report library, and the finance lists (invoices, payments, expenses, budgets, and what members are owed) export straight from their own page.
 - Integrations: API keys and webhooks for connecting other systems.
-- Security and privacy: two-factor sign-in, IP allowlists, a tamper-proof audit log, data retention rules, a personal data export, a right-to-erasure process, and an access review.
+- Security and privacy: two-factor sign-in, IP allowlists, a tamper-proof audit log, data retention rules (with automatic screenshot cleanup), a personal data export, a right-to-erasure process, and an access review.
 - Ready for production use: health monitoring, alerts, load tests, recovery procedures and on-call guides.
 - Accessibility: every main screen meets the WCAG 2.1 AA standard, in light and dark mode.
 - Automated end-to-end tests (Playwright) for the web app, the desktop window and the real desktop app, run with one command (`pnpm test:e2e`) and in CI on every change. Every change now ships with tests that were run and passed ([AGENTS.md](AGENTS.md)).
@@ -49,6 +49,15 @@ Updated 21 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🆕 New updates
 
+- **21–23 October 2026:**
+  - **Screenshot retention** (Settings › Screenshot retention): an organization keeps screenshots for a set period (30 days by default), and older ones are deleted with their files on a schedule (daily at 02:00 in the organization's time zone by default).
+    - Nothing is deleted until an admin previews what would go and approves it. Making the period shorter withdraws the approval. The server enforces this, not just the page.
+    - Cleanups run in small batches in the background, retry files that fail to delete, pick up where they left off after a crash, and alert admins when one stalls.
+    - The page shows run history and a storage estimate; each change and run is in the audit log. It has its own Help guide (45 guides now).
+    - Changing it needs the `retention:manage` permission (System Admin by default). Migration 0023 carries over existing screenshot retention periods, unapproved.
+    - Details: [docs/ops/screenshot-retention.md](docs/ops/screenshot-retention.md).
+  - **Setup guides for the desktop app:** downloading an installer opens a dialog with the short install steps and a link to the full guide for that system. The guides (`/download/guide/windows`, `/macos`, `/linux`) are public pages with numbered steps, a screenshot for each step, tips, the Ubuntu terminal commands, how updates work, and the AppImage route for other Linux distributions. The download page no longer has "Sign out of the website". Replacing the screenshots: [docs/ops/download-guide-screenshots.md](docs/ops/download-guide-screenshots.md).
+  - **Desktop app 0.1.9** (released 21 October 2026): no visible changes from 0.1.8. It is a version release that updates on its own from 0.1.6 on.
 - **20–21 October 2026:**
   - **Desktop app 0.1.8** (released 20 October 2026, updates on its own from 0.1.6 on):
     - **Clock in / Clock out**, with the project's **planned breaks** as one-tap buttons (for example "Lunch · 12:00 PM · 60m"), a countdown during a break, a reminder when a break is due, and a note when it is over.
@@ -58,7 +67,7 @@ Updated 21 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
   - **Breaks per project:** on a project (new or Settings tab), admins plan breaks from the organization's break types, with an optional time and length.
   - **End-of-day reports page** (Time › End-of-day reports): a summary (reports, people reporting, finished, time covered), reports grouped by day, search, and a dialog with the full report, its session, Previous/Next and Copy.
   - **A simpler admin menu**, from 36 items in 9 groups to 21 in 7 (Overview; Time; People; Work; Money; Reports; Settings and Help), with no page or permission removed and every old address still working:
-    - Related pages are tabs under one item: **Timesheets** (Approvals and Team week), **Members** (Members and Teams), **Schedules & attendance**, **Invoices** (Invoices and Payments received), **Payroll** (Payrolls, Owed and Pay groups) and **Settings** (Organization, Time & pay, Tracking policies, Devices, Roles, Access review, Security, API keys, Webhooks, Audit log).
+    - Related pages are tabs under one item: **Timesheets** (Approvals and Team week), **Members** (Members and Teams), **Schedules & attendance**, **Invoices** (Invoices and Payments received), **Payroll** (Payrolls, Owed and Pay groups) and **Settings** (Organization, Time & pay, Tracking policies, Devices, Roles, Access review, Security, API keys, Webhooks, Audit log; Screenshot retention was added on 21 October).
     - **Approvals** shows submitted timesheets and manual time requests on one page.
     - **Rates** (formerly Billing & rates) holds only rates; what members are owed moved to **Payroll › Owed**.
     - The Organization settings are split into **Organization** and **Time & pay** (pay period, timesheet rules, overtime, time types and break types in one place).
@@ -120,9 +129,9 @@ Updated 21 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🚧 Work in progress
 
-Everything built on 20–21 October is merged and live (see New updates), and nothing is waiting to be merged.
+Everything built through 23 October is merged into `main` (see New updates), and nothing is waiting to be merged.
 
-- **QA of the new features in the live app:** desktop 0.1.8 (clock in/out, breaks and reminders, end-of-day reports), the new admin menu and tabs, Approvals, Payroll › Owed, Export, the Help Center and the product tour, and the End-of-day reports page.
+- **QA of the new features in the live app:** desktop 0.1.8 and 0.1.9 (clock in/out, breaks and reminders, end-of-day reports), the new admin menu and tabs, Approvals, Payroll › Owed, Export, the Help Center and the product tour, the End-of-day reports page, Screenshot retention (preview, approval and a first scheduled cleanup), and the setup guides on each system.
 
 **Needs attention**
 
@@ -139,7 +148,7 @@ Everything built on 20–21 October is merged and live (see New updates), and no
 - **Monitoring notice:** the desktop app no longer shows workers what is monitored or records their acknowledgement. The `/agent/policy/ack` endpoint and the web `/me/monitoring` page still exist, but the desktop doesn't use them. Make sure workers are told about monitoring some other way where the law requires it. The server's "Tracking settings were updated" notification no longer links anywhere (workers cannot open the web page); by decision, the desktop app will not show what is monitored again.
 - **Paging:** person pickers load every member (a light list with no rates or teams). For very large organizations, a search-as-you-type picker would avoid that. A few plain tables (Schedules, Roles, invoice lines, the client portal) have no paging.
 - **Check whether Preview builds can reach the production database:** in Vercel → Settings → Environment Variables, `DATABASE_URL` should be set for **Production** only. If Preview has it, every pull request's preview build runs migrations on the live database before anything is merged (the likely cause of the 20 October failed deploy).
-- **End-to-end tests still missing** for time off, report exports from the Report library, tracking policies, roles, API keys and webhooks, and schedules (see the audit). There are 132 Playwright tests today.
+- **End-to-end tests still missing** for time off, report exports from the Report library, tracking policies, roles, API keys and webhooks, and schedules (see the audit). There are 224 Playwright tests today (194 web, 21 desktop window, 9 real desktop app; some web tests run at both desktop and phone size).
 
 **Next / planned**
 
@@ -203,7 +212,7 @@ tallywork/
 │   │   ├── app/(auth)/         login, signup, invite, verify-email, forgot/reset password
 │   │   ├── app/o/[orgId]/      the org workspace (activity, timesheets, finance, reports, settings…)
 │   │   ├── app/device/authorize  desktop-agent browser sign-in consent page (PKCE)
-│   │   ├── app/download        desktop app download page (Workers land here; detects the OS)
+│   │   ├── app/download        desktop app download page (Workers land here; detects the OS) and setup guides per system
 │   │   ├── app/icon.svg        favicon
 │   │   ├── app/api/v1/[[...route]]/route.ts   → forwards every /api/v1 request to the Hono app
 │   │   ├── components/         feature components (tracking, timesheets, finance, people, reports…)

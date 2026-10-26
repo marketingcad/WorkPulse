@@ -1,4 +1,5 @@
-import { and, desc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import {
   auditLogs,
   clientPortalAccess,
@@ -20,7 +21,7 @@ import {
   type ClientPortalSections,
   type Tx,
 } from '@tallywork/db';
-import { businessRule, forbidden, newId, notFound } from '@tallywork/domain';
+import { businessRule, forbidden, localDate, newId, notFound } from '@tallywork/domain';
 import type { clientPortalAcceptInput, ClientVisibilityDto, PortalListItemDto, PortalScreenshotDto, PortalSummaryDto } from '@tallywork/contracts';
 import type { z } from 'zod';
 import type { Deps } from '../context';
@@ -83,6 +84,8 @@ export interface PortalAccess {
   clientId: string;
   sections: ClientPortalSections;
   projectIds: string[];
+  /** projects that moved to this client, and when: the client sees their work only from then on */
+  since: Map<string, Date>;
   /** This request's context for the client audit row (set by the viewer routes; absent for previews). */
   request?: PortalRequestMeta;
 }
@@ -91,6 +94,27 @@ export interface PortalRequestMeta {
   ip: string | null;
   userAgent: string | null;
   requestId: string | null;
+}
+
+/** The included projects with their move dates, for a PortalAccess. */
+export async function withSince(tx: Tx, projectIds: string[]): Promise<{ projectIds: string[]; since: Map<string, Date> }> {
+  return { projectIds, since: await movedSince(tx, projectIds) };
+}
+
+/** When each of these projects moved to its current client (only projects that moved). */
+export async function movedSince(tx: Tx, projectIds: string[]): Promise<Map<string, Date>> {
+  if (!projectIds.length) return new Map();
+  const rows = await tx.select({ id: projects.id, since: projects.clientSince }).from(projects).where(and(inArray(projects.id, projectIds), isNotNull(projects.clientSince)));
+  return new Map(rows.map((r) => [r.id, r.since!]));
+}
+
+/**
+ * Conditions keeping a moved project's rows to the time after the move: for each such project, rows of
+ * that project must pass `after(moveDate)`; other projects' rows are untouched. The work done for the
+ * project's previous client is not shown to this one.
+ */
+function afterMove(access: PortalAccess, projectCol: AnyPgColumn, after: (since: Date) => SQL | undefined): SQL[] {
+  return [...access.since].map(([pid, since]) => or(ne(projectCol, pid), after(since))!);
 }
 
 /** The included projects: the selection, limited to projects the client still owns. */
@@ -141,7 +165,7 @@ export async function loadPortalAccess(deps: Deps, userId: string, accessId: str
     const [s] = await tx.select().from(clientPortalSettings).where(eq(clientPortalSettings.clientId, a.clientId));
     const [c] = await tx.select({ archivedAt: clients.archivedAt }).from(clients).where(eq(clients.id, a.clientId));
     if (!s?.enabled || !c || c.archivedAt) throw notFound('dashboard');
-    return { accessId: a.id, organizationId: a.organizationId, clientId: a.clientId, sections: { ...DEFAULT_PORTAL_SECTIONS, ...s.sections }, projectIds: await includedProjects(tx, a.clientId, s.projectIds) };
+    return { accessId: a.id, organizationId: a.organizationId, clientId: a.clientId, sections: { ...DEFAULT_PORTAL_SECTIONS, ...s.sections }, ...(await withSince(tx, await includedProjects(tx, a.clientId, s.projectIds))) };
   });
 }
 
@@ -180,7 +204,7 @@ export async function portalSummary(deps: Deps, access: PortalAccess, range: { f
 }
 
 export async function portalSummaryTx(tx: Tx, access: PortalAccess, range: { from: string; to: string }): Promise<PortalSummaryDto> {
-    const [org] = await tx.select({ id: organizations.id, name: organizations.name, currency: organizations.currency }).from(organizations).where(eq(organizations.id, access.organizationId));
+    const [org] = await tx.select({ id: organizations.id, name: organizations.name, currency: organizations.currency, timezone: organizations.timezone }).from(organizations).where(eq(organizations.id, access.organizationId));
     const [client] = await tx.select({ id: clients.id, name: clients.name }).from(clients).where(eq(clients.id, access.clientId));
     const ids = access.projectIds;
     const none = ids.length === 0;
@@ -190,7 +214,8 @@ export async function portalSummaryTx(tx: Tx, access: PortalAccess, range: { fro
       : await tx
           .select()
           .from(rollupWorkerDay)
-          .where(and(inArray(rollupWorkerDay.projectId, ids), gte(rollupWorkerDay.localDate, range.from), lte(rollupWorkerDay.localDate, range.to)));
+          // Daily totals: from the day of the move.
+          .where(and(inArray(rollupWorkerDay.projectId, ids), gte(rollupWorkerDay.localDate, range.from), lte(rollupWorkerDay.localDate, range.to), ...afterMove(access, rollupWorkerDay.projectId, (d) => gte(rollupWorkerDay.localDate, localDate(d, org!.timezone)))));
 
     const byProject = new Map<string, number>();
     const byDay = new Map<string, number>();
@@ -217,7 +242,8 @@ export async function portalSummaryTx(tx: Tx, access: PortalAccess, range: { fro
       : await tx
           .select({ id: tasks.id, projectId: tasks.projectId, title: tasks.title, status: tasks.status, priority: tasks.priority, dueDate: tasks.dueDate, estimateSeconds: tasks.estimateSeconds })
           .from(tasks)
-          .where(and(inArray(tasks.projectId, ids), isNull(tasks.archivedAt)))
+          // Tasks finished before the move were work for the previous client.
+          .where(and(inArray(tasks.projectId, ids), isNull(tasks.archivedAt), ...afterMove(access, tasks.projectId, (d) => or(isNull(tasks.completedAt), gte(tasks.completedAt, d)))))
           .orderBy(tasks.status, tasks.dueDate);
     const taskTitle = new Map(taskRows.map((t) => [t.id, t.title]));
 
@@ -240,7 +266,7 @@ export async function portalSummaryTx(tx: Tx, access: PortalAccess, range: { fro
       ? await tx
           .select({ taskId: timeEntries.taskId, secs: sql<number>`coalesce(sum(${timeEntries.durationSeconds}), 0)::int` })
           .from(timeEntries)
-          .where(and(inArray(timeEntries.taskId, taskRows.map((t) => t.id)), isNull(timeEntries.deletedAt)))
+          .where(and(inArray(timeEntries.taskId, taskRows.map((t) => t.id)), isNull(timeEntries.deletedAt), ...afterMove(access, timeEntries.projectId, (d) => gte(timeEntries.startedAt, d))))
           .groupBy(timeEntries.taskId)
       : [];
     const trackedByTask = new Map(taskTime.map((t) => [t.taskId, t.secs]));
@@ -323,7 +349,7 @@ export async function portalScreenshotsTx(tx: Tx, deps: Deps, access: PortalAcce
     )
     .innerJoin(memberships, eq(memberships.id, screenshots.membershipId))
     .innerJoin(users, eq(users.id, memberships.userId))
-    .where(and(isNull(screenshots.deletedAt), gte(timeEntries.localDate, range.from), lte(timeEntries.localDate, range.to)))
+    .where(and(isNull(screenshots.deletedAt), gte(timeEntries.localDate, range.from), lte(timeEntries.localDate, range.to), ...afterMove(access, timeEntries.projectId, (d) => gte(screenshots.capturedAt, d))))
     .orderBy(desc(screenshots.capturedAt))
     .limit(200);
   const media = { deps, org };

@@ -143,7 +143,7 @@ export default function ClientsPage() {
         open={!!archive}
         onOpenChange={(o) => !o && setArchive(null)}
         title={`Archive ${archive?.name ?? 'client'}?`}
-        description="The client is hidden from pickers. Existing projects, time and invoices are kept, and you can restore it any time."
+        description="The client and its projects are archived: they are hidden from pickers and take no new time. Time and invoices are kept, and restoring the client brings its projects back."
         confirmLabel="Archive"
         danger
         loading={busy}

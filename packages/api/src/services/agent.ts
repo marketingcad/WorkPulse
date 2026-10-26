@@ -193,10 +193,21 @@ export interface AgentCtx {
   policy: TrackingPolicy;
 }
 
-export async function loadAgentCtx(tx: Tx, deps: Deps, p: { deviceId: string; membershipId: string; organizationId: string; userId: string }): Promise<AgentCtx> {
+export async function loadAgentCtx(
+  tx: Tx,
+  deps: Deps,
+  p: { deviceId: string; membershipId: string; organizationId: string; userId: string },
+  opts: { allowPending?: boolean } = {},
+): Promise<AgentCtx> {
   const [device] = await tx.select().from(devices).where(eq(devices.id, p.deviceId));
   if (!device || device.membershipId !== p.membershipId) throw new DomainError('unauthenticated', 'device_unknown', 'Unknown device');
   if (device.status === 'REVOKED') throw new DomainError('unauthenticated', 'device_revoked', 'This device has been revoked by an administrator');
+  // "Approve new devices": until an administrator approves it, a device may only check its status
+  // (bootstrap, heartbeat). It cannot send time or screenshots or read the worker's data (pay stubs…).
+  // 403, not 401: the app stays signed in and keeps the time on the computer until it is approved.
+  if (device.status === 'PENDING' && !opts.allowPending) {
+    throw new DomainError('forbidden', 'device_pending', 'This computer is waiting for an administrator to approve it. Your time is kept on this computer and sent once it is approved.');
+  }
   const [m] = await tx.select().from(memberships).where(eq(memberships.id, p.membershipId));
   if (!m || m.status !== 'ACTIVE') throw forbidden('Your membership is not active');
   const [org] = await tx.select().from(organizations).where(eq(organizations.id, p.organizationId));

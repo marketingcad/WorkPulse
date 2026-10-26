@@ -135,10 +135,8 @@ Everything built through 23 October is merged into `main` (see New updates), and
 
 **Needs attention**
 
-- **From the audit, still open** (anyone can read the audit report now that the repository is public, so these come first):
-  - The "approve new devices" setting is not enforced: a new device is marked pending, but the server still accepts its time and screenshots and lets it download pay stubs.
-  - Next.js is on 16.3.6 and should be updated to 16.3.8 or later for security fixes.
-  - The audit's remediation plan lists the rest by priority.
+- **From the audit, still open** (anyone can read the audit report now that the repository is public, so these come first): the audit's remediation plan lists what remains by priority. Fixed on 27 October: "approve new devices" is enforced (a pending device can only check its status until approved; its time waits on the computer), and Next.js is on 16.3.8 with the security fixes.
+- **Desktop app, pending devices:** while a device waits for approval, Home shows errors instead of a clear "waiting for approval" message (Settings already shows the status). Planned for the next desktop release.
 - **Desktop updates give no sign while downloading.** The installer (about 114 MB) downloads in the background with nothing on screen until "WorkPulse x.y.z is ready" appears. If the app is restarted mid-download, the download starts over. Planned: a "Downloading update…" line, and resuming an interrupted download.
 - **Install desktop 0.1.6 or later by hand once** if a computer still has 0.1.5 or older (quit the app from the tray first): those versions cannot update themselves. From 0.1.6 on, updates are automatic. An update installs when the app is quit from the tray; closing the window with the X leaves it running.
 - **The production database is empty** (cleared on 16 October 2026 for manual QA from scratch; the database structure is kept). Old screenshots from the demo data are still in Supabase Storage (bucket `tallywork`, folder `org`) and can be deleted from the Supabase dashboard.

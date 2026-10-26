@@ -33,23 +33,28 @@ const agentOnly = new Hono<AgentEnv>().use(async (c, next) => {
  * rate limit: the limiter writes through the shared pool, and on single-connection PGlite (local dev)
  * a write outside an open transaction waits for it to finish, which deadlocks the server.
  */
-const tenant: MiddlewareHandler<AgentEnv> = async (c, next) => {
-  const p = c.var.principal as Extract<NonNullable<AgentEnv['Variables']['principal']>, { type: 'agent' }>;
-  await runInTenantTx(c as never, p.organizationId, async () => {
-    c.set('agent', await loadAgentCtx(c.var.tx, c.var.deps, p));
-    await next();
-  });
-};
+const tenantFor =
+  (allowPending: boolean): MiddlewareHandler<AgentEnv> =>
+  async (c, next) => {
+    const p = c.var.principal as Extract<NonNullable<AgentEnv['Variables']['principal']>, { type: 'agent' }>;
+    await runInTenantTx(c as never, p.organizationId, async () => {
+      c.set('agent', await loadAgentCtx(c.var.tx, c.var.deps, p, { allowPending }));
+      await next();
+    });
+  };
+const tenant = tenantFor(false);
+/** The few routes a device waiting for approval may use: to learn its status and stay known. */
+const tenantPendingOk = tenantFor(true);
 
 agentOnly
-  .get('/bootstrap', tenant, async (c) => c.json(await bootstrap(c.var.agent)))
-  .post('/policy/ack', tenant, async (c) => {
+  .get('/bootstrap', tenantPendingOk, async (c) => c.json(await bootstrap(c.var.agent)))
+  .post('/policy/ack', tenantPendingOk, async (c) => {
     const { hash } = await body(c, z.object({ hash: z.string().max(64) }));
     await acknowledgePolicy(c.var.agent, hash);
     return c.body(null, 204);
   })
   .post('/ingest/batch', rateLimit('ingest', 240, 60), tenant, async (c) => c.json(await ingestBatch(c.var.agent, await body(c, ingestBatchInput))))
-  .post('/heartbeat', rateLimit('heartbeat', 30, 60), tenant, async (c) => {
+  .post('/heartbeat', rateLimit('heartbeat', 30, 60), tenantPendingOk, async (c) => {
     const i = await body(c, heartbeatInput);
     return c.json(await heartbeat(c.var.agent, { sessionId: i.session_id, agentVersion: i.agent_version, capabilities: i.capabilities }));
   })

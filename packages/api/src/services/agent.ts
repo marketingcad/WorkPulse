@@ -233,7 +233,8 @@ export async function bootstrap(a: AgentCtx): Promise<AgentBootstrapDto> {
   const [ack] = await tx.select().from(policyAcks).where(and(eq(policyAcks.membershipId, a.membershipId), eq(policyAcks.policyHash, hash))).limit(1);
   const live = await liveSession(tx, a.membershipId);
   const now = a.deps.now();
-  const tw = await todayAndWeek(tx, a.membershipId, tz, a.weekStart, now);
+  // Finished time only: the desktop app adds its running segment (now − segment start) to these itself.
+  const tw = await todayAndWeek(tx, a.membershipId, tz, a.weekStart, now, false);
   return {
     organization: { id: org!.id, name: org!.name, timezone: org!.timezone },
     worker: { membership_id: a.membershipId, name: u?.name ?? '', email: u?.email ?? '', timezone: tz },
@@ -343,6 +344,7 @@ async function processEvent(a: AgentCtx, ev: AgentEvent, correct: (iso: string) 
       const r = await startSession(a.tx, {
         organizationId: a.organizationId,
         orgTimezone: a.orgTimezone,
+        orgWeekStart: a.weekStart,
         membershipId: a.membershipId,
         projectId: ev.project_id,
         taskId: ev.task_id ?? null,

@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import {
+  activityMinutes,
   activityWindows,
   appSpans,
   idleEvents,
@@ -9,7 +10,9 @@ import {
   tasks,
   timeEntries,
   timeSegments,
+  trackingSessions,
   urlSpans,
+  type Tx,
 } from '@tallywork/db';
 import { addDaysToDate, businessRule, can, forbidden, notFound, startOfLocalDay, windowStartOf } from '@tallywork/domain';
 import type { ActivityBlockDto, ActivityDayDto, UsageRowDto } from '@tallywork/contracts';
@@ -287,6 +290,23 @@ export async function listIdleEvents(x: Ctx, q: { from: string; to: string; memb
   }));
 }
 
+/**
+ * When an unanswered idle period ended. The device reports the end only with the worker's answer, so
+ * use the first minute with keyboard or mouse input after it started; with none, the session's end
+ * (or now while it still runs). Never "now" by default: that would treat later work as idle.
+ */
+export async function idleEndFromActivity(tx: Tx, ev: { sessionId: string; startedAt: Date }, now: Date): Promise<Date> {
+  const [back] = await tx
+    .select({ at: activityMinutes.minuteStart })
+    .from(activityMinutes)
+    .where(and(eq(activityMinutes.sessionId, ev.sessionId), sql`${activityMinutes.minuteStart} > ${ev.startedAt}`, sql`${activityMinutes.activeSeconds} > 0`))
+    .orderBy(asc(activityMinutes.minuteStart))
+    .limit(1);
+  if (back) return back.at;
+  const [s] = await tx.select({ endedAt: trackingSessions.endedAt }).from(trackingSessions).where(eq(trackingSessions.id, ev.sessionId));
+  return s?.endedAt ?? now;
+}
+
 /** Manager/worker resolution of a pending idle event (e.g. worker never answered the prompt). */
 export async function resolveIdleByUser(x: Ctx, id: string, input: { resolution: 'KEPT' | 'DISCARDED' | 'REASSIGNED'; projectId?: string; taskId?: string }) {
   const [ev] = await x.tx.select().from(idleEvents).where(eq(idleEvents.id, id));
@@ -300,7 +320,7 @@ export async function resolveIdleByUser(x: Ctx, id: string, input: { resolution:
     idleId: id,
     sessionId: ev.sessionId,
     startedAt: ev.startedAt,
-    endedAt: ev.endedAt ?? x.deps.now(),
+    endedAt: ev.endedAt ?? (await idleEndFromActivity(x.tx, ev, x.deps.now())),
     resolution: input.resolution,
     projectId: input.projectId ?? null,
     taskId: input.taskId ?? null,

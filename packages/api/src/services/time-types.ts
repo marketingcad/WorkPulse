@@ -89,6 +89,13 @@ export async function timeTypeCoefficients(tx: Tx): Promise<(id: string | null) 
   };
 }
 
+/** Whether an entry's existing type is never billable (archived types included: entries keep their type). */
+export async function isNotBillableType(tx: Tx, id: string | null): Promise<boolean> {
+  if (!id) return false;
+  const [t] = await tx.select({ notBillable: timeTypes.notBillable }).from(timeTypes).where(eq(timeTypes.id, id));
+  return !!t?.notBillable;
+}
+
 /** Validates a time type chosen for an entry; `notBillable` types force the entry non-billable. */
 export async function checkTimeType(tx: Tx, id: string | null | undefined): Promise<{ id: string | null; notBillable: boolean } | undefined> {
   if (id === undefined) return undefined;

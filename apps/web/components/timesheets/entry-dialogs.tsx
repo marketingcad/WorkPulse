@@ -8,6 +8,7 @@ import { useOrg } from '@/lib/org';
 import { ProjectTaskPicker, type PickerValue } from '@/components/project-task-picker';
 import { fromLocalInput, toLocalInput, useAssignmentsFor, useReasonPolicy, type EntryRevision } from './shared';
 import { useMemberOptions } from '@/lib/members';
+import { asHm, parseDuration } from '@/lib/duration';
 
 function useRefresh() {
   const qc = useQueryClient();
@@ -319,18 +320,6 @@ export function RevisionsDrawer({ entry, onClose, names }: { entry: TimeEntryDto
 }
 
 // ─── Manual time ─────────────────────────────────────────────────────────────
-/** "2:30", "2h 30m", "2.5", "90m" → seconds; null when unreadable. */
-export function parseDuration(v: string): number | null {
-  const s = v.trim().toLowerCase();
-  if (!s) return null;
-  let m = s.match(/^(\d{1,2}):([0-5]\d)$/);
-  if (m) return Number(m[1]) * 3600 + Number(m[2]) * 60;
-  m = s.match(/^(?:(\d+(?:\.\d+)?)\s*h)?\s*(?:(\d+)\s*m)?$/);
-  if (m && (m[1] || m[2])) return Math.round(Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60);
-  if (/^\d+(\.\d+)?$/.test(s)) return Math.round(Number(s) * 3600);
-  return null;
-}
-const asHm = (secs: number) => `${Math.floor(secs / 3600)}:${String(Math.round((secs % 3600) / 60)).padStart(2, '0')}`;
 
 export interface ManualTimePrefill {
   projectId?: string | null;

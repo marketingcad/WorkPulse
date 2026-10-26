@@ -187,6 +187,8 @@ export async function applyTrigger(
 export interface StartInput {
   organizationId: string;
   orgTimezone: string;
+  /** the organization's first day of the week (weekly limits) */
+  orgWeekStart: number;
   membershipId: string;
   projectId: string;
   taskId: string | null;
@@ -232,7 +234,7 @@ export async function startSession(tx: Tx, input: StartInput): Promise<{ session
   await validateTrackTarget(tx, input.membershipId, input.projectId, input.taskId);
   const timezone = profile?.timezone ?? input.orgTimezone;
 
-  const limitHit = await limitReached(tx, input.membershipId, timezone, policy, input.now);
+  const limitHit = await limitReached(tx, input.membershipId, timezone, policy, input.now, input.orgWeekStart);
   if (limitHit) throw businessRule('limit_reached', limitHit === 'daily' ? 'You have reached your daily time limit' : 'You have reached your weekly time limit');
 
   const existing = await liveSession(tx, input.membershipId);
@@ -293,12 +295,13 @@ export async function sessionWorkedSeconds(tx: Tx, sessionIds: string[], now: Da
 }
 
 /** Tracked seconds for a worker on local dates [from..to], including the running segment. */
-export async function trackedSecondsBetween(tx: Tx, membershipId: string, timezone: string, from: string, to: string, now: Date): Promise<number> {
+export async function trackedSecondsBetween(tx: Tx, membershipId: string, timezone: string, from: string, to: string, now: Date, includeRunning = true): Promise<number> {
   const [r] = await tx
     .select({ s: sql<number>`coalesce(sum(${timeEntries.durationSeconds}),0)::int` })
     .from(timeEntries)
     .where(and(eq(timeEntries.membershipId, membershipId), isNull(timeEntries.deletedAt), sql`${timeEntries.localDate} between ${from} and ${to}`));
   let total = r?.s ?? 0;
+  if (!includeRunning) return total;
   const live = await liveSession(tx, membershipId);
   if (live && live.state === 'ACTIVE') {
     const [open] = await tx.select().from(timeSegments).where(and(eq(timeSegments.sessionId, live.id), isNull(timeSegments.endedAt), eq(timeSegments.kind, 'WORK')));
@@ -313,12 +316,16 @@ export async function trackedSecondsBetween(tx: Tx, membershipId: string, timezo
   return total;
 }
 
-export async function todayAndWeek(tx: Tx, membershipId: string, timezone: string, weekStart: number, now: Date) {
+/**
+ * Time tracked today and this week. With `includeRunning` off, only finished time: for clients that add
+ * the running segment themselves (the desktop app adds now − segment start), so it is not counted twice.
+ */
+export async function todayAndWeek(tx: Tx, membershipId: string, timezone: string, weekStart: number, now: Date, includeRunning = true) {
   const today = localDate(now, timezone);
   const wk = startOfWeek(today, weekStart);
   return {
-    today: await trackedSecondsBetween(tx, membershipId, timezone, today, today, now),
-    week: await trackedSecondsBetween(tx, membershipId, timezone, wk, addDaysToDate(wk, 6), now),
+    today: await trackedSecondsBetween(tx, membershipId, timezone, today, today, now, includeRunning),
+    week: await trackedSecondsBetween(tx, membershipId, timezone, wk, addDaysToDate(wk, 6), now, includeRunning),
   };
 }
 

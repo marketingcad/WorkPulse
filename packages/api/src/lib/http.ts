@@ -27,6 +27,18 @@ export function fromDatabaseError(err: unknown): DomainError | null {
   return null;
 }
 
+/**
+ * The database is saturated, not broken: no pooled connection came free in time, or a statement ran
+ * past its time limit (57014). Clients should retry shortly, so these become a 503, not a 500.
+ */
+export function isDatabaseBusy(err: unknown): boolean {
+  for (let e = err, depth = 0; e && typeof e === 'object' && depth < 4; e = (e as { cause?: unknown }).cause, depth++) {
+    if ((e as { code?: unknown }).code === '57014') return true;
+    if (e instanceof Error && /timeout exceeded when trying to connect/i.test(e.message)) return true;
+  }
+  return false;
+}
+
 export function problemFromError(error: unknown, requestId: string): Problem {
   const err = error instanceof DomainError ? error : (fromDatabaseError(error) ?? error);
   if (err instanceof DomainError) {
@@ -41,6 +53,7 @@ export function problemFromError(error: unknown, requestId: string): Problem {
       ...(err.details && !errors ? { detail: JSON.stringify(err.details) } : {}),
     };
   }
+  if (isDatabaseBusy(err)) return { type: 'about:blank', title: 'The service is busy. Please try again in a moment.', status: 503, code: 'service_busy', request_id: requestId };
   return { type: 'about:blank', title: 'Something went wrong on our side', status: 500, code: 'internal_error', request_id: requestId };
 }
 

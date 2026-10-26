@@ -57,6 +57,37 @@ const ENSURE_APP_ROLE_SQL = `
   grant execute on function tallywork_scrub_audit_actor(uuid) to ${APP_ROLE};
 `;
 
+export interface PoolSettings {
+  /** connections per server instance; instances × max must stay under the Supabase pooler's pool size */
+  max: number;
+  /** how long a request waits for a free connection before failing (instead of hanging until the function limit) */
+  connectionTimeoutMillis: number;
+  /** longest a single statement may run */
+  statementTimeoutMs: number;
+  /** longest a transaction may sit idle (a leaked transaction would otherwise hold its connection) */
+  idleInTransactionTimeoutMs: number;
+}
+
+function positiveInt(value: string | undefined, fallback: number): number {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+/** Pool limits from DB_POOL_MAX, DB_CONNECT_TIMEOUT_MS, DB_STATEMENT_TIMEOUT_MS and DB_IDLE_IN_TX_TIMEOUT_MS. */
+export function poolSettings(env: Record<string, string | undefined> = process.env): PoolSettings {
+  return {
+    max: positiveInt(env.DB_POOL_MAX, 10),
+    connectionTimeoutMillis: positiveInt(env.DB_CONNECT_TIMEOUT_MS, 10_000),
+    statementTimeoutMs: positiveInt(env.DB_STATEMENT_TIMEOUT_MS, 30_000),
+    idleInTransactionTimeoutMs: positiveInt(env.DB_IDLE_IN_TX_TIMEOUT_MS, 120_000),
+  };
+}
+
+/** Runs once per new connection: the restricted role, then the time limits (session settings, kept by the Session pooler). */
+export function sessionSetupSql(s: PoolSettings): string[] {
+  return [`set role ${APP_ROLE}`, `set statement_timeout = ${s.statementTimeoutMs}`, `set idle_in_transaction_session_timeout = ${s.idleInTransactionTimeoutMs}`];
+}
+
 export interface DbHandle {
   db: Db;
   kind: 'pg' | 'pglite';
@@ -99,7 +130,8 @@ export function createDb(url: string, opts: { runAsAppRole?: boolean } = {}): Db
     };
   }
 
-  const pool = new pg.Pool({ connectionString: url, max: 10, idleTimeoutMillis: 5_000 });
+  const settings = poolSettings();
+  const pool = new pg.Pool({ connectionString: url, max: settings.max, connectionTimeoutMillis: settings.connectionTimeoutMillis, idleTimeoutMillis: 5_000 });
   // Poolers (Supabase Supavisor, Neon) may close idle connections. pg reports that as an
   // 'error' event on the pool; without a listener Node crashes the process. The pool
   // already discards the broken client, so logging is enough.
@@ -107,7 +139,8 @@ export function createDb(url: string, opts: { runAsAppRole?: boolean } = {}): Db
   if (runAsAppRole) {
     pool.on('connect', (c) => {
       // Fail loudly (connection error) rather than silently running with bypass rights.
-      c.query(`set role ${APP_ROLE}`).catch((e: unknown) => c.emit('error', e as Error));
+      // Queued on the client in order, before any query the pool hands it.
+      for (const q of sessionSetupSql(settings)) c.query(q).catch((e: unknown) => c.emit('error', e as Error));
     });
   }
   const db = drizzlePg(pool, { schema, casing: 'snake_case' }) as unknown as Db;

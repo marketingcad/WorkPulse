@@ -1052,6 +1052,10 @@ Run from the repo root unless noted.
 | Variable | Required | Description |
 |---|---|---|
 | `DATABASE_URL` (or `POSTGRES_URL`) | Production | `postgres://…` (Supabase Session pooler, port 5432), `pglite://memory`, or `pglite://<path>`. Defaults to file PGlite in dev |
+| `DB_POOL_MAX` | No | Database connections per server instance (default 10). Instances × this must stay under the Session pooler's pool size |
+| `DB_CONNECT_TIMEOUT_MS` | No | How long a request waits for a free connection before failing with 503 `service_busy` (default 10000) |
+| `DB_STATEMENT_TIMEOUT_MS` | No | Longest a single query may run; longer ones are cancelled and return 503 (default 30000) |
+| `DB_IDLE_IN_TX_TIMEOUT_MS` | No | Longest a transaction may sit idle before Postgres closes its connection (default 120000) |
 | `APP_SECRET` | Production | ≥ 32 chars; HMAC signing (tokens, media URLs) and field encryption. Dev uses an insecure default |
 | `APP_URL` | No | Public base URL. Defaults to the Vercel URL, or `http://localhost:3000` |
 | `CRON_SECRET` | Production | Bearer secret that Vercel Cron sends to `/api/v1/cron/*` |

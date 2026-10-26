@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { secureHeaders } from 'hono/secure-headers';
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { rateLimitBuckets } from '@tallywork/db';
 import { DomainError, newId } from '@tallywork/domain';
 import type { AppEnv, Deps } from './context';
@@ -49,7 +49,7 @@ export function createApp(deps: Deps) {
     const rid = c.var.requestId ?? 'unknown';
     if (!(err instanceof DomainError) && !fromDatabaseError(err)) console.error(JSON.stringify({ level: 'error', request_id: rid, path: c.req.path, msg: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack?.split('\n').slice(0, 6) : undefined }));
     const p = problemFromError(err, rid);
-    return c.json(p, p.status as 400, { 'Content-Type': 'application/problem+json' });
+    return c.json(p, p.status as 400, { 'Content-Type': 'application/problem+json', ...(p.status === 503 ? { 'Retry-After': '5' } : {}) });
   });
   app.notFound((c) => c.json({ type: 'about:blank', title: 'Not found', status: 404, code: 'route_not_found', request_id: c.var.requestId }, 404));
 
@@ -74,7 +74,7 @@ export function createApp(deps: Deps) {
 
   // Vercel Cron (Authorization: Bearer CRON_SECRET).
   const cronAuth = (h: string | undefined) => !!deps.config.cronSecret && !!h && safeEqual(h, `Bearer ${deps.config.cronSecret}`);
-  app.get('/cron/tick', async (c) => (cronAuth(c.req.header('authorization')) ? c.json(await runTick(deps)) : c.json({ status: 401, code: 'unauthorized' }, 401)));
+  app.get('/cron/tick', async (c) => (cronAuth(c.req.header('authorization')) ? c.json((await runTickOnce(deps)) ?? { skipped: true }) : c.json({ status: 401, code: 'unauthorized' }, 401)));
   // Monitoring: operational gauges and firing alerts (counts only; cron secret required).
   app.get('/ops/metrics', async (c) => (cronAuth(c.req.header('authorization')) ? c.json(await opsMetrics(deps)) : c.json({ status: 401, code: 'unauthorized' }, 401)));
   app.get('/cron/daily', async (c) => (cronAuth(c.req.header('authorization')) ? c.json(await runDaily(deps)) : c.json({ status: 401, code: 'unauthorized' }, 401)));
@@ -107,16 +107,66 @@ export function afterMutation(deps: Deps) {
   });
 }
 
-/** Run the minute tick at most once per minute across all instances (DB lease). */
-export async function maybeTick(deps: Deps): Promise<void> {
-  if (deps.config.env === 'test') return;
-  const minute = new Date(Math.floor(deps.now().getTime() / 60_000) * 60_000);
+const TICK_LEASE = 'job:tick:lease';
+/** A run that started longer ago than the function limit (300 s) has crashed; its lease can be taken over. */
+const TICK_STALE_MS = 6 * 60_000;
+
+/**
+ * Claims the minute tick across all instances: at most one run per minute, and never two at once.
+ * The lease row keeps the start of the current or last run in `window_start`; `count` is 1 while it runs.
+ * Returns the start time to release with, or null when another run has this minute or is still going.
+ */
+export async function claimTick(deps: Deps): Promise<Date | null> {
+  const now = deps.now();
+  const minute = new Date(Math.floor(now.getTime() / 60_000) * 60_000);
+  const stale = new Date(now.getTime() - TICK_STALE_MS);
   const rows = await deps.db
     .insert(rateLimitBuckets)
-    .values({ key: 'job:tick', count: 1, windowStart: minute })
-    .onConflictDoUpdate({ target: rateLimitBuckets.key, set: { count: sql`case when ${rateLimitBuckets.windowStart} = ${minute} then ${rateLimitBuckets.count} + 1 else 1 end`, windowStart: minute } })
-    .returning({ count: rateLimitBuckets.count });
-  if ((rows[0]?.count ?? 2) === 1) await runTick(deps).catch((e) => console.error('tick failed', e));
+    .values({ key: TICK_LEASE, count: 1, windowStart: now })
+    .onConflictDoUpdate({
+      target: rateLimitBuckets.key,
+      set: { count: 1, windowStart: now },
+      setWhere: sql`(${rateLimitBuckets.count} = 0 and ${rateLimitBuckets.windowStart} < ${minute}) or ${rateLimitBuckets.windowStart} < ${stale}`,
+    })
+    .returning({ startedAt: rateLimitBuckets.windowStart });
+  return rows[0]?.startedAt ?? null;
+}
+
+export async function releaseTick(deps: Deps, startedAt: Date): Promise<void> {
+  await deps.db
+    .update(rateLimitBuckets)
+    .set({ count: 0 })
+    .where(and(eq(rateLimitBuckets.key, TICK_LEASE), eq(rateLimitBuckets.windowStart, startedAt)));
+}
+
+/** The minute tick under the shared lease (Vercel Cron and the opportunistic tick both go through here). */
+export async function runTickOnce(deps: Deps): Promise<Awaited<ReturnType<typeof runTick>> | null> {
+  const startedAt = await claimTick(deps);
+  if (!startedAt) return null;
+  try {
+    return await runTick(deps);
+  } finally {
+    await releaseTick(deps, startedAt).catch((e) => console.error('tick release failed', e));
+  }
+}
+
+/** True the first time it is called in each minute: one instance tries the lease once a minute, not on every request. */
+export function minuteGate(): (now: Date) => boolean {
+  let last = -1;
+  return (now) => {
+    const minute = Math.floor(now.getTime() / 60_000);
+    if (minute === last) return false;
+    last = minute;
+    return true;
+  };
+}
+
+const tickGate = minuteGate();
+
+/** Run the minute tick opportunistically, in case cron is unavailable. */
+export async function maybeTick(deps: Deps): Promise<void> {
+  if (deps.config.env === 'test' || !tickGate(deps.now())) return;
+  await runTickOnce(deps).catch((e) => console.error('tick failed', e));
 }
 
 export type App = ReturnType<typeof createApp>;

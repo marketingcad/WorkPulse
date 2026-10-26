@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ClientDto, ProjectDto, TaskDto, TeamDto, MemberOptionDto } from '@tallywork/contracts';
 import { Plus, Trash2 } from 'lucide-react';
@@ -131,6 +131,8 @@ export function TaskDialog({
   const [f, setF] = useState({ project_id: '', title: '', description: '', status: 'TODO', priority: 'MEDIUM', due_date: '', estimate: '', assignee_ids: [] as string[] });
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
+  // Set synchronously: two quick Enter presses both run before `busy` re-renders.
+  const saving = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -155,10 +157,12 @@ export function TaskDialog({
     .map((w) => ({ value: w.id, label: w.name, sub: project && !project.member_ids.includes(w.id) ? 'Not a direct project member' : w.email }));
 
   const save = async () => {
+    if (saving.current) return;
     if (!pid) {
       setErr(new ApiError(422, 'validation', 'Choose a project', undefined, [{ field: 'project_id', message: 'Choose a project' }]));
       return;
     }
+    saving.current = true;
     setBusy(true);
     setErr(null);
     const payload = {
@@ -179,6 +183,7 @@ export function TaskDialog({
       if (e instanceof ApiError) setErr(e);
       toast.error(errorMessage(e));
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };

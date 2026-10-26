@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ClientDto } from '@tallywork/contracts';
 import { Button, Checkbox, Dialog, Field, Input, Select, Textarea, cx, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage } from '@/lib/api';
@@ -34,9 +34,14 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
   const [f, setF] = useState(() => initial(client));
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
+  // Set synchronously: two quick Enter presses both run before `busy` re-renders.
+  const saving = useRef(false);
+  // A new client saved by an earlier attempt (e.g. created, then archiving failed): a retry updates it.
+  const created = useRef<ClientDto | null>(null);
   const [openCount, setOpenCount] = useState(0);
   useEffect(() => {
     if (!open) return;
+    created.current = null;
     setErr(null);
     setF(initial(client));
     setOpenCount((n) => n + 1);
@@ -52,6 +57,8 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
   };
 
   const save = async () => {
+    if (saving.current) return;
+    saving.current = true;
     setBusy(true);
     setErr(null);
     try {
@@ -69,8 +76,10 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
         ...rateField('pay_rate', 'pay_rate_minor'),
         ...rateField('bill_rate', 'bill_rate_minor'),
       };
-      const saved = client ? await run<ClientDto>('PATCH', `/clients/${client.id}`, body) : await run<ClientDto>('POST', '/clients', body);
-      const wasActive = client ? !client.archived_at : true;
+      const existing = client ?? created.current;
+      const saved = existing ? await run<ClientDto>('PATCH', `/clients/${existing.id}`, body) : await run<ClientDto>('POST', '/clients', body);
+      if (!client) created.current = saved;
+      const wasActive = !saved.archived_at;
       if (f.active !== wasActive) await run('POST', `/clients/${saved.id}/${f.active ? 'restore' : 'archive'}`);
       toast.success(client ? 'Client updated' : 'Client created');
       onSaved?.(saved);
@@ -79,6 +88,7 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
       if (e instanceof ApiError) setErr(e);
       toast.error(errorMessage(e));
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };

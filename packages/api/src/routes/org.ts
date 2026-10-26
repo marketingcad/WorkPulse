@@ -151,7 +151,8 @@ export const orgRoutes = new Hono<AppEnv>()
   // Clients
   .get('/clients', async (c) => c.json(await listClients(ctx(c), { includeArchived: query(c, z.object({ include_archived: bool })).include_archived })))
   .post('/clients', async (c) => c.json(await upsertClient(ctx(c), null, await body(c, clientInput)), 201))
-  .patch('/clients/:id', async (c) => c.json(await upsertClient(ctx(c), c.req.param('id'), await body(c, clientInput))))
+  // Only the fields sent change (a partial update never wipes the others).
+  .patch('/clients/:id', async (c) => c.json(await upsertClient(ctx(c), c.req.param('id'), await body(c, clientInput.partial()))))
   .post('/clients/:id/archive', async (c) => {
     await setClientArchived(ctx(c), c.req.param('id'), true);
     return c.body(null, 204);

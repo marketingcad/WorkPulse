@@ -6,6 +6,7 @@ import type { Ctx } from './ctx';
 import { audit } from './events';
 import { memberNames } from './timer';
 import { getProject } from './work';
+import { canOnProject } from './scope';
 
 const MAX_BYTES = 25 * 1024 * 1024;
 /** Documents people attach to projects. No HTML/SVG/scripts: nothing that could run in the browser. */
@@ -42,7 +43,7 @@ export async function listProjectDocuments(x: Ctx, projectId: string): Promise<P
 }
 
 export async function uploadProjectDocument(x: Ctx, projectId: string, file: File) {
-  if (!x.actor.grants['projects:manage']) throw forbidden();
+  if (!canOnProject(x.actor, 'projects:manage', projectId)) throw forbidden();
   await getProject(x, projectId);
   const ext = ALLOWED.get(file.type);
   if (!ext) throw businessRule('file_type', 'Upload a PDF, image, Office document, text, CSV or ZIP file');
@@ -76,7 +77,7 @@ export async function projectDocumentForDownload(x: Ctx, projectId: string, docI
 }
 
 export async function deleteProjectDocument(x: Ctx, projectId: string, docId: string) {
-  if (!x.actor.grants['projects:manage']) throw forbidden();
+  if (!canOnProject(x.actor, 'projects:manage', projectId)) throw forbidden();
   const { d, key } = await loadDocument(x, projectId, docId);
   await x.tx.delete(projectDocuments).where(eq(projectDocuments.id, docId));
   await x.tx.delete(fileObjects).where(eq(fileObjects.id, d.fileId));

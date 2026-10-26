@@ -21,7 +21,7 @@ import type { ClientDto, OffsetPage, ProjectBreakDto, ProjectDto, TaskDto, TeamD
 import type { Ctx } from './ctx';
 import { audit, emitFrom } from './events';
 import { applyScopedRates, currentScopedRates, rateChanges } from './finance';
-import { membershipFilter, projectFilter } from './scope';
+import { canOnClient, canOnProject, membershipFilter, projectFilter } from './scope';
 import { iso } from '../lib/http';
 import { likePattern } from '../lib/search';
 
@@ -129,39 +129,54 @@ export async function listClients(x: Ctx, opts: { includeArchived?: boolean } = 
   }));
 }
 
-export async function upsertClient(x: Ctx, clientId: string | null, input: z.infer<typeof clientInput>) {
+/**
+ * Create a client, or update one. An update changes only the fields it is given (PATCH): a field left
+ * out keeps its value, and `null` clears it.
+ */
+export async function upsertClient(x: Ctx, clientId: string | null, input: Partial<z.infer<typeof clientInput>>) {
   if (!x.actor.grants['clients:manage']) throw forbidden();
+  // A narrower scope than org manages only the clients of the actor's projects.
+  if (clientId && !(await canOnClient(x, 'clients:manage', clientId))) throw notFound('client');
   const changes = rateChanges(input);
   if (changes.length && !x.actor.grants['rates:manage']) throw forbidden();
-  const values = {
-    name: input.name,
-    email: input.email ?? null,
-    phone: input.phone ?? null,
-    address: input.address ?? null,
-    currency: input.currency ?? null,
-    notes: input.notes ?? null,
-    contactName: input.contact_name ?? null,
-    documentLanguage: input.document_language ?? null,
-    color: input.color ?? null,
-    logo: input.logo ?? null,
+  const fields = {
+    email: input.email,
+    phone: input.phone,
+    address: input.address,
+    currency: input.currency,
+    notes: input.notes,
+    contactName: input.contact_name,
+    documentLanguage: input.document_language,
+    color: input.color,
+    logo: input.logo,
   };
+  // Only what was sent (undefined = not sent); `?? null` turns an explicit empty value into a cleared field.
+  const values: Partial<typeof clients.$inferInsert> = Object.fromEntries(
+    Object.entries(fields)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => [k, v ?? null]),
+  );
+  if (input.name !== undefined) values.name = input.name;
   let id = clientId;
   if (id) {
     const r = await x.tx.update(clients).set({ ...values, updatedAt: new Date() }).where(eq(clients.id, id)).returning({ id: clients.id });
     if (!r.length) throw notFound('client');
   } else {
+    if (!input.name) throw validation('A client needs a name', { errors: [{ field: 'name', message: 'Required' }] });
     id = newId();
-    await x.tx.insert(clients).values({ id, organizationId: x.org.id, ...values });
+    await x.tx.insert(clients).values({ id, organizationId: x.org.id, name: input.name, ...values });
   }
   const { logo, ...audited } = values;
-  await audit(x, { action: clientId ? 'client.updated' : 'client.created', targetType: 'client', targetId: id, after: { ...audited, logo: logo ? '(image)' : null } });
+  await audit(x, { action: clientId ? 'client.updated' : 'client.created', targetType: 'client', targetId: id, after: { ...audited, ...(logo !== undefined ? { logo: logo ? '(image)' : null } : {}) } });
 
-  await applyScopedRates(x, 'CLIENT', id, changes, values.currency ?? x.org.currency);
+  // Rates are in the client's currency, as saved (a partial update may not send the currency).
+  const [saved] = await x.tx.select({ currency: clients.currency }).from(clients).where(eq(clients.id, id));
+  await applyScopedRates(x, 'CLIENT', id, changes, saved?.currency ?? x.org.currency);
   return (await listClients(x, { includeArchived: true })).find((c) => c.id === id)!;
 }
 
 export async function setClientArchived(x: Ctx, clientId: string, archived: boolean) {
-  if (!x.actor.grants['clients:manage']) throw forbidden();
+  if (!(await canOnClient(x, 'clients:manage', clientId))) throw x.actor.grants['clients:manage'] ? notFound('client') : forbidden();
   const r = await x.tx.update(clients).set({ archivedAt: archived ? new Date() : null }).where(eq(clients.id, clientId)).returning({ id: clients.id });
   if (!r.length) throw notFound('client');
   await audit(x, { action: archived ? 'client.archived' : 'client.restored', targetType: 'client', targetId: clientId });
@@ -267,11 +282,16 @@ export async function getProject(x: Ctx, projectId: string): Promise<ProjectDto>
 
 export async function upsertProject(x: Ctx, projectId: string | null, input: z.infer<typeof projectInput>) {
   if (!x.actor.grants['projects:manage']) throw forbidden();
+  // A narrower scope than org manages only the projects the actor is assigned to.
+  if (projectId && !canOnProject(x.actor, 'projects:manage', projectId)) throw notFound('project');
   const changes = rateChanges(input);
   if (changes.length && !x.actor.grants['rates:manage']) throw forbidden();
   if (input.client_id) {
     const [c] = await x.tx.select({ id: clients.id }).from(clients).where(eq(clients.id, input.client_id));
     if (!c) throw notFound('client');
+    // Without org scope, only a client the actor can already see: attaching a project to another
+    // client would otherwise open that client (and, with clients:manage, its settings) to them.
+    if (x.actor.grants['projects:manage'] !== 'org' && !(await canOnClient(x, 'clients:read', input.client_id))) throw notFound('client');
   }
   if (input.start_date && input.end_date && input.end_date < input.start_date) throw validation('The end date is before the start date', { errors: [{ field: 'end_date', message: 'Must be on or after the start date' }] });
   const values: Partial<typeof projects.$inferInsert> = {};
@@ -317,7 +337,7 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
 }
 
 export async function setProjectArchived(x: Ctx, projectId: string, archived: boolean) {
-  if (!x.actor.grants['projects:manage']) throw forbidden();
+  if (!canOnProject(x.actor, 'projects:manage', projectId)) throw x.actor.grants['projects:manage'] ? notFound('project') : forbidden();
   const r = await x.tx.update(projects).set({ archivedAt: archived ? new Date() : null, updatedAt: new Date() }).where(eq(projects.id, projectId)).returning({ id: projects.id });
   if (!r.length) throw notFound('project');
   await audit(x, { action: archived ? 'project.archived' : 'project.restored', targetType: 'project', targetId: projectId });

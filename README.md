@@ -23,7 +23,7 @@ The main flow the product covers is **Organization → People → Work structure
 
 ## Project status
 
-Updated 26 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.9
+Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.9
 
 ### ✅ Completed
 
@@ -49,6 +49,46 @@ Updated 26 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🆕 New updates
 
+- **26–27 October 2026:**
+  - **Time and pay accuracy** (an audit of Time & Timesheets, PRs #57–#60). Approved pay, rounded per entry, is the official figure, and every other screen now agrees with it:
+    - **Desktop:** "Today" and "This week" no longer count a running timer twice, so the daily limit no longer stops the timer early. This works for every installed desktop version.
+    - **Idle time:**
+      - Discarding an idle period from the web removes only the idle minutes (it used to remove the work done after them).
+      - Unanswered idle gets the organization's default after its timeout, for idle recorded from 28 October.
+      - "Keep" after resuming on the web is no longer lost.
+      - The desktop's "Away" figure shows the day's idle time (it was always 0).
+    - **No double counting:** tracked time that overlaps time already recorded is trimmed, not added twice (for example a late offline sync over manual time). Each trim is in the audit log.
+    - **Locks and periods:**
+      - Time can't be added to a period approved before the pay period changed.
+      - The pay period or week start can't change once the current period has a submitted timesheet.
+      - The age lock also covers resolving idle time and counts from the worker's own date.
+      - Weekly limits use the organization's week start.
+      - Two approvers deciding at once can no longer leave a timesheet or time-off request in a mixed state.
+    - **Attendance:**
+      - Time is matched to shifts by when it happened, so a schedule in another time zone, or a split overnight shift, no longer shows ABSENT.
+      - Scheduled time for split shifts excludes the gap between them.
+    - **Money:**
+      - "Estimated owed", Summary and the reports' estimates round per entry like approved pay, so they equal "Approved owed" once everything is approved.
+      - Payroll Export has an **Approved pay** column next to **Estimated earnings**.
+      - Overtime is worked out on whole weeks, so a week split between two pay periods keeps its overtime.
+      - Invoice lines are split by time type, so hours × price equals the amount.
+    - **Paid breaks and holidays:**
+      - A break of a paid break type is paid, non-billable time, up to the break type's maximum.
+      - Payroll pays each paid holiday as the person's scheduled hours that day (8 h on a weekday without a schedule).
+    - **Smaller fixes:**
+      - A "not billable" time type stays non-billable.
+      - The dashboard's week billable includes running timers.
+      - The Duplicate dialog no longer shows "0:60".
+      - CSV hours have 4 decimals.
+      - A team manager can't move an outside member's schedule.
+      - A desktop heartbeat no longer keeps alive a session the app doesn't know.
+  - **Security** (PR #61): "Approve new devices" is enforced. A pending device can only check its status until an administrator approves it, and its time waits on the computer. Next.js 16.3.6 → 16.3.8 (security fixes). These close the open items from the 16 October audit.
+  - **Database under load** (PR #56):
+    - A request waits at most 10 s for a database connection and then gets a `503 service_busy` instead of hanging.
+    - Queries are limited to 30 s.
+    - The minute job runs once a minute across all servers, without writing to the database on every request.
+    - New settings: `DB_POOL_MAX`, `DB_CONNECT_TIMEOUT_MS`, `DB_STATEMENT_TIMEOUT_MS`, `DB_IDLE_IN_TX_TIMEOUT_MS`.
+  - Tests: 42 new automated tests for these changes (32 API, 4 database, 4 domain, 2 web); all 224 Playwright tests pass.
 - **21–23 October 2026:**
   - **Screenshot retention** (Settings › Screenshot retention): an organization keeps screenshots for a set period (30 days by default), and older ones are deleted with their files on a schedule (daily at 02:00 in the organization's time zone by default).
     - Nothing is deleted until an admin previews what would go and approves it. Making the period shorter withdraws the approval. The server enforces this, not just the page.
@@ -129,9 +169,20 @@ Updated 26 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🚧 Work in progress
 
-Everything built through 23 October is merged into `main` (see New updates), and nothing is waiting to be merged.
+Everything built through 27 October is merged into `main` (see New updates), and nothing is waiting to be merged.
 
-- **QA of the new features in the live app:** desktop 0.1.8 and 0.1.9 (clock in/out, breaks and reminders, end-of-day reports), the new admin menu and tabs, Approvals, Payroll › Owed, Export, the Help Center and the product tour, the End-of-day reports page, Screenshot retention (preview, approval and a first scheduled cleanup), and the setup guides on each system.
+- **QA of the new features in the live app:** desktop 0.1.8 and 0.1.9 (clock in/out, breaks and reminders, end-of-day reports), the new admin menu and tabs, Approvals, Payroll › Owed, Export, the Help Center and the product tour, the End-of-day reports page, Screenshot retention (preview, approval and a first scheduled cleanup), and the setup guides on each system. From 26–27 October:
+  - a paid break and a paid holiday through to a payroll run;
+  - Owed and Summary figures against approved pay;
+  - Payroll Export's new columns;
+  - attendance for a worker in another time zone;
+  - device approval with the desktop app.
+- **Two-factor sign-in hardening** (planned, waiting on three product decisions): a QR code for setup, single-use recovery codes under concurrent use, a lockout for wrong codes on desktop sign-in, a password check before changing 2FA, replacing an authenticator without turning 2FA off, and a way back for someone who lost both phone and codes.
+- **Scaling to 1,000 concurrent users** (planned, waiting on the Supabase and Vercel plan and region details):
+  - put the Vercel functions in the same region as the database;
+  - split the daily job by organization;
+  - extend the k6 load tests and run them on staging;
+  - add indexes only where measurements show they're needed.
 
 **Needs attention**
 

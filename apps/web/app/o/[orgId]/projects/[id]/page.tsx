@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
@@ -34,7 +34,7 @@ import {
 import { ApiError, errorMessage, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
-import { ColorDot, PriorityBadge, ProjectFields, ProjectStatusBadge, TaskDialog, TaskStatusSelect, projectPayload, projectToForm, useHoursPerDay, useOrgAction, type ProjectForm } from '@/components/workspace/shared';
+import { ColorDot, PriorityBadge, ProjectFields, ProjectStatusBadge, TaskDialog, TaskStatusSelect, clientsForProject, projectPayload, projectToForm, useHoursPerDay, useOrgAction, type ProjectForm } from '@/components/workspace/shared';
 import { BudgetDialog } from '@/components/finance/budget-dialog';
 import { ProjectDocumentsTab } from '@/components/workspace/project-documents';
 import { useMemberOptions } from '@/lib/members';
@@ -95,7 +95,7 @@ export default function ProjectDetailPage() {
           <span className="flex flex-wrap items-center gap-2">
             {p.client_name ? (
               org.can('clients:read') ? (
-                <Link href={`${org.base}/clients`} className="hover:underline">
+                <Link href={`${org.base}/projects?client=${p.client_id}`} className="hover:underline" title="This client’s projects">
                   {p.client_name}
                 </Link>
               ) : (
@@ -166,7 +166,7 @@ export default function ProjectDetailPage() {
       />
 
       <Tabs value={activeTab} onValueChange={setTab} items={items} className="mb-4" />
-      {activeTab === 'tasks' && <TasksTab project={p} tasks={tasksQ.data} loading={tasksQ.isLoading} error={tasksQ.error} workers={workersQ.data} />}
+      {activeTab === 'tasks' && <TasksTab project={p} tasks={tasksQ.data} loading={tasksQ.isLoading} error={tasksQ.error} onRetry={() => void tasksQ.refetch()} workers={workersQ.data} />}
       {activeTab === 'plan' && <PlanTab project={p} budget={budget} onEditBudget={() => setBudgetOpen(true)} onEditPlan={() => setTab('settings')} />}
       {activeTab === 'members' && <MembersTab project={p} workers={workersQ.data} teams={teamsQ.data} canManage={canManage} />}
       {activeTab === 'documents' && <ProjectDocumentsTab project={p} />}
@@ -177,7 +177,7 @@ export default function ProjectDetailPage() {
 }
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
-function TasksTab({ project, tasks, loading, error, workers }: { project: ProjectDto; tasks?: TaskDto[]; loading: boolean; error: unknown; workers?: MemberOptionDto[] }) {
+function TasksTab({ project, tasks, loading, error, onRetry, workers }: { project: ProjectDto; tasks?: TaskDto[]; loading: boolean; error: unknown; onRetry: () => void; workers?: MemberOptionDto[] }) {
   const org = useOrg();
   const run = useOrgAction();
   const toast = useToast();
@@ -275,7 +275,7 @@ function TasksTab({ project, tasks, loading, error, workers }: { project: Projec
       }
     >
       {error ? (
-        <ErrorState error={error} />
+        <ErrorState error={error} onRetry={onRetry} />
       ) : (
         <DataTable
           rows={rows}
@@ -331,10 +331,12 @@ function MembersTab({ project, workers, teams, canManage }: { project: ProjectDt
   const [memberIds, setMemberIds] = useState(project.member_ids);
   const [teamIds, setTeamIds] = useState(project.team_ids);
   const [busy, setBusy] = useState(false);
+  // Follow the saved members only while not editing: a background refresh must not undo the picks.
   useEffect(() => {
+    if (editing) return;
     setMemberIds(project.member_ids);
     setTeamIds(project.team_ids);
-  }, [project]);
+  }, [project, editing]);
 
   const workerName = (wid: string) => workers?.find((w) => w.id === wid);
   const projectTeams = project.team_ids.map((t) => teams?.find((x) => x.id === t)).filter(Boolean) as TeamDto[];
@@ -525,21 +527,30 @@ function SettingsTab({ project }: { project: ProjectDto }) {
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  useEffect(() => setF(projectToForm(project, hoursPerDay)), [project, hoursPerDay]);
+  // The form follows the saved project only while it has no unsaved changes (or right after a save):
+  // a background refresh (window focus, someone's timer updating the totals) must not wipe edits.
+  const loaded = useRef(projectToForm(project, hoursPerDay));
+  const justSaved = useRef(false);
+  useEffect(() => {
+    const next = projectToForm(project, hoursPerDay);
+    setF((cur) => (justSaved.current || JSON.stringify(cur) === JSON.stringify(loaded.current) ? next : cur));
+    loaded.current = next;
+    justSaved.current = false;
+  }, [project, hoursPerDay]);
 
-  const clients = useMemo(() => {
-    const list = clientsQ.data ?? [];
-    // Keep the current client selectable even if it is archived.
-    return project.client_id && !list.some((c) => c.id === project.client_id) ? [...list, { id: project.client_id, name: project.client_name ?? 'Current client' } as ClientDto] : list;
-  }, [clientsQ.data, project]);
+  // Keep the current client selectable even if it is archived.
+  const clients = useMemo(() => clientsForProject(clientsQ.data ?? [], project) ?? [], [clientsQ.data, project]);
 
   const save = async () => {
     setBusy(true);
     setErr(null);
     try {
+      // Before the request: the action refreshes the project before it returns.
+      justSaved.current = true;
       await run('PATCH', `/projects/${project.id}`, projectPayload(f, { hoursPerDay, initial: projectToForm(project, hoursPerDay), canManageRates: org.can('rates:manage') }));
       toast.success('Project saved');
     } catch (e) {
+      justSaved.current = false;
       if (e instanceof ApiError) setErr(e);
       toast.error(errorMessage(e));
     } finally {

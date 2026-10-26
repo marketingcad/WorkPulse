@@ -111,9 +111,15 @@ export async function listClients(x: Ctx, opts: { includeArchived?: boolean } = 
     const ids = [...x.actor.assignedProjectIds];
     visible = ids.length ? inArray(clients.id, x.tx.select({ id: projects.clientId }).from(projects).where(inArray(projects.id, ids)) as never) : sql`false`;
   }
+  // Count only the projects this person may see (the same rule as the Projects list), so the number
+  // matches what "View projects" shows and does not reveal projects they are not on.
+  const projectScope = x.actor.grants['projects:read'];
+  const assigned = [...x.actor.assignedProjectIds];
+  const countable =
+    projectScope === 'org' ? sql`` : projectScope && assigned.length ? sql` and p.id in (${sql.join(assigned.map((id) => sql`${id}::uuid`), sql`, `)})` : sql` and false`;
   const rows = await x.tx
     // The outer column is written out: inside the subquery an interpolated ${clients.id} renders as a bare "id", which binds to p.id.
-    .select({ c: clients, projectCount: sql<number>`(select count(*)::int from ${projects} p where p.client_id = "clients"."id" and p.archived_at is null)` })
+    .select({ c: clients, projectCount: sql<number>`(select count(*)::int from ${projects} p where p.client_id = "clients"."id" and p.archived_at is null${countable})` })
     .from(clients)
     .where(and(eq(clients.organizationId, x.org.id), opts.includeArchived ? undefined : isNull(clients.archivedAt), visible))
     .orderBy(asc(clients.name));

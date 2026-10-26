@@ -163,7 +163,7 @@ export default function TasksPage() {
       : []),
   ];
 
-  const filtered = !!projectId || !!status;
+  const filtered = !!projectId || !!status || !!search.term;
 
   const restore = async (t: TaskDto) => {
     try {
@@ -216,7 +216,7 @@ export default function TasksPage() {
         )}
         <Input aria-label="Search tasks" placeholder="Search tasks…" value={search.input} maxLength={100} onChange={(e) => search.setInput(e.target.value)} className="w-56" />
         {filtered && (
-          <Button variant="ghost" size="sm" onClick={() => (setProjectId(''), setStatus(''))}>
+          <Button variant="ghost" size="sm" onClick={() => (setProjectId(''), setStatus(''), search.setInput(''))}>
             Clear filters
           </Button>
         )}
@@ -235,8 +235,9 @@ export default function TasksPage() {
             caption="Tasks"
             empty={
               <EmptyState
-                title={archived ? 'No archived tasks' : search.term ? 'No tasks match your search' : mine ? 'Nothing assigned to you' : filtered ? 'No tasks match these filters' : 'No tasks yet'}
-                description={mine ? 'Turn off “Assigned to me” to see every task you can access.' : canCreate ? 'Create a task and assign it so it shows up in everyone’s timer.' : undefined}
+                // The most specific reason first: a search or filter, before "assigned to me".
+                title={archived ? 'No archived tasks' : search.term ? 'No tasks match your search' : filtered ? 'No tasks match these filters' : mine ? 'Nothing assigned to you' : 'No tasks yet'}
+                description={filtered ? 'Clear the filters to see more.' : mine ? 'Turn off “Assigned to me” to see every task you can access.' : canCreate ? 'Create a task and assign it so it shows up in everyone’s timer.' : undefined}
                 action={canCreate && !mine && !archived && <Button onClick={() => setEdit('new')}>New task</Button>}
               />
             }

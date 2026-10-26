@@ -27,8 +27,10 @@ import { memberNames } from './timer';
 import { decrypt, encrypt } from '../lib/crypto';
 
 const BANK_PURPOSE = 'bank-details';
+/** Payroll is org-wide: a payroll grant at a narrower scope (from an older custom role) gives nothing. */
+const has = (x: Ctx, p: 'payroll:read' | 'payroll:manage') => x.actor.grants[p] === 'org';
 const need = (x: Ctx, p: 'payroll:read' | 'payroll:manage') => {
-  if (!x.actor.grants[p]) throw forbidden();
+  if (!has(x, p)) throw forbidden();
 };
 
 // ─── Profiles ────────────────────────────────────────────────────────────────
@@ -113,7 +115,7 @@ export async function archivePayrollProfile(x: Ctx, id: string) {
 
 /** Bank details: the member themselves, or payroll managers. */
 function bankAccess(x: Ctx, membershipId: string) {
-  if (membershipId !== x.actor.membershipId && !x.actor.grants['payroll:manage']) throw forbidden();
+  if (membershipId !== x.actor.membershipId && !has(x, 'payroll:manage')) throw forbidden();
 }
 
 export async function getBankDetails(x: Ctx, profileId: string, membershipId: string): Promise<BankDetailsDto | null> {
@@ -455,7 +457,7 @@ export async function getPayStub(x: Ctx, lineId: string): Promise<PayStubDto> {
     .innerJoin(payrollProfiles, eq(payrollProfiles.id, payrollRuns.profileId))
     .where(eq(payrollRunLines.id, lineId));
   const own = row && row.l.membershipId === x.actor.membershipId && row.r.status !== 'DRAFT';
-  if (!row || (!own && !x.actor.grants['payroll:read'])) throw notFound('pay_stub');
+  if (!row || (!own && !has(x, 'payroll:read'))) throw notFound('pay_stub');
   const names = await memberNames(x, [row.l.membershipId]);
   return stubDto(row.l, row.r, names.get(row.l.membershipId) ?? '', row.profile);
 }

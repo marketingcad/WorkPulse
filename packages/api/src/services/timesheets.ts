@@ -873,11 +873,14 @@ export async function decideTimesheet(x: Ctx, timesheetId: string, action: 'APPR
     throw businessRule('timesheet_changed_since_submit', 'Time was added after this timesheet was submitted. Request changes so the worker can review and resubmit it.');
   }
   if (action === 'REOPEN') {
+    // Void only time no invoice or payroll holds, then check what is still live. An invoice or a payroll
+    // finalized at the same moment keeps its time live, so the reopen is refused and rolled back
+    // (before, the check came first and the void could take time a payroll had just paid).
+    await x.tx.update(billingEntries).set({ voidedAt: new Date() }).where(and(eq(billingEntries.timesheetId, ts.id), isNull(billingEntries.voidedAt), isNull(billingEntries.invoiceLineId), isNull(billingEntries.payrollLineId)));
     const [invoiced] = await x.tx.select({ id: billingEntries.id }).from(billingEntries).where(and(eq(billingEntries.timesheetId, ts.id), isNull(billingEntries.voidedAt), sql`${billingEntries.invoiceLineId} is not null`)).limit(1);
     if (invoiced) throw businessRule('timesheet_invoiced', 'This timesheet is on an invoice; void the invoice first');
     const [paid] = await x.tx.select({ id: billingEntries.id }).from(billingEntries).where(and(eq(billingEntries.timesheetId, ts.id), isNull(billingEntries.voidedAt), sql`${billingEntries.payrollLineId} is not null`)).limit(1);
     if (paid) throw businessRule('timesheet_paid', 'This time has been paid in a finalized payroll, so the timesheet can no longer be reopened. Correct it with an adjustment on the next payroll.');
-    await x.tx.update(billingEntries).set({ voidedAt: new Date() }).where(and(eq(billingEntries.timesheetId, ts.id), isNull(billingEntries.voidedAt)));
   }
   if (action === 'APPROVE') await createBillingEntries(x, ts);
   if (action === 'APPROVE' || action === 'REOPEN') await accrueForTimesheet(x.tx, x.org.id, ts, action);

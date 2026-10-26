@@ -66,6 +66,15 @@ describe('W1: narrow "manage" grants stay narrow', () => {
     expect([c.name, c.archived_at]).toEqual(['Other Co', null]);
   });
 
+  it('W14: a client’s project count includes only the projects the person can see', async () => {
+    await admin.post(o('/projects'), { name: 'Mine Co extra 1', client_id: myClient });
+    await admin.post(o('/projects'), { name: 'Mine Co extra 2', client_id: myClient });
+    const forLead = ((await lead.get(o('/clients'))).body as Array<{ id: string; project_count: number }>).find((c) => c.id === myClient)!;
+    const forAdmin = ((await admin.get(o('/clients'))).body as Array<{ id: string; project_count: number }>).find((c) => c.id === myClient)!;
+    // Before the fix both were 3, telling the lead about two projects they cannot open.
+    expect([forLead.project_count, forAdmin.project_count]).toEqual([1, 3]);
+  });
+
   it('org scope is unchanged: an admin manages every project and client', async () => {
     expect((await admin.patch(o(`/projects/${other}`), { name: 'Not mine (admin)' })).status).toBe(200);
     expect((await admin.post(o(`/projects/${other}/archive`))).status).toBe(204);

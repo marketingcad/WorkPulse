@@ -609,6 +609,18 @@ export function projectPayload(f: ProjectForm, opts: { workers?: boolean; teams?
   };
 }
 
+/**
+ * The clients a project can be given: the active ones, plus the project's current client when it is
+ * archived (so editing the project still shows it, with its currency, instead of "No client").
+ */
+export function clientsForProject(clients: ClientDto[] | undefined, project: ProjectDto | null | undefined): ClientDto[] | undefined {
+  if (!clients) return clients;
+  const active = clients.filter((c) => !c.archived_at);
+  if (!project?.client_id || active.some((c) => c.id === project.client_id)) return active;
+  const current = clients.find((c) => c.id === project.client_id);
+  return [...active, { ...(current ?? { id: project.client_id }), name: `${current?.name ?? project.client_name ?? 'Current client'} (archived)`, currency: current?.currency ?? project.currency } as ClientDto];
+}
+
 export function ProjectDialog({
   open,
   onOpenChange,
@@ -672,7 +684,7 @@ export function ProjectDialog({
         </>
       }
     >
-      <ProjectFields f={f} setF={setF} err={err} clients={clients} workers={workers} teams={teams} />
+      <ProjectFields f={f} setF={setF} err={err} clients={clientsForProject(clients, project)} workers={workers} teams={teams} />
     </Dialog>
   );
 }

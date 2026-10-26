@@ -75,6 +75,8 @@ export const projects = pgTable(
     id: pk(),
     organizationId: orgId().references(() => organizations.id, { onDelete: 'cascade' }),
     clientId: uuid(),
+    /** when the project got its current client (null: from the start). A client sees the project's work only from then on. */
+    clientSince: tstz(),
     name: text().notNull(),
     description: text(),
     color: text().notNull().default('#4B4FC4'),

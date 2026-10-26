@@ -169,6 +169,13 @@
       "when": 1792532179581,
       "tag": "0023_screenshot_cleanup",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793046751404,
+      "tag": "0024_project_client_since",
+      "breakpoints": true
     }
   ]
 }

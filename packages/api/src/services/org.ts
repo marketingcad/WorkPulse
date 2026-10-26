@@ -8,6 +8,8 @@ import {
   projects,
   rolePermissions,
   roles,
+  projectMembers,
+  taskAssignees,
   teamMembers,
   teams,
   timesheets,
@@ -363,7 +365,10 @@ export async function removeWorker(x: Ctx, membershipId: string) {
   const w = await getWorker(x, membershipId);
   if (w.is_owner) throw businessRule('owner_protected', 'Transfer ownership before removing the owner');
   await x.tx.update(memberships).set({ status: 'REMOVED', updatedAt: new Date() }).where(eq(memberships.id, membershipId));
+  // Off every team, project and task: if they are invited back, they start with only what that invitation gives.
   await x.tx.delete(teamMembers).where(eq(teamMembers.membershipId, membershipId));
+  await x.tx.delete(projectMembers).where(eq(projectMembers.membershipId, membershipId));
+  await x.tx.delete(taskAssignees).where(eq(taskAssignees.membershipId, membershipId));
   if (!w.end_date) {
     const endDate = localDate(x.deps.now(), x.org.timezone);
     await x.tx

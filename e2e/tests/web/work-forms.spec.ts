@@ -42,16 +42,19 @@ test.describe('saving a client or a task once', () => {
     await expect(page.getByRole('row', { name: new RegExp(title) })).toHaveCount(1);
   });
 
-  test('a project whose client is archived still shows that client, in the edit dialog and the filter', async ({ page, data, adminApi }) => {
+  test('an archived client is still shown for its projects, in the filter and the edit dialog', async ({ page, data, adminApi }) => {
     const clientName = `Gone ${uid()}`;
     const client = (await (await adminApi.api.post(adminApi.orgApi('/clients'), { data: { name: clientName } })).json()) as { id: string };
     const project = (await (await adminApi.api.post(adminApi.orgApi('/projects'), { data: { name: `Of ${clientName}`, client_id: client.id } })).json()) as { id: string; name: string };
+    // Archiving the client archives its projects too, and a project cannot be restored on its own.
     expect((await adminApi.api.post(adminApi.orgApi(`/clients/${client.id}/archive`))).status()).toBe(204);
+    expect((await adminApi.api.post(adminApi.orgApi(`/projects/${project.id}/restore`))).status()).toBe(422);
 
     // "View projects" on the archived client: the filter names it (it used to say "All clients").
     await page.goto(`/o/${data.orgId}/projects?client=${client.id}`);
     await expect(page.getByLabel('Filter by client').locator('option:checked')).toHaveText(`${clientName} (archived)`);
-    // Edit from the list: the client stays (it used to show "No client").
+    // Edit from the list (archived projects shown): the client stays (it used to show "No client").
+    await page.getByLabel('Include archived').check();
     await page.getByRole('button', { name: `Actions for ${project.name}` }).click();
     await page.getByRole('menuitem', { name: 'Edit' }).click();
     const dialog = page.getByRole('dialog', { name: 'Edit project' });

@@ -180,10 +180,13 @@ async function budgetSpent(tx: Tx, b: typeof budgets.$inferSelect, rates: Rate[]
     daysElapsed = Number(today.slice(8));
     daysTotal = mb.days;
   }
-  const projectIds =
-    b.subjectType === 'PROJECT' ? [b.subjectId] : (await tx.select({ id: projects.id }).from(projects).where(eq(projects.clientId, b.subjectId))).map((p) => p.id);
+  const owned = b.subjectType === 'PROJECT' ? [] : await tx.select({ id: projects.id, since: projects.clientSince }).from(projects).where(eq(projects.clientId, b.subjectId));
+  const projectIds = b.subjectType === 'PROJECT' ? [b.subjectId] : owned.map((p) => p.id);
   if (!projectIds.length) return { spent: 0, from, to, daysElapsed, daysTotal };
-  const rows = await tx
+  // A client's budget counts a project that moved to it only from the move (UTC day); before that it
+  // was another client's work.
+  const movedOn = new Map(owned.filter((p) => p.since).map((p) => [p.id, p.since!.toISOString().slice(0, 10)]));
+  const rows = (await tx
     .select()
     .from(rollupWorkerDay)
     .where(
@@ -193,7 +196,7 @@ async function budgetSpent(tx: Tx, b: typeof budgets.$inferSelect, rates: Rate[]
         to ? lte(rollupWorkerDay.localDate, to) : undefined,
         b.includeNonBillable ? undefined : eq(rollupWorkerDay.billable, true),
       ),
-    );
+    )).filter((r) => !movedOn.has(r.projectId) || r.localDate >= movedOn.get(r.projectId)!);
   let spent = 0;
   if (b.kind === 'HOURS') spent = rows.reduce((s, r) => s + r.trackedSeconds + r.manualSeconds, 0);
   else {
@@ -202,7 +205,17 @@ async function budgetSpent(tx: Tx, b: typeof budgets.$inferSelect, rates: Rate[]
     const approved = await tx
       .select({ m: billingEntries.membershipId, p: billingEntries.projectId, d: billingEntries.localDate, billable: billingEntries.billable, secs: sql<number>`sum(${billingEntries.seconds})::int`, amount: sql<number>`sum(${billingEntries.billAmountMinor})::bigint` })
       .from(billingEntries)
-      .where(and(isNull(billingEntries.voidedAt), inArray(billingEntries.projectId, projectIds), from ? gte(billingEntries.localDate, from) : undefined, to ? lte(billingEntries.localDate, to) : undefined, b.includeNonBillable ? undefined : eq(billingEntries.billable, true)))
+      .where(
+        and(
+          isNull(billingEntries.voidedAt),
+          inArray(billingEntries.projectId, projectIds),
+          // Approved time counts for the client it was billed to.
+          b.subjectType === 'CLIENT' ? eq(billingEntries.clientId, b.subjectId) : undefined,
+          from ? gte(billingEntries.localDate, from) : undefined,
+          to ? lte(billingEntries.localDate, to) : undefined,
+          b.includeNonBillable ? undefined : eq(billingEntries.billable, true),
+        ),
+      )
       .groupBy(billingEntries.membershipId, billingEntries.projectId, billingEntries.localDate, billingEntries.billable);
     const byKey = new Map(approved.map((a) => [`${a.m}|${a.p}|${a.d}|${a.billable}`, a]));
     const clientOf = new Map((await tx.select({ id: projects.id, c: projects.clientId }).from(projects).where(inArray(projects.id, projectIds))).map((p) => [p.id, p.c]));

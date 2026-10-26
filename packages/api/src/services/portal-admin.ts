@@ -6,7 +6,7 @@ import type { z } from 'zod';
 import { randomToken, sha256 } from '../lib/crypto';
 import type { Ctx } from './ctx';
 import { audit } from './events';
-import { includedProjects, portalScreenshotsTx, type PortalAccess } from './portal';
+import { includedProjects, withSince, portalScreenshotsTx, type PortalAccess } from './portal';
 import { renderEmail } from '../lib/email';
 
 const INVITE_DAYS = 7;
@@ -134,7 +134,7 @@ export async function previewAccess(x: Ctx, clientId: string): Promise<PortalAcc
   const sections = { ...DEFAULT_PORTAL_SECTIONS, ...s.sections };
   sections.activity = sections.activity && x.actor.grants['activity:read'] === 'org';
   sections.screenshots = sections.screenshots && x.actor.grants['screenshots:read'] === 'org';
-  return { accessId: null, organizationId: x.org.id, clientId, sections, projectIds: await includedProjects(x.tx, clientId, s.projectIds) };
+  return { accessId: null, organizationId: x.org.id, clientId, sections, ...(await withSince(x.tx, await includedProjects(x.tx, clientId, s.projectIds))) };
 }
 
 /** "Preview as client" screenshots: same rows the client would get, audited as the previewing admin. */

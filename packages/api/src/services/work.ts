@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   breakTypes,
@@ -92,6 +92,14 @@ export async function setTeamMember(x: Ctx, teamId: string, membershipId: string
       .onConflictDoUpdate({ target: [teamMembers.teamId, teamMembers.membershipId], set: { role } });
   }
   await audit(x, { action: role ? 'team.member_set' : 'team.member_removed', targetType: 'team', targetId: teamId, after: { membershipId, role } });
+}
+
+/** Every id must be an active member of this organization (not removed or suspended): a clear 400, not a database error. */
+async function assertActiveMembers(x: Ctx, ids: string[], field: string): Promise<void> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return;
+  const found = await x.tx.select({ id: memberships.id }).from(memberships).where(and(inArray(memberships.id, unique), eq(memberships.status, 'ACTIVE')));
+  if (found.length !== unique.length) throw validation('Only active members can be added', { errors: [{ field, message: 'Choose people who are active members' }] });
 }
 
 // ─── Clients ─────────────────────────────────────────────────────────────────
@@ -315,10 +323,13 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
     await x.tx.insert(projects).values({ id, organizationId: x.org.id, name: input.name, ...values });
   }
   if (input.member_ids) {
+    await assertActiveMembers(x, input.member_ids, 'member_ids');
     await x.tx.delete(projectMembers).where(eq(projectMembers.projectId, id));
     if (input.member_ids.length) await x.tx.insert(projectMembers).values(input.member_ids.map((m) => ({ organizationId: x.org.id, projectId: id!, membershipId: m })));
   }
   if (input.team_ids) {
+    const found = input.team_ids.length ? await x.tx.select({ id: teams.id }).from(teams).where(and(inArray(teams.id, input.team_ids), isNull(teams.archivedAt))) : [];
+    if (found.length !== new Set(input.team_ids).size) throw validation('Unknown or archived team', { errors: [{ field: 'team_ids', message: 'Choose teams that are in use' }] });
     await x.tx.delete(projectTeams).where(eq(projectTeams.projectId, id));
     if (input.team_ids.length) await x.tx.insert(projectTeams).values(input.team_ids.map((t) => ({ organizationId: x.org.id, projectId: id!, teamId: t })));
   }
@@ -357,14 +368,29 @@ export async function workerCanTrackProject(x: Pick<Ctx, 'tx'>, membershipId: st
 }
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
-type TaskQuery = { projectId?: string; status?: string; assigneeId?: string; includeArchived?: boolean; mine?: boolean; search?: string };
+type TaskQuery = {
+  projectId?: string;
+  status?: string;
+  assigneeId?: string;
+  /** also archived tasks, and tasks of archived projects */
+  includeArchived?: boolean;
+  /** only archived tasks (the "Archived" view, to restore them) */
+  archivedOnly?: boolean;
+  /** only tasks of active projects in use: what can still be tracked (the desktop app) */
+  trackableOnly?: boolean;
+  mine?: boolean;
+  search?: string;
+};
 
 /** Tasks the person may see that match the filters; `search` covers the title, description and project. */
 function taskWhere(x: Ctx, opts: TaskQuery, withStatus = true) {
   const term = opts.search ? likePattern(opts.search) : null;
   return and(
     eq(tasks.organizationId, x.org.id),
-    opts.includeArchived ? undefined : isNull(tasks.archivedAt),
+    opts.archivedOnly ? isNotNull(tasks.archivedAt) : opts.includeArchived ? undefined : isNull(tasks.archivedAt),
+    // An archived project's tasks leave the lists with it (they come back when it is restored).
+    opts.includeArchived || opts.archivedOnly ? undefined : isNull(projects.archivedAt),
+    opts.trackableOnly ? eq(projects.status, 'ACTIVE') : undefined,
     opts.projectId ? eq(tasks.projectId, opts.projectId) : undefined,
     withStatus && opts.status ? eq(tasks.status, opts.status as 'TODO') : undefined,
     opts.assigneeId || opts.mine
@@ -430,6 +456,7 @@ async function toTaskDtos(x: Ctx, rows: Array<{ t: typeof tasks.$inferSelect; pr
     tracked_seconds: tmap.get(t.id) ?? 0,
     assignee_ids: as.filter((a) => a.taskId === t.id).map((a) => a.membershipId),
     completed_at: iso(t.completedAt),
+    archived_at: iso(t.archivedAt),
     created_at: t.createdAt.toISOString(),
   }));
 }
@@ -437,12 +464,14 @@ async function toTaskDtos(x: Ctx, rows: Array<{ t: typeof tasks.$inferSelect; pr
 export async function upsertTask(x: Ctx, projectId: string, taskId: string | null, input: Partial<z.infer<typeof taskInput>> & { title?: string }) {
   const [p] = await x.tx.select().from(projects).where(eq(projects.id, projectId));
   if (!p) throw notFound('project');
+  if (p.archivedAt) throw businessRule('project_archived', 'This project is archived. Restore it to change its tasks.');
   const canManage = can(x.actor, 'tasks:manage', { projectId });
   const canCreate = canManage || can(x.actor, 'tasks:create', { projectId });
   let id = taskId;
   if (id) {
     const [existing] = await x.tx.select().from(tasks).where(eq(tasks.id, id));
     if (!existing || existing.projectId !== projectId) throw notFound('task');
+    if (existing.archivedAt) throw businessRule('task_archived', 'This task is archived. Restore it to change it.');
     const assignees = await x.tx.select().from(taskAssignees).where(eq(taskAssignees.taskId, id));
     const isAssignee = assignees.some((a) => a.membershipId === x.actor.membershipId);
     // Assignees without manage rights may only move status.
@@ -453,7 +482,7 @@ export async function upsertTask(x: Ctx, projectId: string, taskId: string | nul
     if (input.description !== undefined) patch.description = input.description;
     if (input.status !== undefined) {
       patch.status = input.status;
-      patch.completedAt = input.status === 'DONE' ? existing.completedAt ?? new Date() : null;
+      patch.completedAt = input.status === 'DONE' ? (existing.completedAt ?? x.deps.now()) : null;
     }
     if (input.priority !== undefined) patch.priority = input.priority;
     if (input.due_date !== undefined) patch.dueDate = input.due_date;
@@ -470,6 +499,8 @@ export async function upsertTask(x: Ctx, projectId: string, taskId: string | nul
       title: input.title,
       description: input.description ?? null,
       status: input.status ?? 'TODO',
+      // Created as done: it was completed now (like moving it to done later).
+      completedAt: input.status === 'DONE' ? x.deps.now() : null,
       priority: input.priority ?? 'MEDIUM',
       dueDate: input.due_date ?? null,
       estimateSeconds: input.estimate_seconds ?? null,
@@ -477,6 +508,7 @@ export async function upsertTask(x: Ctx, projectId: string, taskId: string | nul
   }
   if (input.assignee_ids) {
     if (!canManage && !canCreate) throw forbidden();
+    await assertActiveMembers(x, input.assignee_ids, 'assignee_ids');
     await x.tx.delete(taskAssignees).where(eq(taskAssignees.taskId, id));
     if (input.assignee_ids.length) await x.tx.insert(taskAssignees).values(input.assignee_ids.map((m) => ({ organizationId: x.org.id, taskId: id!, membershipId: m })));
   }
@@ -484,6 +516,17 @@ export async function upsertTask(x: Ctx, projectId: string, taskId: string | nul
   const [dto] = (await listTasks(x, { projectId, includeArchived: true })).filter((t) => t.id === id);
   if (!dto) throw notFound('task');
   return dto;
+}
+
+/** Bring an archived task back (its project must be in use). */
+export async function restoreTask(x: Ctx, taskId: string) {
+  const [t] = await x.tx.select().from(tasks).where(eq(tasks.id, taskId));
+  if (!t || !can(x.actor, 'tasks:read', { projectId: t.projectId })) throw notFound('task');
+  if (!can(x.actor, 'tasks:manage', { projectId: t.projectId })) throw forbidden();
+  const [p] = await x.tx.select({ archivedAt: projects.archivedAt }).from(projects).where(eq(projects.id, t.projectId));
+  if (p?.archivedAt) throw businessRule('project_archived', 'This task’s project is archived. Restore the project first.');
+  await x.tx.update(tasks).set({ archivedAt: null, updatedAt: new Date() }).where(eq(tasks.id, taskId));
+  await audit(x, { action: 'task.restored', targetType: 'task', targetId: taskId });
 }
 
 export async function archiveTask(x: Ctx, taskId: string) {

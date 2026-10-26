@@ -235,6 +235,8 @@ export interface TaskDto {
   tracked_seconds?: number;
   assignee_ids: string[];
   completed_at: string | null;
+  /** set when the task is archived (restore it to change it) */
+  archived_at: string | null;
   created_at: string;
 }
 

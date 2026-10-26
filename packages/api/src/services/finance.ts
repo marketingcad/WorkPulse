@@ -45,7 +45,7 @@ import type { BudgetStatusDto, ExpensePageSummary, InvoicePageSummary, OffsetPag
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
 import { audit, emit, emitFrom } from './events';
-import { narrowMemberships } from './scope';
+import { canOnClient, canOnProject, narrowMemberships } from './scope';
 import { memberNames } from './timer';
 import { priceEntries } from './pay-figures';
 import { timeTypeCoefficients } from './time-types';
@@ -458,10 +458,18 @@ export async function createExpense(x: Ctx, input: z.infer<typeof expenseInput>)
     if (!f || f.purpose !== 'RECEIPT') throw notFound('receipt');
   }
   let clientId = input.client_id ?? null;
+  // Only a project the person can see and that is still in use; the client must be the project's
+  // (a billable expense on another client would end up on that client's invoice).
   if (input.project_id) {
     const [p] = await x.tx.select().from(projects).where(eq(projects.id, input.project_id));
-    if (!p) throw notFound('project');
+    if (!p || !canOnProject(x.actor, 'projects:read', p.id)) throw notFound('project');
+    if (p.archivedAt) throw validation('This project is archived', { errors: [{ field: 'project_id', message: 'Choose a project that is in use' }] });
+    if (clientId && clientId !== p.clientId) throw validation('The client must be the project’s client', { errors: [{ field: 'client_id', message: 'Leave it empty to use the project’s client' }] });
     clientId ??= p.clientId;
+  } else if (clientId) {
+    const [c] = await x.tx.select({ id: clients.id, archivedAt: clients.archivedAt }).from(clients).where(eq(clients.id, clientId));
+    if (!c || !(await canOnClient(x, 'clients:read', c.id))) throw notFound('client');
+    if (c.archivedAt) throw validation('This client is archived', { errors: [{ field: 'client_id', message: 'Choose a client that is in use' }] });
   }
   const id = newId();
   await x.tx.insert(expenses).values({

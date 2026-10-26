@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Archive, MoreHorizontal, Pencil, Plus } from 'lucide-react';
+import { Archive, MoreHorizontal, Pencil, Plus, RotateCcw } from 'lucide-react';
 import type { OffsetPage, ProjectDto, TaskDto } from '@tallywork/contracts';
 import {
   Avatar,
@@ -40,13 +40,15 @@ export default function TasksPage() {
   const [projectId, setProjectId] = useState('');
   const [status, setStatus] = useState('');
   const [mine, setMine] = useState(!org.isManagerView);
+  // Archived tasks, to bring one back (people who manage tasks).
+  const [archived, setArchived] = useState(false);
   const [edit, setEdit] = useState<TaskDto | 'new' | null>(null);
   const [del, setDel] = useState<TaskDto | null>(null);
   const [busy, setBusy] = useState(false);
 
   const search = useSearch();
   // The server filters, searches and pages every task (the plain list stops at 2000).
-  const filters = { project_id: projectId || undefined, status: status || undefined, mine: mine || undefined, q: search.term || undefined };
+  const filters = { project_id: projectId || undefined, status: status || undefined, mine: mine || undefined, archived: archived || undefined, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
   const q = useOrgQuery<OffsetPage<TaskDto> & { summary: { counts: Record<string, number> } }>(org.can('tasks:read') ? `/tasks${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
   useClampPage(paging, q.data, q.isPlaceholderData);
@@ -73,7 +75,8 @@ export default function TasksPage() {
         </Link>
       ),
     },
-    { key: 'status', header: 'Status', priority: 'secondary', value: (t) => t.status, cell: (t) => <TaskStatusSelect task={t} canManage={canManage} /> },
+    // An archived task can't change until it is restored.
+    { key: 'status', header: 'Status', priority: 'secondary', value: (t) => t.status, cell: (t) => <TaskStatusSelect task={t} canManage={canManage && !t.archived_at} /> },
     { key: 'priority', header: 'Priority', value: (t) => ['LOW', 'MEDIUM', 'HIGH', 'URGENT'].indexOf(t.priority), cell: (t) => <PriorityBadge priority={t.priority} /> },
     {
       key: 'assignees',
@@ -138,12 +141,20 @@ export default function TasksPage() {
                     </IconButton>
                   }
                 >
-                  <MenuItem icon={<Pencil className="size-3.5" />} onSelect={() => setEdit(t)}>
-                    Edit
-                  </MenuItem>
-                  <MenuItem icon={<Archive className="size-3.5" />} onSelect={() => setDel(t)}>
-                    Archive
-                  </MenuItem>
+                  {t.archived_at ? (
+                    <MenuItem icon={<RotateCcw className="size-3.5" />} onSelect={() => void restore(t)}>
+                      Restore
+                    </MenuItem>
+                  ) : (
+                    <>
+                      <MenuItem icon={<Pencil className="size-3.5" />} onSelect={() => setEdit(t)}>
+                        Edit
+                      </MenuItem>
+                      <MenuItem icon={<Archive className="size-3.5" />} onSelect={() => setDel(t)}>
+                        Archive
+                      </MenuItem>
+                    </>
+                  )}
                 </Menu>
               </span>
             ),
@@ -153,6 +164,15 @@ export default function TasksPage() {
   ];
 
   const filtered = !!projectId || !!status;
+
+  const restore = async (t: TaskDto) => {
+    try {
+      await run('POST', `/tasks/${t.id}/restore`);
+      toast.success('Task restored');
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
 
   return (
     <>
@@ -188,8 +208,13 @@ export default function TasksPage() {
         </Select>
         <div className="rounded-sm border border-border bg-surface px-3 py-1">
           <Switch checked={mine} onCheckedChange={setMine} label="Assigned to me" />
-        <Input aria-label="Search tasks" placeholder="Search tasks…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-56" />
         </div>
+        {canManage && (
+          <div className="rounded-sm border border-border bg-surface px-3 py-1">
+            <Switch checked={archived} onCheckedChange={setArchived} label="Archived" />
+          </div>
+        )}
+        <Input aria-label="Search tasks" placeholder="Search tasks…" value={search.input} maxLength={100} onChange={(e) => search.setInput(e.target.value)} className="w-56" />
         {filtered && (
           <Button variant="ghost" size="sm" onClick={() => (setProjectId(''), setStatus(''))}>
             Clear filters
@@ -205,14 +230,14 @@ export default function TasksPage() {
             loading={q.isLoading}
             columns={columns.map((c) => ({ ...c, sortable: false }))}
             rowKey={(t) => t.id}
-            onRowClick={canManage ? (t) => setEdit(t) : undefined}
+            onRowClick={canManage && !archived ? (t) => setEdit(t) : undefined}
             pagination={paging.pagination(q.data)}
             caption="Tasks"
             empty={
               <EmptyState
-                title={search.term ? 'No tasks match your search' : mine ? 'Nothing assigned to you' : filtered ? 'No tasks match these filters' : 'No tasks yet'}
+                title={archived ? 'No archived tasks' : search.term ? 'No tasks match your search' : mine ? 'Nothing assigned to you' : filtered ? 'No tasks match these filters' : 'No tasks yet'}
                 description={mine ? 'Turn off “Assigned to me” to see every task you can access.' : canCreate ? 'Create a task and assign it so it shows up in everyone’s timer.' : undefined}
-                action={canCreate && !mine && <Button onClick={() => setEdit('new')}>New task</Button>}
+                action={canCreate && !mine && !archived && <Button onClick={() => setEdit('new')}>New task</Button>}
               />
             }
           />
@@ -224,7 +249,7 @@ export default function TasksPage() {
         open={!!del}
         onOpenChange={(o) => !o && setDel(null)}
         title="Archive task?"
-        description={del && `“${del.title}” is removed from lists and timers. Time already tracked to it is kept.`}
+        description={del && `“${del.title}” is removed from lists and timers. Time already tracked to it is kept, and you can restore it from Archived.`}
         confirmLabel="Archive task"
         danger
         loading={busy}

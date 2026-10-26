@@ -9,6 +9,15 @@ import { ok, uid, usd } from '../../support/fixtures';
  * main process fetching a pay stub PDF and writing it where the person chose.
  */
 
+/**
+ * A screenshot for the report. Best effort: it waits for the window's fonts, which can stall on a CI
+ * machine, and a missing picture must not fail a test whose checks passed.
+ */
+async function attachScreen(window: Page, name: string) {
+  const body = await window.screenshot({ timeout: 10_000 }).catch(() => null);
+  if (body) await test.info().attach(name, { body, contentType: 'image/png' });
+}
+
 /** Replace the native Save dialog (and "open the file") in the main process; returns what was asked. */
 async function stubSaveDialog(app: ElectronApplication, answer: { canceled: boolean; filePath?: string }) {
   await app.evaluate(({ dialog, shell }, a) => {
@@ -35,7 +44,7 @@ test('a worker signs in with email and password and reaches Home', { tag: '@smok
   await signIn(window, data.worker.email);
   await expect(window.getByLabel('Timer')).toBeVisible();
   await expect(window.getByRole('button', { name: 'Profile' })).toContainText(data.worker.name);
-  await test.info().attach('home', { body: await window.screenshot(), contentType: 'image/png' });
+  await attachScreen(window, 'home');
 });
 
 test('downloads a pay stub through the main process to where the worker chose', { tag: '@smoke' }, async ({ desktopApp, data }) => {
@@ -56,7 +65,7 @@ test('downloads a pay stub through the main process to where the worker chose', 
   expect(asked!.filters[0]!.extensions).toEqual(['pdf']);
   await expect.poll(() => save.opened()).toEqual([target]);
   await expect(window.getByText('Could not download the pay stub')).toHaveCount(0);
-  await test.info().attach('pay-stubs', { body: await window.screenshot(), contentType: 'image/png' });
+  await attachScreen(window, 'pay-stubs');
 });
 
 test('cancelling the Save dialog writes nothing and shows no error', async ({ desktopApp, data }) => {
@@ -136,7 +145,7 @@ test('a running timer stops on the desktop when an admin force-stops it', { tag:
 
   await expect(timer.getByText('Not clocked in', { exact: true })).toBeVisible({ timeout: 120_000 });
   await expect(timer.getByRole('button', { name: 'Clock in' })).toBeVisible();
-  await test.info().attach('force-stopped', { body: await window.screenshot(), contentType: 'image/png' });
+  await attachScreen(window, 'force-stopped');
   // The app does not restart it: the server still has no session for the worker.
   const after = await ok<Array<{ membership_id: string; session_id: string | null }>>(await api.get(orgApi('/tracking/live')), 'live');
   expect(after.find((w) => w.membership_id === data.worker.membershipId)?.session_id ?? null).toBeNull();
@@ -225,7 +234,7 @@ test('a worker clocks in, takes the project’s planned breaks and clocks out wi
   await expect(timer.getByText(`On break · Lunch ${run}`, { exact: true })).toBeVisible();
   await expect(timer.getByLabel('Break time')).toContainText('left of 60m');
   await expect(breaks).toBeHidden();
-  await test.info().attach('on-lunch', { body: await window.screenshot(), contentType: 'image/png' });
+  await attachScreen(window, 'on-lunch');
   await timer.getByRole('button', { name: 'Clock back in' }).click();
   await expect(timer.getByText('Clocked in', { exact: true })).toBeVisible();
 

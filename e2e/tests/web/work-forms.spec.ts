@@ -23,6 +23,25 @@ test.describe('saving a client or a task once', () => {
     expect(clients.filter((c) => c.name === name)).toHaveLength(1);
   });
 
+  test('an archived task is found under "Archived" and restored', async ({ page, data, adminApi }) => {
+    const project = (await (await adminApi.api.post(adminApi.orgApi('/projects'), { data: { name: `Restore ${data.run} ${uid()}` } })).json()) as { id: string; name: string };
+    const title = `Bring back ${uid()}`;
+    const task = (await (await adminApi.api.post(adminApi.orgApi(`/projects/${project.id}/tasks`), { data: { title } })).json()) as { id: string };
+    expect((await adminApi.api.delete(adminApi.orgApi(`/tasks/${task.id}`))).status()).toBe(204);
+
+    await page.goto(`/o/${data.orgId}/tasks`);
+    await page.getByLabel('Search tasks').fill(title);
+    await expect(page.getByText('No tasks match your search')).toBeVisible(); // archived: not in the normal list
+    await page.getByRole('switch', { name: 'Archived' }).click();
+    const row = page.getByRole('row', { name: new RegExp(title) });
+    await expect(row).toHaveCount(1);
+    await row.getByRole('button', { name: `Actions for ${title}` }).click();
+    await page.getByRole('menuitem', { name: 'Restore' }).click();
+    await expect(page.getByText('Task restored')).toBeVisible();
+    await page.getByRole('switch', { name: 'Archived' }).click();
+    await expect(page.getByRole('row', { name: new RegExp(title) })).toHaveCount(1);
+  });
+
   test('Enter pressed twice creates one task, not two', async ({ page, data, adminApi }) => {
     const title = `Double task ${uid()}`;
     // Its own project: tasks on the shared projects would change what other specs (and the desktop app) see.

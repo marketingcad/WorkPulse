@@ -574,7 +574,9 @@ export async function heartbeat(a: AgentCtx, input: { sessionId?: string | null;
     })
     .where(eq(devices.id, a.deviceId));
   let live = await liveSession(a.tx, a.membershipId);
-  if (live && live.deviceId === a.deviceId) {
+  // Only a session this device still runs: one it no longer knows (lost local state) must not be kept
+  // alive or revived by its heartbeats, or it would count hours nobody worked.
+  if (live && live.deviceId === a.deviceId && input.sessionId === live.id) {
     if (live.state === 'INTERRUPTED') live = await recoverFromServerInterrupt(a, live, now);
     await a.tx.update(trackingSessions).set({ lastHeartbeatAt: now }).where(eq(trackingSessions.id, live.id));
   }

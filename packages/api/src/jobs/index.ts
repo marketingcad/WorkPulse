@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
 import {
   activityMinutes,
   appSpans,
@@ -13,13 +13,14 @@ import {
   retentionPolicies,
   screenshots,
   timeSegments,
+  timesheets,
   trackingSessions,
   urlSpans,
   withSystem,
   withTenant,
   type Tx,
 } from '@tallywork/db';
-import { addDaysToDate, localDate, type TrackingPolicy } from '@tallywork/domain';
+import { addDaysToDate, localDate, splitAtLocalMidnight, type TrackingPolicy } from '@tallywork/domain';
 import type { Deps } from '../context';
 import { auditSystem, emit } from '../services/events';
 import { sendDigests } from '../services/digest';
@@ -36,6 +37,7 @@ import { deliverWebhooks, enqueueWebhooks } from '../services/platform';
 import { reconcileWorkerDays, recomputeUsageDays, recomputeWorkerDays } from '../services/projector';
 import { applyTrigger, limitExceeded, lockWorker, resolveIdle } from '../services/tracking';
 import { memberNames } from '../services/timer';
+import { idleEndEvidence } from '../services/activity';
 
 const MAX_ATTEMPTS = 10;
 const SYSTEM = { type: 'system' as const, id: null };
@@ -219,16 +221,7 @@ export async function sweepSessions(deps: Deps): Promise<Record<string, number>>
         }
         return;
       }
-      // Idle prompts never answered → apply the default resolution.
-      const pending = await tx.select().from(idleEvents).where(and(eq(idleEvents.sessionId, s.id), eq(idleEvents.resolution, 'PENDING')));
-      for (const ev of pending) {
-        const ageMs = now.getTime() - (ev.endedAt ?? ev.startedAt).getTime();
-        if (ev.endedAt && ageMs > policy.idle.confirmationTimeoutMinutes * 60_000) {
-          await resolveIdle(tx, { organizationId: s.organizationId, idleId: ev.id, sessionId: s.id, startedAt: ev.startedAt, endedAt: ev.endedAt, resolution: policy.idle.defaultResolution === 'discard' ? 'DISCARDED' : 'KEPT', actor: SYSTEM, resolvedBy: null });
-          stats.idle_defaulted++;
-        }
-      }
-      const [org] = await tx.select().from(organizations).where(eq(organizations.id, s.organizationId));
+      const [org]= await tx.select().from(organizations).where(eq(organizations.id, s.organizationId));
       const hit = s.state === 'ACTIVE' ? await limitExceeded(tx, s.membershipId, s.timezone, policy, now, org?.weekStart ?? 1) : null;
       if (hit) {
         // Stop at the moment the limit was reached, not when this sweep ran.
@@ -241,7 +234,54 @@ export async function sweepSessions(deps: Deps): Promise<Record<string, number>>
       }
     });
   }
+  stats.idle_defaulted = await applyIdleDefaults(deps);
   return stats;
+}
+
+/**
+ * Idle periods recorded from this date on get the organization's default resolution when nobody
+ * answers in time. Older unanswered ones are left for a manager, so deploying this changes no past time.
+ */
+export const IDLE_DEFAULTS_FROM = new Date('2026-10-28T00:00:00Z');
+
+/**
+ * Unanswered idle → the policy's default resolution, once the worker has been back (or the session
+ * ended) for longer than the confirmation timeout. Skipped while the idle period is still going, while
+ * a pause-on-idle segment is open, and when the time is in a submitted or approved timesheet.
+ */
+export async function applyIdleDefaults(deps: Deps, from: Date = IDLE_DEFAULTS_FROM): Promise<number> {
+  const now = deps.now();
+  const pending = await withSystem(deps.db, (tx) =>
+    tx
+      .select({ id: idleEvents.id, org: idleEvents.organizationId, m: idleEvents.membershipId, sessionId: idleEvents.sessionId, startedAt: idleEvents.startedAt })
+      .from(idleEvents)
+      .where(and(eq(idleEvents.resolution, 'PENDING'), sql`${idleEvents.createdAt} >= ${from}`)),
+  );
+  let done = 0;
+  for (const ev of pending) {
+    await withTenant(deps.db, ev.org, async (tx) => {
+      const [s] = await tx.select().from(trackingSessions).where(eq(trackingSessions.id, ev.sessionId));
+      if (!s) return;
+      const [openIdle] = await tx.select({ id: timeSegments.id }).from(timeSegments).where(and(eq(timeSegments.sessionId, s.id), isNull(timeSegments.endedAt), eq(timeSegments.kind, 'IDLE')));
+      if (openIdle) return;
+      const end = await idleEndEvidence(tx, ev);
+      if (!end) return; // still idle: no input since, and the session is still going
+      const policy: TrackingPolicy = await effectivePolicy(tx, s.organizationId, s.membershipId);
+      if (now.getTime() - end.getTime() <= policy.idle.confirmationTimeoutMinutes * 60_000) return;
+      const dates = splitAtLocalMidnight({ start: ev.startedAt, end: end > ev.startedAt ? end : ev.startedAt }, s.timezone).map((p) => p.localDate);
+      const [closed] = dates.length
+        ? await tx
+            .select({ id: timesheets.id })
+            .from(timesheets)
+            .where(and(eq(timesheets.membershipId, s.membershipId), inArray(timesheets.status, ['SUBMITTED', 'APPROVED']), lte(timesheets.periodStart, dates[dates.length - 1]!), gte(timesheets.periodEnd, dates[0]!)))
+            .limit(1)
+        : [];
+      if (closed) return; // a manager resolves it; submitted or approved time is never changed by the system
+      await resolveIdle(tx, { organizationId: s.organizationId, idleId: ev.id, sessionId: s.id, startedAt: ev.startedAt, endedAt: end, resolution: policy.idle.defaultResolution === 'discard' ? 'DISCARDED' : 'KEPT', actor: SYSTEM, resolvedBy: null });
+      done++;
+    });
+  }
+  return done;
 }
 
 export async function markDevicesOffline(deps: Deps): Promise<number> {

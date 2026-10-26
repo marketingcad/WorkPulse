@@ -14,7 +14,7 @@ import {
   urlSpans,
   type Tx,
 } from '@tallywork/db';
-import { addDaysToDate, businessRule, can, forbidden, notFound, startOfLocalDay, windowStartOf } from '@tallywork/domain';
+import { addDaysToDate, businessRule, can, forbidden, notFound, splitAtLocalMidnight, startOfLocalDay, windowStartOf } from '@tallywork/domain';
 import type { ActivityBlockDto, ActivityDayDto, UsageRowDto } from '@tallywork/contracts';
 import { actorRef, type Ctx } from './ctx';
 import { audit, emitFrom } from './events';
@@ -23,6 +23,7 @@ import { narrowMemberships } from './scope';
 import { removeInterval, resolveIdle, workerTimezone } from './tracking';
 import { signToken } from '../lib/crypto';
 import { memberNames } from './timer';
+import { assertNotAgeLocked, assertPeriodsOpen } from './timesheets';
 
 const MEDIA_TTL_SECONDS = 15 * 60;
 
@@ -296,6 +297,11 @@ export async function listIdleEvents(x: Ctx, q: { from: string; to: string; memb
  * (or now while it still runs). Never "now" by default: that would treat later work as idle.
  */
 export async function idleEndFromActivity(tx: Tx, ev: { sessionId: string; startedAt: Date }, now: Date): Promise<Date> {
+  return (await idleEndEvidence(tx, ev)) ?? now;
+}
+
+/** The evidence-based end of an idle period, or null while it may still be going (no input since, session running). */
+export async function idleEndEvidence(tx: Tx, ev: { sessionId: string; startedAt: Date }): Promise<Date | null> {
   const [back] = await tx
     .select({ at: activityMinutes.minuteStart })
     .from(activityMinutes)
@@ -304,7 +310,7 @@ export async function idleEndFromActivity(tx: Tx, ev: { sessionId: string; start
     .limit(1);
   if (back) return back.at;
   const [s] = await tx.select({ endedAt: trackingSessions.endedAt }).from(trackingSessions).where(eq(trackingSessions.id, ev.sessionId));
-  return s?.endedAt ?? now;
+  return s?.endedAt ?? null;
 }
 
 /** Manager/worker resolution of a pending idle event (e.g. worker never answered the prompt). */
@@ -314,13 +320,21 @@ export async function resolveIdleByUser(x: Ctx, id: string, input: { resolution:
   const own = ev.membershipId === x.actor.membershipId;
   if (!own && !can(x.actor, 'time:edit', { ownerMembershipId: ev.membershipId })) throw forbidden();
   if (ev.resolution !== 'PENDING') throw businessRule('already_resolved', 'This idle time was already resolved');
+  const endedAt = ev.endedAt ?? (await idleEndFromActivity(x.tx, ev, x.deps.now()));
+  // Resolving changes time on these days: the same age and timesheet locks as any other edit.
+  const [s] = await x.tx.select({ timezone: trackingSessions.timezone }).from(trackingSessions).where(eq(trackingSessions.id, ev.sessionId));
+  const dates = splitAtLocalMidnight({ start: ev.startedAt, end: endedAt > ev.startedAt ? endedAt : ev.startedAt }, s?.timezone ?? x.org.timezone).map((p) => p.localDate);
+  if (dates.length) {
+    await assertNotAgeLocked(x, ev.membershipId, dates);
+    await assertPeriodsOpen(x, ev.membershipId, dates);
+  }
   const a = actorRef(x);
   await resolveIdle(x.tx, {
     organizationId: x.org.id,
     idleId: id,
     sessionId: ev.sessionId,
     startedAt: ev.startedAt,
-    endedAt: ev.endedAt ?? (await idleEndFromActivity(x.tx, ev, x.deps.now())),
+    endedAt,
     resolution: input.resolution,
     projectId: input.projectId ?? null,
     taskId: input.taskId ?? null,

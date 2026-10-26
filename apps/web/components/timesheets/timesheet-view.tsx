@@ -79,7 +79,8 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
 
   const exportCsv = () => {
     if (!ts || !entriesQ.data) return;
-    const hours = (s: number) => Math.round((s / 3600) * 100) / 100;
+    // 4 decimals: summed rows stay within 0.0001 h each of the total shown (2 decimals drifted by up to 0.005 h a row).
+    const hours = (s: number) => Math.round((s / 3600) * 10000) / 10000;
     const hm = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
     const rows = [...entriesQ.data]
       .sort((a, b) => a.started_at.localeCompare(b.started_at))

@@ -80,6 +80,10 @@ export async function upsertSchedule(x: Ctx, id: string | null, input: z.infer<t
   const values = { membershipId: input.membership_id, name: input.name, timezone: input.timezone, days: input.days, effectiveFrom: input.effective_from, effectiveTo: input.effective_to ?? null };
   let sid = id;
   if (sid) {
+    // The schedule's current owner must be someone this actor manages too, not only the new one.
+    const [current] = await x.tx.select({ membershipId: workSchedules.membershipId }).from(workSchedules).where(eq(workSchedules.id, sid));
+    if (!current) throw notFound('schedule');
+    if (!can(x.actor, 'schedules:manage', { ownerMembershipId: current.membershipId })) throw forbidden();
     const r = await x.tx.update(workSchedules).set({ ...values, updatedAt: new Date() }).where(eq(workSchedules.id, sid)).returning({ id: workSchedules.id });
     if (!r.length) throw notFound('schedule');
   } else {
@@ -164,13 +168,19 @@ export interface AttendanceRow {
   overtime_seconds: number;
 }
 
+/** Time that starts this close to a scheduled day's shifts counts for that day (early starts, late finishes). */
+const SHIFT_MATCH_MARGIN_MS = 4 * 3600_000;
+
 export async function computeAttendance(tx: Tx, orgId: string, lateGraceMinutes: number, membershipIds: string[], from: string, to: string, now: Date): Promise<Omit<AttendanceRow, 'worker_name'>[]> {
   if (!membershipIds.length) return [];
-  const shiftList = await computeShifts(tx, membershipIds, from, to);
+  // One day either side: a shift's date (schedule timezone) and the worker's local date can differ by a day.
+  const wideFrom = addDaysToDate(from, -1);
+  const wideTo = addDaysToDate(to, 1);
+  const shiftList = await computeShifts(tx, membershipIds, wideFrom, wideTo);
   const entries = await tx
     .select({ m: timeEntries.membershipId, d: timeEntries.localDate, s: timeEntries.startedAt, e: timeEntries.endedAt, dur: timeEntries.durationSeconds })
     .from(timeEntries)
-    .where(and(inArray(timeEntries.membershipId, membershipIds), isNull(timeEntries.deletedAt), gte(timeEntries.localDate, from), lte(timeEntries.localDate, to)));
+    .where(and(inArray(timeEntries.membershipId, membershipIds), isNull(timeEntries.deletedAt), gte(timeEntries.localDate, wideFrom), lte(timeEntries.localDate, wideTo)));
   const leave = await tx
     .select()
     .from(timeOffRequests)
@@ -185,14 +195,30 @@ export async function computeAttendance(tx: Tx, orgId: string, lateGraceMinutes:
   for (const r of running) {
     if (now <= r.start) continue;
     for (const pc of splitAtLocalMidnight({ start: r.start, end: now }, r.tz)) {
-      if (pc.localDate >= from && pc.localDate <= to) entries.push({ m: r.m, d: pc.localDate, s: pc.start, e: pc.end, dur: Math.round((pc.end.getTime() - pc.start.getTime()) / 1000) });
+      if (pc.localDate >= wideFrom && pc.localDate <= wideTo) entries.push({ m: r.m, d: pc.localDate, s: pc.start, e: pc.end, dur: Math.round((pc.end.getTime() - pc.start.getTime()) / 1000) });
     }
   }
   const out: Omit<AttendanceRow, 'worker_name'>[] = [];
   for (const m of membershipIds) {
+    // Match time to shifts by the moment it happened, not by date: a schedule in another timezone, or a
+    // night shift, puts a shift and the time worked for it on different local dates.
+    const myShifts = shiftList.filter((s) => s.membership_id === m).map((s) => ({ date: s.date, start: Date.parse(s.starts_at), end: Date.parse(s.ends_at) }));
+    const dayOf = (e: (typeof entries)[number]) => {
+      const t = e.s.getTime();
+      // Inside a shift: that shift's day. Otherwise the nearest shift within the margin (an early start, a
+      // late finish). Otherwise the worker's own local date.
+      const inside = myShifts.find((s) => t >= s.start && t < s.end);
+      if (inside) return inside.date;
+      const near = myShifts
+        .map((s) => ({ date: s.date, gap: t < s.start ? s.start - t : t - s.end }))
+        .filter((s) => s.gap <= SHIFT_MATCH_MARGIN_MS)
+        .sort((a, b) => a.gap - b.gap)[0];
+      return near?.date ?? e.d;
+    };
+    const mine = entries.filter((e) => e.m === m).map((e) => ({ ...e, day: dayOf(e) }));
     for (const date of eachDate(from, to)) {
       const dayShifts = shiftList.filter((s) => s.membership_id === m && s.date === date);
-      const dayEntries = entries.filter((e) => e.m === m && e.d === date);
+      const dayEntries = mine.filter((e) => e.day === date);
       const scheduledStart = dayShifts.length ? new Date(Math.min(...dayShifts.map((s) => Date.parse(s.starts_at)))) : null;
       const scheduledEnd = dayShifts.length ? new Date(Math.max(...dayShifts.map((s) => Date.parse(s.ends_at)))) : null;
       const firstIn = dayEntries.length ? new Date(Math.min(...dayEntries.map((e) => e.s.getTime()))) : null;

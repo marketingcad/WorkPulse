@@ -42,6 +42,7 @@ import {
 } from '../services/org';
 import {
   archiveTask,
+  restoreTask,
   archiveTeam,
   getProject,
   listClients,
@@ -224,8 +225,8 @@ export const orgRoutes = new Hono<AppEnv>()
   .post('/projects/:id/tasks', async (c) => c.json(await upsertTask(ctx(c), c.req.param('id'), null, await body(c, taskInput)), 201))
   .get('/tasks', async (c) => {
     // Sending `page` returns { data, total, page, page_size, summary }; without it, the same array as before.
-    const q = query(c, pageQuery.extend({ project_id: z.uuid().optional(), status: z.enum(['TODO', 'IN_PROGRESS', 'DONE']).optional(), assignee_id: z.uuid().optional(), mine: bool }));
-    const filters = { projectId: q.project_id, status: q.status, assigneeId: q.assignee_id, mine: q.mine, search: q.q };
+    const q = query(c, pageQuery.extend({ project_id: z.uuid().optional(), status: z.enum(['TODO', 'IN_PROGRESS', 'DONE']).optional(), assignee_id: z.uuid().optional(), mine: bool, archived: bool }));
+    const filters = { projectId: q.project_id, status: q.status, assigneeId: q.assignee_id, mine: q.mine, search: q.q, archivedOnly: q.archived };
     return c.json(q.page ? await pageTasks(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listTasks(ctx(c), filters));
   })
   .patch('/tasks/:id', async (c) => {
@@ -235,6 +236,10 @@ export const orgRoutes = new Hono<AppEnv>()
   })
   .delete('/tasks/:id', async (c) => {
     await archiveTask(ctx(c), c.req.param('id'));
+    return c.body(null, 204);
+  })
+  .post('/tasks/:id/restore', async (c) => {
+    await restoreTask(ctx(c), c.req.param('id'));
     return c.body(null, 204);
   })
   .get('/me/assignments', async (c) => c.json(await myAssignments(ctx(c))))

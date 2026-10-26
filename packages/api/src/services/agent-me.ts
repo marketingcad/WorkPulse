@@ -91,7 +91,8 @@ export async function myNotifications(a: AgentCtx) {
 export async function myTasks(a: AgentCtx) {
   const x = await ownCtx(a);
   need(x, 'tasks:read');
-  return listTasks(x, { mine: true });
+  // Only tasks the app can still track to (an archived or on-hold project's tasks are refused when tracking).
+  return listTasks(x, { mine: true, trackableOnly: true });
 }
 
 /** Own activity for a day: 10-minute blocks, apps and websites. Screenshots are always stripped. */

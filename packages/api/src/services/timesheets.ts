@@ -23,6 +23,7 @@ import {
   addDaysToDate,
   amountForSeconds,
   businessRule,
+  DomainError,
   can,
   eachDate,
   forbidden,
@@ -640,6 +641,12 @@ export async function decideManualTime(x: Ctx, id: string, approve: boolean, com
   const status = approve ? 'APPROVED' : 'REJECTED';
   const [updated] = await x.tx.update(manualTimeRequests).set({ status, decidedBy: x.actor.membershipId, decidedAt: new Date(), decisionComment: comment }).where(eq(manualTimeRequests.id, id)).returning();
   if (approve) {
+    // Checked again now: since the request, the project or task may have been archived or put on
+    // hold, or the person taken off the project. Rejecting the request is still possible.
+    await validateTrackTarget(x.tx, r.membershipId, r.projectId, r.taskId).catch((e: unknown) => {
+      if (!(e instanceof DomainError)) throw e;
+      throw businessRule('manual_time_target_unavailable', 'This time can no longer be added: the project or task was archived or is not active, or the person is no longer on the project. Reject the request instead.');
+    });
     await assertNoOverlap(x.tx, r.membershipId, r.startedAt, r.endedAt, []);
     const tz = await workerTimezone(x.tx, r.membershipId, x.org.timezone);
     await assertPeriodsOpen(x, r.membershipId, splitAtLocalMidnight({ start: r.startedAt, end: r.endedAt }, tz).map((pc) => pc.localDate));

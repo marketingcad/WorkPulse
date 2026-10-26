@@ -16,9 +16,11 @@ import {
   mfaFactors,
   notificationPreferences,
   notifications,
+  projectMembers,
   reportRuns,
   roles,
   screenshots,
+  taskAssignees,
   teamMembers,
   timeEntries,
   timeOffLedger,
@@ -125,6 +127,8 @@ export async function anonymizeMember(x: Ctx, membershipId: string) {
   await x.tx.update(workerProfiles).set({ title: null, updatedAt: new Date() }).where(eq(workerProfiles.membershipId, membershipId));
   await x.tx.delete(memberDetails).where(eq(memberDetails.membershipId, membershipId));
   await x.tx.delete(teamMembers).where(eq(teamMembers.membershipId, membershipId));
+  await x.tx.delete(projectMembers).where(eq(projectMembers.membershipId, membershipId));
+  await x.tx.delete(taskAssignees).where(eq(taskAssignees.membershipId, membershipId));
   await x.tx.update(memberships).set({ status: 'REMOVED', updatedAt: new Date() }).where(eq(memberships.id, membershipId));
   await x.tx.update(apiKeys).set({ revokedAt: new Date() }).where(and(eq(apiKeys.createdBy, m.userId), eq(apiKeys.organizationId, x.org.id), isNull(apiKeys.revokedAt)));
   const scrub = await x.tx.execute<{ n: number }>(sql`select tallywork_scrub_audit_actor(${membershipId}::uuid) as n`);

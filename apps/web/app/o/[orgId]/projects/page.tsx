@@ -54,7 +54,9 @@ function Projects() {
   const toast = useToast();
 
   const q = useOrgQuery<ProjectDto[]>(org.can('projects:read') ? `/projects${qs({ include_archived: archived || undefined, client_id: clientId || undefined })}` : null);
-  const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients' : null);
+  // Archived clients too: the filter must show them ("View projects" on an archived client), and a
+  // project's archived client stays visible when it is edited. Only active clients can be picked.
+  const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients?include_archived=true' : null);
   const budgetsQ = useOrgQuery<BudgetStatusDto[]>(org.can('budgets:read') ? '/budgets' : null);
   const workersQ = useMemberOptions(canManage && org.can('members:read'));
   const teamsQ = useOrgQuery<TeamDto[]>(canManage && org.can('teams:read') ? '/teams' : null);
@@ -197,11 +199,13 @@ function Projects() {
         {clientsQ.data && (
           <Select aria-label="Filter by client" value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-48">
             <option value="">All clients</option>
-            {clientsQ.data.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
+            {clientsQ.data
+              .filter((c) => !c.archived_at || c.id === clientId)
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.archived_at ? `${c.name} (archived)` : c.name}
+                </option>
+              ))}
           </Select>
         )}
         <Checkbox label="Include archived" checked={archived} onChange={(e) => setArchived(e.target.checked)} />

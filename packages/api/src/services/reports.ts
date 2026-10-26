@@ -381,27 +381,32 @@ async function billingReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
         gte(billingEntries.localDate, p.from),
         lte(billingEntries.localDate, p.to),
         inOrAll(billingEntries.membershipId, members),
-        projectIds ? inArray(billingEntries.projectId, projectIds.length ? projectIds : ['00000000-0000-7000-8000-000000000000']) : undefined,
+        // Approved time belongs to the client it was billed to, even if its project has moved since.
+        p.project_ids?.length ? inArray(billingEntries.projectId, p.project_ids) : undefined,
+        p.client_ids?.length ? inArray(billingEntries.clientId, p.client_ids) : undefined,
       ),
     );
   type Row = { client: string; project: string; seconds: number; approved_seconds: number; approved: number; invoiced: number; unapproved_estimate: number };
   const agg = new Map<string, Row>();
-  const row = (projectId: string, client: string | null, project: string) => {
-    let a = agg.get(projectId);
-    if (!a) agg.set(projectId, (a = { client: client ?? '(no client)', project, seconds: 0, approved_seconds: 0, approved: 0, invoiced: 0, unapproved_estimate: 0 }));
+  // One row per project and client: a project that moved shows its approved work under the client it
+  // was billed to, and its current work under its current client.
+  const row = (projectId: string, clientId: string | null, client: string | null, project: string) => {
+    const key = `${projectId}|${clientId ?? ''}`;
+    let a = agg.get(key);
+    if (!a) agg.set(key, (a = { client: client ?? '(no client)', project, seconds: 0, approved_seconds: 0, approved: 0, invoiced: 0, unapproved_estimate: 0 }));
     return a;
   };
   for (const { b, projectName, clientName } of entries) {
-    const a = row(b.projectId, clientName, projectName);
+    const a = row(b.projectId, b.clientId, clientName, projectName);
     a.approved_seconds += b.seconds;
     a.approved += b.billAmountMinor;
     if (b.invoiceLineId) a.invoiced += b.billAmountMinor;
   }
-  for (const r of rows) row(r.r.projectId, r.clientName, r.projectName).seconds += r.r.trackedSeconds + r.r.manualSeconds;
+  for (const r of rows) row(r.r.projectId, r.clientId, r.clientName, r.projectName).seconds += r.r.trackedSeconds + r.r.manualSeconds;
   // Time not approved yet, priced per entry as approving it now would (see priceEntries).
   for (const e of await priceEntries(x.tx, x.org.currency, p.from, p.to, members)) {
     if (e.approved || !e.billable || (projectIds && !projectIds.includes(e.projectId))) continue;
-    const a = agg.get(e.projectId);
+    const a = agg.get(`${e.projectId}|${e.clientId ?? ''}`);
     if (a) a.unapproved_estimate += e.billMinor;
   }
   const out = [...agg.values()].sort((a, b) => a.client.localeCompare(b.client) || a.project.localeCompare(b.project));

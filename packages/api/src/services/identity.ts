@@ -10,6 +10,7 @@ import {
   organizations,
   overtimeRuleSets,
   projectMembers,
+  taskAssignees,
   retentionPolicies,
   rolePermissions,
   roles,
@@ -276,10 +277,17 @@ export async function acceptInvitation(
 
   return withTenant(db, inv.organizationId, async (tx) => {
     const [role] = await tx.select({ key: roles.key }).from(roles).where(eq(roles.id, inv.roleId));
-    const [dup] =await tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.userId, uid!), eq(memberships.organizationId, inv.organizationId))).limit(1);
+    const [dup] = await tx.select({ id: memberships.id, status: memberships.status }).from(memberships).where(and(eq(memberships.userId, uid!), eq(memberships.organizationId, inv.organizationId))).limit(1);
     let membershipId: string;
     if (dup) {
       membershipId = dup.id;
+      if (dup.status === 'REMOVED') {
+        // Someone coming back starts afresh: only the invitation's teams and projects, not what they had
+        // before they left (removal clears these now; this also covers people removed before it did).
+        await tx.delete(projectMembers).where(eq(projectMembers.membershipId, dup.id));
+        await tx.delete(taskAssignees).where(eq(taskAssignees.membershipId, dup.id));
+        await tx.delete(teamMembers).where(eq(teamMembers.membershipId, dup.id));
+      }
       await tx.update(memberships).set({ status: 'ACTIVE', roleId: inv.roleId, updatedAt: new Date() }).where(eq(memberships.id, dup.id));
     } else {
       membershipId = newId();

@@ -1,6 +1,7 @@
-import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  billingRates,
   breakTypes,
   clients,
   memberships,
@@ -16,7 +17,7 @@ import {
   timeEntries,
   users,
 } from '@tallywork/db';
-import { can, forbidden, newId, notFound, businessRule, validation } from '@tallywork/domain';
+import { can, conflict, forbidden, localDate, newId, notFound, businessRule, validation } from '@tallywork/domain';
 import type { ClientDto, OffsetPage, ProjectBreakDto, ProjectDto, TaskDto, TeamDto, clientInput, projectInput, taskInput, teamInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { audit, emitFrom } from './events';
@@ -94,6 +95,33 @@ export async function setTeamMember(x: Ctx, teamId: string, membershipId: string
   await audit(x, { action: role ? 'team.member_set' : 'team.member_removed', targetType: 'team', targetId: teamId, after: { membershipId, role } });
 }
 
+/**
+ * After a client's currency changes, or a project moves to a client with another currency, no rate in
+ * use for them may stay in the old currency: time priced at it could never be invoiced (invoices are in
+ * the client's currency). Checked after the request's own rate changes, so changing both together works.
+ */
+async function assertRatesInCurrency(x: Ctx, currency: string, projectIds: string[], clientId: string | null, what: string): Promise<void> {
+  const today = localDate(x.deps.now(), x.org.timezone);
+  const ids = projectIds.length ? projectIds : ['00000000-0000-7000-8000-000000000000'];
+  const [other] = await x.tx
+    .select({ currency: billingRates.currency })
+    .from(billingRates)
+    .where(
+      and(
+        ne(billingRates.currency, currency),
+        lte(billingRates.effectiveFrom, today),
+        or(isNull(billingRates.effectiveTo), gt(billingRates.effectiveTo, today)),
+        or(
+          clientId ? and(eq(billingRates.scope, 'CLIENT'), eq(billingRates.scopeId, clientId)) : undefined,
+          and(eq(billingRates.scope, 'PROJECT'), inArray(billingRates.scopeId, ids)),
+          and(eq(billingRates.scope, 'PROJECT_WORKER'), inArray(sql`split_part(${billingRates.scopeId}, ':', 1)`, ids)),
+        ),
+      ),
+    )
+    .limit(1);
+  if (other) throw businessRule('rates_in_other_currency', `Rates for ${what} are in ${other.currency}. Change them to ${currency} or end them in Rates first, so the time can still be invoiced.`);
+}
+
 /** Every id must be an active member of this organization (not removed or suspended): a clear 400, not a database error. */
 async function assertActiveMembers(x: Ctx, ids: string[], field: string): Promise<void> {
   const unique = [...new Set(ids)];
@@ -111,9 +139,15 @@ export async function listClients(x: Ctx, opts: { includeArchived?: boolean } = 
     const ids = [...x.actor.assignedProjectIds];
     visible = ids.length ? inArray(clients.id, x.tx.select({ id: projects.clientId }).from(projects).where(inArray(projects.id, ids)) as never) : sql`false`;
   }
+  // Count only the projects this person may see (the same rule as the Projects list), so the number
+  // matches what "View projects" shows and does not reveal projects they are not on.
+  const projectScope = x.actor.grants['projects:read'];
+  const assigned = [...x.actor.assignedProjectIds];
+  const countable =
+    projectScope === 'org' ? sql`` : projectScope && assigned.length ? sql` and p.id in (${sql.join(assigned.map((id) => sql`${id}::uuid`), sql`, `)})` : sql` and false`;
   const rows = await x.tx
     // The outer column is written out: inside the subquery an interpolated ${clients.id} renders as a bare "id", which binds to p.id.
-    .select({ c: clients, projectCount: sql<number>`(select count(*)::int from ${projects} p where p.client_id = "clients"."id" and p.archived_at is null)` })
+    .select({ c: clients, projectCount: sql<number>`(select count(*)::int from ${projects} p where p.client_id = "clients"."id" and p.archived_at is null${countable})` })
     .from(clients)
     .where(and(eq(clients.organizationId, x.org.id), opts.includeArchived ? undefined : isNull(clients.archivedAt), visible))
     .orderBy(asc(clients.name));
@@ -165,6 +199,15 @@ export async function upsertClient(x: Ctx, clientId: string | null, input: Parti
       .map(([k, v]) => [k, v ?? null]),
   );
   if (input.name !== undefined) values.name = input.name;
+  if (input.name !== undefined) {
+    // One active client per name (ignoring case and spaces): two "Acme" make invoices and reports ambiguous.
+    const [same] = await x.tx
+      .select({ id: clients.id })
+      .from(clients)
+      .where(and(sql`lower(trim(${clients.name})) = lower(trim(${input.name}))`, isNull(clients.archivedAt), clientId ? ne(clients.id, clientId) : undefined))
+      .limit(1);
+    if (same) throw conflict('duplicate_name', 'A client with this name already exists', { errors: [{ field: 'name', message: 'Use another name, or archive the other client' }] });
+  }
   let id = clientId;
   if (id) {
     const r = await x.tx.update(clients).set({ ...values, updatedAt: new Date() }).where(eq(clients.id, id)).returning({ id: clients.id });
@@ -180,14 +223,27 @@ export async function upsertClient(x: Ctx, clientId: string | null, input: Parti
   // Rates are in the client's currency, as saved (a partial update may not send the currency).
   const [saved] = await x.tx.select({ currency: clients.currency }).from(clients).where(eq(clients.id, id));
   await applyScopedRates(x, 'CLIENT', id, changes, saved?.currency ?? x.org.currency);
+  if (clientId && input.currency !== undefined) {
+    const own = (await x.tx.select({ id: projects.id }).from(projects).where(eq(projects.clientId, id))).map((r) => r.id);
+    await assertRatesInCurrency(x, saved?.currency ?? x.org.currency, own, id, 'the client and its projects');
+  }
   return (await listClients(x, { includeArchived: true })).find((c) => c.id === id)!;
 }
 
 export async function setClientArchived(x: Ctx, clientId: string, archived: boolean) {
   if (!(await canOnClient(x, 'clients:manage', clientId))) throw x.actor.grants['clients:manage'] ? notFound('client') : forbidden();
-  const r = await x.tx.update(clients).set({ archivedAt: archived ? new Date() : null }).where(eq(clients.id, clientId)).returning({ id: clients.id });
-  if (!r.length) throw notFound('client');
-  await audit(x, { action: archived ? 'client.archived' : 'client.restored', targetType: 'client', targetId: clientId });
+  const [c] = await x.tx.select({ archivedAt: clients.archivedAt }).from(clients).where(eq(clients.id, clientId));
+  if (!c) throw notFound('client');
+  if (!!c.archivedAt === archived) return; // already so
+  // A client's projects go with it, stamped with the same moment, so restoring the client brings back
+  // exactly those (a project archived on its own before stays archived). Archived projects take no new
+  // time, so tracking for the client stops.
+  const at = x.deps.now();
+  await x.tx.update(clients).set({ archivedAt: archived ? at : null, updatedAt: at }).where(eq(clients.id, clientId));
+  const moved = archived
+    ? await x.tx.update(projects).set({ archivedAt: at, updatedAt: at }).where(and(eq(projects.clientId, clientId), isNull(projects.archivedAt))).returning({ id: projects.id })
+    : await x.tx.update(projects).set({ archivedAt: null, updatedAt: at }).where(and(eq(projects.clientId, clientId), eq(projects.archivedAt, c.archivedAt!))).returning({ id: projects.id });
+  await audit(x, { action: archived ? 'client.archived' : 'client.restored', targetType: 'client', targetId: clientId, metadata: { projects: moved.map((m) => m.id) } });
 }
 
 // ─── Projects ────────────────────────────────────────────────────────────────
@@ -295,8 +351,11 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
   const changes = rateChanges(input);
   if (changes.length && !x.actor.grants['rates:manage']) throw forbidden();
   if (input.client_id) {
-    const [c] = await x.tx.select({ id: clients.id }).from(clients).where(eq(clients.id, input.client_id));
+    const [c] = await x.tx.select({ id: clients.id, archivedAt: clients.archivedAt }).from(clients).where(eq(clients.id, input.client_id));
     if (!c) throw notFound('client');
+    // An archived client takes no projects (keeping the one a project already has is fine).
+    const [current] = projectId ? await x.tx.select({ clientId: projects.clientId }).from(projects).where(eq(projects.id, projectId)) : [];
+    if (c.archivedAt && current?.clientId !== c.id) throw validation('This client is archived', { errors: [{ field: 'client_id', message: 'Restore the client, or choose one that is in use' }] });
     // Without org scope, only a client the actor can already see: attaching a project to another
     // client would otherwise open that client (and, with clients:manage, its settings) to them.
     if (x.actor.grants['projects:manage'] !== 'org' && !(await canOnClient(x, 'clients:read', input.client_id))) throw notFound('client');
@@ -314,8 +373,32 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
   if (input.color !== undefined) values.color = input.color;
   if (input.status !== undefined) values.status = input.status;
   if (input.billable_default !== undefined) values.billableDefault = input.billable_default;
+  if (input.name !== undefined || input.client_id !== undefined) {
+    // One active project per name and client (ignoring case and spaces).
+    const [before] = projectId ? await x.tx.select({ name: projects.name, clientId: projects.clientId }).from(projects).where(eq(projects.id, projectId)) : [];
+    const name = input.name ?? before?.name ?? '';
+    const client = input.client_id !== undefined ? input.client_id : (before?.clientId ?? null);
+    const [same] = await x.tx
+      .select({ id: projects.id })
+      .from(projects)
+      .where(
+        and(
+          sql`lower(trim(${projects.name})) = lower(trim(${name}))`,
+          client ? eq(projects.clientId, client) : isNull(projects.clientId),
+          isNull(projects.archivedAt),
+          projectId ? ne(projects.id, projectId) : undefined,
+        ),
+      )
+      .limit(1);
+    if (same) throw conflict('duplicate_name', client ? 'This client already has a project with this name' : 'A project with this name already exists', { errors: [{ field: 'name', message: 'Use another name, or archive the other project' }] });
+  }
   let id = projectId;
   if (id) {
+    // Moving to another client: that client sees the project's work from now on, not what was done for the previous one.
+    if (input.client_id !== undefined) {
+      const [cur] = await x.tx.select({ clientId: projects.clientId }).from(projects).where(eq(projects.id, id));
+      if (cur && cur.clientId !== input.client_id) values.clientSince = x.deps.now();
+    }
     const r = await x.tx.update(projects).set({ ...values, updatedAt: new Date() }).where(eq(projects.id, id)).returning({ id: projects.id });
     if (!r.length) throw notFound('project');
   } else {
@@ -334,11 +417,10 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
     if (input.team_ids.length) await x.tx.insert(projectTeams).values(input.team_ids.map((t) => ({ organizationId: x.org.id, projectId: id!, teamId: t })));
   }
   if (input.breaks) await setProjectBreaks(x, id, input.breaks);
-  if (changes.length) {
-    // Rates are in the client's currency when it has one, like the invoices for this project.
-    const [row] = await x.tx.select({ cur: clients.currency }).from(projects).leftJoin(clients, eq(clients.id, projects.clientId)).where(eq(projects.id, id));
-    await applyScopedRates(x, 'PROJECT', id, changes, row?.cur ?? x.org.currency);
-  }
+  // Rates are in the client's currency when it has one, like the invoices for this project.
+  const [row] = await x.tx.select({ cur: clients.currency }).from(projects).leftJoin(clients, eq(clients.id, projects.clientId)).where(eq(projects.id, id));
+  if (changes.length) await applyScopedRates(x, 'PROJECT', id, changes, row?.cur ?? x.org.currency);
+  if (projectId && input.client_id !== undefined) await assertRatesInCurrency(x, row?.cur ?? x.org.currency, [id], null, 'this project');
   if (!projectId) await emitFrom(x, 'project.created', { project_id: id, name: input.name });
   else await emitFrom(x, 'project.updated', { project_id: id });
   await audit(x, { action: projectId ? 'project.updated' : 'project.created', targetType: 'project', targetId: id, after: input });
@@ -349,6 +431,11 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
 
 export async function setProjectArchived(x: Ctx, projectId: string, archived: boolean) {
   if (!canOnProject(x.actor, 'projects:manage', projectId)) throw x.actor.grants['projects:manage'] ? notFound('project') : forbidden();
+  if (!archived) {
+    // An archived client's projects stay archived with it: restore the client (which brings them back).
+    const [row] = await x.tx.select({ clientArchivedAt: clients.archivedAt }).from(projects).leftJoin(clients, eq(clients.id, projects.clientId)).where(eq(projects.id, projectId));
+    if (row?.clientArchivedAt) throw businessRule('client_archived', 'This project’s client is archived. Restore the client to bring its projects back.');
+  }
   const r = await x.tx.update(projects).set({ archivedAt: archived ? new Date() : null, updatedAt: new Date() }).where(eq(projects.id, projectId)).returning({ id: projects.id });
   if (!r.length) throw notFound('project');
   await audit(x, { action: archived ? 'project.archived' : 'project.restored', targetType: 'project', targetId: projectId });

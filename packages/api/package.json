@@ -23,9 +23,11 @@
     "hono": "^4.13.9",
     "nodemailer": "^10.0.12",
     "pdf-lib": "^1.17.1",
+    "qrcode": "1.5.4",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/nodemailer": "^8.0.2"
+    "@types/nodemailer": "^8.0.2",
+    "@types/qrcode": "1.5.6"
   }
 }

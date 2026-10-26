@@ -160,7 +160,7 @@ describe('two-factor authentication', () => {
   let secret: string;
   let recovery: string[];
   it('enrolls with an authenticator app and recovery codes', async () => {
-    const s = await manager.post('/me/mfa/totp/setup');
+    const s = await manager.post('/me/mfa/totp/setup', { password: PW });
     expect(s.body.otpauth_url).toMatch(/^otpauth:\/\/totp\/WorkPulse%3Amona%40sec\.test\?secret=[A-Z2-7]+&issuer=WorkPulse/);
     secret = s.body.secret;
     expect((await manager.post('/me/mfa/totp/confirm', { code: '000000' })).status).toBe(400);
@@ -194,7 +194,7 @@ describe('two-factor authentication', () => {
     expect((await manager.get('/me/mfa')).body).toEqual({ enabled: true, session_verified: true, recovery_codes_left: 9 });
     // Fresh recovery codes (needs a current code); the old ones stop working.
     t.clock.set(new Date(t.clock.now.getTime() + 31_000));
-    const fresh = await manager.post('/me/mfa/recovery-codes', { code: totpCode(secret, t.clock.now) });
+    const fresh = await manager.post('/me/mfa/recovery-codes', { password: PW, code: totpCode(secret, t.clock.now) });
     expect(fresh.body.recovery_codes).toHaveLength(10);
     const fourth = new Client(t);
     await login(fourth, 'mona@sec.test');
@@ -205,14 +205,14 @@ describe('two-factor authentication', () => {
   it('an organization can require it: admins first enable it themselves; others must enroll to continue', async () => {
     const first = await admin.patch(o(''), { settings: { enforceMfa: 'all' } });
     expect([first.status, first.body.code]).toEqual([422, 'mfa_required_first']);
-    const s = await admin.post('/me/mfa/totp/setup');
+    const s = await admin.post('/me/mfa/totp/setup', { password: PW });
     t.clock.set(new Date(t.clock.now.getTime() + 60_000));
     await admin.post('/me/mfa/totp/confirm', { code: totpCode(s.body.secret, t.clock.now) });
     expect((await admin.patch(o(''), { settings: { enforceMfa: 'all' } })).status).toBe(200);
     const blocked = await ben.get(o('/projects'));
     expect([blocked.status, blocked.body.code]).toEqual([403, 'mfa_enrollment_required']);
     expect((await ben.get('/me')).status).toBe(200); // can still reach the profile to set it up
-    const bs = await ben.post('/me/mfa/totp/setup');
+    const bs = await ben.post('/me/mfa/totp/setup', { password: PW });
     await ben.post('/me/mfa/totp/confirm', { code: totpCode(bs.body.secret, t.clock.now) });
     expect((await ben.get(o('/projects'))).status).toBe(200);
     // "Admins only" lets workers through without it.

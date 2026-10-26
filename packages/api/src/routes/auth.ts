@@ -13,7 +13,7 @@ import {
 } from '@tallywork/contracts';
 import { DomainError, businessRule, validation } from '@tallywork/domain';
 import { z } from 'zod';
-import { confirmTotpSetup, disableTotp, hasMfa, recoveryCodesLeft, regenerateRecoveryCodes, startTotpSetup, verifyLoginCode } from '../services/mfa';
+import { cancelTotpSetup, confirmTotpSetup, disableTotp, hasMfa, recoveryCodesLeft, regenerateRecoveryCodes, startTotpSetup, verifyLoginCode } from '../services/mfa';
 import type { AppEnv, Deps } from '../context';
 import { body } from '../lib/http';
 import { hashPassword, verifyPassword } from '../lib/crypto';
@@ -43,8 +43,8 @@ function meta(c: Context<AppEnv>) {
  * Starts a session and sets its cookie. With `remember` off ("Remember me" unticked) the cookie has no
  * expiry, so the browser drops it when it closes; the session itself still ends at its usual time.
  */
-export async function startUserSession(c: Context<AppEnv>, uid: string, mfaPending = false, remember = true) {
-  const { token, expiresAt } = await createSession(c.var.deps, uid, meta(c), { mfaPending });
+export async function startUserSession(c: Context<AppEnv>, uid: string, mfaPending = false, remember = true, mfaVerified = false) {
+  const { token, expiresAt } = await createSession(c.var.deps, uid, meta(c), { mfaPending, mfaVerified });
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     secure: c.var.deps.config.env === 'production',
@@ -113,8 +113,11 @@ export const authRoutes = new Hono<AppEnv>()
   .post('/mfa/verify', rateLimit('mfa-verify', 10, 900), async (c) => {
     const p = c.var.principal;
     if (!p || p.type !== 'user') throw new DomainError('unauthenticated', 'unauthenticated', 'Sign in with your password first');
-    const { code } = await body(c, z.object({ code: z.string().trim().min(6).max(20) }));
-    await verifyLoginCode(c.var.deps, p.userId, p.sessionId, code);
+    const { code, remember } = await body(c, z.object({ code: z.string().trim().min(6).max(20), remember: z.boolean().default(true) }));
+    await verifyLoginCode(c.var.deps, p.userId, code);
+    // A new session for the fully signed-in person: the token issued after the password alone is retired.
+    await revokeSession(c.var.deps.db, p.sessionId);
+    await startUserSession(c, p.userId, false, remember, true);
     return c.json(await getMe(c.var.deps.db, p.userId, true));
   })
 
@@ -215,17 +218,25 @@ export const meRoutes = new Hono<AppEnv>()
     return c.json({ enabled: await hasMfa(c.var.deps, userId(c)), session_verified: !!p.mfaVerified, recovery_codes_left: await recoveryCodesLeft(c.var.deps, userId(c)) });
   })
   .post('/mfa/recovery-codes', rateLimit('mfa-recovery', 10, 900), async (c) => {
-    const { code } = await body(c, z.object({ code: z.string().trim().min(6).max(20) }));
-    return c.json(await regenerateRecoveryCodes(c.var.deps, userId(c), code));
+    const i = await body(c, z.object({ password: z.string().min(1).max(200), code: z.string().trim().min(6).max(20) }));
+    return c.json(await regenerateRecoveryCodes(c.var.deps, userId(c), i));
   })
-  .post('/mfa/totp/setup', async (c) => c.json(await startTotpSetup(c.var.deps, userId(c))))
+  /** Start setup, or replace the app when two-factor is on (then a current code or recovery code is needed too). */
+  .post('/mfa/totp/setup', rateLimit('mfa-setup', 10, 900), async (c) => {
+    const i = await body(c, z.object({ password: z.string().min(1).max(200), code: z.string().trim().min(6).max(20).optional() }));
+    return c.json(await startTotpSetup(c.var.deps, userId(c), i));
+  })
+  .post('/mfa/totp/cancel', async (c) => {
+    await cancelTotpSetup(c.var.deps, userId(c));
+    return c.body(null, 204);
+  })
   .post('/mfa/totp/confirm', rateLimit('mfa-confirm', 10, 900), async (c) => {
     const { code } = await body(c, z.object({ code: z.string().trim().min(6).max(10) }));
     return c.json(await confirmTotpSetup(c.var.deps, userId(c), sessionId(c), code));
   })
   .post('/mfa/totp/disable', rateLimit('mfa-disable', 10, 900), async (c) => {
-    const { code } = await body(c, z.object({ code: z.string().trim().min(6).max(20) }));
-    await disableTotp(c.var.deps, userId(c), sessionId(c), code);
+    const i = await body(c, z.object({ password: z.string().min(1).max(200), code: z.string().trim().min(6).max(20) }));
+    await disableTotp(c.var.deps, userId(c), sessionId(c), i);
     return c.body(null, 204);
   })
   .post('/organizations', async (c) => {

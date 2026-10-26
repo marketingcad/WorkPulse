@@ -17,6 +17,8 @@ import {
   projects,
   rollupWorkerDay,
   tasks,
+  timeTypes,
+  timesheetEntries,
   users,
   type Tx,
 } from '@tallywork/db';
@@ -45,6 +47,8 @@ import type { Ctx } from './ctx';
 import { audit, emit, emitFrom } from './events';
 import { narrowMemberships } from './scope';
 import { memberNames } from './timer';
+import { priceEntries } from './pay-figures';
+import { timeTypeCoefficients } from './time-types';
 import { membersWith, notify } from './notify';
 import { isUuid, likePattern } from '../lib/search';
 import { renderEmail } from '../lib/email';
@@ -63,13 +67,6 @@ export async function companyProfile(x: Ctx) {
 export async function loadRates(tx: Tx): Promise<Rate[]> {
   const rows = await tx.select().from(billingRates);
   return rows.map((r) => ({ id: r.id, kind: r.kind, scope: r.scope, scopeId: r.scopeId, amountMinor: r.amountMinor, currency: r.currency, effectiveFrom: r.effectiveFrom, effectiveTo: r.effectiveTo }));
-}
-
-/** project id → client id, for rate resolution. */
-export async function projectClients(tx: Tx, projectIds: string[]) {
-  const ids = [...new Set(projectIds)];
-  const rows = ids.length ? await tx.select({ id: projects.id, clientId: projects.clientId }).from(projects).where(inArray(projects.id, ids)) : [];
-  return new Map(rows.map((p) => [p.id, p.clientId]));
 }
 
 export async function listRates(x: Ctx) {
@@ -333,25 +330,20 @@ export async function checkBudgets(tx: Tx, deps: Deps, organizationId: string, o
 export async function amountsOwed(x: Ctx, from: string, to: string) {
   if (!x.actor.grants['billing:read'] && !x.actor.grants['rates:read']) throw forbidden();
   const visible = narrowMemberships(x.actor, x.actor.grants['billing:read'] ? 'billing:read' : 'rates:read');
-  const rows = await x.tx
-    .select()
-    .from(rollupWorkerDay)
-    .where(and(gte(rollupWorkerDay.localDate, from), lte(rollupWorkerDay.localDate, to), visible === 'all' ? undefined : inArray(rollupWorkerDay.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000'])));
+  // Approved time at its approved amounts, the rest per entry at today's rates: with everything
+  // approved, "estimated" equals "approved" to the cent.
+  const priced = await priceEntries(x.tx, x.org.currency, from, to, visible);
   const approved = await x.tx
     .select({ m: billingEntries.membershipId, s: sql<number>`sum(${billingEntries.seconds})::int`, pay: sql<number>`sum(${billingEntries.payAmountMinor})::bigint` })
     .from(billingEntries)
     .where(and(isNull(billingEntries.voidedAt), gte(billingEntries.localDate, from), lte(billingEntries.localDate, to)))
     .groupBy(billingEntries.membershipId);
-  const rates = await loadRates(x.tx);
-  const clientOf = await projectClients(x.tx, rows.map((r) => r.projectId));
   const byWorker = new Map<string, { seconds: number; estimated: number }>();
-  for (const r of rows) {
-    const secs = r.trackedSeconds + r.manualSeconds;
-    const rate = resolveRate(rates, 'PAY', { date: r.localDate, membershipId: r.membershipId, projectId: r.projectId, clientId: clientOf.get(r.projectId) ?? null });
-    const w = byWorker.get(r.membershipId) ?? { seconds: 0, estimated: 0 };
-    w.seconds += secs;
-    w.estimated += rate ? amountForSeconds(r.payWeightedSeconds, rate.amountMinor) : 0;
-    byWorker.set(r.membershipId, w);
+  for (const e of priced) {
+    const w = byWorker.get(e.membershipId) ?? { seconds: 0, estimated: 0 };
+    w.seconds += e.seconds;
+    w.estimated += e.payMinor;
+    byWorker.set(e.membershipId, w);
   }
   const names = await memberNames(x, [...byWorker.keys()]);
   return [...byWorker.entries()]
@@ -527,9 +519,11 @@ async function buildInvoiceDraft(x: Ctx, input: z.infer<typeof invoiceCreateInpu
   if (input.period_end < input.period_start) throw validation('Period end must be after period start');
   const currency = client.currency ?? x.org.currency;
   const entries = await x.tx
-    .select({ b: billingEntries, projectName: projects.name, taskTitle: tasks.title, workerName: users.name, rateAmount: billingRates.amountMinor })
+    .select({ b: billingEntries, projectName: projects.name, taskTitle: tasks.title, workerName: users.name, rateAmount: billingRates.amountMinor, timeTypeId: timesheetEntries.timeTypeId })
     .from(billingEntries)
     .leftJoin(billingRates, eq(billingRates.id, billingEntries.billRateId))
+    // The time type the entry had when it was approved (the snapshot the billing entry was priced from).
+    .leftJoin(timesheetEntries, and(eq(timesheetEntries.timesheetId, billingEntries.timesheetId), eq(timesheetEntries.timeEntryId, billingEntries.timeEntryId), isNull(timesheetEntries.supersededAt)))
     .innerJoin(projects, eq(projects.id, billingEntries.projectId))
     .leftJoin(tasks, eq(tasks.id, billingEntries.taskId))
     .innerJoin(memberships, eq(memberships.id, billingEntries.membershipId))
@@ -546,16 +540,26 @@ async function buildInvoiceDraft(x: Ctx, input: z.infer<typeof invoiceCreateInpu
         sql`${billingEntries.billAmountMinor} > 0`,
       ),
     );
+  const coef = await timeTypeCoefficients(x.tx);
+  const types = await x.tx.select({ id: timeTypes.id, name: timeTypes.name, isDefault: timeTypes.isDefault, archivedAt: timeTypes.archivedAt }).from(timeTypes);
+  // No type on the entry means the default type (as for its coefficient).
+  const typeName = (id: string | null) => (id ? types.find((t) => t.id === id)?.name : types.find((t) => t.isDefault && !t.archivedAt)?.name) ?? 'Time type';
   const groups = new Map<string, DraftLine & { seconds: number }>();
-  for (const { b, projectName, taskTitle, workerName, rateAmount } of entries) {
+  const seen = new Set<string>();
+  for (const { b, projectName, taskTitle, workerName, rateAmount, timeTypeId } of entries) {
+    if (seen.has(b.id)) continue;
+    seen.add(b.id);
     const label = input.group_by === 'task' ? `${projectName} — ${taskTitle ?? 'No task'}` : input.group_by === 'worker' ? `${projectName} — ${workerName}` : projectName;
-    // One line per label and rate. The line amount is the exact sum of the billed amounts, so the
-    // invoice reconciles with approved billing; the unit price is the rate itself.
-    const hourly = rateAmount ?? (b.seconds > 0 ? Math.round((b.billAmountMinor * 3600) / b.seconds) : 0);
-    const key = `${label}|${b.billRateId ?? hourly}`;
+    // One line per label, rate and time type. The line amount is the exact sum of the billed amounts,
+    // so the invoice reconciles with approved billing. The unit price is the rate times the time
+    // type's bill coefficient, so hours × unit price matches the amount (to the cent per entry).
+    const k = coef(timeTypeId).bill;
+    const hourly = rateAmount !== null ? Math.round(rateAmount * k) : b.seconds > 0 ? Math.round((b.billAmountMinor * 3600) / b.seconds) : 0;
+    const key = `${label}|${b.billRateId ?? hourly}|${k}`;
     let g = groups.get(key);
     if (!g) {
-      g = { kind: 'TIME', description: label, quantity: 0, unitPriceMinor: hourly, amountMinor: 0, taxRateBps: input.tax_rate_bps, projectId: b.projectId, billingEntryIds: [], expenseIds: [], seconds: 0 };
+      const typeLabel = k !== 1 ? ` — ${typeName(timeTypeId)} ×${k}` : '';
+      g = { kind: 'TIME', description: `${label}${typeLabel}`, quantity: 0, unitPriceMinor: hourly, amountMinor: 0, taxRateBps: input.tax_rate_bps, projectId: b.projectId, billingEntryIds: [], expenseIds: [], seconds: 0 };
       groups.set(key, g);
     }
     g.seconds += b.seconds;

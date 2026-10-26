@@ -15,7 +15,8 @@ import {
   timeOffRequests,
   type PayAdjustment,
 } from '@tallywork/db';
-import { DEFAULT_OVERTIME, addDaysToDate, amountForSeconds, businessRule, conflict, forbidden, localDate, newId, notFound, periodFor, resolveRate, splitOvertime, startOfWeek } from '@tallywork/domain';
+import { DEFAULT_OVERTIME, addDaysToDate, amountForSeconds, businessRule, conflict, forbidden, localDate, newId, notFound, periodFor, resolveRate } from '@tallywork/domain';
+import { overtimeInRange } from './pay-figures';
 import type { BankDetailsDto, PayStubDto, PayrollProfileDto, PayrollRunDto, bankDetailsInput, payAdjustmentsInput, payrollProfileInput, payrollRunInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { audit } from './events';
@@ -262,6 +263,7 @@ async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect
   const rollups = await x.tx.select().from(rollupWorkerDay).where(and(inArray(rollupWorkerDay.membershipId, members), gte(rollupWorkerDay.localDate, from), lte(rollupWorkerDay.localDate, to)));
   const [ot] = await x.tx.select().from(overtimeRuleSets);
   const rules = ot?.rules ?? DEFAULT_OVERTIME;
+  const split = await overtimeInRange(x.tx, x.org.weekStart, rules, members, from, to);
   const off = await x.tx
     .select({ t: timeOffRequests, paid: timeOffPolicies.paid, hpd: timeOffPolicies.hoursPerDay })
     .from(timeOffRequests)
@@ -281,20 +283,8 @@ async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect
     const carriedSeconds = mine.filter((a) => a.d < from).reduce((s, a) => s + a.s, 0);
     const worked = rollups.filter((r) => r.membershipId === m);
     const total = worked.reduce((s, r) => s + r.trackedSeconds + r.manualSeconds, 0);
-    const weeks = new Map<string, number[]>();
-    for (const r of worked) {
-      const wk = startOfWeek(r.localDate, x.org.weekStart);
-      const days = weeks.get(wk) ?? Array(7).fill(0);
-      days[Math.round((Date.parse(r.localDate) - Date.parse(wk)) / 86400000)] += r.trackedSeconds + r.manualSeconds;
-      weeks.set(wk, days);
-    }
-    let regular = 0;
-    let overtime = 0;
-    for (const days of weeks.values()) {
-      const sp = splitOvertime(days, rules);
-      regular += sp.regular;
-      overtime += sp.overtime;
-    }
+    // Whole weeks: a week split between two payrolls keeps the overtime worked on this period's days.
+    const { regular, overtime } = split.get(m) ?? { regular: 0, overtime: 0 };
     let offHours = 0;
     let offPay = 0;
     for (const o of off.filter((r) => r.t.membershipId === m && r.paid)) {

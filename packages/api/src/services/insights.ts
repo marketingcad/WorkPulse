@@ -1,20 +1,20 @@
 import { and, eq, gte, inArray, lte } from 'drizzle-orm';
 import { clients, holidays, projects, rollupWorkerDay, timeOffPolicies, timeOffRequests } from '@tallywork/db';
-import { addDaysToDate, amountForSeconds, forbidden, resolveRate } from '@tallywork/domain';
+import { addDaysToDate, forbidden } from '@tallywork/domain';
 import type { InsightsDto } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
-import { loadRates } from './finance';
 import { listWorkers } from './org';
 import { timeOffHoursInRange } from './reports';
 import { narrowMemberships } from './scope';
+import { priceEntries } from './pay-figures';
 import { memberNames } from './timer';
 
 const NONE = ['00000000-0000-7000-8000-000000000000'];
 
 /**
  * Time and money for a date range: totals, per person, per client, per project and per day.
- * Money is priced from the effective pay and bill rates (an estimate until timesheets are
- * approved, when billing entries snapshot the same rates). Amounts in a currency other than the
+ * Money is priced per entry (see priceEntries): approved time at its approved amounts, the rest at
+ * today's rates, an estimate until it is approved. Amounts in a currency other than the
  * workspace currency are left out of the sums and flagged with `other_currency`.
  * Counts finished work only; a timer that is still running is added once it stops.
  */
@@ -37,7 +37,6 @@ export async function insights(x: Ctx, from: string, to: string, requested?: str
     ? await x.tx.select({ id: projects.id, name: projects.name, color: projects.color, clientId: projects.clientId, clientName: clients.name }).from(projects).leftJoin(clients, eq(clients.id, projects.clientId)).where(inArray(projects.id, projectIds))
     : [];
   const project = new Map(ps.map((p) => [p.id, p]));
-  const rates = moneyPerm ? await loadRates(x.tx) : [];
 
   type Acc = { logged: number; billable: number; active: number; activityTracked: number; pay: number; bill: number };
   const acc = (): Acc => ({ logged: 0, billable: 0, active: 0, activityTracked: 0, pay: 0, bill: 0 });
@@ -50,19 +49,7 @@ export async function insights(x: Ctx, from: string, to: string, requested?: str
 
   for (const r of rows) {
     const secs = r.trackedSeconds + r.manualSeconds;
-    const p = project.get(r.projectId);
-    const clientId = p?.clientId ?? null;
-    let pay = 0;
-    let bill = 0;
-    if (moneyPerm && seesMoney(r.membershipId)) {
-      const rc = { date: r.localDate, membershipId: r.membershipId, projectId: r.projectId, clientId };
-      const payRate = resolveRate(rates, 'PAY', rc);
-      const billRate = r.billable ? resolveRate(rates, 'BILL', rc) : null;
-      if (payRate && payRate.currency !== x.org.currency) otherCurrency = true;
-      else if (payRate) pay = amountForSeconds(r.payWeightedSeconds, payRate.amountMinor);
-      if (billRate && billRate.currency !== x.org.currency) otherCurrency = true;
-      else if (billRate) bill = amountForSeconds(r.billWeightedSeconds, billRate.amountMinor);
-    }
+    const clientId = project.get(r.projectId)?.clientId ?? null;
     for (const [map, key] of [
       [byMember, r.membershipId],
       [byClient, clientId ?? ''],
@@ -74,16 +61,32 @@ export async function insights(x: Ctx, from: string, to: string, requested?: str
       if (r.billable) a.billable += secs;
       a.active += r.activeSeconds;
       a.activityTracked += r.activityTrackedSeconds;
-      a.pay += pay;
-      a.bill += bill;
       map.set(key, a);
     }
     totals.logged += secs;
     if (r.billable) totals.billable += secs;
     totals.active += r.activeSeconds;
     totals.activityTracked += r.activityTrackedSeconds;
-    totals.pay += pay;
-    totals.bill += bill;
+  }
+  // Money per entry, as payroll and approval price it (approved time at its approved amounts).
+  if (moneyPerm) {
+    for (const e of await priceEntries(x.tx, x.org.currency, from, to, target === 'all' ? 'all' : target)) {
+      if (!seesMoney(e.membershipId)) continue;
+      if (e.payForeign || e.billForeign) otherCurrency = true;
+      for (const [map, key] of [
+        [byMember, e.membershipId],
+        [byClient, e.clientId ?? ''],
+        [byProject, e.projectId],
+        [byDay, e.localDate],
+      ] as const) {
+        const a = map.get(key) ?? acc();
+        a.pay += e.payMinor;
+        a.bill += e.billMinor;
+        map.set(key, a);
+      }
+      totals.pay += e.payMinor;
+      totals.bill += e.billMinor;
+    }
   }
 
   // Everyone in scope is listed, including people with no time in the range.

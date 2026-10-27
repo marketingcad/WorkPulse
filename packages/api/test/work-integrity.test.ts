@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { projectMembers, withSystem } from '@tallywork/db';
 import { Client, addMember, createHarness, pkce, signup, type Harness } from './harness';
 
 // Clients, Projects and Tasks audit (October 2026), group 2: data integrity.
@@ -61,6 +62,31 @@ describe('W10: people on tasks and projects', () => {
     const r4 = await admin.patch(o(`/projects/${site}`), { team_ids: ['01a17a00-0000-7000-8000-000000000001'] });
     expect([r4.status, r4.body.errors?.[0]?.field]).toEqual([400, 'team_ids']);
     expect((await admin.post(o(`/projects/${site}/tasks`), { title: 'For Walt', assignee_ids: [waltId] })).status).toBe(201);
+  });
+});
+
+describe('W10b: a former member left on a project does not block its access editor', () => {
+  // Live, 27 Oct 2026: a project still linked to a member removed before removal cleared project links
+  // could take nobody new. The editor sends every linked id, the removed one included, and the whole
+  // save was refused with "Only active members can be added".
+  it('people can be added while a removed member is still linked; the stale link goes, as removal does', async () => {
+    const { membershipId: rose } = await addMember(t, admin, orgId, 'Rose', 'rose@integrity.test');
+    const { membershipId: nia } = await addMember(t, admin, orgId, 'Nia', 'nia@integrity.test');
+    const p = (await admin.post(o('/projects'), { name: 'Car tracker', member_ids: [waltId] })).body.id;
+    expect((await admin.del(o(`/workers/${rose}`))).status).toBe(204);
+    // The data production still has: a link left from before removal cleared them.
+    await withSystem(t.deps.db, (tx) => tx.insert(projectMembers).values({ organizationId: orgId, projectId: p, membershipId: rose }));
+    const linked = (await admin.get(o(`/projects/${p}`))).body.member_ids as string[];
+    expect(linked.sort()).toEqual([rose, waltId].sort());
+
+    // What the editor sends: everything already linked, plus the person being added.
+    const save = await admin.patch(o(`/projects/${p}`), { member_ids: [...linked, nia] });
+    expect([save.status, save.body.title]).toEqual([200, undefined]); // was 400 "Only active members can be added"
+    expect(((await admin.get(o(`/projects/${p}`))).body.member_ids as string[]).sort()).toEqual([nia, waltId].sort());
+
+    // Adding a removed person who was not on the project is still refused (W10).
+    const again = await admin.patch(o(`/projects/${p}`), { member_ids: [waltId, nia, rose] });
+    expect([again.status, again.body.errors?.[0]?.field]).toEqual([400, 'member_ids']);
   });
 });
 

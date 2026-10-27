@@ -406,9 +406,16 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
     await x.tx.insert(projects).values({ id, organizationId: x.org.id, name: input.name, ...values });
   }
   if (input.member_ids) {
-    await assertActiveMembers(x, input.member_ids, 'member_ids');
+    // People being added must be active. Someone already linked who is no longer active (removed before
+    // removal also cleared project links) is dropped, as removing them does today, rather than making
+    // the whole save fail: the access editor sends every linked id, including ones it cannot show.
+    const linked = new Set((await x.tx.select({ m: projectMembers.membershipId }).from(projectMembers).where(eq(projectMembers.projectId, id))).map((r) => r.m));
+    const wanted = [...new Set(input.member_ids)];
+    const active = new Set(wanted.length ? (await x.tx.select({ id: memberships.id }).from(memberships).where(and(inArray(memberships.id, wanted), eq(memberships.status, 'ACTIVE')))).map((r) => r.id) : []);
+    await assertActiveMembers(x, wanted.filter((m) => !linked.has(m)), 'member_ids');
+    const keep = wanted.filter((m) => active.has(m));
     await x.tx.delete(projectMembers).where(eq(projectMembers.projectId, id));
-    if (input.member_ids.length) await x.tx.insert(projectMembers).values(input.member_ids.map((m) => ({ organizationId: x.org.id, projectId: id!, membershipId: m })));
+    if (keep.length) await x.tx.insert(projectMembers).values(keep.map((m) => ({ organizationId: x.org.id, projectId: id!, membershipId: m })));
   }
   if (input.team_ids) {
     const found = input.team_ids.length ? await x.tx.select({ id: teams.id }).from(teams).where(and(inArray(teams.id, input.team_ids), isNull(teams.archivedAt))) : [];

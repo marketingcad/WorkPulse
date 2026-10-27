@@ -32,6 +32,7 @@ A feature or change is not finished until it has automated tests that were **run
 ## Test environment rules
 
 - E2E runs against an isolated server: in-memory database, no email or storage services, ports 3100/3101 (`e2e/scripts/serve-web.mjs`). Never point tests at a shared, staging or production environment, or at real customer data.
+- The one exception is the read-only live smoke in `e2e/live` (`pnpm test:live`, see [e2e/README.md](e2e/README.md#live-smoke-deployed-site)). It signs in as a dedicated test account, and its fixture blocks every write. Never add a test that writes to it, and never weaken that guard.
 - Rate limits are on in E2E, as in production. Avoid unnecessary sign-ins: use the stored sessions from `e2e/support/global-setup.ts`.
 - Rate limits are off in Vitest unless a test sends `x-test-rate-limit: on`. Routes that combine rate limits with transactions need a test with them on (see `packages/api/test/agent-me.test.ts`).
 

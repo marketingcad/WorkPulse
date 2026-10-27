@@ -22,7 +22,8 @@
     "test:e2e:debug": "pnpm --filter @tallywork/e2e debug",
     "test:e2e:report": "pnpm --filter @tallywork/e2e report",
     "test:e2e:install": "pnpm --filter @tallywork/e2e install-browsers",
-    "test:e2e:record": "pnpm --filter @tallywork/e2e record"
+    "test:e2e:record": "pnpm --filter @tallywork/e2e record",
+    "test:live": "pnpm --filter @tallywork/e2e live"
   },
   "devDependencies": {
     "@playwright/test": "1.64.0",

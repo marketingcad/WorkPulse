@@ -117,6 +117,27 @@ Available data:
 - **Team:** `Design <run>`.
 - **Projects:** `Website <run>` and `Mobile App <run>`. The admin is a member of both.
 
+## Live smoke (deployed site)
+
+A separate, **read-only** suite in [live/](live/) checks a deployed site: production (https://tallywork-alpha.vercel.app) by default, or the URL in `LIVE_URL`. It has its own config, [playwright.live.config.ts](playwright.live.config.ts). There is no local server and no seeded data, and `pnpm test:e2e` never runs it.
+
+```bash
+pnpm test:live --project=live-public          # signed out: health, sign-in page, redirects. No account needed.
+LIVE_EMAIL=… LIVE_PASSWORD=… pnpm test:live   # everything, including the signed-in workspace pages
+```
+
+| Variable | Use |
+|---|---|
+| `LIVE_URL` | Site to check (default: production). Use a preview URL to check a deployment before promoting it. |
+| `LIVE_EMAIL`, `LIVE_PASSWORD` | A **dedicated test account**: an admin of its own test organization, with no two-factor sign-in. Never a real user's account. Pass them from the environment or CI secrets, never commit them. |
+| `LIVE_ORG_ID` | Organization to open, if the account belongs to more than one. |
+
+Rules:
+
+- **Read only.** [live/fixtures.ts](live/fixtures.ts) aborts every POST, PUT, PATCH and DELETE to the site and fails the test. The one sign-in in [live/auth.setup.ts](live/auth.setup.ts) is the only write. Tests that create, change or delete data belong in the isolated suite above.
+- **Production rate limits apply.** The suite signs in once per run, and runs on 2 workers.
+- Reports go to `playwright-report/live`, failure artifacts to `test-results/live`.
+
 ## Adding tests for a new or changed feature
 
 Every new feature or change that a user can see needs E2E coverage, alongside its unit tests. See [AGENTS.md](../AGENTS.md).

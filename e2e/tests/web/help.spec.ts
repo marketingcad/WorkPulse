@@ -48,6 +48,18 @@ test.describe('Help Center', () => {
     await expect(page.getByRole('heading', { level: 2, name: 'Getting started' })).toBeVisible();
   });
 
+  test('guides explain the rules added by the October 2026 audits', async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}/help`);
+    const search = page.getByRole('searchbox', { name: 'Search help' });
+    const results = page.getByRole('region', { name: 'Search results' });
+    await search.fill('bank details');
+    await expect(results.getByText(/Members add their own bank details on Pay stubs/)).toBeVisible();
+    await search.fill('archive client');
+    await expect(results.getByText(/Archiving a client archives its projects too/)).toBeVisible();
+    await search.fill('approved time changed');
+    await expect(results.getByText(/paid in a finalized payroll cannot be reopened/)).toBeVisible();
+  });
+
   test('a guide’s button opens the page, with a way back to the guide', async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}/help`);
     const guide = page.getByRole('button', { name: /Approve timesheets/ });

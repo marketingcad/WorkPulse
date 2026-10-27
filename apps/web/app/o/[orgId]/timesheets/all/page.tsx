@@ -377,7 +377,7 @@ export default function AllTimeEntriesPage() {
           <>
             <div className="flex items-center gap-3 border-b border-border px-4 py-2 text-xs text-text-muted">
               <Checkbox aria-label="Select all editable entries" checked={allSelected} onChange={() => setSelected(allSelected ? new Set() : new Set(selectable.map((e) => e.id)))} />
-              <span>{summary?.entries ?? 0} entries</span>
+              <span>{summary?.entries ?? 0} {summary?.entries === 1 ? 'entry' : 'entries'}</span>
             </div>
             {days.map(([date, list]) => {
               const day = dayTotals.get(date);

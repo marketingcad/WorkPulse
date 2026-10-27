@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { newId } from '@tallywork/domain';
 import { createDb, type DbHandle } from '../src/client';
-import { users, withSystem } from '../src/index';
+import { memberships, organizations, projectMembers, projects, roles, teamMembers, teams, users, withSystem } from '../src/index';
 
 /**
  * Migrations must be safe to run again. Production once had the users.tour_done_at column before
@@ -63,5 +63,38 @@ describe('migrations', () => {
 
     expect((await rows<{ d: number }>(sql`select retention_days as d from screenshot_cleanup_settings where organization_id = ${orgId}`))[0]!.d).toBe(14);
     expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
+  });
+
+  it("0025 removes the project and team links of removed members, and keeps everyone else's", async () => {
+    // The production state: members removed before removal cleared their links still had them.
+    const org = newId();
+    const role = newId();
+    const [team, project] = [newId(), newId()];
+    await withSystem(h.db, async (tx) => {
+      await tx.insert(organizations).values({ id: org, name: 'Links', slug: `links-${org}`, timezone: 'UTC', settings: {} as never });
+      await tx.insert(roles).values({ id: role, organizationId: org, key: 'WORKER', name: 'Worker' });
+      await tx.insert(teams).values({ id: team, organizationId: org, name: 'Team' });
+      await tx.insert(projects).values({ id: project, organizationId: org, name: 'Project' });
+    });
+    const member = async (status: 'ACTIVE' | 'REMOVED') => {
+      const [user, m] = [newId(), newId()];
+      await withSystem(h.db, async (tx) => {
+        await tx.insert(users).values({ id: user, email: `${status}-${user}@example.test`, name: status, passwordHash: 'x' });
+        await tx.insert(memberships).values({ id: m, organizationId: org, userId: user, roleId: role, status });
+        await tx.insert(projectMembers).values({ organizationId: org, projectId: project, membershipId: m });
+        await tx.insert(teamMembers).values({ organizationId: org, teamId: team, membershipId: m });
+      });
+      return m;
+    };
+    const [active, removed] = [await member('ACTIVE'), await member('REMOVED')];
+    const when = journalWhen('0025_remove_former_member_links');
+    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at >= ${when}`);
+
+    await expect(h.migrate()).resolves.toBeUndefined();
+
+    const links = async (table: 'project_members' | 'team_members') => (await rows<{ m: string }>(sql`select membership_id as m from ${sql.identifier(table)} where organization_id = ${org}`)).map((r) => r.m);
+    expect(await links('project_members')).toEqual([active]);
+    expect(await links('team_members')).toEqual([active]);
+    expect(removed).not.toBe(active);
   });
 });

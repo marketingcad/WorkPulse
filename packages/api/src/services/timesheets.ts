@@ -743,6 +743,7 @@ export async function getTimesheet(x: Ctx, membershipId: string, date: string): 
     avg_activity_pct: withAct.length ? Math.round(withAct.reduce((s, e) => s + (e.activity_pct ?? 0) * e.duration_seconds, 0) / Math.max(1, withAct.reduce((s, e) => s + e.duration_seconds, 0))) : null,
     version: row?.version ?? 0,
     late_seconds: row ? await lateSeconds(x.tx, row) : 0,
+    last_decision: row ? await lastDecision(x.tx, row.id) : null,
   };
 }
 
@@ -768,6 +769,19 @@ async function setEntriesLocked(tx: Tx, membershipId: string, from: string, to: 
           : sql`not exists (select 1 from ${timesheets} t where t.membership_id = ${membershipId} and t.status in ('SUBMITTED', 'APPROVED') and ${timeEntries.localDate} between t.period_start and t.period_end)`,
       ),
     );
+}
+
+const DECISIONS = ['APPROVE', 'REJECT', 'REQUEST_CHANGES', 'REOPEN'] as const;
+
+/** The latest decision on a timesheet: a draft's comment may come from "Request changes" or from "Reopen". */
+async function lastDecision(tx: Tx, timesheetId: string): Promise<TimesheetDto['last_decision']> {
+  const [a] = await tx
+    .select({ action: approvalActions.action })
+    .from(approvalActions)
+    .where(and(eq(approvalActions.subjectType, 'TIMESHEET'), eq(approvalActions.subjectId, timesheetId), inArray(approvalActions.action, [...DECISIONS])))
+    .orderBy(desc(approvalActions.createdAt), desc(approvalActions.id))
+    .limit(1);
+  return (a?.action as TimesheetDto['last_decision']) ?? null;
 }
 
 async function recordAction(x: Ctx, ts: typeof timesheets.$inferSelect, action: TimesheetAction, to: TimesheetStatus, comment: string | null) {

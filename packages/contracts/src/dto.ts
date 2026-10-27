@@ -460,6 +460,8 @@ export interface TimesheetDto {
   version: number;
   /** time in the period added or changed after submission (not in the snapshot) */
   late_seconds: number;
+  /** the latest decision on this timesheet, which `comment` belongs to (null: none yet) */
+  last_decision: 'APPROVE' | 'REJECT' | 'REQUEST_CHANGES' | 'REOPEN' | null;
 }
 
 export interface ApprovalQueueItemDto {

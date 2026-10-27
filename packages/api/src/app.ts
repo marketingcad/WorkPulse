@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { secureHeaders } from 'hono/secure-headers';
 import { and, eq, sql } from 'drizzle-orm';
-import { rateLimitBuckets } from '@tallywork/db';
+import { rateLimitBuckets, withQueryStats } from '@tallywork/db';
 import { DomainError, newId } from '@tallywork/domain';
 import type { AppEnv, Deps } from './context';
 import { fromDatabaseError, problemFromError } from './lib/http';
@@ -31,9 +31,15 @@ export function createApp(deps: Deps) {
     c.set('requestId', rid);
     c.header('X-Request-Id', rid);
     const started = performance.now();
-    await next();
-    // One structured line per request for log drains: route pattern (no ids or query strings), status and latency.
-    if (deps.config.env !== 'test') console.info(JSON.stringify({ level: 'info', msg: 'request', request_id: rid, method: c.req.method, route: c.req.routePath, status: c.res.status, ms: Math.round(performance.now() - started) }));
+    const db = await withQueryStats(async (stats) => {
+      await next();
+      return { ...stats };
+    });
+    const dbMs = Math.round(db.ms);
+    // Signed-in requests only: on sign-in and other anonymous routes a query count could tell whether an account exists.
+    if (c.var.principal) c.header('Server-Timing', `db;dur=${dbMs};desc="${db.queries} queries, ${db.connects} new connections"`);
+    // One structured line per request for log drains: route pattern (no ids or query strings), status, latency and database work.
+    if (deps.config.env !== 'test') console.info(JSON.stringify({ level: 'info', msg: 'request', request_id: rid, method: c.req.method, route: c.req.routePath, status: c.res.status, ms: Math.round(performance.now() - started), db_queries: db.queries, db_ms: dbMs, db_connects: db.connects }));
     // Deliver outbox events right after successful mutations (near-real-time without a worker),
     // and run the minute tick opportunistically (lease-guarded) in case cron is unavailable.
     if (c.req.method !== 'GET' && c.res.status < 400) afterMutation(deps);

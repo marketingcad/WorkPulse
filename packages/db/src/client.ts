@@ -7,6 +7,7 @@ import pg from 'pg';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { MIGRATIONS_FOLDER, applyRls, schema, type Db } from './index';
+import { countCalls, currentQueryStats } from './query-stats';
 
 export const APP_ROLE = 'tallywork_app';
 
@@ -109,6 +110,7 @@ export function createDb(url: string, opts: { runAsAppRole?: boolean } = {}): Db
     const target = url.slice('pglite://'.length);
     if (target !== 'memory') mkdirSync(path.dirname(target), { recursive: true });
     const client = target === 'memory' ? new PGlite() : new PGlite(target);
+    countPgliteQueries(client);
     const db = drizzlePglite(client, { schema, casing: 'snake_case' }) as unknown as Db;
     const ready = (async () => {
       if (!runAsAppRole) return;
@@ -135,6 +137,12 @@ export function createDb(url: string, opts: { runAsAppRole?: boolean } = {}): Db
   // Poolers (Supabase Supavisor, Neon) may close idle connections. pg reports that as an
   // 'error' event on the pool; without a listener Node crashes the process. The pool
   // already discards the broken client, so logging is enough.
+  // Counted first, so the session setup below is counted too: it is a round trip per new connection.
+  pool.on('connect', (c) => {
+    countCalls(c, 'query');
+    const stats = currentQueryStats();
+    if (stats) stats.connects++;
+  });
   pool.on('error', (e) => console.warn(JSON.stringify({ level: 'warn', msg: 'idle database connection closed', error: e.message })));
   if (runAsAppRole) {
     pool.on('connect', (c) => {
@@ -169,4 +177,17 @@ export function createDb(url: string, opts: { runAsAppRole?: boolean } = {}): Db
     },
     close: () => pool.end(),
   };
+}
+
+/** PGlite runs a transaction on its own client object, so its queries are counted there as well. */
+function countPgliteQueries(client: PGlite): void {
+  countCalls(client, 'query');
+  countCalls(client, 'exec');
+  const transaction = client.transaction.bind(client);
+  client.transaction = ((fn: (tx: object) => Promise<unknown>) =>
+    transaction((tx) => {
+      countCalls(tx, 'query');
+      countCalls(tx, 'exec');
+      return fn(tx);
+    })) as PGlite['transaction'];
 }

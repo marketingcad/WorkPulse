@@ -20,6 +20,19 @@ describe('help search', () => {
     expect(searchArticles(asSearchable, 'LUNCH break').map((a) => a.id)[0]).toBe('project-breaks');
   });
 
+  it('finds the rules added by the October 2026 audits', () => {
+    const first = (q: string) => searchArticles(asSearchable, q).map((a) => a.id);
+    expect(first('archive client')).toContain('clients');
+    expect(first('restore task')).toContain('tasks');
+    expect(first('not reimbursable')[0]).toBe('expenses');
+    expect(first('bank details')).toContain('payroll');
+    expect(first('invite again')).toContain('invite-member');
+    expect(first('12,50')).toContain('rates');
+    const faq = HELP_ARTICLES.find((a) => a.id === 'faq-approved-change')!;
+    // The old answer said paid time could still be reopened; the app refuses it.
+    expect(faq.points!.join(' ')).toContain('cannot be reopened');
+  });
+
   it('every word must match; nonsense finds nothing; an empty search shows everything', () => {
     expect(searchArticles(asSearchable, 'invoice zzzqqq')).toEqual([]);
     expect(searchArticles(asSearchable, '   ')).toHaveLength(HELP_ARTICLES.length);

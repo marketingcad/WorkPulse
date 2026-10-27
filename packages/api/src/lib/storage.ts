@@ -88,23 +88,34 @@ export class SupabaseStorage implements Storage {
     throw new Error(`Supabase Storage ${op} failed (${res.status}): ${text.slice(0, 200)}`);
   }
 
-  /** Create the private bucket on first use; an existing bucket is left untouched. */
+  /**
+   * Create the private bucket on first use. An existing bucket gets the current settings, so a
+   * bucket created before a file type was added (JSON data exports) accepts it.
+   */
   private ensureBucket(): Promise<void> {
     this.bucketReady ??= (async () => {
+      const settings = {
+        public: false,
+        file_size_limit: 50 * 1024 * 1024,
+        allowed_mime_types: ['image/*', 'application/pdf', 'text/csv', 'application/json', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+      };
       const res = await this.fetchImpl(`${this.base}/bucket`, {
         method: 'POST',
         headers: this.headers({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          id: this.bucket,
-          name: this.bucket,
-          public: false,
-          file_size_limit: 50 * 1024 * 1024,
-          allowed_mime_types: ['image/*', 'application/pdf', 'text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
-        }),
+        body: JSON.stringify({ id: this.bucket, name: this.bucket, ...settings }),
       });
       if (res.ok) return;
       const text = await res.text().catch(() => '');
-      if (res.status === 409 || /already exists|duplicate/i.test(text)) return;
+      if (res.status === 409 || /already exists|duplicate/i.test(text)) {
+        const upd = await this.fetchImpl(`${this.base}/bucket/${encodeURIComponent(this.bucket)}`, {
+          method: 'PUT',
+          headers: this.headers({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify(settings),
+        });
+        // A failed update must not block uploads the bucket already accepts (screenshots).
+        if (!upd.ok) console.warn(JSON.stringify({ level: 'warn', msg: 'supabase bucket update failed', status: upd.status, error: (await upd.text().catch(() => '')).slice(0, 200) }));
+        return;
+      }
       throw new Error(`Supabase Storage bucket setup failed (${res.status}): ${text.slice(0, 200)}`);
     })().catch((e) => {
       this.bucketReady = null;

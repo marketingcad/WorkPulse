@@ -46,7 +46,7 @@ export function DataExportAction({ membershipId, label = 'Export data' }: { memb
         {s && <StatusBadge status={s.status} label={s.label} />}
         {run?.status === 'DONE' && run.download_url && (
           <a href={run.download_url} className="inline-flex items-center gap-1 text-sm font-medium text-interactive hover:underline">
-            <Download className="size-3.5" aria-hidden /> Download JSON
+            <Download className="size-3.5" aria-hidden /> Download file
           </a>
         )}
       </div>

@@ -242,7 +242,7 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
         {(admin || isSelf) && (
           <Panel title="Personal data">
             <div className="flex flex-col gap-3 p-4">
-              <p className="text-sm text-text-muted">{isSelf ? 'Download everything this organization holds about you as a JSON file.' : 'Answer an access request: a JSON file with everything held about this member.'}</p>
+              <p className="text-sm text-text-muted">{isSelf ? 'Download a copy of everything this organization holds about you.' : 'When this member asks what data you hold about them, download a copy of all of it to send them.'}</p>
               <DataExportAction membershipId={w.id} label={isSelf ? 'Export my data' : 'Export their data'} />
               {admin && !isSelf && (
                 <div className="flex flex-col gap-2 border-t border-border pt-3">

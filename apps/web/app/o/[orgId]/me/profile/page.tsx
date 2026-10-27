@@ -70,7 +70,7 @@ export default function ProfilePage() {
         <NotificationsPanel />
         <Panel title="My data">
           <div className="flex flex-col gap-3 p-4">
-            <p className="text-sm text-text-muted">Download everything {org.organization.name} holds about you: your profile, time entries, timesheets, tracking sessions, activity, app and website usage, screenshot records, time off, expenses, devices and notifications, as one JSON file.</p>
+            <p className="text-sm text-text-muted">Download everything {org.organization.name} holds about you: your profile, time entries, timesheets, tracking sessions, activity, app and website usage, screenshot records, time off, expenses, devices and notifications, in one file.</p>
             <DataExportAction membershipId={org.membership.id} label="Export my data" />
           </div>
         </Panel>

@@ -37,6 +37,8 @@ import { TimeTypeBadge } from '@/components/settings/time-types-panel';
 import { downloadText, toCsv } from '@/lib/csv';
 
 type Decision = 'approve' | 'reject' | 'request-changes' | 'reopen';
+/** "Reopened by Ada", not "Draft by Ada": the status line names the decision that was made. */
+const DECIDED_LABEL: Record<string, string> = { APPROVE: 'Approved', REJECT: 'Rejected', REQUEST_CHANGES: 'Changes requested', REOPEN: 'Reopened' };
 
 export interface TimesheetViewProps {
   membershipId: string;
@@ -132,6 +134,9 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
 
   const variance = ts.expected_seconds != null ? ts.total_seconds - ts.expected_seconds : null;
   const showComment = !!ts.comment && (ts.status === 'REJECTED' || ts.status === 'DRAFT');
+  // A draft's comment comes from "Request changes" or from "Reopen": say which one happened.
+  const reopened = ts.status === 'DRAFT' && ts.last_decision === 'REOPEN';
+  const commentTitle = ts.status === 'REJECTED' ? 'Rejected' : reopened ? 'Reopened' : 'Changes requested';
 
   return (
     <div className={cx('flex flex-col', compact ? 'gap-3 p-4' : 'gap-4')}>
@@ -159,7 +164,7 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
         {ts.submitted_at && <span className="text-xs text-text-muted">Submitted {fmtDateTime(ts.submitted_at)}</span>}
         {ts.decided_at && ts.decided_by_name && ts.status !== 'SUBMITTED' && (
           <span className="text-xs text-text-muted">
-            {humanize(ts.status)} by {ts.decided_by_name} · {fmtDateTime(ts.decided_at)}
+            {DECIDED_LABEL[ts.last_decision ?? ''] ?? humanize(ts.status)} by {ts.decided_by_name} · {fmtDateTime(ts.decided_at)}
           </span>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -212,11 +217,11 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
       {showComment && (
         <div role="status" className={cx('rounded-md border px-4 py-3 text-sm', ts.status === 'REJECTED' ? 'border-danger/30 bg-danger-soft' : 'border-warning/30 bg-warning-soft')}>
           <div className={cx('font-medium', ts.status === 'REJECTED' ? 'text-danger' : 'text-warning')}>
-            {ts.status === 'REJECTED' ? 'Rejected' : 'Changes requested'}
+            {commentTitle}
             {ts.decided_by_name && ` by ${ts.decided_by_name}`}
           </div>
           <p className="mt-0.5 text-text">“{ts.comment}”</p>
-          {isSelf && <p className="mt-1 text-xs text-text-muted">Fix the entries below, then submit again.</p>}
+          {isSelf && <p className="mt-1 text-xs text-text-muted">{reopened ? 'Correct the entries if needed, then submit again.' : 'Fix the entries below, then submit again.'}</p>}
         </div>
       )}
 

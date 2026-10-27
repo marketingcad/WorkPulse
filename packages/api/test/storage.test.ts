@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createStorage, SupabaseStorage } from '../src/lib/storage';
 
 interface Call {
@@ -43,12 +43,36 @@ describe('SupabaseStorage', () => {
     expect(up.headers).toMatchObject({ apikey: 'service-key', Authorization: 'Bearer service-key', 'Content-Type': 'image/jpeg', 'x-upsert': 'true' });
   });
 
-  it('treats an existing bucket as ready', async () => {
-    const { impl } = stubFetch({
+  it('accepts JSON (personal data exports) in a new bucket', async () => {
+    const { impl, calls } = stubFetch({ 'POST /storage/v1/bucket': bucketOk, 'POST /storage/v1/object/tallywork/k.json': () => new Response('{}', { status: 200 }) });
+    await new SupabaseStorage(URL_, 'k', 'tallywork', impl).put('k.json', Buffer.from('{}'), 'application/json');
+    expect(JSON.parse(calls[0]!.body as string).allowed_mime_types).toContain('application/json');
+  });
+
+  it('brings an existing bucket up to the current settings, so one created before JSON was allowed accepts it', async () => {
+    const { impl, calls } = stubFetch({
       'POST /storage/v1/bucket': () => new Response(JSON.stringify({ statusCode: '409', error: 'Duplicate', message: 'The resource already exists' }), { status: 400 }),
+      'PUT /storage/v1/bucket/tallywork': () => new Response('{"message":"Successfully updated"}', { status: 200 }),
       'POST /storage/v1/object/tallywork/k': () => new Response('{}', { status: 200 }),
     });
     await expect(new SupabaseStorage(URL_, 'k', 'tallywork', impl).put('k', Buffer.from('x'), 'image/png')).resolves.toBeUndefined();
+    const upd = calls.find((c) => c.method === 'PUT')!;
+    expect(JSON.parse(upd.body as string)).toMatchObject({ public: false, allowed_mime_types: expect.arrayContaining(['application/json', 'image/*']) });
+  });
+
+  it('still uploads when the existing bucket cannot be updated', async () => {
+    const { impl } = stubFetch({
+      'POST /storage/v1/bucket': () => new Response('{"message":"The resource already exists"}', { status: 409 }),
+      'PUT /storage/v1/bucket/tallywork': () => new Response('denied', { status: 403 }),
+      'POST /storage/v1/object/tallywork/k': () => new Response('{}', { status: 200 }),
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      await expect(new SupabaseStorage(URL_, 'k', 'tallywork', impl).put('k', Buffer.from('x'), 'image/png')).resolves.toBeUndefined();
+      expect(warn).toHaveBeenCalledOnce();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('returns null for a missing object and streams an existing one', async () => {

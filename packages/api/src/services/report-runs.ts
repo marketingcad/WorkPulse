@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { fileObjects, memberships, organizations, reportRuns, savedReports, users, withSystem, withTenant, type Tx } from '@tallywork/db';
-import { REPORT_RANGES, cronMatches, forbidden, localDate, newId, notFound, parseCron, resolveRange, validation, type ReportRange } from '@tallywork/domain';
+import { DomainError, REPORT_RANGES, cronMatches, forbidden, localDate, newId, notFound, parseCron, resolveRange, validation, type ReportRange } from '@tallywork/domain';
 import { reportQueryInput, type savedReportInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
 import { signToken } from '../lib/crypto';
@@ -105,7 +105,9 @@ export async function processReportRuns(deps: Deps, limit = 5): Promise<number> 
       await withTenant(deps.db, q.org, (tx) => executeRun(tx, deps, run));
       done++;
     } catch (e) {
-      const message = e instanceof Error ? e.message.slice(0, 300) : 'Export failed';
+      // Business errors are written for people; anything else (storage, database) is logged and replaced.
+      const message = e instanceof DomainError ? e.message.slice(0, 300) : 'The file could not be created. Please try again in a few minutes; if it keeps failing, contact support.';
+      if (!(e instanceof DomainError)) console.error(JSON.stringify({ level: 'error', msg: 'report run failed', run_id: run.id, error: e instanceof Error ? e.message : String(e) }));
       await withSystem(deps.db, (tx) => tx.update(reportRuns).set({ status: 'FAILED', error: message, finishedAt: deps.now() }).where(eq(reportRuns.id, run.id)));
     }
   }

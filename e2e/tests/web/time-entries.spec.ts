@@ -1,4 +1,4 @@
-import { expect, test } from '../../support/fixtures';
+import { expect, search, test } from '../../support/fixtures';
 import { ADMIN_STATE } from '../../support/env';
 
 /**
@@ -37,6 +37,32 @@ test('an admin logs a part-billable duration and finds it on Time entries', { ta
   await expect(entries.filter({ hasText: '1h 30m' }).filter({ hasText: 'Non-billable' })).toHaveCount(1);
   for (const e of await entries.all()) await expect(e).toContainText('Duration entry');
   await expect(page.getByText(/Billable time\s*1h 00m/)).toBeVisible();
+  await expect(page.getByText('2 entries', { exact: true })).toBeVisible();
+});
+
+test('a single entry is counted as "1 entry"', async ({ page, data }) => {
+  // Live, 28 Oct 2026: the list read "1 entries". Its own day, so nothing else is counted.
+  const day = '2026-01-21';
+  const note = `Single entry ${data.run}`;
+  await page.goto(`/o/${data.orgId}/timesheets/all`);
+  await expect(page.getByRole('heading', { level: 1, name: 'Time entries' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add time' }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Add time' });
+  await dialog.getByLabel('Date').fill(day);
+  await dialog.getByLabel('Time logged').fill('0:45');
+  await dialog.getByRole('button', { name: 'Choose project and task' }).click();
+  await page.getByRole('option', { name: new RegExp(data.projects.app.name) }).first().click();
+  await dialog.getByLabel('Work performed').fill(note);
+  await dialog.getByLabel('Reason').fill('Call away from the computer');
+  await dialog.getByRole('button', { name: 'Add time' }).click();
+  await expect(page.getByText('Time added to the timesheet')).toBeVisible();
+
+  await page.getByLabel('From', { exact: true }).fill(day);
+  await page.getByLabel('To', { exact: true }).fill(day);
+  await search(page, 'Search time entries', note, '/time-entries');
+  await expect(page.getByRole('listitem').filter({ hasText: note })).toHaveCount(1);
+  await expect(page.getByText('1 entry', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 entries')).toHaveCount(0);
 });
 
 test('the add time dialog checks the duration, the billable part and the project', async ({ page, data }) => {

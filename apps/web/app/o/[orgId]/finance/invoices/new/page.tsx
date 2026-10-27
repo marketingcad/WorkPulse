@@ -391,7 +391,7 @@ function LinesTable({ lines, currency }: { lines: InvoicePreview['lines']; curre
                 <span className="flex flex-wrap items-center gap-2">
                   <Badge tone={l.kind === 'TIME' ? 'brand' : l.kind === 'EXPENSE' ? 'secondary' : 'neutral'}>{KIND_LABEL[l.kind]}</Badge>
                   <span>{l.description}</span>
-                  {l.kind === 'TIME' && l.entries > 0 && <span className="text-xs text-text-faint">{l.entries} entries</span>}
+                  {l.kind === 'TIME' && l.entries > 0 && <span className="text-xs text-text-faint">{l.entries} {l.entries === 1 ? 'entry' : 'entries'}</span>}
                 </span>
               </td>
               <td className="tabular px-3 text-right">{l.kind === 'TIME' ? `${l.quantity.toFixed(2)} h` : l.quantity}</td>

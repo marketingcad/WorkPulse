@@ -140,7 +140,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     steps: [
       'Open Time entries. Use the date, member, client and project filters to find the entry.',
       'Click the ⋯ menu on the entry and choose Edit, Split, Duplicate, View history or Delete.',
-      'When editing, change the start, end, project or note, give a reason for the change, and click Save changes.',
+      'When editing, change the start, end, project or note and click Save changes. A reason is optional and is kept in the history.',
       'To add time, click Add time, choose the member, enter the time and project, and click Add time.',
       'To change many entries at once, tick them and choose Mark billable, Mark non-billable or Delete.',
     ],

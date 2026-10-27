@@ -11,3 +11,10 @@ onlyBuiltDependencies:
   - "@node-rs/argon2"
   - sharp
   - electron-winstaller
+# Security floors for transitive dependencies (pnpm audit, 27 Oct 2026). Same major as before.
+overrides:
+  sharp: ^0.35.5
+  source-map-js: ^1.2.2
+  ip-address: ^10.7.4
+  "@vercel/blob>undici": ^6.29.1
+  "@vercel/cli-config>zod": ^4.6.7

@@ -15,6 +15,7 @@ import { TourProvider } from '@/components/help/tour';
 import { HelpReturnBar } from '@/components/help/help-return';
 import { NewOrgDialog } from './new-org-dialog';
 import { TimerBar } from './timer-bar';
+import { CalculatorLauncher } from '@/components/calculator/calculator-launcher';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const org = useOrg();
@@ -73,6 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </main>
         </div>
       </div>
+      <CalculatorLauncher />
     </TourProvider>
   );
 }

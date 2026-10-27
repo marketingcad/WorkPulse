@@ -98,11 +98,12 @@ test.describe('Consolidated pages (admin)', () => {
   test('a period filters the invoice list; Any date shows everything again', async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}/finance/invoices`);
     await page.getByLabel('Date range').selectOption('custom');
-    await page.getByLabel('From').fill('2001-01-01');
-    await page.getByLabel('To').fill('2001-01-31');
+    // Exact labels: "To" is also a substring of other names on every page (the calculator button).
+    await page.getByLabel('From', { exact: true }).fill('2001-01-01');
+    await page.getByLabel('To', { exact: true }).fill('2001-01-31');
     await expect(page.getByText(/No invoices/)).toBeVisible();
     await page.getByLabel('Date range').selectOption('all');
-    await expect(page.getByLabel('From')).toHaveCount(0);
+    await expect(page.getByLabel('From', { exact: true })).toHaveCount(0);
   });
 
   test('Organization and Time & pay save separately, without undoing each other', async ({ page, data, adminApi }) => {

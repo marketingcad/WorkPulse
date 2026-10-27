@@ -35,7 +35,7 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 - Dashboards that update live, plus an optional daily summary email.
 - Reports with downloads (CSV, Excel, PDF) and scheduled reports by email: 9 in the Report library, and the finance lists (invoices, payments, expenses, budgets, and what members are owed) export straight from their own page.
 - Integrations: API keys and webhooks for connecting other systems.
-- Security and privacy: two-factor sign-in, IP allowlists, a tamper-proof audit log, data retention rules (with automatic screenshot cleanup), a personal data export, a right-to-erasure process, and an access review.
+- Security and privacy: two-factor sign-in (QR setup, password-checked changes, lockout after wrong codes, owner reset), IP allowlists, a tamper-proof audit log, data retention rules (with automatic screenshot cleanup), a personal data export, a right-to-erasure process, and an access review.
 - Ready for production use: health monitoring, alerts, load tests, recovery procedures and on-call guides.
 - Accessibility: every main screen meets the WCAG 2.1 AA standard, in light and dark mode.
 - Automated end-to-end tests (Playwright) for the web app, the desktop window and the real desktop app, run with one command (`pnpm test:e2e`) and in CI on every change. Every change now ships with tests that were run and passed ([AGENTS.md](AGENTS.md)).
@@ -49,6 +49,32 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🆕 New updates
 
+- **27 October 2026 (PRs #63–#72):**
+  - **Two-factor sign-in hardening** (PR #63):
+    - Setup shows a QR code drawn on our own server; the secret never goes to an outside service. An unfinished setup expires after 15 minutes.
+    - Every change (turning it on or off, replacing the app, new recovery codes) asks for the password, and all but the first setup also ask for a current code.
+    - Replacing the authenticator keeps the old app working until the new one is confirmed.
+    - 10 wrong codes in 15 minutes lock the code step for the account, on the web and the desktop app.
+    - An email goes out for every change. The organization owner can reset two-factor for a member who lost both phone and codes (audited, and the member is signed out everywhere).
+  - **Clients, projects and tasks** (an audit, PRs #64–#68 and #70):
+    - **Access:** "Manage projects" or "Manage clients" at a narrower scope than the organization covers only the person's assigned projects and their clients (it used to cover everything). A client's project count no longer reveals projects the person can't see.
+    - **Clients:** editing a client changes only what was edited (missing fields were wiped). Archiving a client archives its projects; restoring it brings exactly those back. Two active clients can't share a name, and a client's currency can't change while rates in the old currency are in use.
+    - **Projects:** a project moved to another client shows that client only the work done after the move (portal hours, tasks and screenshots; migration 0024). Two active projects of the same client can't share a name, and an archived client takes no new projects.
+    - **Tasks:** archived tasks can be listed and restored. An archived project takes no new tasks, and a task created as done gets its completion date.
+    - **People:** someone removed and invited back starts with only what the new invitation gives, not their old projects and tasks.
+    - **Forms:** pressing Enter twice saves once, and unsaved project edits are no longer wiped by background refreshes.
+  - **Money** (an audit, PRs #69 and #71). Fixed first:
+    - A paid holiday inside paid time off is paid once (it was paid twice).
+    - An amount typed with a decimal comma ("12,50") is refused instead of saved as 1,250.00.
+    - "Amounts owed" reads pay in the pay rate's currency, so it matches payroll when pay and bill currencies differ.
+    - Voiding an invoice, recording or deleting a payment, and reopening a timesheet are safe when two people act at the same moment (no void invoice holding money, no time paid twice).
+    - Payroll access can only be given for the whole organization (a team-level grant gave everyone's pay and bank details).
+    - An expense submitted as not reimbursable can't be reimbursed, and a receipt backs one expense, by its uploader.
+    - When someone else changes a member's bank details, the member is told in the app and by email; when members change their own, payroll managers are told. Opening someone's full bank details is in the audit log.
+    - Finalize and Mark as paid say they can't be undone; corrections go on the next payroll.
+    - The Payroll Export lists people who only had paid time off, and no longer counts unpaid leave.
+  - **Help Center** (PR #72): the guides explain all of these rules, and the FAQ on changing approved time now matches the app (invoiced or paid timesheets can't be reopened).
+  - Tests: every change ships with API tests that fail on the old code, plus Playwright tests for what people see. There are 235 Playwright tests.
 - **26–27 October 2026:**
   - **Time and pay accuracy** (an audit of Time & Timesheets, PRs #57–#60). Approved pay, rounded per entry, is the official figure, and every other screen now agrees with it:
     - **Desktop:** "Today" and "This week" no longer count a running timer twice, so the daily limit no longer stops the timer early. This works for every installed desktop version.
@@ -169,7 +195,7 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🚧 Work in progress
 
-Everything built through 27 October is merged into `main` (see New updates), and nothing is waiting to be merged.
+Everything built through 27 October (PR #72) is merged into `main` (see New updates).
 
 - **QA of the new features in the live app:** desktop 0.1.8 and 0.1.9 (clock in/out, breaks and reminders, end-of-day reports), the new admin menu and tabs, Approvals, Payroll › Owed, Export, the Help Center and the product tour, the End-of-day reports page, Screenshot retention (preview, approval and a first scheduled cleanup), and the setup guides on each system. From 26–27 October:
   - a paid break and a paid holiday through to a payroll run;
@@ -177,7 +203,11 @@ Everything built through 27 October is merged into `main` (see New updates), and
   - Payroll Export's new columns;
   - attendance for a worker in another time zone;
   - device approval with the desktop app.
-- **Two-factor sign-in hardening** (planned, waiting on three product decisions): a QR code for setup, single-use recovery codes under concurrent use, a lockout for wrong codes on desktop sign-in, a password check before changing 2FA, replacing an authenticator without turning 2FA off, and a way back for someone who lost both phone and codes.
+  - From 27 October: two-factor setup, replacement and the owner's reset; archiving and restoring a client; a holiday inside time off on a payroll run; the bank-detail change emails.
+- **Money, the rest of the audit's fix list:**
+  - **Currency** (waiting on a decision): a bill rate in another currency than the client's drops that time from the invoice. Proposed: skip such a rate and use the next one. Billable expenses in another currency also need a warning on the invoice.
+  - **Time off after a payroll draft** (waiting on approval of a small migration): time off cancelled after the draft is still paid, and time off approved after its period was finalized is never paid.
+  - **Later:** totals and exports that add up different currencies, a currency choice when recording a payment, deleting a rate reopening the previous one, applying unallocated payment money to an invoice, and removing someone from a pay group.
 - **Scaling to 1,000 concurrent users** (planned, waiting on the Supabase and Vercel plan and region details):
   - put the Vercel functions in the same region as the database;
   - split the daily job by organization;
@@ -197,7 +227,7 @@ Everything built through 27 October is merged into `main` (see New updates), and
 - **Monitoring notice:** the desktop app no longer shows workers what is monitored or records their acknowledgement. The `/agent/policy/ack` endpoint and the web `/me/monitoring` page still exist, but the desktop doesn't use them. Make sure workers are told about monitoring some other way where the law requires it. The server's "Tracking settings were updated" notification no longer links anywhere (workers cannot open the web page); by decision, the desktop app will not show what is monitored again.
 - **Paging:** person pickers load every member (a light list with no rates or teams). For very large organizations, a search-as-you-type picker would avoid that. A few plain tables (Schedules, Roles, invoice lines, the client portal) have no paging.
 - **Check whether Preview builds can reach the production database:** in Vercel → Settings → Environment Variables, `DATABASE_URL` should be set for **Production** only. If Preview has it, every pull request's preview build runs migrations on the live database before anything is merged (the likely cause of the 20 October failed deploy).
-- **End-to-end tests still missing** for time off, report exports from the Report library, tracking policies, roles, API keys and webhooks, and schedules (see the audit). There are 224 Playwright tests today (194 web, 21 desktop window, 9 real desktop app; some web tests run at both desktop and phone size).
+- **End-to-end tests still missing** for time off, report exports from the Report library, tracking policies, roles, API keys and webhooks, and schedules (see the audit). There are 235 Playwright tests today (205 web, 21 desktop window, 9 real desktop app; some web tests run at both desktop and phone size).
 
 **Next / planned**
 

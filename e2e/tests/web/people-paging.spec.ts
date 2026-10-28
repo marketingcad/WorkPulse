@@ -35,6 +35,8 @@ test('Members search and filter on the server', { tag: '@smoke' }, async ({ page
   await page.getByLabel('Filter by role').selectOption({ label: worker.name });
   await page.getByLabel('Search members').fill(`${tag} Person 2`);
   await expect(table.getByRole('row')).toHaveCount(2);
+  // One person is "1 member" (it read "1 members").
+  await expect(page.getByText('1 member', { exact: true })).toBeVisible();
   await table.getByRole('row', { name: new RegExp(`${tag} Person 2`) }).click();
   await expect(page.getByRole('heading', { level: 1 })).toContainText(`${tag} Person 2`);
 });

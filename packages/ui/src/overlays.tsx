@@ -63,7 +63,8 @@ export function Drawer({ open, onOpenChange, title, subtitle, children, actions,
   );
 }
 
-export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel = t('common.confirm'), danger, onConfirm, loading }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: ReactNode; confirmLabel?: string; danger?: boolean; onConfirm: () => void; loading?: boolean }) {
+/** `cancelLabel`: name the way out when "Cancel" would read like the action ("Keep request" beside "Cancel request"). */
+export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel = t('common.confirm'), cancelLabel = t('common.cancel'), danger, onConfirm, loading }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: ReactNode; confirmLabel?: string; cancelLabel?: string; danger?: boolean; onConfirm: () => void; loading?: boolean }) {
   return (
     <Dialog
       open={open}
@@ -72,7 +73,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
       width={420}
       footer={
         <>
-          <Button onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
+          <Button onClick={() => onOpenChange(false)}>{cancelLabel}</Button>
           <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={loading}>
             {confirmLabel}
           </Button>

@@ -16,6 +16,7 @@ const STATUSES: Array<{ value: AttendanceStatus; label: string }> = [
   { value: 'ABSENT', label: 'Absent' },
   { value: 'ON_LEAVE', label: 'On leave' },
   { value: 'HOLIDAY', label: 'Holiday' },
+  { value: 'SCHEDULED', label: 'Not started yet' },
   { value: 'UNSCHEDULED', label: 'Unscheduled' },
 ];
 
@@ -49,7 +50,7 @@ export default function AttendancePage() {
   const columns: Column<AttendanceRow>[] = [
     { key: 'member', header: 'Member', cell: (r) => <PersonCell name={r.worker_name} sub={mode === 'week' ? fmtDate(r.date, { weekday: 'short', month: 'short', day: 'numeric' }) : undefined} />, value: (r) => r.worker_name, priority: 'primary' },
     ...(mode === 'week' ? [{ key: 'date', header: 'Date', cell: (r: AttendanceRow) => <span className="tabular">{fmtDate(r.date, { weekday: 'short', month: 'short', day: 'numeric' })}</span>, value: (r: AttendanceRow) => r.date }] : []),
-    { key: 'status', header: 'Status', cell: (r) => <StatusBadge status={r.status} />, value: (r) => r.status, priority: 'secondary' },
+    { key: 'status', header: 'Status', cell: (r) => <StatusBadge status={r.status} label={STATUSES.find((s) => s.value === r.status)?.label} />, value: (r) => r.status, priority: 'secondary' },
     {
       key: 'scheduled',
       header: 'Scheduled',
@@ -121,7 +122,7 @@ export default function AttendancePage() {
         footer={
           <span className="inline-flex items-start gap-1.5">
             <Info className="mt-px size-3.5 shrink-0" aria-hidden />
-            Attendance is derived from each member&apos;s schedule and their tracked time. It does not depend on activity levels or screenshots. Late arrivals respect the organization&apos;s grace period.
+            Attendance is derived from each member&apos;s schedule and their tracked time. It does not depend on activity levels or screenshots. Late arrivals respect the organization&apos;s grace period. Members with time tracking off are not included.
           </span>
         }
       >

@@ -35,7 +35,7 @@ import {
   newId,
   notFound,
   proRataFactor,
-  requestedHours,
+  requestedDayHours,
   splitAtLocalMidnight,
   validation,
   zonedWallTimeToUtc,
@@ -476,7 +476,9 @@ export async function requestTimeOff(x: Ctx, input: z.infer<typeof timeOffReques
   const versions = await x.tx.select({ from: workSchedules.effectiveFrom, to: workSchedules.effectiveTo }).from(workSchedules).where(eq(workSchedules.membershipId, x.actor.membershipId));
   const scheduled = (d: string) => versions.some((v) => v.from <= d && (!v.to || d < v.to));
   const isNonWorking = (d: string) => hols.has(d) || (scheduled(d) ? !shiftsForMe.some((s) => s.date === d) : [0, 6].includes(dayOfWeek(d)));
-  const hours = requestedHours(dates, isNonWorking, p.hoursPerDay, input.half_day);
+  // Each working day's hours are stored with the request (Q8): a pay period pays its own days.
+  const dayHours = requestedDayHours(dates, isNonWorking, p.hoursPerDay, input.half_day);
+  const hours = Object.values(dayHours).reduce((n, h) => n + h, 0);
   if (hours <= 0) throw businessRule('no_working_days', 'The selected dates contain no working days');
   const overlap = await x.tx
     .select({ id: timeOffRequests.id })
@@ -492,7 +494,7 @@ export async function requestTimeOff(x: Ctx, input: z.infer<typeof timeOffReques
   const auto = !p.requiresApproval;
   const [r] = await x.tx
     .insert(timeOffRequests)
-    .values({ id, organizationId: x.org.id, policyId: p.id, membershipId: x.actor.membershipId, startDate: input.start_date, endDate: input.end_date, halfDay: input.half_day, hours, reason: input.reason ?? null, status: auto ? 'APPROVED' : 'PENDING', decidedAt: auto ? new Date() : null })
+    .values({ id, organizationId: x.org.id, policyId: p.id, membershipId: x.actor.membershipId, startDate: input.start_date, endDate: input.end_date, halfDay: input.half_day, hours, dayHours, reason: input.reason ?? null, status: auto ? 'APPROVED' : 'PENDING', decidedAt: auto ? new Date() : null })
     .returning();
   if (auto) await approveRequestLedger(x.tx, x.org.id, r!, x.actor.membershipId);
   else await emitFrom(x, 'time_off.requested', { request_id: id, membership_id: x.actor.membershipId, start_date: input.start_date, end_date: input.end_date, hours }, { workerId: x.actor.membershipId });

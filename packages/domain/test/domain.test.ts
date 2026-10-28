@@ -412,3 +412,21 @@ describe('authorization matrix document', () => {
     expect(readFileSync(file, 'utf8')).toBe(authorizationMatrixMarkdown());
   });
 });
+
+describe('money integrity (audit 28 Oct 2026, phase 3)', () => {
+  it('requestedDayHours keeps each working day’s hours, adding up to requestedHours (Q8)', async () => {
+    const { requestedDayHours, requestedHours } = await import('../src');
+    const weekend = (d: string) => ['2026-10-17', '2026-10-18'].includes(d);
+    const dates = ['2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18', '2026-10-19'];
+    expect(requestedDayHours(dates, weekend, 8)).toEqual({ '2026-10-15': 8, '2026-10-16': 8, '2026-10-19': 8 });
+    expect(requestedHours(dates, weekend, 8)).toBe(24);
+    expect(requestedDayHours(['2026-10-15'], () => false, 8, true)).toEqual({ '2026-10-15': 4 });
+    expect(requestedDayHours(['2026-10-17'], weekend, 8)).toEqual({});
+  });
+
+  it('invoice amounts are priced from the quantity as stored, to 4 decimals (F10)', async () => {
+    const { invoiceTotals, roundQuantity } = await import('../src');
+    expect(roundQuantity(1.33333)).toBe(1.3333);
+    expect(invoiceTotals([{ quantity: 1.33333, unitPriceMinor: 9999, taxRateBps: 0 }]).lines[0]!.amountMinor).toBe(Math.round(1.3333 * 9999));
+  });
+});

@@ -144,7 +144,7 @@ export async function renderInvoicePdf(inv: InvoiceView, org: CompanyProfile): P
     }
     const desc = l.description.length > 60 ? `${l.description.slice(0, 59)}…` : l.description;
     draw(desc, cols.desc, y, { size: 9 });
-    draw(l.quantity.toFixed(2), cols.qty, y, { size: 9, right: true });
+    draw(formatQuantity(l.quantity), cols.qty, y, { size: 9, right: true });
     draw(money(l.unit_price_minor), cols.price, y, { size: 9, right: true });
     draw(money(l.amount_minor), cols.amount, y, { size: 9, right: true });
     page.drawLine({ start: { x: M - 8, y: y - 7 }, end: { x: size[0] - M + 8, y: y - 7 }, thickness: 0.5, color: PDF.rule });
@@ -184,6 +184,11 @@ export async function renderInvoicePdf(inv: InvoiceView, org: CompanyProfile): P
  * The standard PDF fonts only encode WinAnsi (Latin-1 plus a few typographic marks). Anything
  * else (a minus sign, Polish ł, CJK in a client name) would make pdf-lib throw, so it is replaced.
  */
+/** A line quantity as the invoice prices it: up to 4 decimals, at least 2 (F10: 0.1667 h, not 0.17). */
+export function formatQuantity(q: number): string {
+  return q.toFixed(4).replace(/0{1,2}$/, '');
+}
+
 export function winAnsi(s: string): string {
   return s.replace(/−/g, '-').replace(/[^\x20-\x7E -ÿ–—‘’“”•…€]/g, '?');
 }

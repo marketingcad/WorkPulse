@@ -28,6 +28,7 @@ import {
   startOfLocalDay,
   startOfWeek,
   transition,
+  validation,
   type SegmentKind,
   type SessionState,
   type SessionTrigger,
@@ -478,6 +479,8 @@ export async function resolveIdle(
     resolvedBy: string | null;
   },
 ): Promise<void> {
+  // Reassigning needs a project to move the time to; without one the idle span would be removed as if discarded.
+  if (params.resolution === 'REASSIGNED' && !params.projectId) throw validation('Choose the project to reassign the idle time to');
   const [s] = await tx.select().from(trackingSessions).where(eq(trackingSessions.id, params.sessionId));
   if (!s) throw notFound('session');
   await lockWorker(tx, s.membershipId);

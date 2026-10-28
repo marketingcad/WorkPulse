@@ -235,7 +235,7 @@ export function SaveReportDialog({ open, onOpenChange, reportKey, defaultName, p
                   </Select>
                 </Field>
               </div>
-              <Field label="Recipients" hint="Members of this organization only, up to 20." error={fieldError(err, 'recipients', /recipient/i)} required>
+              <Field label="Recipients" hint="Members who can see everything in this report, up to 20." error={fieldError(err, 'recipients', /recipient/i)} required>
                 <div>
                   <MultiSelect label="Send to" allLabel="Nobody" options={recipientOptions} value={recipients} onChange={(v) => setRecipients(v.slice(0, 20))} loading={workersQ.isLoading || meQ.isLoading} />
                 </div>

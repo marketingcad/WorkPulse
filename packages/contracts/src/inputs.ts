@@ -379,11 +379,13 @@ export const timeTypeInput = z.object({
 });
 
 // ─── Idle / screenshots ──────────────────────────────────────────────────────
-export const idleResolveInput = z.object({
-  resolution: z.enum(['KEPT', 'DISCARDED', 'REASSIGNED']),
-  task_id: id.optional(),
-  project_id: id.optional(),
-});
+export const idleResolveInput = z
+  .object({
+    resolution: z.enum(['KEPT', 'DISCARDED', 'REASSIGNED']),
+    task_id: id.optional(),
+    project_id: id.optional(),
+  })
+  .refine((v) => v.resolution !== 'REASSIGNED' || !!v.project_id, { message: 'Choose the project to reassign the idle time to', path: ['project_id'] });
 
 // ─── Operations ──────────────────────────────────────────────────────────────
 export const scheduleInput = z.object({

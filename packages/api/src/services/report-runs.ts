@@ -1,16 +1,16 @@
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { fileObjects, memberships, organizations, reportRuns, savedReports, users, withSystem, withTenant, type Tx } from '@tallywork/db';
-import { DomainError, REPORT_RANGES, cronMatches, forbidden, localDate, newId, notFound, parseCron, resolveRange, validation, type ReportRange } from '@tallywork/domain';
+import { DomainError, REPORT_RANGES, cronMatches, forbidden, localDate, newId, notFound, parseCron, resolveRange, validation, type Permission, type ReportRange } from '@tallywork/domain';
 import { reportQueryInput, type savedReportInput } from '@tallywork/contracts';
-import type { Deps } from '../context';
+import type { Actor, Deps } from '../context';
 import { signToken } from '../lib/crypto';
 import { csvStream, toPdf, toXlsx } from '../lib/export';
 import { loadActor, loadOrg } from '../middleware/tenant';
 import type { Ctx } from './ctx';
 import { audit } from './events';
 import { notify } from './notify';
-import { REPORTS, mayRun, runReport, type ReportParams } from './reports';
+import { REPORTS, mayRun, runReport, type ReportDefinition, type ReportParams } from './reports';
 import { DATA_EXPORT_KEY, collectMemberData } from './privacy';
 import { renderEmail } from '../lib/email';
 
@@ -137,7 +137,8 @@ async function executeRun(tx: Tx, deps: Deps, run: RunRow) {
 
   if (run.savedReportId) {
     const [saved] = await tx.select().from(savedReports).where(eq(savedReports.id, run.savedReportId));
-    const to = saved ? await memberEmails(tx, saved.recipients) : [];
+    const def = REPORTS.find((d) => d.key === run.reportKey);
+    const to = saved && def ? await recipientsWhoMaySee(tx, x.actor, def, saved.recipients) : [];
     const link = exportLink(deps, run.organizationId, storageKey, fileName, EMAIL_LINK_TTL_SECONDS, true);
     for (const email of to) {
       await deps.mailer
@@ -188,6 +189,47 @@ async function memberEmails(tx: Tx, emails: string[]): Promise<string[]> {
   return rows.map((r) => r.email);
 }
 
+/**
+ * Does the recipient's grant show at least what the owner's shows? Org scope shows everything; the same
+ * team scope only when it reaches the owner and every member the owner manages; the same assigned scope
+ * only when it covers every project the owner is assigned to. Own scope shows only the recipient's data.
+ */
+function covers(owner: Actor, recipient: Actor, perm: Permission): boolean {
+  const o = owner.grants[perm];
+  const r = recipient.grants[perm];
+  if (!o) return true;
+  if (!r) return false;
+  if (r === 'org') return true;
+  if (r !== o) return false;
+  if (r === 'team') return recipient.managedMembershipIds.has(owner.membershipId) && [...owner.managedMembershipIds].every((m) => recipient.managedMembershipIds.has(m));
+  if (r === 'assigned') return [...owner.assignedProjectIds].every((p) => recipient.assignedProjectIds.has(p));
+  return false;
+}
+
+/**
+ * A scheduled report is computed with its owner's access, so it goes only to the owner and to active
+ * members who may run that report themselves and see at least the same data.
+ */
+async function recipientsWhoMaySee(tx: Tx, owner: Actor, def: ReportDefinition, emails: string[]): Promise<string[]> {
+  if (!emails.length) return [];
+  const rows = await tx
+    .select({ email: users.email, userId: users.id, membershipId: memberships.id })
+    .from(memberships)
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .where(and(eq(memberships.status, 'ACTIVE'), eq(memberships.organizationId, owner.organizationId), inArray(sql`lower(${users.email})`, emails.map((e) => e.toLowerCase()))));
+  const perms = [def.permission, ...(def.requires ?? [])];
+  const out: string[] = [];
+  for (const r of rows) {
+    if (r.membershipId === owner.membershipId) {
+      out.push(r.email);
+      continue;
+    }
+    const actor = await loadActor(tx, { type: 'user', userId: r.userId, sessionId: 'report-run', mfaVerified: true }, owner.organizationId, r.membershipId);
+    if (mayRun({ actor }, def) && perms.every((p) => covers(owner, actor, p))) out.push(r.email);
+  }
+  return out;
+}
+
 // ─── Saved and scheduled reports ─────────────────────────────────────────────
 function savedDto(x: Ctx, r: typeof savedReports.$inferSelect) {
   return {
@@ -218,6 +260,10 @@ async function validateSaved(x: Ctx, i: z.infer<typeof savedReportInput>) {
   const known = new Set((await memberEmails(x.tx, i.recipients)).map((e) => e.toLowerCase()));
   const unknown = i.recipients.filter((e) => !known.has(e.toLowerCase()));
   if (unknown.length) throw fieldError('recipients', `Recipients must be members of this organization: ${unknown.join(', ')}`);
+  const def = REPORTS.find((d) => d.key === i.report_key)!;
+  const allowed = new Set((await recipientsWhoMaySee(x.tx, x.actor, def, i.recipients)).map((e) => e.toLowerCase()));
+  const blocked = i.recipients.filter((e) => !allowed.has(e.toLowerCase()));
+  if (blocked.length) throw fieldError('recipients', `These members can’t see everything in this report, so they can’t receive it: ${blocked.join(', ')}`);
 }
 
 export async function createSavedReport(x: Ctx, i: z.infer<typeof savedReportInput>) {

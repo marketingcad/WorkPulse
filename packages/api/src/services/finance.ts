@@ -126,10 +126,29 @@ export function rateChanges(input: { pay_rate_minor?: number | null; bill_rate_m
   return out;
 }
 
+/**
+ * May the actor set or remove a rate of this scope? Org-wide rates:manage covers every rate. A narrower
+ * grant covers only what it reaches: members in its scope, its assigned projects and their clients, never
+ * the organization default and never the holder's own pay or bill rate.
+ */
+async function assertCanManageRate(x: Ctx, scope: RateScope, scopeId: string | null) {
+  const grant = x.actor.grants['rates:manage'];
+  if (!grant) throw forbidden();
+  if (grant === 'org') return;
+  const [first, member] = scope === 'PROJECT_WORKER' ? (scopeId ?? '').split(':') : [scopeId ?? '', undefined];
+  const ok =
+    scope === 'WORKER' ? first !== x.actor.membershipId && can(x.actor, 'rates:manage', { ownerMembershipId: first })
+    : scope === 'PROJECT' ? canOnProject(x.actor, 'rates:manage', first!)
+    : scope === 'PROJECT_WORKER' ? !!member && member !== x.actor.membershipId && canOnProject(x.actor, 'rates:manage', first!) && can(x.actor, 'rates:manage', { ownerMembershipId: member })
+    : scope === 'CLIENT' ? await canOnClient(x, 'rates:manage', first!)
+    : false;
+  if (!ok) throw forbidden('Your role can’t change this rate');
+}
+
 /** Applies form rate edits for one scope from today: unchanged amounts create no new version, null ends the rate. */
 export async function applyScopedRates(x: Ctx, scope: RateScope, scopeId: string, changes: RateChange[], currency: string) {
   if (!changes.length) return;
-  if (!x.actor.grants['rates:manage']) throw forbidden();
+  await assertCanManageRate(x, scope, scopeId);
   const current = await currentScopedRates(x, scope);
   const today = localDate(x.deps.now(), x.org.timezone);
   for (const [kind, amount] of changes) {
@@ -146,6 +165,7 @@ export async function setRate(x: Ctx, input: z.infer<typeof rateInput>) {
   if (!x.actor.grants['rates:manage']) throw forbidden();
   const scopeId = input.scope === 'ORG' ? null : (input.scope_id ?? null);
   if (input.scope !== 'ORG' && !scopeId) throw validation('scope_id is required for this scope');
+  await assertCanManageRate(x, input.scope, scopeId);
   const prev = await closeOpenRates(x, input.kind, input.scope, scopeId, input.effective_from);
   const id = newId();
   await x.tx.insert(billingRates).values({ id, organizationId: x.org.id, kind: input.kind, scope: input.scope, scopeId, amountMinor: input.amount_minor, currency: input.currency, effectiveFrom: input.effective_from, createdBy: x.actor.membershipId });
@@ -157,6 +177,7 @@ export async function deleteRate(x: Ctx, id: string) {
   if (!x.actor.grants['rates:manage']) throw forbidden();
   const [r] = await x.tx.select().from(billingRates).where(eq(billingRates.id, id));
   if (!r) throw notFound('rate');
+  await assertCanManageRate(x, r.scope, r.scopeId);
   if (await rateInUse(x.tx, id)) throw businessRule('rate_in_use', 'This rate priced approved time. Set a new rate from a date instead of deleting it.');
   await x.tx.delete(billingRates).where(eq(billingRates.id, id));
   await audit(x, { action: 'rate.deleted', targetType: 'rate', targetId: id, before: r });

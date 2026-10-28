@@ -467,8 +467,11 @@ export async function requestTimeOff(x: Ctx, input: z.infer<typeof timeOffReques
   const dates = eachDate(input.start_date, input.end_date);
   if (dates.length > 366) throw validation('Requests are limited to one year');
   const shiftsForMe = await computeShifts(x.tx, [x.actor.membershipId], input.start_date, input.end_date);
-  const hasSchedule = shiftsForMe.length > 0;
-  const isNonWorking = (d: string) => hols.has(d) || (hasSchedule ? !shiftsForMe.some((s) => s.date === d) : [0, 6].includes(dayOfWeek(d)));
+  // A day under a schedule is a working day only if it has a shift (as paid holidays count it); without a
+  // schedule that day, Monday to Friday. A Thursday off for someone scheduled Monday to Wednesday is no working day.
+  const versions = await x.tx.select({ from: workSchedules.effectiveFrom, to: workSchedules.effectiveTo }).from(workSchedules).where(eq(workSchedules.membershipId, x.actor.membershipId));
+  const scheduled = (d: string) => versions.some((v) => v.from <= d && (!v.to || d < v.to));
+  const isNonWorking = (d: string) => hols.has(d) || (scheduled(d) ? !shiftsForMe.some((s) => s.date === d) : [0, 6].includes(dayOfWeek(d)));
   const hours = requestedHours(dates, isNonWorking, p.hoursPerDay, input.half_day);
   if (hours <= 0) throw businessRule('no_working_days', 'The selected dates contain no working days');
   const overlap = await x.tx
@@ -518,7 +521,9 @@ export async function decideTimeOff(x: Ctx, id: string, action: 'APPROVE' | 'REJ
 }
 
 export async function adjustBalance(x: Ctx, input: z.infer<typeof timeOffAdjustInput>) {
-  if (!x.actor.grants['time_off:manage']) throw forbidden();
+  // Only members within the grant's scope, and your own balance only with an org-wide grant.
+  const self = input.membership_id === x.actor.membershipId;
+  if (!can(x.actor, 'time_off:manage', { ownerMembershipId: input.membership_id }) || (self && x.actor.grants['time_off:manage'] !== 'org')) throw forbidden();
   await x.tx.insert(timeOffLedger).values({ id: newId(), organizationId: x.org.id, policyId: input.policy_id, membershipId: input.membership_id, hours: input.hours, kind: 'ADJUSTMENT', note: input.note ?? null, effectiveDate: localDate(new Date(), x.org.timezone), createdBy: x.actor.membershipId });
   await audit(x, { action: 'time_off.balance_adjusted', targetType: 'membership', targetId: input.membership_id, after: input });
   return balances(x, input.membership_id);

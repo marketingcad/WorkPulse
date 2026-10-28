@@ -11,9 +11,9 @@ export type HelpCategoryId = 'start' | 'time' | 'people' | 'work' | 'money' | 'r
 export const HELP_CATEGORIES: Array<{ id: HelpCategoryId; title: string; description: string }> = [
   { id: 'start', title: 'Getting started', description: 'Your first steps: setting up the organization and getting your team tracking time.' },
   { id: 'time', title: 'Time and timesheets', description: 'Checking, correcting and approving the time your team tracks.' },
-  { id: 'people', title: 'People', description: 'Members, teams, schedules, attendance and time off.' },
+  { id: 'people', title: 'Workforce', description: 'Members, teams, schedules, attendance and time off.' },
   { id: 'work', title: 'Clients, projects and tasks', description: 'What people work on, and the breaks planned for each project.' },
-  { id: 'money', title: 'Money', description: 'Rates, budgets, expenses, invoices and payroll.' },
+  { id: 'money', title: 'Finance', description: 'Rates, budgets, expenses, invoices and payroll.' },
   { id: 'reports', title: 'Reports and exports', description: 'Totals for any period, reports you can save, and downloads.' },
   { id: 'settings', title: 'Settings', description: 'Your organization, what is tracked, devices, roles and security.' },
   { id: 'faq', title: 'Frequently asked questions', description: 'Short answers to common questions.' },
@@ -354,7 +354,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     points: [
       'The most specific rate wins: a rate for one member on one project beats a project rate, which beats the organization’s rate.',
       'You can also set today’s rate directly on a member, client or project.',
-      'Type amounts with a dot for cents, such as 75.50 or 1,250.00. An amount like 12,50 is refused, so it is never saved as 1,250.00. This applies to every amount in Money.',
+      'Type amounts with a dot for cents, such as 75.50 or 1,250.00. An amount like 12,50 is refused, so it is never saved as 1,250.00. This applies to every amount in Finance.',
     ],
     links: [{ label: 'Open Rates', href: '/finance/billing' }],
     keywords: ['rate', 'pay rate', 'bill rate', 'hourly', 'wage', 'price'],

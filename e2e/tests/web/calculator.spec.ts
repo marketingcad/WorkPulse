@@ -117,7 +117,7 @@ test.describe('calculator', () => {
 
     // Move to another page through the app: the button is there and the panel remembers the entry.
     const nav = page.getByRole('complementary', { name: 'Primary' });
-    const work = nav.getByRole('button', { name: 'Work', exact: true });
+    const work = nav.getByRole('button', { name: 'Project Management', exact: true });
     if ((await work.getAttribute('aria-expanded')) === 'false') await work.click();
     await nav.getByRole('link', { name: 'Projects' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Projects' })).toBeVisible();

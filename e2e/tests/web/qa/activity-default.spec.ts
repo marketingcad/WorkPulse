@@ -23,7 +23,7 @@ test.describe('QA · Activity default view (admin)', () => {
 
     await page.goto(`/o/${data.orgId}`);
     const nav = page.getByRole('complementary', { name: 'Primary' });
-    const group = nav.getByRole('button', { name: 'Time' });
+    const group = nav.getByRole('button', { name: 'Time Tracking' });
     if ((await group.getAttribute('aria-expanded')) === 'false') await group.click();
     await nav.getByRole('link', { name: 'Activity', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/activity$`));

@@ -15,7 +15,7 @@ test.describe('Help Center', () => {
     await sidebar(page).getByRole('link', { name: 'Help' }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/help$`));
     await expect(page.getByRole('heading', { level: 1, name: 'Help Center' })).toBeVisible();
-    for (const topic of ['Getting started', 'Time and timesheets', 'Money', 'Frequently asked questions', 'Troubleshooting', 'Finding your way']) {
+    for (const topic of ['Getting started', 'Time and timesheets', 'Finance', 'Frequently asked questions', 'Troubleshooting', 'Finding your way']) {
       await expect(page.getByRole('heading', { level: 2, name: topic })).toBeVisible();
     }
     // “Finding your way” lists the menu this person sees.
@@ -121,14 +121,14 @@ test.describe('Product tour for a new account', () => {
 
     // Next highlights the first menu group; Previous goes back.
     await tour.getByRole('button', { name: 'Next' }).click();
-    const step2 = page.getByRole('dialog', { name: 'Time' });
+    const step2 = page.getByRole('dialog', { name: 'Time Tracking' });
     await expect(step2).toContainText(/Step 2 of \d+/);
     await test.info().attach('tour-step-2', { body: await page.screenshot(), contentType: 'image/png' });
     await step2.getByRole('button', { name: 'Previous' }).click();
     await expect(page.getByRole('dialog', { name: 'Welcome to WorkPulse' })).toBeVisible();
     // The keyboard works too.
     await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('dialog', { name: 'Time' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Time Tracking' })).toBeVisible();
 
     // Skip: gone, and it stays gone after a reload.
     await page.getByRole('button', { name: 'Skip tour' }).click();

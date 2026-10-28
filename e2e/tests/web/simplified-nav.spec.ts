@@ -17,7 +17,7 @@ test.describe('Admin navigation', () => {
     await page.goto(`/o/${data.orgId}`);
     const nav = sidebar(page);
     // The collapsible group headings (the organization switcher above them is not one).
-    await expect(nav.getByRole('navigation').getByRole('button')).toHaveText(['Time', 'People', 'Work', 'Money', 'Reports']);
+    await expect(nav.getByRole('navigation').getByRole('button')).toHaveText(['Time Tracking', 'Workforce', 'Project Management', 'Finance', 'Reports']);
     for (const gone of ['My timesheet', 'Pay stubs', 'Sessions', 'API keys', 'Webhooks', 'Teams', 'Attendance', 'Tracking policies', 'What is monitored', 'Approvals', 'Manual time', 'Team timesheets', 'Billing & rates']) {
       await expect(nav.getByRole('link', { name: gone, exact: true })).toHaveCount(0);
     }

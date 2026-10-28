@@ -24,8 +24,10 @@ export function MyTimeOff() {
   const [toCancel, setToCancel] = useState<TimeOffRequest | null>(null);
   const cancel = useOrgMutation<{ id: string }>('POST', (b) => `/time-off/requests/${b.id}/cancel`);
   const canRequest = org.can('time_off:request');
+  // Approved time off that has started can only be cancelled by an approver (it may already be paid).
+  const today = todayIn(org.membership.timezone || org.organization.timezone);
   // New workspaces have no policies, which leaves Request disabled; offer a one-click starter to admins.
-  const policiesQ = useOrgQuery<unknown[]>(org.can('time_off:manage') ? '/time-off/policies' : null);
+  const policiesQ = useOrgQuery<unknown[]>(org.grants['time_off:manage'] === 'org' ? '/time-off/policies' : null);
   const noPolicies = policiesQ.data?.length === 0;
   const starter = useOrgMutation('POST', '/time-off/policies');
   const createStarter = async () => {
@@ -73,7 +75,7 @@ export function MyTimeOff() {
       header: <span className="sr-only">Actions</span>,
       align: 'right',
       cell: (r) =>
-        r.status === 'PENDING' || r.status === 'APPROVED' ? (
+        r.status === 'PENDING' || (r.status === 'APPROVED' && r.start_date > today) ? (
           <Button size="xs" variant="ghost" onClick={() => setToCancel(r)}>
             Cancel
           </Button>

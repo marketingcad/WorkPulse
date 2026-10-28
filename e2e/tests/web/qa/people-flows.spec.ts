@@ -85,6 +85,31 @@ test.describe('QA · Time off (admin)', () => {
     await expect(row).toContainText('Cancelled');
   });
 
+  // Audit 28 Oct 2026 (BE-9): approved time off that has started may already be paid, so the
+  // requester can no longer cancel it (and get the hours back); an approver can.
+  test('your approved time off can be cancelled until it starts, not after', async ({ page, data, adminApi }) => {
+    const name = `QA started ${uid()}`;
+    const policy = await ok<{ id: string }>(
+      await adminApi.api.post(adminApi.orgApi('/time-off/policies'), { data: { name, requires_approval: false, accrual: { type: 'none', amountHours: 0, maxBalanceHours: null, carryOverHours: null }, applies_to_all: false, member_ids: [data.admin.membershipId] } }),
+      'policy',
+    );
+    const ask = (start: string, reason: string) => adminApi.api.post(adminApi.orgApi('/time-off/requests'), { data: { policy_id: policy.id, start_date: start, end_date: start, half_day: false, reason } });
+    const started = await ok<{ id: string; status: string }>(await ask('2026-01-06', `${name} past`), 'started request');
+    expect(started.status).toBe('APPROVED');
+    await ok(await ask(nextMonday(), `${name} future`), 'future request');
+
+    await page.goto(`/o/${data.orgId}/time-off?tab=mine`);
+    const future = page.getByRole('row').filter({ hasText: `${name} future` });
+    const past = page.getByRole('row').filter({ hasText: `${name} past` });
+    await expect(future.getByRole('button', { name: 'Cancel' })).toBeVisible();
+    await expect(past).toContainText('Approved');
+    await expect(past.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
+    // The API refuses it too, with the reason.
+    const refused = await adminApi.api.post(adminApi.orgApi(`/time-off/requests/${started.id}/cancel`), { data: {} });
+    expect(refused.status()).toBe(422);
+    expect((await refused.json()).code).toBe('time_off_started');
+  });
+
   test('an admin archives a policy; cancelling the confirmation keeps it', async ({ page, data, adminApi }) => {
     // Live, 28 Oct 2026: a policy could be created but not removed in the app.
     const name = `QA archive ${uid()}`;

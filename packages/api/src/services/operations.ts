@@ -47,9 +47,9 @@ import type { OffsetPage, breakTypeInput, holidayInput, overtimeRulesInput, sche
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
 import { audit, emitFrom } from './events';
-import { lockWorker } from './tracking';
+import { lockWorker, workerTimezone } from './tracking';
 import { approversFor, notify } from './notify';
-import { narrowMemberships } from './scope';
+import { existsInOrg, narrowMemberships } from './scope';
 import { likePattern } from '../lib/search';
 import { memberNames } from './timer';
 
@@ -76,6 +76,7 @@ export async function listSchedules(x: Ctx, membershipIds?: string[]) {
 
 export async function upsertSchedule(x: Ctx, id: string | null, input: z.infer<typeof scheduleInput>) {
   if (!can(x.actor, 'schedules:manage', { ownerMembershipId: input.membership_id })) throw forbidden();
+  if (!(await existsInOrg(x, 'member', input.membership_id))) throw notFound('worker');
   for (const d of input.days) if (d.end <= d.start) throw validation('Each shift must end after it starts (overnight shifts: split across two days)');
   const values = { membershipId: input.membership_id, name: input.name, timezone: input.timezone, days: input.days, effectiveFrom: input.effective_from, effectiveTo: input.effective_to ?? null };
   let sid = id;
@@ -310,7 +311,8 @@ export async function listHolidays(x: Ctx, year?: number) {
 }
 
 export async function addHoliday(x: Ctx, input: z.infer<typeof holidayInput>) {
-  if (!x.actor.grants['time_off:manage']) throw forbidden();
+  // Holidays and leave policies apply to everyone: org-wide grant only (A2b).
+  if (x.actor.grants['time_off:manage'] !== 'org') throw forbidden();
   const id = newId();
   await x.tx.insert(holidays).values({ id, organizationId: x.org.id, date: input.date, name: input.name, paid: input.paid }).onConflictDoUpdate({ target: [holidays.organizationId, holidays.date], set: { name: input.name, paid: input.paid } });
   await audit(x, { action: 'holiday.set', targetType: 'holiday', targetId: input.date, after: input });
@@ -318,7 +320,8 @@ export async function addHoliday(x: Ctx, input: z.infer<typeof holidayInput>) {
 }
 
 export async function deleteHoliday(x: Ctx, id: string) {
-  if (!x.actor.grants['time_off:manage']) throw forbidden();
+  // Holidays and leave policies apply to everyone: org-wide grant only (A2b).
+  if (x.actor.grants['time_off:manage'] !== 'org') throw forbidden();
   await x.tx.delete(holidays).where(eq(holidays.id, id));
   await audit(x, { action: 'holiday.deleted', targetType: 'holiday', targetId: id });
 }
@@ -341,7 +344,8 @@ export async function listTimeOffPolicies(x: Ctx) {
 }
 
 export async function upsertTimeOffPolicy(x: Ctx, id: string | null, input: z.infer<typeof timeOffPolicyInput>) {
-  if (!x.actor.grants['time_off:manage']) throw forbidden();
+  // Holidays and leave policies apply to everyone: org-wide grant only (A2b).
+  if (x.actor.grants['time_off:manage'] !== 'org') throw forbidden();
   const values = { name: input.name, paid: input.paid, requiresApproval: input.requires_approval, hoursPerDay: input.hours_per_day, accrual: input.accrual as AccrualPolicy, appliesToAll: input.applies_to_all };
   let pid = id;
   if (pid) {
@@ -506,6 +510,12 @@ export async function decideTimeOff(x: Ctx, id: string, action: 'APPROVE' | 'REJ
   if (action === 'CANCEL') {
     if (!own && !can(x.actor, 'time_off:approve', { ownerMembershipId: r.membershipId })) throw forbidden();
     if (r.status === 'CANCELLED' || r.status === 'REJECTED') throw businessRule('already_closed', 'This request is already closed');
+    // BE-9: approved time off that has started may have been taken and paid, so restoring the balance
+    // is an approver's call, never the requester's own (even when they could approve for others).
+    if (r.status === 'APPROVED' && own) {
+      const today = localDate(x.deps.now(), await workerTimezone(x.tx, r.membershipId, x.org.timezone));
+      if (r.startDate <= today) throw businessRule('time_off_started', 'This time off has already started. Ask an approver to cancel it.');
+    }
     if (r.status === 'APPROVED') {
       await x.tx.insert(timeOffLedger).values({ id: newId(), organizationId: x.org.id, policyId: r.policyId, membershipId: r.membershipId, hours: r.hours, kind: 'REVERSAL', requestId: r.id, effectiveDate: r.startDate, createdBy: x.actor.membershipId });
     }
@@ -524,6 +534,9 @@ export async function adjustBalance(x: Ctx, input: z.infer<typeof timeOffAdjustI
   // Only members within the grant's scope, and your own balance only with an org-wide grant.
   const self = input.membership_id === x.actor.membershipId;
   if (!can(x.actor, 'time_off:manage', { ownerMembershipId: input.membership_id }) || (self && x.actor.grants['time_off:manage'] !== 'org')) throw forbidden();
+  if (!(await existsInOrg(x, 'member', input.membership_id))) throw notFound('worker');
+  const [policy] = await x.tx.select({ id: timeOffPolicies.id }).from(timeOffPolicies).where(and(eq(timeOffPolicies.id, input.policy_id), eq(timeOffPolicies.organizationId, x.org.id)));
+  if (!policy) throw notFound('time_off_policy');
   await x.tx.insert(timeOffLedger).values({ id: newId(), organizationId: x.org.id, policyId: input.policy_id, membershipId: input.membership_id, hours: input.hours, kind: 'ADJUSTMENT', note: input.note ?? null, effectiveDate: localDate(new Date(), x.org.timezone), createdBy: x.actor.membershipId });
   await audit(x, { action: 'time_off.balance_adjusted', targetType: 'membership', targetId: input.membership_id, after: input });
   return balances(x, input.membership_id);
@@ -606,7 +619,8 @@ export async function accrueForTimesheet(tx: Tx, orgId: string, t: { id: string;
 }
 
 export async function archiveTimeOffPolicy(x: Ctx, id: string) {
-  if (!x.actor.grants['time_off:manage']) throw forbidden();
+  // Holidays and leave policies apply to everyone: org-wide grant only (A2b).
+  if (x.actor.grants['time_off:manage'] !== 'org') throw forbidden();
   const r = await x.tx.update(timeOffPolicies).set({ archivedAt: new Date() }).where(eq(timeOffPolicies.id, id)).returning({ id: timeOffPolicies.id });
   if (!r.length) throw notFound('time_off_policy');
   await audit(x, { action: 'time_off_policy.archived', targetType: 'time_off_policy', targetId: id });

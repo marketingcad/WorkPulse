@@ -298,6 +298,27 @@ No financial rules change in this phase.
 - **Decision needed:** A3. Should a member's own data export include the HR notes?
 - **Tests:** API tests for each role and scope, covering who is refused. E2E for U1 and for the restricted-role views.
 
+**Status: done on `fix/audit-phase1-permissions`, except A3.** Decisions made while building it:
+
+| Item | As built |
+|---|---|
+| A2b, org settings | `org:update`, `roles:manage`, `api_keys:manage`, `webhooks:manage`, `audit:read`, `settings:security` and `retention:manage` join payroll as org-only permissions. A role can't be saved with a narrower scope, and a narrower grant already stored is ignored when the member signs in. |
+| A2b, money | Budgets, invoices and payments follow `canOnClient`. Org scope covers everything. A narrower grant covers its assigned projects and their clients, in lists, page totals, single records, the dashboard widget and the Invoices and Payments reports. Recording a payment at a narrower scope needs one of those clients. |
+| A2b, time off | Holidays and leave policies apply to everyone, so changing them needs `time_off:manage` at org scope. A narrower grant still adjusts the balances of members it reaches (Q4). |
+| A2b, teams | Only org scope creates a team. A narrower grant renames or archives only the teams its holder manages. |
+| SEC-7 | A team-scope grant adds a person only if its holder already manages them through another team. It can still remove people and change roles. |
+| A5 / SEC-6 | Every policy reader can read the org layer, because it is part of their own policy. A team layer is readable at org scope, by its managers and by its members. A member layer follows `can()`. Writing the org layer needs org scope. A narrower grant never changes its holder's own policy. |
+| SEC-5 | `/files/:id` serves only receipts and your own exports. Anything else is 404. Project documents, screenshots and invoice PDFs keep their own routes. |
+| A4 | `mayRun` passes when any one of the `requires` permissions is held, so the Billing report hides its money columns and figures instead, as Summary does. Money needs `billing:read` or `rates:read`. |
+| A6 | Switching a portal back on checks the activity and screenshot grants for the sections it still shares. |
+| A7 | Only the owner sees a shared report's recipients. |
+| A8 | Request bodies are looked up in the org: budget subjects, rate scopes, time-off adjustments (member and policy), schedule members and member policy layers. |
+| T3 | The web refuses to resolve idle time while it is still going (`idle_ongoing`). It resolves once there is input again or the session ends, as the background job does. |
+| BE-9 | Once approved time off has started (in the member's time zone), the requester can't cancel it (`time_off_started`). An approver can. My time off hides Cancel for it. |
+| U1 | Any change of filter, search, dates, order or page clears the selection. A bulk action only sends rows that are on screen. |
+
+**Found while building it, not changed:** inviting and revoking invitations (`members:manage`) still only check that the grant exists. A narrower grant can invite anyone into any role it holds. This needs a product decision: invite into your own team, or org-only.
+
 ### Phase 2: offline sync
 
 - **First:** property tests that generate random orders of offline and online events. They check that no recorded second is lost or counted twice.

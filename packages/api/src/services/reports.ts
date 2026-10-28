@@ -411,6 +411,21 @@ async function billingReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
   }
   const out = [...agg.values()].sort((a, b) => a.client.localeCompare(b.client) || a.project.localeCompare(b.project));
   const sum = (k: keyof Row) => out.reduce((s, r) => s + (r[k] as number), 0);
+  // Billed amounts are money, shown as Summary shows them: with billing:read or rates:read (A4).
+  if (!x.actor.grants['billing:read'] && !x.actor.grants['rates:read']) {
+    return {
+      columns: [
+        { key: 'client', label: 'Client', type: 'text' },
+        { key: 'project', label: 'Project', type: 'text' },
+        { key: 'seconds', label: 'Billable time', type: 'duration' },
+        { key: 'approved_seconds', label: 'Approved time', type: 'duration' },
+      ],
+      rows: out.map(({ client, project, seconds, approved_seconds }) => ({ client, project, seconds, approved_seconds })),
+      totals: { seconds: sum('seconds'), approved_seconds: sum('approved_seconds') },
+      summary: [],
+      currency: x.org.currency,
+    };
+  }
   return {
     columns: [
       { key: 'client', label: 'Client', type: 'text' },

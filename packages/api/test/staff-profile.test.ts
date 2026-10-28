@@ -130,4 +130,16 @@ describe('erasure', () => {
     const d = await admin.get(o(`/workers/${workerId}/details`));
     expect(d.body).toMatchObject({ first_name: null, birth_date: null, emergency_contact_name: null, notes: null });
   });
+
+  // Live, 28 Oct 2026: erased members were listed as former members with no "Date left".
+  it('records the date left, like removal; a member removed earlier keeps their removal date', async () => {
+    const all = async () => (await admin.get(o('/workers?include_removed=true'))).body as Array<{ id: string; status: string; end_date: string | null }>;
+    expect((await all()).find((w) => w.id === workerId)).toMatchObject({ status: 'REMOVED', end_date: '2026-09-23' });
+
+    // Olga was removed on Sept 23 (above); erasing her a week later does not move her date.
+    t.clock.set(new Date(NOW.getTime() + 7 * 86_400_000));
+    expect((await admin.post(o(`/workers/${otherId}/anonymize`), {})).status).toBe(200);
+    expect((await all()).find((w) => w.id === otherId)).toMatchObject({ status: 'REMOVED', end_date: '2026-09-23' });
+    t.clock.set(NOW);
+  });
 });

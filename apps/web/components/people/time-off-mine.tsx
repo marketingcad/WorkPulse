@@ -159,6 +159,7 @@ export function MyTimeOff() {
         title="Cancel this request?"
         description={toCancel ? `${toCancel.policy_name}, ${dateRangeLabel(toCancel.start_date, toCancel.end_date)}. ${toCancel.status === 'APPROVED' ? 'The hours go back to your balance.' : ''}` : undefined}
         confirmLabel="Cancel request"
+        cancelLabel="Keep request"
         danger
         loading={cancel.isPending}
         onConfirm={doCancel}

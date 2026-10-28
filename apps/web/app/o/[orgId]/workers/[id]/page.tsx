@@ -41,6 +41,9 @@ import { DataExportAction } from '@/components/security/data-export';
 import { MfaResetDialog } from '@/components/security/mfa-reset-dialog';
 import { fromMinor, toMinor } from '@/components/finance/types';
 
+/** Platform names as on the Devices page (the desktop app reports windows, macos or linux). */
+const PLATFORM: Record<string, string> = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
+
 export default function WorkerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const org = useOrg();
@@ -166,8 +169,8 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
             <Stat label="Expected per week" value={w.weekly_expected_seconds === null ? 'Not set' : org.fmtDuration(w.weekly_expected_seconds)} />
             <Stat label="Start date" value={w.start_date ? fmtDate(w.start_date) : 'Not set'} />
             {w.end_date && <Stat label="Date left" value={fmtDate(w.end_date)} />}
-            {w.pay_rate_minor !== undefined && <Stat label="Pay rate" value={w.pay_rate_minor === null ? 'Not set' : `${fmtMoney(w.pay_rate_minor, org.organization.currency)} / h`} />}
-            {w.bill_rate_minor !== undefined && <Stat label="Bill rate" value={w.bill_rate_minor === null ? 'Not set' : `${fmtMoney(w.bill_rate_minor, org.organization.currency)} / h`} />}
+            {w.pay_rate_minor !== undefined && <Stat label="Pay rate" value={w.pay_rate_minor === null ? 'Not set (project or client rates apply)' : `${fmtMoney(w.pay_rate_minor, org.organization.currency)} / h`} />}
+            {w.bill_rate_minor !== undefined && <Stat label="Bill rate" value={w.bill_rate_minor === null ? 'Not set (project or client rates apply)' : `${fmtMoney(w.bill_rate_minor, org.organization.currency)} / h`} />}
             <Stat
               label="Time tracking"
               value={
@@ -741,7 +744,7 @@ function DevicesTab({ w }: { w: WorkerDto }) {
   const rows = q.data;
   const columns: Column<DeviceDto>[] = [
     { key: 'name', header: 'Device', priority: 'primary', value: (d) => d.name, cell: (d) => <span className="font-medium">{d.name}</span> },
-    { key: 'platform', header: 'Platform', value: (d) => d.platform, cell: (d) => <span className="text-text-muted">{[d.platform, d.os_version].filter(Boolean).join(' ')}</span> },
+    { key: 'platform', header: 'Platform', value: (d) => d.platform, cell: (d) => <span className="text-text-muted">{[PLATFORM[d.platform] ?? d.platform, d.os_version?.replace(/^Windows_NTs*/, '')].filter(Boolean).join(' ')}</span> },
     { key: 'agent', header: 'App version', value: (d) => d.agent_version ?? '', cell: (d) => <span className="tabular text-text-muted">{d.agent_version ?? '—'}</span> },
     { key: 'status', header: 'Status', priority: 'secondary', value: (d) => d.status, cell: (d) => <StatusBadge status={d.status} /> },
     { key: 'seen', header: 'Last seen', priority: 'secondary', value: (d) => d.last_seen_at ?? '', cell: (d) => <span className="text-text-muted" title={fmtDateTime(d.last_seen_at)}>{d.last_seen_at ? fmtRelative(d.last_seen_at) : 'Never'}</span> },

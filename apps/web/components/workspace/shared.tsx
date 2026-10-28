@@ -528,7 +528,7 @@ export function ProjectFields({
         )}
         {showAssignments && teams && (
           <Field label="Teams" htmlFor="proj-teams" hint="Everyone in these teams can track time here." error={err?.field('team_ids')}>
-            <MultiSelect id="proj-teams" options={teams.map((t) => ({ value: t.id, label: t.name, sub: `${t.members.length} members` }))} value={f.team_ids} onChange={(team_ids) => setF({ ...f, team_ids })} placeholder="No teams" />
+            <MultiSelect id="proj-teams" options={teams.map((t) => ({ value: t.id, label: t.name, sub: `${t.members.length} ${t.members.length === 1 ? 'member' : 'members'}` }))} value={f.team_ids} onChange={(team_ids) => setF({ ...f, team_ids })} placeholder="No teams" />
           </Field>
         )}
         <Field label="Description" htmlFor="proj-desc" className="sm:col-span-2">

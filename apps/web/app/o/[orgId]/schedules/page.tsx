@@ -14,6 +14,8 @@ interface Member {
   name: string;
   timezone: string;
   title: string | null;
+  /** false: not tracked, so attendance leaves them out */
+  tracking_enabled?: boolean;
 }
 
 export default function SchedulesPage() {
@@ -40,7 +42,7 @@ export default function SchedulesPage() {
 
   const members: Member[] = useMemo(() => {
     const list = (workersQ.data ?? []).filter((w) => w.status === 'ACTIVE' && (teamView || w.id === me));
-    const fromWorkers = list.map((w) => ({ id: w.id, name: w.name, timezone: w.timezone, title: w.title }));
+    const fromWorkers: Member[] = list.map((w) => ({ id: w.id, name: w.name, timezone: w.timezone, title: w.title, tracking_enabled: w.tracking_enabled }));
     // Fall back to names on schedules / shifts if the member list is narrower than schedule visibility.
     const known = new Set(fromWorkers.map((m) => m.id));
     for (const s of schedulesQ.data ?? []) {

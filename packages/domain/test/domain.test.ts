@@ -260,7 +260,10 @@ describe('workforce (Phase 8 gate)', () => {
     ['exactly at grace', { firstIn: day(9, 5), lastOut: day(17), workedSeconds: 8 * 3600 }, { status: 'PRESENT', lateSeconds: 0 }],
     ['late past grace', { firstIn: day(9, 6), lastOut: day(17), workedSeconds: 8 * 3600 }, { status: 'LATE', lateSeconds: 360 }],
     ['absent after the shift started', {}, { status: 'ABSENT' }],
-    ['not absent yet inside grace', { now: day(9, 3) }, { status: 'UNSCHEDULED' }],
+    // Live, 28 Oct 2026: before the shift people were "unscheduled" and left out of the roster.
+    ['not absent yet inside grace', { now: day(9, 3) }, { status: 'SCHEDULED' }],
+    ['shift later today', { now: day(4) }, { status: 'SCHEDULED', scheduledSeconds: 8 * 3600 }],
+    ['nothing scheduled and no time', { scheduledStart: null, scheduledEnd: null }, { status: 'UNSCHEDULED' }],
     ['on leave', { onLeave: true }, { status: 'ON_LEAVE' }],
     ['holiday', { isHoliday: true }, { status: 'HOLIDAY' }],
     ['worked on a holiday', { isHoliday: true, firstIn: day(10), lastOut: day(12), workedSeconds: 7200 }, { status: 'LATE' }],

@@ -95,6 +95,8 @@ function PolicyDialog({ policy, workers, onClose }: { policy: TimeOffPolicy | nu
   const [error, setError] = useState<ApiError | null>(null);
   const create = useOrgMutation<PolicyBody, TimeOffPolicy>('POST', '/time-off/policies');
   const update = useOrgMutation<PolicyBody, TimeOffPolicy>('PUT', `/time-off/policies/${policy?.id ?? ''}`);
+  const archive = useOrgMutation<Record<string, never>>('POST', `/time-off/policies/${policy?.id ?? ''}/archive`);
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const pending = create.isPending || update.isPending;
 
   const num = (s: string) => (s.trim() === '' ? null : Number(s));
@@ -134,10 +136,36 @@ function PolicyDialog({ policy, workers, onClose }: { policy: TimeOffPolicy | nu
       width={560}
       footer={
         <>
+          {policy && (
+            <Button variant="ghost" className="mr-auto text-danger" onClick={() => setConfirmArchive(true)} disabled={pending}>
+              Archive policy
+            </Button>
+          )}
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" onClick={submit} loading={pending} disabled={!name.trim() || (!appliesToAll && memberIds.size === 0)}>
             {policy ? 'Save policy' : 'Create policy'}
           </Button>
+          {policy && (
+            <ConfirmDialog
+              open={confirmArchive}
+              onOpenChange={setConfirmArchive}
+              title={`Archive ${policy.name}?`}
+              description="Members can no longer request it, and it leaves their balances. Requests already made are kept, and pending ones can still be approved or rejected."
+              confirmLabel="Archive policy"
+              danger
+              loading={archive.isPending}
+              onConfirm={async () => {
+                try {
+                  await archive.mutateAsync({});
+                  toast.success(`${policy.name} archived`);
+                  setConfirmArchive(false);
+                  onClose();
+                } catch (e) {
+                  toast.error(errorMessage(e));
+                }
+              }}
+            />
+          )}
         </>
       }
     >

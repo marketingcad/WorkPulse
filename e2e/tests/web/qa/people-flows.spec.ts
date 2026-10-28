@@ -65,6 +65,50 @@ test.describe('QA · Time off (admin)', () => {
     await expect(dialog.getByText('End date must be on or after the start date')).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Send request' })).toBeDisabled();
   });
+
+  test('cancelling your own request asks "Keep request" or "Cancel request"', async ({ page, data, adminApi }) => {
+    // Live, 28 Oct 2026: the choice was "Cancel" or "Cancel request".
+    const name = `QA cancel ${uid()}`;
+    const policy = await ok<{ id: string }>(await adminApi.api.post(adminApi.orgApi('/time-off/policies'), { data: { name, accrual: { type: 'none', amountHours: 0, maxBalanceHours: null, carryOverHours: null }, applies_to_all: false, member_ids: [data.admin.membershipId] } }), 'policy');
+    await ok(await adminApi.api.post(adminApi.orgApi('/time-off/requests'), { data: { policy_id: policy.id, start_date: '2030-06-03', end_date: '2030-06-03', half_day: false, reason: `${name} trip` } }), 'request');
+    await page.goto(`/o/${data.orgId}/time-off?tab=mine`);
+    // The reason, not the policy name: Balances lists the policy too.
+    const row = page.getByRole('row').filter({ hasText: `${name} trip` });
+    await row.getByRole('button', { name: 'Cancel' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Cancel this request?' });
+    await confirm.getByRole('button', { name: 'Keep request' }).click();
+    await expect(confirm).toBeHidden();
+    await expect(row).toContainText('Pending');
+
+    await row.getByRole('button', { name: 'Cancel' }).click();
+    await page.getByRole('dialog', { name: 'Cancel this request?' }).getByRole('button', { name: 'Cancel request' }).click();
+    await expect(row).toContainText('Cancelled');
+  });
+
+  test('an admin archives a policy; cancelling the confirmation keeps it', async ({ page, data, adminApi }) => {
+    // Live, 28 Oct 2026: a policy could be created but not removed in the app.
+    const name = `QA archive ${uid()}`;
+    await ok(await adminApi.api.post(adminApi.orgApi('/time-off/policies'), { data: { name, accrual: { type: 'none', amountHours: 0, maxBalanceHours: null, carryOverHours: null }, applies_to_all: false, member_ids: [data.admin.membershipId] } }), 'policy');
+    await page.goto(`/o/${data.orgId}/time-off?tab=admin`);
+    const row = page.getByRole('row').filter({ hasText: name });
+    await row.click();
+    const edit = page.getByRole('dialog', { name: `Edit ${name}` });
+
+    await edit.getByRole('button', { name: 'Archive policy' }).click();
+    const confirm = page.getByRole('dialog', { name: `Archive ${name}?` });
+    await expect(confirm).toContainText('Members can no longer request it');
+    await confirm.getByRole('button', { name: 'Cancel' }).click();
+    await expect(confirm).toBeHidden();
+    await expect(edit).toBeVisible();
+
+    await edit.getByRole('button', { name: 'Archive policy' }).click();
+    await page.getByRole('dialog', { name: `Archive ${name}?` }).getByRole('button', { name: 'Archive policy' }).click();
+    await expect(page.getByText(`${name} archived`)).toBeVisible();
+    await expect(edit).toBeHidden();
+    await expect(row).toHaveCount(0);
+    const policies = await ok<Array<{ name: string }>>(await adminApi.api.get(adminApi.orgApi('/time-off/policies')), 'policies');
+    expect(policies.some((p) => p.name === name)).toBe(false);
+  });
 });
 
 test.describe('QA · Teams (admin)', () => {

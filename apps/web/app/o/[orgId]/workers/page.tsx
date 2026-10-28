@@ -154,7 +154,7 @@ export default function WorkersPage() {
                   <option value="SUSPENDED">Suspended</option>
                 </Select>
                 )}
-                <span className="ml-auto text-xs text-text-muted tabular">{workersQ.data?.total ?? 0} members</span>
+                <span className="ml-auto text-xs text-text-muted tabular">{workersQ.data?.total ?? 0} {workersQ.data?.total === 1 ? 'member' : 'members'}</span>
               </>
             }
             empty={
@@ -352,7 +352,8 @@ function InviteDialog({ open, onOpenChange, roles, teams }: { open: boolean; onO
             <Input id="inv-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
           </Field>
           <Field label="Role" htmlFor="inv-role" required error={err?.field('role_id')}>
-            <Select id="inv-role" value={roleId} onChange={(e) => setF({ ...f, role_id: e.target.value })}>
+            <Select id="inv-role" value={roleId} onChange={(e) => setF({ ...f, role_id: e.target.value })} disabled={roles.length === 0}>
+              {roles.length === 0 && <option value="">Loading roles…</option>}
               {roles.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}

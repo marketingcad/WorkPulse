@@ -2,7 +2,8 @@
  * Attendance, overtime and time-off rules. Attendance is independent of activity.
  */
 
-export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'ON_LEAVE' | 'HOLIDAY' | 'UNSCHEDULED';
+/** SCHEDULED: a shift that has not started yet (plus grace) and no time so far; UNSCHEDULED: no shift that day. */
+export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'ON_LEAVE' | 'HOLIDAY' | 'SCHEDULED' | 'UNSCHEDULED';
 
 export interface AttendanceInput {
   scheduledStart: Date | null;
@@ -36,9 +37,9 @@ export function classifyAttendance(i: AttendanceInput): AttendanceResult {
     return { ...base, status: i.firstIn ? 'PRESENT' : 'UNSCHEDULED', overtimeSeconds: 0 };
   }
   if (!i.firstIn) {
-    // Only absent once the shift has started plus grace.
+    // Only absent once the shift has started plus grace; until then they are scheduled, not unscheduled.
     const graceEnd = i.scheduledStart.getTime() + i.lateGraceMinutes * 60000;
-    return { ...base, status: i.now.getTime() > graceEnd ? 'ABSENT' : 'UNSCHEDULED' };
+    return { ...base, status: i.now.getTime() > graceEnd ? 'ABSENT' : 'SCHEDULED' };
   }
   const lateMs = i.firstIn.getTime() - i.scheduledStart.getTime();
   const lateSeconds = lateMs > i.lateGraceMinutes * 60000 ? Math.round(lateMs / 1000) : 0;

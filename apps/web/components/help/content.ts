@@ -261,7 +261,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     steps: [
       'Open Time off. To ask for time off, click Request time off, choose the policy and dates, and click Send request.',
       'To decide on requests, open the Requests tab and click Approve or Reject (you can tick several and approve them together).',
-      'On Policies & holidays, click New policy to create a kind of leave (hours per day, paid or not, approval needed or not), add holidays, or adjust someone’s balance.',
+      'On Policies & holidays, click New policy to create a kind of leave (hours per day, paid or not, approval needed or not), add holidays, or adjust someone’s balance. To stop offering a policy, open it and click Archive policy: requests already made are kept.',
       'Payroll pays a paid holiday as the hours the person is scheduled to work that day (8 hours on a weekday if they have no schedule). It appears with paid time off.',
     ],
     points: ['A day is never paid twice: a paid holiday that falls inside someone’s paid time off is paid once.'],

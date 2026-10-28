@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
-import { projects, type Tx } from '@tallywork/db';
+import { clients, memberships, projects, type Tx } from '@tallywork/db';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { forbidden, visibleMembershipIds, type Permission } from '@tallywork/domain';
 import type { Actor } from '../context';
@@ -42,6 +42,19 @@ export async function canOnClient(x: { actor: Actor; tx: Tx }, permission: Permi
   return !!p;
 }
 
+/**
+ * Restrict a client column to the clients the actor may reach for `permission`: every client at org
+ * scope, otherwise the clients of the projects the actor is assigned to (the canOnClient rule). Rows
+ * without a client are left out at a narrower scope.
+ */
+export function clientFilter(x: { actor: Actor; tx: Tx }, permission: Permission, column: AnyPgColumn): SQL | undefined {
+  const scope = x.actor.grants[permission];
+  if (!scope) throw forbidden();
+  if (scope === 'org') return undefined;
+  const ids = [...x.actor.assignedProjectIds];
+  return ids.length ? inArray(column, x.tx.select({ id: projects.clientId }).from(projects).where(inArray(projects.id, ids))) : sql`false`;
+}
+
 /** Restrict a project column to projects the actor may see for `permission` (assigned scope). */
 export function projectFilter(actor: Actor, permission: Permission, column: AnyPgColumn): SQL | undefined {
   const scope = actor.grants[permission];
@@ -62,4 +75,15 @@ export function narrowMemberships(actor: Actor, permission: Permission, requeste
 export function canSeeMembership(actor: Actor, permission: Permission, membershipId: string): boolean {
   const visible = visibleMembershipIds(actor, permission);
   return visible === 'all' || (visible !== null && visible.has(membershipId));
+}
+
+/**
+ * Does this id name a member, project or client of the actor's organization? For ids taken from a
+ * request body and stored without a join (A8): the row-level policies hide other organizations' rows,
+ * so an id from elsewhere is simply not found.
+ */
+export async function existsInOrg(x: { actor: Actor; tx: Tx }, kind: 'member' | 'project' | 'client', id: string): Promise<boolean> {
+  const t = kind === 'member' ? memberships : kind === 'project' ? projects : clients;
+  const [row] = await x.tx.select({ id: t.id }).from(t).where(and(eq(t.id, id), eq(t.organizationId, x.actor.organizationId))).limit(1);
+  return !!row;
 }

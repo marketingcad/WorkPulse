@@ -11,7 +11,7 @@ import {
   withTenant,
   type Tx,
 } from '@tallywork/db';
-import { API_KEY_SCOPES, DomainError, forbidden, intersectGrants, isUuid, notFound, type Grants, type Permission, type Scope } from '@tallywork/domain';
+import { API_KEY_SCOPES, DomainError, ORG_ONLY_PERMISSIONS, forbidden, intersectGrants, isUuid, notFound, type Grants, type Permission, type Scope } from '@tallywork/domain';
 import type { Actor, AppEnv, OrgInfo, Principal } from '../context';
 import { unauthenticated } from './auth';
 import { clientIp, ipAllowed } from '../lib/cidr';
@@ -57,6 +57,8 @@ export async function loadActor(tx: Tx, principal: Principal, organizationId: st
   if (!m || m.status !== 'ACTIVE') throw forbidden('Your membership in this organization is not active');
 
   let grants = await loadGrants(tx, m.roleId);
+  // Org-only permissions held at a narrower scope (custom roles saved before the rule) grant nothing.
+  for (const p of ORG_ONLY_PERMISSIONS) if (grants[p] && grants[p] !== 'org') delete grants[p];
   if (principal.type === 'api_key') {
     const keyGrants: Grants = {};
     for (const s of principal.scopes) {

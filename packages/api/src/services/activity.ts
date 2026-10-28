@@ -320,7 +320,10 @@ export async function resolveIdleByUser(x: Ctx, id: string, input: { resolution:
   const own = ev.membershipId === x.actor.membershipId;
   if (!own && !can(x.actor, 'time:edit', { ownerMembershipId: ev.membershipId })) throw forbidden();
   if (ev.resolution !== 'PENDING') throw businessRule('already_resolved', 'This idle time was already resolved');
-  const endedAt = ev.endedAt ?? (await idleEndFromActivity(x.tx, ev, x.deps.now()));
+  // T3: while the person is still away (no input since, session running) there is no end yet. Resolving
+  // then would resume the timer and count the rest of the away time as work, so wait, as the job does.
+  const endedAt = ev.endedAt ?? (await idleEndEvidence(x.tx, ev));
+  if (!endedAt) throw businessRule('idle_ongoing', 'This idle period is still going. Resolve it when the person is back or the session ends.');
   // Resolving changes time on these days: the same age and timesheet locks as any other edit.
   const [s] = await x.tx.select({ timezone: trackingSessions.timezone }).from(trackingSessions).where(eq(trackingSessions.id, ev.sessionId));
   const dates = splitAtLocalMidnight({ start: ev.startedAt, end: endedAt > ev.startedAt ? endedAt : ev.startedAt }, s?.timezone ?? x.org.timezone).map((p) => p.localDate);

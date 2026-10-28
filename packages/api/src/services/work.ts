@@ -53,8 +53,20 @@ export async function listTeams(x: Ctx): Promise<TeamDto[]> {
   }));
 }
 
+/**
+ * Audit 28 Oct 2026 (A2b): a narrower teams:manage grant than org changes only the teams the actor
+ * manages. Creating a team is organization-wide.
+ */
+function assertCanManageTeam(x: Ctx, teamId: string | null) {
+  const scope = x.actor.grants['teams:manage'];
+  if (!scope) throw forbidden();
+  if (scope === 'org') return;
+  if (!teamId) throw forbidden('Your role can’t create teams');
+  if (!x.actor.managedTeamIds.includes(teamId)) throw forbidden('You can only change teams you manage');
+}
+
 export async function upsertTeam(x: Ctx, teamId: string | null, input: z.infer<typeof teamInput>) {
-  if (!x.actor.grants['teams:manage']) throw forbidden();
+  assertCanManageTeam(x, teamId);
   let id = teamId;
   if (id) {
     const r = await x.tx.update(teams).set({ name: input.name, description: input.description ?? null, updatedAt: new Date() }).where(eq(teams.id, id)).returning({ id: teams.id });
@@ -68,7 +80,7 @@ export async function upsertTeam(x: Ctx, teamId: string | null, input: z.infer<t
 }
 
 export async function archiveTeam(x: Ctx, teamId: string) {
-  if (!x.actor.grants['teams:manage']) throw forbidden();
+  assertCanManageTeam(x, teamId);
   await x.tx.update(teams).set({ archivedAt: new Date() }).where(eq(teams.id, teamId));
   await x.tx.delete(teamMembers).where(eq(teamMembers.teamId, teamId));
   await audit(x, { action: 'team.archived', targetType: 'team', targetId: teamId });
@@ -84,6 +96,12 @@ export async function setTeamMember(x: Ctx, teamId: string, membershipId: string
   if (scope !== 'org' && membershipId === x.actor.membershipId) throw forbidden('You cannot change your own team role');
   const [m] = await x.tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.id, membershipId), eq(memberships.organizationId, x.org.id)));
   if (!m) throw notFound('worker');
+  // SEC-7: a team-scope grant can't pull anyone into its team (and so under its reach); it adds only
+  // people it already manages through another team. Removing and changing roles stay open.
+  if (scope !== 'org' && role !== null && !x.actor.managedMembershipIds.has(membershipId)) {
+    const [already] = await x.tx.select({ id: teamMembers.membershipId }).from(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.membershipId, membershipId)));
+    if (!already) throw forbidden('You can only add people you already manage; ask an admin to add someone new');
+  }
   if (role === null) {
     await x.tx.delete(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.membershipId, membershipId)));
   } else {

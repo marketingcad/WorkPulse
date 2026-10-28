@@ -128,6 +128,14 @@ export default function AllTimeEntriesPage() {
   const paging = useServerPage(JSON.stringify(filters), 100);
   const entriesQ = useOrgQuery<OffsetPage<TimeEntryDto> & { summary: TimeEntryPageSummary }>(org.can('time:read') ? `/time-entries${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
   useClampPage(paging, entriesQ.data, entriesQ.isPlaceholderData);
+  // Bulk actions act only on rows in view: any change of filter, search, dates, order or page clears the
+  // selection, so a hidden row is never deleted or re-marked (audit 28 Oct 2026, U1).
+  const viewKey = JSON.stringify({ ...filters, ...paging.params });
+  const [selectionView, setSelectionView] = useState(viewKey);
+  if (selectionView !== viewKey) {
+    setSelectionView(viewKey);
+    setSelected(new Set());
+  }
   const summary = entriesQ.data?.summary;
   // Money per day is only exact when the list is not narrowed below member level.
   const seesMoney = (org.can('rates:read') || org.can('billing:read')) && !client && !project && !task;
@@ -182,7 +190,7 @@ export default function AllTimeEntriesPage() {
     if (!bulk) return;
     setBulkBusy(true);
     try {
-      const res = await api<Array<{ id: string; ok: boolean; error?: string }>>(`/orgs/${orgId}/time-entries/bulk`, { method: 'POST', body: { ids: [...selected], action: bulk, reason: bulkReason.trim() || undefined } });
+      const res = await api<Array<{ id: string; ok: boolean; error?: string }>>(`/orgs/${orgId}/time-entries/bulk`, { method: 'POST', body: { ids: selectable.filter((e) => selected.has(e.id)).map((e) => e.id), action: bulk, reason: bulkReason.trim() || undefined } });
       await qc.invalidateQueries({ queryKey: ['org', orgId] });
       const failed = res.filter((r) => !r.ok);
       if (failed.length) toast.error(`${res.length - failed.length} updated, ${failed.length} could not be changed: ${failed[0]!.error}`);
@@ -298,7 +306,7 @@ export default function AllTimeEntriesPage() {
 
       <FilterBar>
         {org.can('members:read') && (
-          <Select aria-label="Member" value={member} onChange={(e) => (setMember(e.target.value), setSelected(new Set()))} className="h-8 w-48">
+          <Select aria-label="Member" value={member} onChange={(e) => setMember(e.target.value)} className="h-8 w-48">
             <option value="">All members</option>
             {(workersQ.data ?? [])
               .filter((w) => w.status !== 'REMOVED')

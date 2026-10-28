@@ -9,7 +9,8 @@ import { ADMIN_STATE } from '../../support/env';
  */
 test.use({ storageState: ADMIN_STATE });
 
-const launcher = (page: Page) => page.getByRole('button', { name: /^(Open|Close) calculator$/ });
+/** The round button. When open, the panel's own X is also "Close calculator"; only the button is expanded. */
+const launcher = (page: Page) => page.getByRole('button', { name: 'Open calculator' }).or(page.getByRole('button', { name: 'Close calculator', expanded: true }));
 const panel = (page: Page) => page.getByRole('dialog', { name: 'Calculator' });
 /** The value shown next to a result label in the panel. */
 const result = (p: Locator, label: string) => p.getByRole('term').filter({ hasText: new RegExp(`^${label}$`) }).locator('xpath=following-sibling::dd');
@@ -141,6 +142,114 @@ test.describe('calculator', () => {
     await p.getByLabel(/^Pay rate per hour/).fill('30');
     await expect(result(p, 'Pay')).toHaveText('$240.00');
     expect(calls).toEqual([]);
+  });
+});
+
+test.describe('moving the calculator', () => {
+  /** Press on `from`, move in steps to `to`, release: a real drag, as a mouse makes it. */
+  async function drag(page: Page, from: Locator, to: { x: number; y: number }) {
+    const box = (await from.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+  }
+  const boxOf = async (l: Locator) => (await l.boundingBox())!;
+
+  test('drags the button anywhere; the drag does not open it, a click does, and the panel fits on screen', { tag: '@smoke' }, async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}`);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    const button = launcher(page);
+    const corner = await boxOf(button);
+
+    await drag(page, button, { x: 100, y: 120 });
+    const moved = await boxOf(button);
+    expect(Math.round(moved.x + moved.width / 2)).toBe(100);
+    expect(Math.round(moved.y + moved.height / 2)).toBe(120);
+    expect(moved.x).toBeLessThan(corner.x);
+    await expect(panel(page)).toBeHidden();
+
+    await button.click();
+    const p = panel(page);
+    await expect(p).toBeVisible();
+    // Near the top, the panel opens below the button, inside the window.
+    const pb = await boxOf(p);
+    const view = page.viewportSize()!;
+    expect(pb.y).toBeGreaterThan(moved.y + moved.height);
+    expect(pb.x).toBeGreaterThanOrEqual(0);
+    expect(pb.x + pb.width).toBeLessThanOrEqual(view.width);
+    expect(pb.y + pb.height).toBeLessThanOrEqual(view.height);
+    await p.getByRole('radio', { name: 'Convert' }).click();
+    await p.getByLabel('Hours').fill('2.5');
+    await expect(result(p, 'Hours and minutes')).toHaveText('2:30');
+  });
+
+  test('stays fully on screen when dragged past an edge', async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}/projects`);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    const button = launcher(page);
+    await drag(page, button, { x: -300, y: -300 });
+    const b = await boxOf(button);
+    expect(b.x).toBeGreaterThanOrEqual(0);
+    expect(b.y).toBeGreaterThanOrEqual(0);
+    await button.click();
+    await expect(panel(page)).toBeInViewport({ ratio: 1 });
+  });
+
+  test('is remembered after a reload, and Move to corner puts it back', async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}`);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    const button = launcher(page);
+    const corner = await boxOf(button);
+    await drag(page, button, { x: 400, y: 300 });
+    const moved = await boxOf(button);
+
+    await page.reload();
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect.poll(async () => Math.round((await boxOf(button)).x)).toBe(Math.round(moved.x));
+    expect(Math.round((await boxOf(button)).y)).toBe(Math.round(moved.y));
+
+    await button.click();
+    await panel(page).getByRole('button', { name: 'Move to corner' }).click();
+    await expect.poll(async () => Math.round((await boxOf(button)).x)).toBe(Math.round(corner.x));
+    await expect(panel(page).getByRole('button', { name: 'Move to corner' })).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    expect(Math.round((await boxOf(button)).y)).toBe(Math.round(corner.y));
+  });
+
+  test('moves with Alt and the arrow keys, for people who cannot drag', async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}`);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    const button = launcher(page);
+    await expect(button).toHaveAccessibleDescription('Drag to move it, or press Alt and an arrow key.');
+    const start = await boxOf(button);
+    await button.focus();
+    await page.keyboard.press('Alt+ArrowLeft');
+    await expect.poll(async () => Math.round((await boxOf(button)).x)).toBe(Math.round(start.x) - 24);
+    await page.keyboard.press('Alt+Shift+ArrowUp');
+    await expect.poll(async () => Math.round((await boxOf(button)).y)).toBe(Math.round(start.y) - 96);
+    // A plain arrow key does nothing to the position, and the panel stays closed.
+    await page.keyboard.press('ArrowLeft');
+    expect(Math.round((await boxOf(button)).x)).toBe(Math.round(start.x) - 24);
+    await expect(panel(page)).toBeHidden();
+  });
+
+  test('drags by the panel header too, keeping what was typed', async ({ page, data }) => {
+    const p = await openCalculator(page, '/teams', data.orgId);
+    await p.getByRole('radio', { name: 'Convert' }).click();
+    await p.getByLabel('Hours').fill('90m');
+    const header = p.getByRole('heading', { name: 'Calculator' });
+    const before = await boxOf(p);
+    await drag(page, header, { x: 300, y: 200 });
+    const after = await boxOf(p);
+    expect(after.x).toBeLessThan(before.x);
+    await expect(p).toBeInViewport({ ratio: 1 });
+    await expect(p.getByLabel('Hours')).toHaveValue('90m');
+    await expect(result(p, 'Hours and minutes')).toHaveText('1:30');
+    // Its buttons are still buttons: Close closes rather than starting a drag.
+    await p.getByRole('button', { name: 'Close calculator' }).click();
+    await expect(p).toBeHidden();
   });
 });
 

@@ -183,6 +183,13 @@
       "when": 1793130808065,
       "tag": "0025_remove_former_member_links",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793219433608,
+      "tag": "0026_offline_backfill",
+      "breakpoints": true
     }
   ]
 }

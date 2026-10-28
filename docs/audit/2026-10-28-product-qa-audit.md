@@ -329,6 +329,22 @@ No financial rules change in this phase.
   - approve "accept and flag, never drop";
   - decide whether overlap trimming should still skip duration-only manual time.
 
+**Status: done on `fix/audit-phase2-offline-sync`.** The design and the four approved decisions are in [the offline sync design note](2026-10-29-offline-sync-design.md).
+
+| Item | As built |
+|---|---|
+| Q6 | A start recorded offline, or older than the running timer, becomes a **backfill** session: `tracking_sessions.backfill` is true and the session is left out of the one-live index. It takes its own events, never supersedes or shortens the running timer, and overlap is trimmed when its time entries are created. Only a start happening now takes over a running timer. |
+| Q7 | A desktop start more than 2 minutes before it reached the server counts as recorded offline. It skips the limit check and the project and task checks. Whatever those checks would have refused is kept and flagged: over the limit on the day or week it happened, a project archived, inactive or unassigned since then, or a task that can no longer take time (that time is kept without the task). Tracking turned off for the member, or desktop tracking off by policy, is still refused. |
+| Flags | A new `time_review_flags` table holds one flag per member, day and reason. The `time.needs_review` event notifies the member's approvers, and the approval queue shows "Needs review". |
+| Duration-only time | It stays out of overlap trimming. A day with both duration-only and tracked time is flagged (`duration_only_and_tracked`). |
+| BE-4, T10 | `webSwitch`, `webStop` and `forceStop` lock the worker before reading the session. |
+| T7 | Discarding a paused-then-resumed idle period leaves its paused span unrecorded and touches nothing after Resume. Reassigning it moves only that span. |
+| T9 | Removing a span on the clock (idle discard, screenshot deletion) never cuts a duration-only entry. |
+
+**Migration `0026_offline_backfill`:** it adds two session columns with defaults, rebuilds the one-live index and creates the flags table. It can be re-run, and no existing rows change.
+
+**Not covered by a test:** BE-4 is a race. PGlite runs one query at a time, so the test database can't reproduce it. The fix is structural: the lock is taken before the read.
+
 ### Phase 3: money
 
 - **First:** reconciliation tests on one dataset. One compares approved pay, payroll, the pay stub and the export. The other compares invoice lines, the PDF and the CSV.

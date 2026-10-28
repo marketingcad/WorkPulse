@@ -97,4 +97,17 @@ describe('migrations', () => {
     expect(await links('team_members')).toEqual([active]);
     expect(removed).not.toBe(active);
   });
+
+  it('0026 (offline backfill) runs again cleanly, and the one-live rule still holds for sessions that are not backfill', async () => {
+    const when = journalWhen('0026_offline_backfill');
+    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at >= ${when}`);
+
+    await expect(h.migrate()).resolves.toBeUndefined();
+
+    const cols = await rows<{ c: string }>(sql`select column_name as c from information_schema.columns where table_name = 'tracking_sessions' and column_name in ('backfill', 'recorded_offline') order by 1`);
+    expect(cols.map((r) => r.c)).toEqual(['backfill', 'recorded_offline']);
+    const [idx] = await rows<{ d: string }>(sql`select indexdef as d from pg_indexes where indexname = 'tracking_sessions_one_live'`);
+    expect(idx?.d).toContain('backfill = false');
+    expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
+  });
 });

@@ -240,7 +240,8 @@ function savedDto(x: Ctx, r: typeof savedReports.$inferSelect) {
     shared: r.shared,
     schedule_cron: r.scheduleCron,
     schedule_timezone: r.scheduleTimezone,
-    recipients: r.recipients,
+    // Who receives a shared report is the owner's business (A7): others see the report, not the list.
+    recipients: r.membershipId === x.actor.membershipId ? r.recipients : [],
     last_run_at: r.lastRunAt?.toISOString() ?? null,
     owner: r.membershipId === x.actor.membershipId,
   };

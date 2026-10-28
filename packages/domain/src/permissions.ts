@@ -75,9 +75,21 @@ export type Permission = (typeof PERMISSIONS)[number];
 
 /**
  * Permissions that only make sense for the whole organization. Payroll runs, pay stubs and bank
- * details are not narrowed to a team or to assigned work, so these are granted at org scope or not at all.
+ * details are not narrowed to a team or to assigned work, and neither are organization settings,
+ * roles, API keys, webhooks, retention or the audit log (whose rows carry rate amounts). These are
+ * granted at org scope or not at all; a narrower grant stored before this rule is ignored.
  */
-export const ORG_ONLY_PERMISSIONS: readonly Permission[] = ['payroll:read', 'payroll:manage'];
+export const ORG_ONLY_PERMISSIONS: readonly Permission[] = [
+  'payroll:read',
+  'payroll:manage',
+  'org:update',
+  'roles:manage',
+  'api_keys:manage',
+  'webhooks:manage',
+  'audit:read',
+  'settings:security',
+  'retention:manage',
+];
 
 export const BUILTIN_ROLES = ['SYSTEM_ADMIN', 'TEAM_MANAGER', 'WORKER', 'AGENT'] as const;
 export type BuiltinRole = (typeof BUILTIN_ROLES)[number];

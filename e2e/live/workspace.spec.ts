@@ -30,7 +30,7 @@ for (const [path, heading] of PAGES) {
 test('the sidebar navigates between sections', async ({ page, data }) => {
   await page.goto(`/o/${data.orgId}`);
   const nav = page.getByRole('complementary', { name: 'Primary' });
-  const group = nav.getByRole('button', { name: 'People' });
+  const group = nav.getByRole('button', { name: 'Workforce' });
   if ((await group.getAttribute('aria-expanded')) === 'false') await group.click();
   await nav.getByRole('link', { name: 'Members' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Members' })).toBeVisible();

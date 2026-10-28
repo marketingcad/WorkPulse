@@ -16,7 +16,7 @@ test.describe('Consolidated pages (admin)', () => {
   test('Timesheets: Approvals holds submitted timesheets and manual time; Team week is the other tab', { tag: '@smoke' }, async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}`);
     const nav = sidebar(page);
-    const group = nav.getByRole('button', { name: 'Time' });
+    const group = nav.getByRole('button', { name: 'Time Tracking' });
     if ((await group.getAttribute('aria-expanded')) === 'false') await group.click();
     await nav.getByRole('link', { name: 'Timesheets' }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/timesheets/approvals$`));

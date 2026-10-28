@@ -120,6 +120,9 @@ export async function insights(x: Ctx, from: string, to: string, requested?: str
   const allMoney = moneyPerm !== null && moneyVisible === 'all';
 
   const dayCount = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
+  // Names of every client listed, including one approved time was billed to that no project has now.
+  const clientIds = [...byClient.keys()].filter(Boolean);
+  const clientNames = new Map(clientIds.length ? (await x.tx.select({ id: clients.id, name: clients.name }).from(clients).where(inArray(clients.id, clientIds))).map((c) => [c.id, c.name]) : []);
   return {
     from,
     to,
@@ -157,7 +160,7 @@ export async function insights(x: Ctx, from: string, to: string, requested?: str
       })
       .sort((a, b) => b.logged_seconds - a.logged_seconds || a.name.localeCompare(b.name)),
     by_client: [...byClient.entries()]
-      .map(([id, a]) => ({ client_id: id || null, name: id ? (ps.find((p) => p.clientId === id)?.clientName ?? '') : 'No client', seconds: a.logged, billable_seconds: a.billable, bill_minor: money(a.bill, allMoney) }))
+      .map(([id, a]) => ({ client_id: id || null, name: id ? (clientNames.get(id) ?? '') : 'No client', seconds: a.logged, billable_seconds: a.billable, bill_minor: money(a.bill, allMoney) }))
       .sort((a, b) => b.seconds - a.seconds),
     by_project: [...byProject.entries()]
       .map(([id, a]) => {

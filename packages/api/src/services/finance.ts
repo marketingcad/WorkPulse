@@ -32,6 +32,7 @@ import {
   deriveInvoiceStatus,
   forbidden,
   invoiceTotals,
+  roundQuantity,
   localDate,
   newId,
   notFound,
@@ -48,7 +49,6 @@ import { audit, emit, emitFrom } from './events';
 import { canOnClient, canOnProject, clientFilter, existsInOrg, narrowMemberships } from './scope';
 import { memberNames } from './timer';
 import { priceEntries } from './pay-figures';
-import { timeTypeCoefficients } from './time-types';
 import { membersWith, notify } from './notify';
 import { lockWorker } from './tracking';
 import { isUuid, likePattern } from '../lib/search';
@@ -198,7 +198,7 @@ function monthBounds(today: string) {
   return { start: `${today.slice(0, 8)}01`, end, days: Number(end.slice(8)) };
 }
 
-async function budgetSpent(tx: Tx, b: typeof budgets.$inferSelect, rates: Rate[], today: string): Promise<{ spent: number; from: string | null; to: string | null; daysElapsed?: number; daysTotal?: number }> {
+async function budgetSpent(tx: Tx, b: typeof budgets.$inferSelect, rates: Rate[], today: string, currency: string): Promise<{ spent: number; from: string | null; to: string | null; daysElapsed?: number; daysTotal?: number }> {
   let from = b.startDate;
   let to = b.endDate;
   let daysElapsed: number | undefined;
@@ -233,7 +233,17 @@ async function budgetSpent(tx: Tx, b: typeof budgets.$inferSelect, rates: Rate[]
     // Approved time counts at the amount it was billed at (a later rate change does not reprice it);
     // time not yet approved is estimated at the current rate.
     const approved = await tx
-      .select({ m: billingEntries.membershipId, p: billingEntries.projectId, d: billingEntries.localDate, billable: billingEntries.billable, secs: sql<number>`sum(${billingEntries.seconds})::int`, amount: sql<number>`sum(${billingEntries.billAmountMinor})::bigint` })
+      .select({
+        m: billingEntries.membershipId,
+        p: billingEntries.projectId,
+        d: billingEntries.localDate,
+        billable: billingEntries.billable,
+        secs: sql<number>`sum(${billingEntries.seconds})::int`,
+        // Billed amounts in the budget's currency only (F7); another currency can't be added to it.
+        amount: sql<number>`coalesce(sum(${billingEntries.billAmountMinor}) filter (where ${billingEntries.currency} = ${currency}), 0)::bigint`,
+        // Seconds weighted by the bill multiplier they were approved with, for non-billable time (Q9).
+        weighted: sql<number>`sum(${billingEntries.seconds} * coalesce(${billingEntries.billCoefficient}, 1))::float`,
+      })
       .from(billingEntries)
       .where(
         and(
@@ -249,17 +259,32 @@ async function budgetSpent(tx: Tx, b: typeof budgets.$inferSelect, rates: Rate[]
       .groupBy(billingEntries.membershipId, billingEntries.projectId, billingEntries.localDate, billingEntries.billable);
     const byKey = new Map(approved.map((a) => [`${a.m}|${a.p}|${a.d}|${a.billable}`, a]));
     const clientOf = new Map((await tx.select({ id: projects.id, c: projects.clientId }).from(projects).where(inArray(projects.id, projectIds))).map((p) => [p.id, p.c]));
+    // Exact cents are added up and rounded once for the budget (F7), not once per day and person.
+    let exact = 0;
+    const billRate = (m: string, p: string, d: string) => {
+      const rate = resolveRate(rates, 'BILL', { date: d, membershipId: m, projectId: p, clientId: clientOf.get(p) ?? null });
+      return rate && rate.currency === currency ? rate.amountMinor : null;
+    };
+    // Approved billable time counts at what it was billed. Approved non-billable time (counted when the
+    // budget includes it) is valued at the bill rate of the day it was worked, as before approval (Q9).
+    const approvedValue = (a: (typeof approved)[number]) => {
+      if (a.billable) return Number(a.amount);
+      const rate = billRate(a.m, a.p, a.d);
+      return rate === null ? 0 : (Number(a.weighted) * rate) / 3600;
+    };
     for (const r of rows) {
-      const a = byKey.get(`${r.membershipId}|${r.projectId}|${r.localDate}|${r.billable}`);
+      const key = `${r.membershipId}|${r.projectId}|${r.localDate}|${r.billable}`;
+      const a = byKey.get(key);
       const total = r.trackedSeconds + r.manualSeconds;
       const rest = Math.max(0, total - (a?.secs ?? 0));
-      const rate = rest > 0 ? resolveRate(rates, 'BILL', { date: r.localDate, membershipId: r.membershipId, projectId: r.projectId, clientId: clientOf.get(r.projectId) ?? null }) : null;
+      const rate = rest > 0 ? billRate(r.membershipId, r.projectId, r.localDate) : null;
       // Unapproved time carries the row's time-type bill weighting.
-      const weighted = total ? Math.round((rest * r.billWeightedSeconds) / total) : rest;
-      spent += (rate ? amountForSeconds(weighted, rate.amountMinor) : 0) + Number(a?.amount ?? 0);
-      byKey.delete(`${r.membershipId}|${r.projectId}|${r.localDate}|${r.billable}`);
+      const weighted = total ? (rest * r.billWeightedSeconds) / total : rest;
+      exact += (rate !== null ? (weighted * rate) / 3600 : 0) + (a ? approvedValue(a) : 0);
+      byKey.delete(key);
     }
-    for (const a of byKey.values()) spent += Number(a.amount);
+    for (const a of byKey.values()) exact += approvedValue(a);
+    spent = Math.round(exact);
   }
   return { spent, from, to, daysElapsed, daysTotal };
 }
@@ -273,7 +298,7 @@ export async function budgetStatuses(tx: Tx, orgCurrency: string, today: string,
   const names = new Map([...pnames, ...cnames].map((n) => [n.id, n.name]));
   const out: BudgetStatusDto[] = [];
   for (const b of bs) {
-    const s = await budgetSpent(tx, b, rates, today);
+    const s = await budgetSpent(tx, b, rates, today, orgCurrency);
     let daysElapsed = s.daysElapsed;
     let daysTotal = s.daysTotal;
     if (b.period === 'TOTAL' && b.startDate && b.endDate) {
@@ -617,7 +642,6 @@ async function buildInvoiceDraft(x: Ctx, input: z.infer<typeof invoiceCreateInpu
         sql`${billingEntries.billAmountMinor} > 0`,
       ),
     );
-  const coef = await timeTypeCoefficients(x.tx);
   const types = await x.tx.select({ id: timeTypes.id, name: timeTypes.name, isDefault: timeTypes.isDefault, archivedAt: timeTypes.archivedAt }).from(timeTypes);
   // No type on the entry means the default type (as for its coefficient).
   const typeName = (id: string | null) => (id ? types.find((t) => t.id === id)?.name : types.find((t) => t.isDefault && !t.archivedAt)?.name) ?? 'Time type';
@@ -627,15 +651,15 @@ async function buildInvoiceDraft(x: Ctx, input: z.infer<typeof invoiceCreateInpu
     if (seen.has(b.id)) continue;
     seen.add(b.id);
     const label = input.group_by === 'task' ? `${projectName} — ${taskTitle ?? 'No task'}` : input.group_by === 'worker' ? `${projectName} — ${workerName}` : projectName;
-    // One line per label, rate and time type. The line amount is the exact sum of the billed amounts,
-    // so the invoice reconciles with approved billing. The unit price is the rate times the time
-    // type's bill coefficient, so hours × unit price matches the amount (to the cent per entry).
-    const k = coef(timeTypeId).bill;
-    const hourly = rateAmount !== null ? Math.round(rateAmount * k) : b.seconds > 0 ? Math.round((b.billAmountMinor * 3600) / b.seconds) : 0;
-    const key = `${label}|${b.billRateId ?? hourly}|${k}`;
+    // One line per label, unit price and time type multiplier. The multiplier is the one the time was
+    // priced with at approval (Q10), not the time type's today. Entries approved before it was kept
+    // are priced from what they were billed: amount ÷ hours.
+    const k = b.billCoefficient;
+    const hourly = rateAmount !== null && k !== null ? Math.round(rateAmount * k) : b.seconds > 0 ? Math.round((b.billAmountMinor * 3600) / b.seconds) : 0;
+    const key = `${label}|${hourly}|${k ?? 'billed'}`;
     let g = groups.get(key);
     if (!g) {
-      const typeLabel = k !== 1 ? ` — ${typeName(timeTypeId)} ×${k}` : '';
+      const typeLabel = k !== null && k !== 1 ? ` — ${typeName(timeTypeId)} ×${k}` : '';
       g = { kind: 'TIME', description: `${label}${typeLabel}`, quantity: 0, unitPriceMinor: hourly, amountMinor: 0, taxRateBps: input.tax_rate_bps, projectId: b.projectId, billingEntryIds: [], expenseIds: [], seconds: 0 };
       groups.set(key, g);
     }
@@ -643,7 +667,12 @@ async function buildInvoiceDraft(x: Ctx, input: z.infer<typeof invoiceCreateInpu
     g.amountMinor += b.billAmountMinor;
     g.billingEntryIds.push(b.id);
   }
-  const lines: DraftLine[] = [...groups.values()].map((g) => ({ ...g, quantity: Math.round((g.seconds / 3600) * 10000) / 10000 }));
+  // Each line is quantity × unit price, rounded once (F10), so the invoice always multiplies out. It can
+  // differ from the sum of the entries' approved amounts by a few cents; the Billing report shows that.
+  const lines: DraftLine[] = [...groups.values()].map((g) => {
+    const quantity = roundQuantity(g.seconds / 3600);
+    return { ...g, quantity, amountMinor: Math.round(quantity * g.unitPriceMinor) };
+  });
   if (input.include_expenses) {
     const ex = await x.tx
       .select()

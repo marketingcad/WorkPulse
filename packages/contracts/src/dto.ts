@@ -370,6 +370,8 @@ export interface PayStubDto {
   adjustments: Array<{ label: string; amount_minor: number }>;
   net_minor: number;
   paid_at: string | null;
+  /** for the admin before paying, e.g. 'time_off_no_rate': paid time off with no worker or org pay rate */
+  warnings: string[];
 }
 
 export interface PayrollRunDto {

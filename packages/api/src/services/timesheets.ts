@@ -875,6 +875,9 @@ async function createBillingEntries(x: Ctx, ts: typeof timesheets.$inferSelect) 
         payRateId: pay?.id ?? null,
         billAmountMinor: bill ? amountForSeconds(Math.round(s.durationSeconds * k.bill), bill.amountMinor) : 0,
         payAmountMinor: pay ? amountForSeconds(Math.round(s.durationSeconds * k.pay), pay.amountMinor) : 0,
+        // The multipliers it was priced with (Q10): an invoice line reads these, not the time type today.
+        billCoefficient: k.bill,
+        payCoefficient: k.pay,
         currency: bill?.currency ?? pay?.currency ?? x.org.currency,
       })
       .onConflictDoNothing();

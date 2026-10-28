@@ -227,6 +227,7 @@ function stubDto(l: typeof payrollRunLines.$inferSelect, r: typeof payrollRuns.$
     adjustments: l.adjustments,
     net_minor: l.netMinor,
     paid_at: r.paidAt?.toISOString() ?? null,
+    warnings: l.warnings,
   };
 }
 
@@ -289,7 +290,7 @@ async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect
   const rollups = await x.tx.select().from(rollupWorkerDay).where(and(inArray(rollupWorkerDay.membershipId, members), gte(rollupWorkerDay.localDate, from), lte(rollupWorkerDay.localDate, to)));
   const [ot] = await x.tx.select().from(overtimeRuleSets);
   const rules = ot?.rules ?? DEFAULT_OVERTIME;
-  const split = await overtimeInRange(x.tx, x.org.weekStart, rules, members, from, to);
+  const split = await overtimeInRange(x.tx, x.org.weekStart, rules, members, from, to, { approvedOnly: true });
   const off = await x.tx
     .select({ t: timeOffRequests, paid: timeOffPolicies.paid, hpd: timeOffPolicies.hoursPerDay })
     .from(timeOffRequests)
@@ -314,21 +315,27 @@ async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect
     const { regular, overtime } = split.get(m) ?? { regular: 0, overtime: 0 };
     let offHours = 0;
     let offPay = 0;
+    const warnings = new Set<string>();
+    // Paid at the member's own pay rate (worker, else organization) in effect on each day (F9), so a
+    // raise in the middle of a request is respected. No such rate: nothing is invented, the line is flagged.
+    const payOffDay = (d: string, h: number) => {
+      const rate = resolveRate(rates, 'PAY', { date: d, membershipId: m, projectId: null, clientId: null });
+      if (!rate) warnings.add('time_off_no_rate');
+      else if (rate.currency !== profile.currency) otherCurrency = true;
+      else offPay += amountForSeconds(Math.round(h * 3600), rate.amountMinor);
+    };
     for (const o of off.filter((r) => r.t.membershipId === m && r.paid)) {
       const h = timeOffHoursInRange(o.t, from, to, hols, o.hpd || 8);
       offHours += h;
-      const rate = resolveRate(rates, 'PAY', { date: o.t.startDate < from ? from : o.t.startDate, membershipId: m, projectId: null, clientId: null });
-      if (rate && rate.currency !== profile.currency) otherCurrency = true;
-      else if (rate) offPay += amountForSeconds(Math.round(h * 3600), rate.amountMinor);
+      if (o.t.dayHours) for (const [d, dh] of Object.entries(o.t.dayHours)) if (d >= from && d <= to) payOffDay(d, dh);
+      if (!o.t.dayHours) payOffDay(o.t.startDate < from ? from : o.t.startDate, h);
     }
     // Paid holidays are paid time off too: the hours the person would normally work that day.
     for (const { date: d, hours: h } of holidayPay.get(m) ?? []) {
       offHours += h;
-      const rate = resolveRate(rates, 'PAY', { date: d, membershipId: m, projectId: null, clientId: null });
-      if (rate && rate.currency !== profile.currency) otherCurrency = true;
-      else if (rate) offPay += amountForSeconds(Math.round(h * 3600), rate.amountMinor);
+      payOffDay(d, h);
     }
-    return { membershipId: m, approvedSeconds, carriedSeconds, unapprovedSeconds: Math.max(0, total - (approvedSeconds - carriedSeconds)), regularSeconds: regular, overtimeSeconds: overtime, timePayMinor: timePay, timeOffHours: Math.round(offHours * 100) / 100, timeOffPayMinor: offPay, grossMinor: timePay + offPay };
+    return { membershipId: m, approvedSeconds, carriedSeconds, unapprovedSeconds: Math.max(0, total - (approvedSeconds - carriedSeconds)), regularSeconds: regular, overtimeSeconds: overtime, timePayMinor: timePay, timeOffHours: Math.round(offHours * 100) / 100, timeOffPayMinor: offPay, grossMinor: timePay + offPay, warnings: [...warnings] };
   });
   return { lines, otherCurrency };
 }

@@ -362,6 +362,34 @@ No financial rules change in this phase.
   - F9: should time off use project rates?
   - F10: round per line instead of per entry? Invoice totals would change by cents.
 
+**Status: done on `fix/audit-phase3-money`.** The design and the four approved decisions (all as recommended) are in [the money design note](2026-10-29-money-design.md).
+
+| Item | As built |
+|---|---|
+| Reconciliation | For one dataset: approved pay (Amounts Owed) = the payroll line = the pay stub. Every invoice line is quantity × unit price, the lines add up to the subtotal, and subtotal + tax = total. The Billing report's "Invoiced" plus "Invoice rounding" equals the invoice's time lines. |
+| Q8 | `time_off_requests.day_hours` is written when a request is made. Payroll, the Payroll Export and Summary pay the stored days inside each period. Example: a 40 h request crossing the semimonthly boundary, with a holiday added later, pays 32 h + 8 h. Before the fix it paid 24 h + 8 h. The migration fills in existing requests by spreading their hours over weekdays outside holidays (the previous rule). |
+| Q10 | `billing_entries.bill_coefficient` and `pay_coefficient` are stored at approval. Invoice lines group and price by the stored multiplier. Entries approved before the migration are priced from amount ÷ hours. |
+| Q9 | A money budget that includes non-billable time values it at the bill rate of the day it was worked, before and after approval. |
+| F5 | The Invoices, Payments and Expenses reports and their CSV, Excel and PDF exports show one total per currency, and have a Currency column. Drafts and void invoices are not counted. The dashboard widget totals the org currency only. A report with one currency still returns `totals`. |
+| F6 | Billing report rows are split by project, client and currency. The not-yet-approved estimate is priced in each client's currency. |
+| F7 | Money budgets count only amounts in their own currency, and round once per budget. |
+| F8 | The pay stub's overtime is calculated from approved time only. |
+| F9 | Time off and paid holidays are paid at each day's worker or org rate. A line with paid time off but no rate has the `time_off_no_rate` warning, and the payroll page shows "No pay rate for time off". |
+| F10 | Lines are quantity (4 decimals) × unit price, rounded once, including custom lines. The PDF prints the same quantity. The Billing report shows the difference from approved amounts as "Invoice rounding". |
+| F11 | Summary credits approved money to the client it was billed to. |
+
+**Migration `0027_money_integrity`:**
+- adds `time_off_requests.day_hours` and fills it for existing requests;
+- adds `billing_entries.bill_coefficient` and `billing_entries.pay_coefficient`;
+- adds `payroll_run_lines.warnings`.
+
+It can be run again safely.
+
+**What users will notice:**
+- Invoices issued from now on can differ by a few cents from approved billing, and the Billing report shows that difference.
+- Finance reports show one total per currency.
+- Payrolls that cross a period boundary, or include a raise in the middle of a time-off request, now pay the correct amounts.
+
 ### Phase 4: form integrity
 
 - **U2:** the Edit entry dialog sends only the fields that changed, and the server checks `revision`.

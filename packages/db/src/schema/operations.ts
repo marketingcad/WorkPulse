@@ -125,6 +125,8 @@ export const timeOffRequests = pgTable(
     endDate: text().notNull(),
     halfDay: boolean().notNull().default(false),
     hours: numeric({ precision: 8, scale: 2, mode: 'number' }).notNull(),
+    /** Hours taken on each working day ({ date: hours }), fixed when requested (audit 28 Oct 2026, Q8). */
+    dayHours: jsonb().$type<Record<string, number>>(),
     reason: text(),
     status: text().$type<'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'>().notNull().default('PENDING'),
     decidedBy: uuid(),

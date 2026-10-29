@@ -1,4 +1,4 @@
-import { expect, test } from '../../../support/fixtures';
+import { expect, ok, test, uid } from '../../../support/fixtures';
 import { ADMIN_STATE } from '../../../support/env';
 
 /**
@@ -87,6 +87,20 @@ test.describe('QA · Responsive navigation shell (admin)', () => {
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/projects`));
     await expect(page.getByRole('heading', { level: 1, name: 'Projects' })).toBeVisible();
     await expect(drawer).toBeHidden();
+  });
+
+  test('at tablet width a wide table scrolls inside its box, not the page (QA-05)', async ({ page, data, adminApi }) => {
+    // Long values make the clients table wider than the content area, whatever else the run created.
+    for (let i = 0; i < 3; i++)
+      await ok(await adminApi.api.post(adminApi.orgApi('/clients'), { data: { name: `Northwind Traders International ${uid()}`, email: `billing-${uid()}@northwind-traders-international.example.com`, phone: '+1 (555) 010-2030', contact_name: 'Bartholomew Longname-Smythe' } }), 'client');
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.goto(`/o/${data.orgId}/clients`);
+    const table = page.getByRole('table').first();
+    await expect(table).toBeVisible();
+    const box = await table.evaluate((t) => ({ inner: t.parentElement!.scrollWidth, outer: t.parentElement!.clientWidth }));
+    expect(box.inner, 'the table is wider than its box, so the check means something').toBeGreaterThan(box.outer);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, 'page scrolls sideways').toBeLessThanOrEqual(1);
   });
 
   test('on a phone, tapping outside the drawer closes it', async ({ page, data }) => {

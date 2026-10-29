@@ -105,5 +105,20 @@ test.describe('QA · Keyboard', () => {
       await expect(close, 'drawer still open after Escape').toBeHidden();
       await expect(open, `focus is on ${await focused(page)}`).toBeFocused();
     });
+
+    test('on a phone, keyboard focus stays inside the open navigation drawer', async ({ page, data }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`/o/${data.orgId}`);
+      await page.getByRole('button', { name: 'Open navigation' }).click();
+      const drawer = page.getByRole('dialog', { name: 'Navigation' });
+      await expect(drawer).toBeVisible();
+      const inDrawer = () => page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'));
+      expect(await inDrawer(), `focus is on ${await focused(page)}`).toBe(true);
+      // More presses than the drawer has controls, both ways round.
+      for (let i = 0; i < 40; i++) await page.keyboard.press('Tab');
+      expect(await inDrawer(), `focus is on ${await focused(page)}`).toBe(true);
+      for (let i = 0; i < 40; i++) await page.keyboard.press('Shift+Tab');
+      expect(await inDrawer(), `focus is on ${await focused(page)}`).toBe(true);
+    });
   });
 });

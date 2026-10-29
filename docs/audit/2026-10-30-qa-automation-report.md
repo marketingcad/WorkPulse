@@ -136,6 +136,18 @@ These were investigated and fixed in the tests without weakening any assertion:
   - QA-02, QA-03 and QA-04 are app-wide accessibility barriers;
   - QA-05 is a layout fault at tablet width.
 
+## Follow-up: QA-03 to QA-07 fixed (30 Oct 2026)
+
+| ID | Fix |
+|---|---|
+| QA-03 | `Dialog` and `Drawer` (`packages/ui/src/overlays.tsx`) remember what opened them and give focus back on close. The opener is read while rendering, before an autoFocus field takes focus. |
+| QA-04 | The phone navigation drawer (`app-shell.tsx`, `MobileNav`) is a modal dialog: focus moves in and stays in, Escape closes it, and focus returns to the menu button. |
+| QA-05 | The cause was screen-reader-only table headers ("Actions"). They were positioned against `<body>`, so they escaped the table's scroll box and widened the page. Table scroll wrappers are now `relative`: the shared table and 7 hand-built tables. A new tablet test seeds wide rows, so the check no longer depends on other tests. |
+| QA-06 | `--tw-secondary` is now `#6845ee`, with a contrast of 4.9:1 on its badge background. |
+| QA-07 | Desktop Home: each `<dl>` holds only term/value groups. The limit bar is a second `<dd>`. |
+
+Full E2E run after these fixes: **408 tests, 406 passed.** The 2 failures were desktop navigation tests: the browser did not close in time under load. Run alone, that spec passed 48 of 48, three times each.
+
 ## CI/CD readiness
 
 - The CI `E2E (Playwright)` job runs `--project=web --project=desktop`, so the new specs run there automatically. The e2e typecheck already runs in CI, and the lockfile is updated for `--frozen-lockfile`.

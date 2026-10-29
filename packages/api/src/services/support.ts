@@ -1,7 +1,8 @@
-import { and, count, desc, eq, gt, gte, ilike, inArray, isNull, max, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, max, or, sql } from 'drizzle-orm';
 import {
   auditLogs,
   devices,
+  emailTokens,
   integrationConnections,
   memberships,
   organizations,
@@ -33,6 +34,15 @@ export async function assertSupportStaff(deps: Deps, principal: Principal | null
   if (!principal || principal.type !== 'user') throw new DomainError('unauthenticated', 'unauthenticated', 'Please sign in to continue');
   const [u] = await deps.db.select({ email: users.email }).from(users).where(eq(users.id, principal.userId));
   if (!u || !deps.config.supportStaffEmails.includes(u.email.toLowerCase())) throw notFound('route');
+  // The address must be proven (audit 29 Oct 2026, AUTH-005): with email verification off, signing up
+  // marks an account verified, so anyone registering a staff address first would get the console.
+  // A verification or password-reset link this account opened shows it controls the mailbox.
+  const [proof] = await deps.db
+    .select({ id: emailTokens.id })
+    .from(emailTokens)
+    .where(and(eq(emailTokens.userId, principal.userId), inArray(emailTokens.purpose, ['VERIFY_EMAIL', 'RESET_PASSWORD']), isNotNull(emailTokens.usedAt)))
+    .limit(1);
+  if (!proof) throw forbidden('Confirm your email address first: open the link in the verification or password reset email');
   if (!principal.mfaVerified) throw forbidden('The support console needs a session verified with two-factor authentication');
   return { userId: principal.userId, email: u.email };
 }

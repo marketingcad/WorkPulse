@@ -165,6 +165,8 @@ export const tenant: MiddlewareHandler<AppEnv> = async (c, next) => {
     if (principal.type === 'api_key') assertApiKeyRoute(principal.scopes, c.req.method, c.req.path.split(`/orgs/${organizationId}`)[1] ?? '');
     const org = await loadOrg(tx, organizationId);
     // Organization security settings apply to people and API keys (desktop agents use their own routes).
+    // Required two-factor is for the web app only, by decision (audit 29 Oct 2026, AUTH-006); the
+    // security settings page says so.
     if (!ipAllowed(clientIp((h) => c.req.header(h)), org.settings.ipAllowlist)) throw forbidden('Access to this organization is not allowed from your network');
     c.set('org', org);
     const actor = await loadActor(tx, principal, organizationId, membershipId);

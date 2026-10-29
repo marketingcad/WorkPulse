@@ -15,6 +15,21 @@ export interface Storage {
   createUploadToken(key: string, contentType: string, maxBytes: number): Promise<UploadTarget>;
 }
 
+/**
+ * A storage key is a plain relative path: no `.` or `..` segment, no empty segment, no backslash or
+ * control character (audit 29 Oct 2026, AUTHZ-002). Some backends send keys inside URLs, where `..`
+ * would be resolved and could step out of the `org/{orgId}/` prefix every check relies on.
+ */
+export function isSafeKey(key: string): boolean {
+  if (!key || key.length > 512 || /[\\\x00-\x1f]/.test(key)) return false;
+  return key.split('/').every((seg) => seg !== '' && seg !== '.' && seg !== '..');
+}
+
+function safeKey(key: string): string {
+  if (!isSafeKey(key)) throw new Error('Unsafe storage key');
+  return key;
+}
+
 export interface UploadTarget {
   token: string;
   method: 'vercel-blob' | 'supabase' | 'api';
@@ -26,21 +41,25 @@ export class VercelBlobStorage implements Storage {
   constructor(private readonly token: string) {}
 
   async put(key: string, body: Buffer | ReadableStream | Blob, contentType: string): Promise<void> {
+    safeKey(key);
     await put(key, body, { access: 'private', contentType, token: this.token, addRandomSuffix: false, allowOverwrite: true });
   }
 
   async get(key: string) {
+    safeKey(key);
     const res = await get(key, { access: 'private', token: this.token });
     if (!res || res.statusCode !== 200 || !res.stream) return null;
     return { body: res.stream, contentType: res.blob.contentType ?? 'application/octet-stream' };
   }
 
   async delete(keys: string[]): Promise<void> {
+    keys.forEach(safeKey);
     if (keys.length === 0) return;
     for (let i = 0; i < keys.length; i += 500) await del(keys.slice(i, i + 500), { token: this.token });
   }
 
   async createUploadToken(key: string, contentType: string, maxBytes: number) {
+    safeKey(key);
     const token = await generateClientTokenFromReadWriteToken({
       token: this.token,
       pathname: key,
@@ -125,6 +144,7 @@ export class SupabaseStorage implements Storage {
   }
 
   async put(key: string, body: Buffer | ReadableStream | Blob, contentType: string): Promise<void> {
+    safeKey(key);
     await this.ensureBucket();
     const data = Buffer.isBuffer(body) ? new Uint8Array(body) : body instanceof Blob ? body : new Uint8Array(await new Response(body).arrayBuffer());
     const res = await this.fetchImpl(`${this.base}/object/${this.objectPath(key)}`, {
@@ -136,6 +156,7 @@ export class SupabaseStorage implements Storage {
   }
 
   async get(key: string) {
+    safeKey(key);
     const res = await this.fetchImpl(`${this.base}/object/authenticated/${this.objectPath(key)}`, { headers: this.headers() });
     // Supabase reports a missing object as 400 or 404.
     if (res.status === 400 || res.status === 404) return null;
@@ -144,6 +165,7 @@ export class SupabaseStorage implements Storage {
   }
 
   async delete(keys: string[]): Promise<void> {
+    keys.forEach(safeKey);
     for (let i = 0; i < keys.length; i += 1000) {
       const res = await this.fetchImpl(`${this.base}/object/${encodeURIComponent(this.bucket)}`, {
         method: 'DELETE',
@@ -155,6 +177,7 @@ export class SupabaseStorage implements Storage {
   }
 
   async createUploadToken(key: string): Promise<UploadTarget> {
+    safeKey(key);
     await this.ensureBucket();
     const res = await this.fetchImpl(`${this.base}/object/upload/sign/${this.objectPath(key)}`, {
       method: 'POST',
@@ -173,6 +196,7 @@ export class MemoryStorage implements Storage {
   readonly objects = new Map<string, { data: Buffer; contentType: string }>();
 
   async put(key: string, body: Buffer | ReadableStream | Blob, contentType: string): Promise<void> {
+    safeKey(key);
     let data: Buffer;
     if (Buffer.isBuffer(body)) data = body;
     else if (body instanceof Blob) data = Buffer.from(await body.arrayBuffer());
@@ -181,12 +205,14 @@ export class MemoryStorage implements Storage {
   }
 
   async get(key: string) {
+    safeKey(key);
     const o = this.objects.get(key);
     if (!o) return null;
     return { body: new Response(new Uint8Array(o.data)).body!, contentType: o.contentType };
   }
 
   async delete(keys: string[]): Promise<void> {
+    keys.forEach(safeKey);
     for (const k of keys) this.objects.delete(k);
   }
 
@@ -207,6 +233,7 @@ export class FileStorage implements Storage {
   }
 
   async put(key: string, body: Buffer | ReadableStream | Blob, contentType: string): Promise<void> {
+    safeKey(key);
     const fs = await import('node:fs/promises');
     const p = this.path(key);
     await fs.mkdir(p.slice(0, p.lastIndexOf('/')), { recursive: true });
@@ -216,6 +243,7 @@ export class FileStorage implements Storage {
   }
 
   async get(key: string) {
+    safeKey(key);
     const fs = await import('node:fs/promises');
     try {
       const data = await fs.readFile(this.path(key));
@@ -227,6 +255,7 @@ export class FileStorage implements Storage {
   }
 
   async delete(keys: string[]): Promise<void> {
+    keys.forEach(safeKey);
     const fs = await import('node:fs/promises');
     for (const k of keys) {
       await fs.rm(this.path(k), { force: true });

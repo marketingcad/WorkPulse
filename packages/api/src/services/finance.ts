@@ -23,7 +23,6 @@ import {
   type Tx,
 } from '@tallywork/db';
 import {
-  amountForSeconds,
   budgetStatus,
   businessRule,
   can,
@@ -1035,6 +1034,8 @@ async function toPaymentRows(x: Ctx, rows: Array<{ p: typeof payments.$inferSele
 export async function recordPayment(x: Ctx, input: z.infer<typeof paymentInput>) {
   if (!x.actor.grants['payments:manage']) throw forbidden();
   if (x.actor.grants['payments:manage'] !== 'org' && (!input.client_id || !(await canOnClient(x, 'payments:manage', input.client_id)))) throw forbidden('Your role can record payments only for the clients of your projects');
+  // The client must be one of this organization's (TEN-001), at every scope.
+  if (input.client_id && !(await existsInOrg(x, 'client', input.client_id))) throw notFound('client');
   const allocated = input.allocations.reduce((s, a) => s + a.amount_minor, 0);
   if (allocated > input.amount_minor) throw validation('Allocations exceed the payment amount');
   const id = newId();

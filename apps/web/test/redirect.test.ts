@@ -16,6 +16,14 @@ describe('sameOriginPath', () => {
       expect(sameOriginPath(next, ORIGIN), JSON.stringify(next)).toBeNull();
   });
 
+  // Audit 29 Oct 2026 (AUTH-003): dot segments collapse to `//evil.example` once resolved.
+  it('refuses dot segments that collapse into another site', () => {
+    for (const next of ['/.//evil.example', '/a/..//evil.example', '/%2e//evil.example', '/./%2e/..//evil.example'])
+      expect(sameOriginPath(next, ORIGIN), JSON.stringify(next)).toBeNull();
+    // An ordinary relative path with dot segments still resolves on this site.
+    expect(sameOriginPath('/o/1/../2/projects', ORIGIN)).toBe('/o/2/projects');
+  });
+
   it('ignores a missing value', () => {
     expect(sameOriginPath(null, ORIGIN)).toBeNull();
     expect(sameOriginPath('', ORIGIN)).toBeNull();

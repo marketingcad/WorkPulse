@@ -9,7 +9,7 @@ import { rateLimit } from '../middleware/rate-limit';
 import { requireUser, userId } from '../middleware/auth';
 import { runInTenantTx } from '../middleware/tenant';
 import { myActivity, myClientVisibility, myNotifications, myPayStub, myPayStubs, mySchedule, mySessions, mySummary, myTasks, myTimeOff, myTimesheet, readMyNotifications, requestMyTimeOff, submitMyTimesheet } from '../services/agent-me';
-import { acknowledgePolicy, bootstrap, createDeviceAuthCode, heartbeat, ingestBatch, loadAgentCtx, loginDevice, refreshDeviceToken, registerDevice, screenshotKeyPrefix, type AgentCtx } from '../services/agent';
+import { acknowledgePolicy, bootstrap, createDeviceAuthCode, heartbeat, ingestBatch, loadAgentCtx, loginDevice, refreshDeviceToken, registerDevice, isOwnScreenshotKey, screenshotKeyPrefix, type AgentCtx } from '../services/agent';
 
 type AgentEnv = AppEnv & { Variables: AppEnv['Variables'] & { agent: AgentCtx } };
 
@@ -100,7 +100,7 @@ agentOnly
   .put('/screenshots/upload', tenant, async (c) => {
     const a = c.var.agent;
     const key = c.req.query('key') ?? '';
-    if (!key.startsWith(screenshotKeyPrefix(a.organizationId, a.membershipId))) throw forbidden('Invalid key');
+    if (!isOwnScreenshotKey(key, a.organizationId, a.membershipId, { thumb: true })) throw forbidden('Invalid key');
     const type = c.req.header('content-type') ?? '';
     if (!/^image\/(webp|jpeg|png)$/.test(type)) throw forbidden('Unsupported content type');
     const buf = Buffer.from(await c.req.arrayBuffer());

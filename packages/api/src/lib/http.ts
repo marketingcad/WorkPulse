@@ -69,6 +69,11 @@ export function parse<T extends z.ZodType>(schema: T, data: unknown): z.infer<T>
 }
 
 export async function body<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer<T>> {
+  // JSON bodies are sent as JSON (audit 29 Oct 2026, AUTH-004). A cross-site HTML form can only send
+  // text/plain or form encodings, so this alone stops form-based CSRF (such as signing someone in to an
+  // attacker's account); a cross-site fetch with a JSON type needs a CORS preflight, which this API refuses.
+  const type = (c.req.header('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+  if (type !== 'application/json' && !type.endsWith('+json')) throw new DomainError('validation', 'unsupported_media_type', 'Send the request body as application/json');
   let json: unknown;
   try {
     json = await c.req.json();

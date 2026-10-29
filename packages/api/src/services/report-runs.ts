@@ -21,9 +21,13 @@ const EXT: Record<ExportFormat | 'JSON', { ext: string; type: string }> = {
   XLSX: { ext: 'xlsx', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
   PDF: { ext: 'pdf', type: 'application/pdf' },
 };
-/** Links in the app are short-lived; links emailed by a schedule last a week. */
+/**
+ * Links in the app are short-lived. Links emailed by a schedule work without signing in, so they last
+ * two days, not a week (audit 29 Oct 2026, AUTH-007): long enough to open the email, short enough that a
+ * forwarded or leaked link, or one kept by someone who has since left, soon stops working.
+ */
 const LINK_TTL_SECONDS = 15 * 60;
-const EMAIL_LINK_TTL_SECONDS = 7 * 86400;
+const EMAIL_LINK_TTL_SECONDS = 2 * 86400;
 
 /** A signed download link for an export file (served by the /media route with a file name). */
 export function exportLink(deps: Deps, organizationId: string, storageKey: string, fileName: string, ttlSeconds: number, absolute = false): string {
@@ -155,7 +159,7 @@ async function executeRun(tx: Tx, deps: Deps, run: RunRow) {
                 { label: 'Rows', value: String(result.rows.length) },
               ],
               action: { label: 'Download report', url: link },
-              note: 'The download link is valid for 7 days.',
+              note: 'The download link is valid for 2 days.',
               reason: `You received this email because you are a recipient of the scheduled report “${saved!.name}”.`,
             },
             { appUrl: deps.config.appUrl, to: email },

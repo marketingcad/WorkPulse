@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm';
 import {
   activityMinutes,
   activityWindows,
@@ -102,7 +102,9 @@ export async function registerDevice(deps: Deps, input: z.infer<typeof agentRegi
   const [code] = await deps.db.select().from(deviceAuthCodes).where(and(eq(deviceAuthCodes.codeHash, sha256(input.code)), isNull(deviceAuthCodes.usedAt))).limit(1);
   if (!code || code.expiresAt < deps.now()) throw new DomainError('unauthenticated', 'invalid_code', 'The sign-in code is invalid or expired. Please sign in again.');
   if (!pkceMatches(input.code_verifier, code.codeChallenge)) throw new DomainError('unauthenticated', 'pkce_mismatch', 'Sign-in verification failed');
-  await deps.db.update(deviceAuthCodes).set({ usedAt: deps.now() }).where(eq(deviceAuthCodes.id, code.id));
+  // Conditional claim: the same code exchanged twice at once registers one device, not two.
+  const [claimed] = await deps.db.update(deviceAuthCodes).set({ usedAt: deps.now() }).where(and(eq(deviceAuthCodes.id, code.id), isNull(deviceAuthCodes.usedAt))).returning({ id: deviceAuthCodes.id });
+  if (!claimed) throw new DomainError('unauthenticated', 'invalid_code', 'The sign-in code is invalid or expired. Please sign in again.');
   return createDevice(deps, { organizationId: code.organizationId, membershipId: code.membershipId, userId: code.userId }, input.device);
 }
 
@@ -173,7 +175,9 @@ export async function refreshDeviceToken(deps: Deps, refreshToken: string) {
     if (!device || device.status === 'REVOKED') throw new DomainError('unauthenticated', 'device_revoked', 'This device has been revoked by an administrator');
     const [m] = await tx.select().from(memberships).where(eq(memberships.id, device.membershipId));
     if (!m || m.status !== 'ACTIVE') throw forbidden('Your membership is not active');
-    await tx.update(deviceCredentials).set({ usedAt: deps.now() }).where(eq(deviceCredentials.id, cred.id));
+    // Conditional: of two refreshes with the same token at once, only one rotates it.
+    const [rotated] = await tx.update(deviceCredentials).set({ usedAt: deps.now() }).where(and(eq(deviceCredentials.id, cred.id), isNull(deviceCredentials.usedAt))).returning({ id: deviceCredentials.id });
+    if (!rotated) return null;
     return issueTokens(tx, deps, device, m.userId, cred.familyId);
   });
   if (!result) throw invalid;
@@ -487,8 +491,7 @@ async function processEvent(a: AgentCtx, ev: AgentEvent, correct: (iso: string) 
     case 'screenshot.captured': {
       if (!a.policy.screenshots.enabled) throw businessRule('screenshots_disabled', 'Screenshots are disabled by policy');
       const s = await sessionFor(a, ev.session_id);
-      const expectedPrefix = screenshotKeyPrefix(a.organizationId, a.membershipId);
-      if (!ev.storage_key.startsWith(expectedPrefix)) throw forbidden('Invalid screenshot storage key');
+      if (!isOwnScreenshotKey(ev.storage_key, a.organizationId, a.membershipId)) throw forbidden('Invalid screenshot storage key');
       const capturedAt = correct(ev.captured_at);
       await a.tx
         .insert(screenshots)
@@ -523,6 +526,18 @@ async function processEvent(a: AgentCtx, ev: AgentEvent, correct: (iso: string) 
 
 export function screenshotKeyPrefix(organizationId: string, membershipId: string): string {
   return `org/${organizationId}/screenshots/${membershipId}/`;
+}
+
+/**
+ * Is this exactly a key the upload intent hands out for this member (`<prefix>YYYY-MM-DD/<uuid>.<ext>`,
+ * plus `.thumb` for a thumbnail when allowed)? A prefix check alone let `<prefix>../../…` through, which
+ * storage backends that resolve paths sent outside the member's and the organization's folder (AUTHZ-002).
+ */
+export function isOwnScreenshotKey(key: string, organizationId: string, membershipId: string, opts: { thumb?: boolean } = {}): boolean {
+  const prefix = screenshotKeyPrefix(organizationId, membershipId);
+  if (!key.startsWith(prefix)) return false;
+  const m = /^\d{4}-\d{2}-\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(webp|jpe?g|png)(\.thumb)?$/.exec(key.slice(prefix.length));
+  return !!m && (opts.thumb || !m[2]);
 }
 
 export async function ingestBatch(a: AgentCtx, batch: IngestBatchInput): Promise<IngestResponse> {

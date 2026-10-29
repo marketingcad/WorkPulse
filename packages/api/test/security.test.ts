@@ -269,7 +269,7 @@ describe('web security', () => {
   it('rejects wrong passwords generically and never stores plaintext', async () => {
     const r = await new Client(t).post('/auth/login', { email: 'alice@a.test', password: 'wrong-password!' });
     expect(r.status).toBe(401);
-    expect(r.body.title).toBe('Email or password is incorrect');
+    expect(r.body.title).toBe('Email or password is incorrect. After repeated attempts, wait a few minutes and try again.');
     const unknown = await new Client(t).post('/auth/login', { email: 'nobody@a.test', password: 'wrong-password!' });
     expect(unknown.body.title).toBe(r.body.title);
   });

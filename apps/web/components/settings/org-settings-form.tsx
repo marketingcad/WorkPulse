@@ -191,7 +191,7 @@ export function OrgSettingsForm({ part, title, description }: { part: OrgSetting
                 <Field label="Organization name" htmlFor="org-name" error={err?.field('name')} required className="sm:col-span-2">
                   <Input id="org-name" value={f.name} maxLength={100} onChange={(e) => set('name', e.target.value)} />
                 </Field>
-                <Field label="Time zone" htmlFor="org-tz" hint="Used for days, weeks, pay periods and attendance." error={err?.field('timezone')}>
+                <Field label="Time zone" htmlFor="org-tz" hint="Used for days, weeks, timesheet periods and attendance." error={err?.field('timezone')}>
                   <Select id="org-tz" value={f.timezone} onChange={(e) => set('timezone', e.target.value)}>
                     {zones.map((z) => (
                       <option key={z} value={z}>
@@ -264,9 +264,10 @@ export function OrgSettingsForm({ part, title, description }: { part: OrgSetting
           </>
         ) : (
           <>
-            <Panel title="Pay period">
+            {/* The period timesheets cover (R7). Payroll pays by each pay group's own pay period. */}
+            <Panel title="Timesheet period">
               <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-                <Field label="Pay period" htmlFor="org-pp" hint="Timesheets are submitted and approved per pay period.">
+                <Field label="Timesheet period" htmlFor="org-pp" hint="Timesheets are submitted and approved per period. Payroll uses each pay group's own pay period.">
                   <Select id="org-pp" value={f.payType} onChange={(e) => set('payType', e.target.value as PayType)}>
                     <option value="weekly">Weekly</option>
                     <option value="biweekly">Every two weeks</option>
@@ -275,7 +276,7 @@ export function OrgSettingsForm({ part, title, description }: { part: OrgSetting
                   </Select>
                 </Field>
                 {f.payType === 'biweekly' && (
-                  <Field label="First day of a pay period" htmlFor="org-anchor" hint="Any past start date; periods repeat every 14 days from it." error={err?.field('pay_period.anchorDate') ?? (!f.anchorDate ? 'Pick an anchor date' : undefined)} required>
+                  <Field label="First day of a timesheet period" htmlFor="org-anchor" hint="Any past start date; periods repeat every 14 days from it." error={err?.field('pay_period.anchorDate') ?? (!f.anchorDate ? 'Pick an anchor date' : undefined)} required>
                     <Input id="org-anchor" type="date" value={f.anchorDate} onChange={(e) => set('anchorDate', e.target.value)} />
                   </Field>
                 )}

@@ -428,6 +428,21 @@ It can be run again safely.
 - **R10:** the My timesheet gate.
 - **Decision needed:** approve the renames and moves before work starts, because they change navigation that users already know.
 
+**Status: done on `fix/audit-phase5-ux` (all approved on 29 Oct 2026).** There is no migration.
+
+| Item | As built |
+|---|---|
+| R1 | The sidebar item is "Approvals". It opens Approvals, and Team week is its second tab. |
+| R2 | Someone else's timesheet has one address: `/timesheets/team?member=…`. Links from member pages and the approval drawer go there, and an old `/timesheets?member=…` link forwards to it. `/timesheets` is only My timesheet. |
+| R4 | Live has two tabs, Live and Session history. Both need the same access (`tracking:read` at team or org scope). The Session history button is gone, and the page is titled "Session history". |
+| R6 | Member, client and project rate fields say "from today". The existing note links to Rates for a future date. |
+| R7 | The Settings › Time & pay panel and its field are "Timesheet period", with a hint that payroll uses each pay group's own period. Help and the tour are updated to match. |
+| R8 | The report category "People" is now "Workforce". Report titles use sentence case, for example "Time & activity", "Payroll export" and "Timesheet approval". |
+| R9 | The Help categories "Time Tracking" and "Project Management" match the sidebar. Help steps say "Approvals" instead of "Timesheets". |
+| R10 | The account menu offers My timesheet on `timesheets:read`, the same permission the page and API need. |
+
+**Not covered by an E2E test:** R10. It only affects a custom role that has `timesheets:submit` without `timesheets:read`, and the shared E2E data has no such role.
+
 ### Order
 
 Phase 0, 1, 2, 3, 4, 5. Phases 1 and 5 have no open design questions.

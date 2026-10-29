@@ -165,7 +165,7 @@ export function ApprovalQueue() {
           subtitle={periodLabel(open.period_start, open.period_end)}
           width={820}
           actions={
-            <Link href={`${org.base}/timesheets?member=${open.membership_id}&date=${open.period_start}`} className="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium text-interactive hover:bg-surface-muted">
+            <Link href={`${org.base}/timesheets/team?member=${open.membership_id}&date=${open.period_start}`} className="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium text-interactive hover:bg-surface-muted">
               <ExternalLink className="size-3.5" /> Open full page
             </Link>
           }

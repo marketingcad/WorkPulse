@@ -175,10 +175,10 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
               </Field>
               {canReadRates && (
                 <>
-                  <Field label="Pay rate per hour" htmlFor="cl-pay" hint={`${rateCurrency} / hour, what you pay`} error={err?.field('pay_rate_minor')}>
+                  <Field label="Pay rate per hour" htmlFor="cl-pay" hint={`${rateCurrency} / hour, what you pay, from today`} error={err?.field('pay_rate_minor')}>
                     <Input id="cl-pay" inputMode="decimal" value={f.pay_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, pay_rate: e.target.value })} placeholder="0.00" className="tabular" />
                   </Field>
-                  <Field label="Bill rate per hour" htmlFor="cl-bill" hint={`${rateCurrency} / hour, what you charge`} error={err?.field('bill_rate_minor')}>
+                  <Field label="Bill rate per hour" htmlFor="cl-bill" hint={`${rateCurrency} / hour, what you charge, from today`} error={err?.field('bill_rate_minor')}>
                     <Input id="cl-bill" inputMode="decimal" value={f.bill_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} placeholder="0.00" className="tabular" />
                   </Field>
                 </>

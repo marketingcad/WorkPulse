@@ -634,7 +634,7 @@ function SaveAsReportDialog({ open, onClose, params }: { open: boolean; onClose:
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title="Save as report"
-      description="Saves these dates and filters as a Time & Activity report, grouped by day, member and project."
+      description="Saves these dates and filters as a Time & activity report, grouped by day, member and project."
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>

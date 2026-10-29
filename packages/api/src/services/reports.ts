@@ -61,7 +61,8 @@ export interface ReportDefinition {
   key: string;
   title: string;
   question: string;
-  category: 'Time' | 'Activity' | 'People' | 'Finance' | 'Compliance';
+  /** matches the sidebar's group names (R8) */
+  category: 'Time' | 'Activity' | 'Workforce' | 'Finance' | 'Compliance';
   permission: Permission;
   /** The data permission the report is scoped by (any of). Listed only when the viewer holds one, so it never 403s on run. */
   requires?: Permission[];
@@ -629,25 +630,25 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
 // catalogue: another report covers them, or the list page exports the same rows (Invoices, Payments
 // received, Expenses, Budgets, Payroll › Owed).
 export const REPORTS: ReportDefinition[] = [
-  { key: 'time-activity', title: 'Time & Activity', question: 'Where did time go, and how active was it?', category: 'Time', permission: 'reports:read', groupings: ['worker', 'project', 'task', 'client', 'date', 'week'], requires: ['time:read'], run: timeAndActivity },
-  { key: 'daily-totals', title: 'Daily Totals', question: 'How much did each person work each day?', category: 'Time', permission: 'reports:read', requires: ['time:read'], hidden: true, run: dailyTotals },
-  { key: 'work-sessions', title: 'Work Sessions', question: 'When did people start and stop?', category: 'Time', permission: 'reports:read', requires: ['tracking:read'], filters: ['dates', 'members', 'teams', 'projects'], run: workSessions },
-  { key: 'manual-time', title: 'Manual Time Edits', question: 'How much time was added manually, and why?', category: 'Time', permission: 'reports:read', requires: ['time:read'], filters: ['dates', 'members', 'teams'], run: manualTimeReport },
-  { key: 'work-breaks', title: 'Work Breaks', question: 'How much break and idle time was taken?', category: 'Time', permission: 'reports:read', requires: ['tracking:read'], filters: ['dates', 'members', 'teams', 'projects'], hidden: true, run: workBreaks },
+  { key: 'time-activity', title: 'Time & activity', question: 'Where did time go, and how active was it?', category: 'Time', permission: 'reports:read', groupings: ['worker', 'project', 'task', 'client', 'date', 'week'], requires: ['time:read'], run: timeAndActivity },
+  { key: 'daily-totals', title: 'Daily totals', question: 'How much did each person work each day?', category: 'Time', permission: 'reports:read', requires: ['time:read'], hidden: true, run: dailyTotals },
+  { key: 'work-sessions', title: 'Work sessions', question: 'When did people start and stop?', category: 'Time', permission: 'reports:read', requires: ['tracking:read'], filters: ['dates', 'members', 'teams', 'projects'], run: workSessions },
+  { key: 'manual-time', title: 'Manual time edits', question: 'How much time was added manually, and why?', category: 'Time', permission: 'reports:read', requires: ['time:read'], filters: ['dates', 'members', 'teams'], run: manualTimeReport },
+  { key: 'work-breaks', title: 'Work breaks', question: 'How much break and idle time was taken?', category: 'Time', permission: 'reports:read', requires: ['tracking:read'], filters: ['dates', 'members', 'teams', 'projects'], hidden: true, run: workBreaks },
   { key: 'apps-urls', title: 'Apps & URLs', question: 'Which tools and sites were used?', category: 'Activity', permission: 'reports:read', requires: ['apps:read'], filters: ['dates', 'members', 'teams'], run: appsUrls },
-  { key: 'timesheet-approval', title: 'Timesheet Approval', question: 'Which timesheets are approved or pending?', category: 'People', permission: 'reports:read', requires: ['timesheets:read'], filters: ['dates', 'members', 'teams'], run: timesheetApproval },
-  { key: 'attendance', title: 'Attendance', question: 'Who was late, absent or in overtime?', category: 'People', permission: 'reports:read', requires: ['attendance:read'], filters: ['dates', 'members', 'teams'], run: attendanceReport },
-  { key: 'time-off', title: 'Time Off', question: 'Who took time off and how much?', category: 'People', permission: 'reports:read', requires: ['time_off:read'], filters: ['dates', 'members', 'teams'], run: timeOffReport },
-  { key: 'payroll', title: 'Payroll Export', question: 'What should payroll pay for this period?', category: 'Finance', permission: 'reports:finance', requires: ['payroll:read'], filters: ['dates', 'members', 'teams'], run: payroll },
-  { key: 'amounts-owed', title: 'Amounts Owed', question: 'What do we owe each member?', category: 'Finance', permission: 'reports:finance', requires: ['billing:read', 'rates:read'], filters: ['dates'], hidden: true, run: amountsOwedReport },
+  { key: 'timesheet-approval', title: 'Timesheet approval', question: 'Which timesheets are approved or pending?', category: 'Workforce', permission: 'reports:read', requires: ['timesheets:read'], filters: ['dates', 'members', 'teams'], run: timesheetApproval },
+  { key: 'attendance', title: 'Attendance', question: 'Who was late, absent or in overtime?', category: 'Workforce', permission: 'reports:read', requires: ['attendance:read'], filters: ['dates', 'members', 'teams'], run: attendanceReport },
+  { key: 'time-off', title: 'Time off', question: 'Who took time off and how much?', category: 'Workforce', permission: 'reports:read', requires: ['time_off:read'], filters: ['dates', 'members', 'teams'], run: timeOffReport },
+  { key: 'payroll', title: 'Payroll export', question: 'What should payroll pay for this period?', category: 'Finance', permission: 'reports:finance', requires: ['payroll:read'], filters: ['dates', 'members', 'teams'], run: payroll },
+  { key: 'amounts-owed', title: 'Amounts owed', question: 'What do we owe each member?', category: 'Finance', permission: 'reports:finance', requires: ['billing:read', 'rates:read'], filters: ['dates'], hidden: true, run: amountsOwedReport },
   { key: 'billing', title: 'Billing', question: 'What is billable per client and project?', category: 'Finance', permission: 'reports:finance', requires: ['time:read'], filters: ['dates', 'members', 'teams', 'projects', 'clients'], run: billingReport },
   { key: 'invoices', title: 'Invoices', question: 'What has been invoiced and what is outstanding?', category: 'Finance', permission: 'reports:finance', requires: ['invoices:read'], filters: ['dates'], hidden: true, run: invoicesReport },
   { key: 'payments', title: 'Payments', question: 'What payments came in?', category: 'Finance', permission: 'reports:finance', requires: ['payments:read'], filters: ['dates'], hidden: true, run: paymentsReport },
   { key: 'expenses', title: 'Expenses', question: 'What was spent, and is it billable?', category: 'Finance', permission: 'reports:read', requires: ['expenses:read'], filters: ['dates'], hidden: true, run: expensesReport },
   { key: 'budgets', title: 'Budgets', question: 'Which projects and clients are near or over budget?', category: 'Finance', permission: 'reports:read', requires: ['budgets:read'], filters: [], hidden: true, run: budgetReport(null) },
-  { key: 'project-budgets', title: 'Project Budgets', question: 'Which projects are near or over budget?', category: 'Finance', permission: 'reports:read', requires: ['budgets:read'], filters: [], hidden: true, run: budgetReport('PROJECT') },
-  { key: 'client-budgets', title: 'Client Budgets', question: 'Which clients are near or over budget?', category: 'Finance', permission: 'reports:read', requires: ['budgets:read'], filters: [], hidden: true, run: budgetReport('CLIENT') },
-  { key: 'audit-log', title: 'Audit Log', question: 'Who changed what, and when?', category: 'Compliance', permission: 'audit:read', filters: ['dates'], hidden: true, run: auditReport },
+  { key: 'project-budgets', title: 'Project budgets', question: 'Which projects are near or over budget?', category: 'Finance', permission: 'reports:read', requires: ['budgets:read'], filters: [], hidden: true, run: budgetReport('PROJECT') },
+  { key: 'client-budgets', title: 'Client budgets', question: 'Which clients are near or over budget?', category: 'Finance', permission: 'reports:read', requires: ['budgets:read'], filters: [], hidden: true, run: budgetReport('CLIENT') },
+  { key: 'audit-log', title: 'Audit log', question: 'Who changed what, and when?', category: 'Compliance', permission: 'audit:read', filters: ['dates'], hidden: true, run: auditReport },
 ];
 
 /** The report's own permission plus (when listed) one of the permissions its data needs, as on the matching page. */

@@ -15,7 +15,7 @@ test.describe('Help Center', () => {
     await sidebar(page).getByRole('link', { name: 'Help' }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/help$`));
     await expect(page.getByRole('heading', { level: 1, name: 'Help Center' })).toBeVisible();
-    for (const topic of ['Getting started', 'Time and timesheets', 'Finance', 'Frequently asked questions', 'Troubleshooting', 'Finding your way']) {
+    for (const topic of ['Getting started', 'Time Tracking', 'Project Management', 'Finance', 'Frequently asked questions', 'Troubleshooting', 'Finding your way']) {
       await expect(page.getByRole('heading', { level: 2, name: topic })).toBeVisible();
     }
     // “Finding your way” lists the menu this person sees.

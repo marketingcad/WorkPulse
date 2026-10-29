@@ -15,7 +15,7 @@ import { HelpLink } from '@/components/help/help-link';
 const CATEGORIES: Array<{ key: CatalogItem['category']; label: string; icon: LucideIcon }> = [
   { key: 'Time', label: 'Time', icon: Clock },
   { key: 'Activity', label: 'Activity', icon: Activity },
-  { key: 'People', label: 'People', icon: Users },
+  { key: 'Workforce', label: 'Workforce', icon: Users },
   { key: 'Finance', label: 'Finance', icon: BadgeDollarSign },
   { key: 'Compliance', label: 'Compliance', icon: ShieldCheck },
 ];

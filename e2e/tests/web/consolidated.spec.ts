@@ -13,12 +13,13 @@ const sidebar = (page: import('@playwright/test').Page) => page.getByRole('compl
 test.describe('Consolidated pages (admin)', () => {
   test.use({ storageState: ADMIN_STATE });
 
-  test('Timesheets: Approvals holds submitted timesheets and manual time; Team week is the other tab', { tag: '@smoke' }, async ({ page, data }) => {
+  // Audit 28 Oct 2026 (R1): the menu item is named after the page it opens, Approvals.
+  test('Approvals holds submitted timesheets and manual time; Team week is the other tab', { tag: '@smoke' }, async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}`);
     const nav = sidebar(page);
     const group = nav.getByRole('button', { name: 'Time Tracking' });
     if ((await group.getAttribute('aria-expanded')) === 'false') await group.click();
-    await nav.getByRole('link', { name: 'Timesheets' }).click();
+    await nav.getByRole('link', { name: 'Approvals', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/timesheets/approvals$`));
     await expect(page.getByRole('heading', { level: 1, name: 'Approvals' })).toBeVisible();
     await expect(page.getByRole('heading', { level: 2, name: 'Timesheets' })).toBeVisible();
@@ -26,11 +27,11 @@ test.describe('Consolidated pages (admin)', () => {
     // In the panel's header (the empty state may offer the same button).
     await expect(page.getByRole('button', { name: 'Request manual time' }).first()).toBeVisible();
 
-    const tabs = page.getByRole('navigation', { name: 'Timesheets' });
+    const tabs = page.getByRole('navigation', { name: 'Approvals' });
     await tabs.getByRole('link', { name: 'Team week' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Team week' })).toBeVisible();
     await expect(page.getByRole('table', { name: 'Hours per member this week' })).toBeVisible();
-    await expect(nav.getByRole('link', { name: 'Timesheets' })).toHaveAttribute('aria-current', 'page');
+    await expect(nav.getByRole('link', { name: 'Approvals', exact: true })).toHaveAttribute('aria-current', 'page');
   });
 
   test('a timesheet opens in a drawer from Approvals (loaded when opened)', async ({ page, data }) => {
@@ -133,10 +134,10 @@ test.describe('Consolidated pages (admin)', () => {
 test.describe('Consolidated pages (restricted role)', () => {
   test.use({ storageState: VIEWER_STATE });
 
-  test('no report access, no Export; no Timesheets item without approval or team access', async ({ page, data }) => {
+  test('no report access, no Export; no Approvals item without approval or team access', async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}/finance/budgets`);
     await expect(page.getByRole('heading', { level: 1, name: 'Budgets' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Export' })).toHaveCount(0);
-    await expect(sidebar(page).getByRole('link', { name: 'Timesheets' })).toHaveCount(0);
+    await expect(sidebar(page).getByRole('link', { name: 'Approvals', exact: true })).toHaveCount(0);
   });
 });

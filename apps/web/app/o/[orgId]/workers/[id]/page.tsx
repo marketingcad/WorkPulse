@@ -192,7 +192,7 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
       <div className="flex flex-col gap-4">
         <Panel title="Quick links">
           <ul className="divide-y divide-border text-sm">
-            {org.can('timesheets:read') && <QuickLink href={`${org.base}/timesheets?member=${w.id}`} icon={<Clock className="size-3.5" />} label="Timesheet" />}
+            {org.can('timesheets:read') && <QuickLink href={`${org.base}/timesheets/team?member=${w.id}`} icon={<Clock className="size-3.5" />} label="Timesheet" />}
             {org.can('activity:read') && <QuickLink href={`${org.base}/activity?member=${w.id}`} icon={<Activity className="size-3.5" />} label="Activity & screenshots" />}
           </ul>
         </Panel>
@@ -422,10 +422,10 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
           </Field>
           {canRates && (
             <>
-              <Field label="Pay rate per hour" htmlFor="wk-pay" hint={`${org.organization.currency} / hour, what you pay this member`} error={err?.field('pay_rate_minor')}>
+              <Field label="Pay rate per hour" htmlFor="wk-pay" hint={`${org.organization.currency} / hour, what you pay this member, from today`} error={err?.field('pay_rate_minor')}>
                 <Input id="wk-pay" inputMode="decimal" className="tabular" placeholder="0.00" value={f.pay_rate} onChange={(e) => setF({ ...f, pay_rate: e.target.value })} />
               </Field>
-              <Field label="Bill rate per hour" htmlFor="wk-bill" hint={`${org.organization.currency} / hour, what you charge for their time`} error={err?.field('bill_rate_minor')}>
+              <Field label="Bill rate per hour" htmlFor="wk-bill" hint={`${org.organization.currency} / hour, what you charge for their time, from today`} error={err?.field('bill_rate_minor')}>
                 <Input id="wk-bill" inputMode="decimal" className="tabular" placeholder="0.00" value={f.bill_rate} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} />
               </Field>
               <RateNote scope="WORKER" className="sm:col-span-2" />
@@ -641,7 +641,7 @@ function TimeTab({ w }: { w: WorkerDto }) {
           </Button>
         )}
         {org.can('timesheets:read') && (
-          <Link href={`${org.base}/timesheets?member=${w.id}`} className="ml-auto text-sm font-medium text-interactive hover:underline">
+          <Link href={`${org.base}/timesheets/team?member=${w.id}`} className="ml-auto text-sm font-medium text-interactive hover:underline">
             Open timesheet →
           </Link>
         )}

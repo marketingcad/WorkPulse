@@ -10,9 +10,9 @@ export type HelpCategoryId = 'start' | 'time' | 'people' | 'work' | 'money' | 'r
 
 export const HELP_CATEGORIES: Array<{ id: HelpCategoryId; title: string; description: string }> = [
   { id: 'start', title: 'Getting started', description: 'Your first steps: setting up the organization and getting your team tracking time.' },
-  { id: 'time', title: 'Time and timesheets', description: 'Checking, correcting and approving the time your team tracks.' },
+  { id: 'time', title: 'Time Tracking', description: 'Checking, correcting and approving the time your team tracks.' },
   { id: 'people', title: 'Workforce', description: 'Members, teams, schedules, attendance and time off.' },
-  { id: 'work', title: 'Clients, projects and tasks', description: 'What people work on, and the breaks planned for each project.' },
+  { id: 'work', title: 'Project Management', description: 'What people work on, and the breaks planned for each project.' },
   { id: 'money', title: 'Finance', description: 'Rates, budgets, expenses, invoices and payroll.' },
   { id: 'reports', title: 'Reports and exports', description: 'Totals for any period, reports you can save, and downloads.' },
   { id: 'settings', title: 'Settings', description: 'Your organization, what is tracked, devices, roles and security.' },
@@ -108,7 +108,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: 'Approve timesheets',
     summary: 'Check submitted timesheets and approve, reject or ask for changes.',
     steps: [
-      'Open Timesheets (it opens on Approvals). The Timesheets panel lists Pending sheets first.',
+      'Open Approvals (under Time Tracking). The Timesheets panel lists Pending sheets first.',
       'To approve several at once, tick them and click Approve.',
       'To look closer, click a row. The timesheet opens with Approve, Reject and Request changes.',
       'Reject and Request changes need a short comment, which the member sees. Request changes sends the timesheet back so they can fix it.',
@@ -125,7 +125,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: 'Approve or request manual time',
     summary: 'Time the timer did not capture, such as a meeting away from the computer.',
     steps: [
-      'Open Timesheets › Approvals. Requests are in the Manual time requests panel.',
+      'Open Approvals. Requests are in the Manual time requests panel.',
       'Click Approve to add the time to the member’s timesheet, or Reject (a comment is required).',
       'To ask for time yourself, click Request manual time, enter the date and the time worked (as a duration, or a start and end), pick the project, and click Add time.',
     ],
@@ -154,7 +154,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: 'time',
     title: 'See your team’s week',
     summary: 'Everyone’s hours per day, with the week’s total and expected hours.',
-    steps: ['Open Timesheets › Team week.', 'Use the arrows to move between weeks, or pick a date.', 'Click a member (or use “Choose a member…”) to open their timesheet underneath, where you can add time or approve it.'],
+    steps: ['Open Approvals › Team week.', 'Use the arrows to move between weeks, or pick a date.', 'Click a member (or use “Choose a member…”) to open their timesheet underneath, where you can add time or approve it.'],
     tip: 'Expected hours are highlighted when a member’s week is well below them.',
     links: [{ label: 'Open Team week', href: '/timesheets/team' }],
     keywords: ['week', 'hours', 'expected', 'team', 'timesheet'],
@@ -168,7 +168,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'Open Live. Each member shows as working, idle or offline, with what they are working on.',
       'Click a member to see their activity, or use the ⋯ menu for View activity, View session or Force stop timer.',
       'Force stop ends a timer that was left running. Time already tracked is kept, and the member’s desktop app stops within about a minute.',
-      'Click Session history to see past sessions: when each started and ended, and why it ended.',
+      'Open the Session history tab to see past sessions: when each started and ended, and why it ended.',
     ],
     links: [{ label: 'Open Live', href: '/tracking/live' }],
     keywords: ['live', 'working now', 'online', 'force stop', 'running timer', 'session'],
@@ -485,18 +485,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     id: 'organization-settings',
     category: 'settings',
-    title: 'Change organization, pay period and timesheet rules',
-    summary: 'Name, time zone and currency; pay periods, locks and reminders.',
+    title: 'Change organization, timesheet period and timesheet rules',
+    summary: 'Name, time zone and currency; timesheet periods, locks and reminders.',
     steps: [
       'Open Settings › Organization for the name, time zone, week start, currency and the company details printed on invoices.',
-      'Open Settings › Time & pay for the pay period, working hours per day, timesheet locks and minimums, missing-time reminders, the late grace period, overtime, time types and break types.',
+      'Open Settings › Time & pay for the timesheet period, working hours per day, timesheet locks and minimums, missing-time reminders, the late grace period, overtime, time types and break types.',
       'Each page has its own Save changes button.',
     ],
     links: [
       { label: 'Organization', href: '/settings' },
       { label: 'Time & pay', href: '/settings/time' },
     ],
-    keywords: ['settings', 'organization', 'time zone', 'currency', 'pay period', 'lock', 'overtime', 'reminder'],
+    keywords: ['settings', 'organization', 'time zone', 'currency', 'timesheet period', 'pay period', 'lock', 'overtime', 'reminder'],
     perms: ['org:update'],
   },
   {
@@ -696,8 +696,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
 export const NAV_GUIDE: Record<string, string> = {
   'nav.item.overview': 'Your home page: what needs attention, with cards you can customize.',
   'nav.item.timeEntries': 'Every time entry, with filters. Add, correct, split or delete time.',
-  'nav.item.timesheets': 'Approvals (timesheets and manual time waiting for you) and Team week (everyone’s hours this week).',
-  'nav.item.live': 'Who is working right now. Stop a timer or see past sessions.',
+  'nav.item.approvals': 'Approvals (timesheets and manual time waiting for you) and Team week (everyone’s hours this week).',
+  'nav.item.live': 'Who is working right now, and Session history: every past session and how it ended.',
   'nav.item.activity': 'Screenshots, apps and websites, in 10-minute blocks.',
   'nav.item.eodReports': 'What each person completed, written when they clock out.',
   'nav.item.members': 'Everyone in the organization, invitations, and teams.',

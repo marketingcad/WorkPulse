@@ -58,7 +58,7 @@ export const TOUR_STEPS: TourStep[] = [
     id: 'settings',
     target: 'nav.item.settings',
     title: 'Settings',
-    body: 'Your organization, pay periods and timesheet rules, what the desktop app tracks, devices, roles and security.',
+    body: 'Your organization, timesheet periods and rules, what the desktop app tracks, devices, roles and security.',
   },
   {
     id: 'customize',

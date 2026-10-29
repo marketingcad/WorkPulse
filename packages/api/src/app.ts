@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { secureHeaders } from 'hono/secure-headers';
 import { and, eq, sql } from 'drizzle-orm';
 import { rateLimitBuckets, withQueryStats } from '@tallywork/db';
@@ -14,6 +15,9 @@ import { portalRoutes } from './routes/portal';
 import { rateLimit } from './middleware/rate-limit';
 
 export const API_KEY_REQUESTS_PER_MINUTE = 600;
+/** Largest JSON request body, in bytes; the desktop ingest batch has its own, larger limit. */
+export const JSON_BODY_LIMIT = 1024 * 1024;
+export const JSON_BODY_LIMIT_INGEST = 4 * 1024 * 1024;
 import { authRoutes, meRoutes } from './routes/auth';
 import { orgRoutes } from './routes/org';
 import { timeRoutes } from './routes/time';
@@ -47,6 +51,19 @@ export function createApp(deps: Deps) {
     deps.defer(() => maybeTick(deps));
   });
   app.use(secureHeaders({ crossOriginResourcePolicy: 'same-origin', referrerPolicy: 'strict-origin-when-cross-origin' }));
+  // JSON bodies are refused past a size limit before they are read (audit 30 Oct 2026, VF-08). File
+  // uploads are not JSON and keep their own limits; a desktop ingest batch (up to 500 events) gets more room.
+  const jsonLimit = (maxSize: number) =>
+    bodyLimit({
+      maxSize,
+      onError: (c) => c.json({ type: 'https://docs.tallywork.app/errors/payload_too_large', title: 'This request is too large. Send less data at once.', status: 413, code: 'payload_too_large', request_id: c.var.requestId }, 413, { 'Content-Type': 'application/problem+json' }),
+    });
+  const ingestLimit = jsonLimit(JSON_BODY_LIMIT_INGEST);
+  const defaultLimit = jsonLimit(JSON_BODY_LIMIT);
+  app.use(async (c, next) => {
+    if (!/json/i.test(c.req.header('content-type') ?? '')) return next();
+    return (c.req.path.endsWith('/agent/ingest/batch') ? ingestLimit : defaultLimit)(c, next);
+  });
   app.use(async (c, next) => {
     await next();
     if (!c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store');
@@ -54,7 +71,10 @@ export function createApp(deps: Deps) {
 
   app.onError((err, c) => {
     const rid = c.var.requestId ?? 'unknown';
-    if (!(err instanceof DomainError) && !fromDatabaseError(err)) console.error(JSON.stringify({ level: 'error', request_id: rid, path: c.req.path, msg: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack?.split('\n').slice(0, 6) : undefined }));
+    // A bad id or a duplicate is routine; any other database rule that fired means validation missed it, so it is still logged.
+    const fromDb = err instanceof DomainError ? null : fromDatabaseError(err);
+    if (!(err instanceof DomainError) && (!fromDb || (fromDb.code !== 'resource_not_found' && fromDb.code !== 'duplicate')))
+      console.error(JSON.stringify({ level: fromDb ? 'warn' : 'error', request_id: rid, path: c.req.path, msg: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack?.split('\n').slice(0, 6) : undefined }));
     const p = problemFromError(err, rid);
     return c.json(p, p.status as 400, { 'Content-Type': 'application/problem+json', ...(p.status === 503 ? { 'Retry-After': '5' } : {}) });
   });

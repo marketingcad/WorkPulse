@@ -443,6 +443,16 @@ async function freeSlot(x: Ctx, membershipId: string, tz: string, date: string, 
   return { start: new Date(t), end: new Date(t + seconds * 1000) };
 }
 
+/**
+ * What a bulk result tells the person about one item: a rule it broke, in its own words, or a
+ * neutral message. Anything else (a database or programming error) is logged, never returned.
+ */
+function bulkItemError(e: unknown, fallback: string): string {
+  if (e instanceof DomainError) return e.message;
+  console.error(JSON.stringify({ level: 'error', msg: 'bulk item failed', error: e instanceof Error ? e.message : String(e) }));
+  return fallback;
+}
+
 /** Bulk changes from the timesheet list; each entry goes through the normal checks. */
 export async function bulkTimeEntries(x: Ctx, input: { ids: string[]; action: 'delete' | 'set_billable' | 'set_non_billable'; reason?: string | null }) {
   const out: Array<{ id: string; ok: boolean; error?: string }> = [];
@@ -456,7 +466,7 @@ export async function bulkTimeEntries(x: Ctx, input: { ids: string[]; action: 'd
       });
       out.push({ id, ok: true });
     } catch (e) {
-      out.push({ id, ok: false, error: e instanceof Error ? e.message : 'Failed' });
+      out.push({ id, ok: false, error: bulkItemError(e, 'Could not update this entry') });
     }
   }
   return out;
@@ -929,7 +939,7 @@ export async function bulkApprove(x: Ctx, ids: string[]) {
       await x.tx.transaction(async (sp) => decideTimesheet({ ...x, tx: sp }, id, 'APPROVE', null));
       results.push({ id, ok: true });
     } catch (e) {
-      results.push({ id, ok: false, error: e instanceof Error ? e.message : 'failed' });
+      results.push({ id, ok: false, error: bulkItemError(e, 'Could not approve this timesheet') });
     }
   }
   return results;

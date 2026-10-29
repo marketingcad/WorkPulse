@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Info, RotateCcw } from 'lucide-react';
-import type { TeamDto } from '@tallywork/contracts';
+import { fieldLabel, type TeamDto } from '@tallywork/contracts';
 import type { TrackingPolicy } from '@tallywork/domain';
 import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, Input, PageHeader, Panel, PermissionState, SegmentedControl, Select, SkeletonRows, Switch, Textarea, cx, fmtDateTime, useToast } from '@tallywork/ui';
 import { ApiError, useOrgMutation, useOrgQuery } from '@/lib/api';
@@ -30,6 +30,9 @@ function setIn(d: Doc, s: string, k: string, v: unknown): Doc {
   } else next[s]![k] = v;
   return next;
 }
+/** Number fields report whether their text is out of range; Save waits until none is (audit 30 Oct 2026, VF-22). */
+const InvalidFields = createContext<(id: string, bad: boolean) => void>(() => undefined);
+
 const countOverrides = (d: Doc) => Object.values(d).reduce((n, s) => n + Object.keys(s ?? {}).length, 0);
 
 export default function PoliciesPage() {
@@ -51,6 +54,8 @@ export default function PoliciesPage() {
     if (layerQ.data) setDoc((layerQ.data.doc ?? {}) as Doc);
   }, [layerQ.data]);
   const dirty = !!layerQ.data && JSON.stringify(doc) !== JSON.stringify(layerQ.data.doc ?? {});
+  const [invalid, setInvalid] = useState<string[]>([]);
+  const reportInvalid = useCallback((id: string, bad: boolean) => setInvalid((xs) => (bad ? (xs.includes(id) ? xs : [...xs, id]) : xs.filter((x) => x !== id))), []);
 
   const save = useOrgMutation<Doc, Layer>('PUT', `/policies/${scopeType}/${scopeId}`, { onSuccess: () => toast.success('Policy saved. Affected members have been notified.') });
   const err = save.error instanceof ApiError ? save.error : null;
@@ -61,7 +66,7 @@ export default function PoliciesPage() {
   if (!canRead) return <PermissionState />;
 
   return (
-    <>
+    <InvalidFields.Provider value={reportInvalid}>
       <PageHeader
         title="Tracking policies"
         description="Decide what is monitored. Settings flow from the organization default to teams, then to individual members; the most specific override wins."
@@ -73,7 +78,7 @@ export default function PoliciesPage() {
                 <Button disabled={!dirty || save.isPending} onClick={() => setDoc((layerQ.data?.doc ?? {}) as Doc)}>
                   Discard
                 </Button>
-                <Button variant="primary" disabled={!dirty} loading={save.isPending} onClick={() => save.mutate(doc)}>
+                <Button variant="primary" disabled={!dirty || invalid.length > 0} loading={save.isPending} onClick={() => save.mutate(doc)}>
                   Save policy
                 </Button>
               </>
@@ -143,10 +148,14 @@ export default function PoliciesPage() {
         )}
       </div>
 
+      {invalid.length > 0 && (
+        <p role="status" className="mb-4 rounded-sm bg-warning-soft px-3 py-2 text-sm text-warning">
+          {invalid.length === 1 ? 'A value is' : `${invalid.length} values are`} out of range. Correct the highlighted {invalid.length === 1 ? 'field' : 'fields'} to save.
+        </p>
+      )}
       {err && (
         <p role="alert" className="mb-4 rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
-          {err.title}
-          {err.errors?.length ? `: ${err.errors.map((e) => `${e.field} ${e.message}`).join('; ')}` : ''}
+          {err.errors?.length ? err.errors.map((e) => `${fieldLabel(e.field.split('.')) ?? 'Policy'}: ${e.message}`).join(' ') : err.title}
         </p>
       )}
 
@@ -193,7 +202,7 @@ export default function PoliciesPage() {
         </div>
       )}
       {layerQ.data && scopeType !== 'ORG' && <p className="mt-3 text-xs text-text-faint">Editing: {scopeName}. Fields without an override follow the {inheritedFrom.toLowerCase()}.</p>}
-    </>
+    </InvalidFields.Provider>
   );
 }
 
@@ -280,6 +289,11 @@ function NumberControl({ id, value, min, max, unit, readOnly, onChange }: { id: 
   useEffect(() => setText(String(value)), [value]);
   const n = Number(text);
   const bad = text === '' || !Number.isInteger(n) || n < min || n > max;
+  const reportInvalid = useContext(InvalidFields);
+  useEffect(() => {
+    reportInvalid(id, bad && !readOnly);
+    return () => reportInvalid(id, false);
+  }, [id, bad, readOnly, reportInvalid]);
   return (
     <span className="inline-flex flex-col items-end gap-0.5">
       <span className="inline-flex items-center gap-1.5">

@@ -91,6 +91,29 @@ function fromOrg(o: OrgContextDto['organization']): Form {
  * One page of the organization's own settings. Each page saves only its own fields (the server
  * merges `settings`), so saving one page never touches the other's values.
  */
+/** Fields that show their own error; any other error goes in the alert above the form. */
+const SHOWN_FIELDS = [
+  'address',
+  'brief',
+  'currency',
+  'document_language',
+  'email',
+  'logo',
+  'name',
+  'pay_period.anchorDate',
+  'phone',
+  'settings.budgetWarnPct',
+  'settings.lateGraceMinutes',
+  'settings.lockAfterDays',
+  'settings.lockBeforeDate',
+  'settings.minDailySeconds',
+  'settings.minWeeklySeconds',
+  'settings.missingTimeCheckAt',
+  'settings.workingHoursPerDay',
+  'tax_id',
+  'timezone',
+];
+
 export function OrgSettingsForm({ part, title, description }: { part: OrgSettingsPart; title: string; description: string }) {
   const org = useOrg();
   const toast = useToast();
@@ -178,9 +201,9 @@ export function OrgSettingsForm({ part, title, description }: { part: OrgSetting
           </>
         }
       />
-      {err && !err.errors?.length && (
+      {err?.general(SHOWN_FIELDS) && (
         <p role="alert" className="mb-4 rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
-          {err.title}
+          {err.general(SHOWN_FIELDS)}
         </p>
       )}
       <form id="org-settings" onSubmit={onSubmit} className="flex max-w-3xl flex-col gap-4">

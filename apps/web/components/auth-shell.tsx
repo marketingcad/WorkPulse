@@ -2,7 +2,7 @@
 import { forwardRef, useEffect, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import Link from 'next/link';
 import { BarChart3, Clock3, FileText, LayoutDashboard, Pause, Settings, ShieldCheck, TrendingUp, Users, type LucideIcon } from 'lucide-react';
-import { BrandLockup, Logo, cx, fmtClock } from '@tallywork/ui';
+import { BrandLockup, Logo, cx, fmtClock, useFieldAria } from '@tallywork/ui';
 import { t, useBrowserLocale } from '@/lib/i18n';
 
 /**
@@ -50,6 +50,7 @@ export function AuthShell({ title, subtitle, children, footer, secureNote = fals
 
 /** A tall input with a leading icon (and an optional trailing control), for the signed-out pages. */
 export const AuthInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { icon: LucideIcon; trailing?: ReactNode }>(function AuthInput({ icon: Icon, trailing, className, ...rest }, ref) {
+  const aria = useFieldAria(rest);
   return (
     <div className="relative">
       <Icon className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-text-faint" aria-hidden />
@@ -62,6 +63,7 @@ export const AuthInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
           className,
         )}
         {...rest}
+        {...aria}
       />
       {trailing && <div className="absolute right-2 top-1/2 -translate-y-1/2">{trailing}</div>}
     </div>

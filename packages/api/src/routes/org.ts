@@ -15,11 +15,12 @@ import {
   teamInput,
   teamMemberInput,
   timeTypeInput,
+  timeTypePatchInput,
   updateOrgInput,
   updateWorkerInput,
 } from '@tallywork/contracts';
 import type { AppEnv } from '../context';
-import { body, query } from '../lib/http';
+import { body, formFile, parse, query } from '../lib/http';
 import { requirePermission } from '../middleware/tenant';
 import { ctx } from '../services/ctx';
 import {
@@ -107,7 +108,7 @@ export const orgRoutes = new Hono<AppEnv>()
   })
   .get('/time-types', async (c) => c.json(await listTimeTypes(ctx(c), { includeArchived: query(c, z.object({ include_archived: bool })).include_archived })))
   .post('/time-types', async (c) => c.json(await upsertTimeType(ctx(c), null, await body(c, timeTypeInput)), 201))
-  .patch('/time-types/:id', async (c) => c.json(await upsertTimeType(ctx(c), c.req.param('id'), await body(c, timeTypeInput))))
+  .patch('/time-types/:id', async (c) => c.json(await upsertTimeType(ctx(c), c.req.param('id'), await body(c, timeTypePatchInput))))
   .delete('/time-types/:id', async (c) => {
     await archiveTimeType(ctx(c), c.req.param('id'));
     return c.body(null, 204);
@@ -196,9 +197,7 @@ export const orgRoutes = new Hono<AppEnv>()
   })
   .get('/projects/:id/documents', async (c) => c.json(await listProjectDocuments(ctx(c), c.req.param('id'))))
   .post('/projects/:id/documents', async (c) => {
-    const form = await c.req.formData();
-    const file = form.get('file');
-    if (!(file instanceof File)) throw validation('Attach a file', { errors: [{ field: 'file', message: 'Choose a file' }] });
+    const file = await formFile(c);
     return c.json(await uploadProjectDocument(ctx(c), c.req.param('id'), file), 201);
   })
   .get('/projects/:id/documents/:docId', async (c) => {
@@ -246,8 +245,8 @@ export const orgRoutes = new Hono<AppEnv>()
   .get('/me/client-visibility', async (c) => c.json(await clientVisibilityFor(c.var.tx, c.var.actor.membershipId)))
 
   // Policies & devices
-  .get('/policies/:scopeType/:scopeId', async (c) => c.json(await getPolicyLayer(ctx(c), scopeType.parse(c.req.param('scopeType')), c.req.param('scopeId'))))
-  .put('/policies/:scopeType/:scopeId', async (c) => c.json(await putPolicyLayer(ctx(c), scopeType.parse(c.req.param('scopeType')), c.req.param('scopeId'), await body(c, policyDocInput))))
+  .get('/policies/:scopeType/:scopeId', async (c) => c.json(await getPolicyLayer(ctx(c), parse(scopeType, c.req.param('scopeType')), c.req.param('scopeId'))))
+  .put('/policies/:scopeType/:scopeId', async (c) => c.json(await putPolicyLayer(ctx(c), parse(scopeType, c.req.param('scopeType')), c.req.param('scopeId'), await body(c, policyDocInput))))
   // Sending `page` returns { data, total, page, page_size, summary }; without it, every device as before.
   .get('/devices', async (c) => {
     const q = query(c, pageQuery.extend({ membership_id: z.uuid().optional(), status: z.enum(['PENDING', 'ACTIVE', 'OFFLINE', 'REVOKED']).optional() }));

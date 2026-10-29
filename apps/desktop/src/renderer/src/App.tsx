@@ -244,18 +244,33 @@ function SignIn({ s }: { s: AgentState }) {
   const [step, setStep] = useState<'password' | 'mfa' | 'organization'>('password');
   const [organizations, setOrganizations] = useState<Array<{ id: string; name: string }>>([]);
   const [viaBrowser, setViaBrowser] = useState(false);
+  // A problem found here, before or instead of the server answering (audit 30 Oct 2026, VF-13).
+  const [problem, setProblem] = useState<string | null>(null);
   const busy = s.phase === 'signing_in';
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setViaBrowser(false);
-    const r = await bridge.loginWithPassword({ email: email.trim(), password, mfaCode: step === 'mfa' ? mfaCode : undefined, organizationId: organizationId || undefined, serverUrl: server });
-    if (r.status === 'mfa_required') setStep('mfa');
-    else if (r.status === 'organization_required') {
-      setOrganizations(r.organizations);
-      setOrganizationId(r.organizations[0]?.id ?? '');
-      setStep('organization');
-    } else if (r.status === 'signed_in') setPassword('');
+    setProblem(null);
+    // The main process refuses malformed input without reaching the server: say what to fix instead.
+    const address = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) return setProblem('Enter a valid email address, like name@company.com.');
+    if (!/^https?:\/\/[^\s/]+/i.test(server.trim())) {
+      setAdvanced(true);
+      return setProblem('Enter a server address that starts with https://, under Server settings.');
+    }
+    try {
+      const r = await bridge.loginWithPassword({ email: address, password, mfaCode: step === 'mfa' ? mfaCode : undefined, organizationId: organizationId || undefined, serverUrl: server.trim() });
+      if (r.status === 'mfa_required') setStep('mfa');
+      else if (r.status === 'organization_required') {
+        setOrganizations(r.organizations);
+        setOrganizationId(r.organizations[0]?.id ?? '');
+        setStep('organization');
+      } else if (r.status === 'signed_in') setPassword('');
+    } catch (err) {
+      const text = errorText(err, 'Could not sign in. Try again.');
+      setProblem(text.startsWith('Invalid payload') ? 'Check your email address and server address, then try again.' : text);
+    }
   }
 
   function restart() {
@@ -276,9 +291,9 @@ function SignIn({ s }: { s: AgentState }) {
             <Mark size={40} />
             <h1 className="mt-4 text-2xl font-bold tracking-tight text-text">Welcome Back</h1>
             <p className="mt-1.5 text-sm leading-relaxed text-text-muted">Sign in to start tracking, with the email and password you chose when you accepted your invitation.</p>
-            {s.error && (
+            {(problem ?? s.error) && (
               <p role="alert" className="mt-4 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
-                {s.error}
+                {problem ?? s.error}
               </p>
             )}
             <form onSubmit={submit} className="mt-6 flex flex-col gap-4" noValidate>

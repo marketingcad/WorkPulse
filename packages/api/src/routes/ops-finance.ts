@@ -20,6 +20,7 @@ import {
   bankDetailsInput,
   payAdjustmentsInput,
   payrollProfileInput,
+  payrollProfilePatchInput,
   payrollRunInput,
 } from '@tallywork/contracts';
 import type { AppEnv } from '../context';
@@ -206,7 +207,7 @@ export const financeRoutes = new Hono<AppEnv>()
   // Payroll
   .get('/payroll/profiles', async (c) => c.json(await listPayrollProfiles(ctx(c), { includeArchived: c.req.query('include_archived') === 'true' })))
   .post('/payroll/profiles', async (c) => c.json(await upsertPayrollProfile(ctx(c), null, await body(c, payrollProfileInput)), 201))
-  .patch('/payroll/profiles/:id', async (c) => c.json(await upsertPayrollProfile(ctx(c), c.req.param('id'), await body(c, payrollProfileInput))))
+  .patch('/payroll/profiles/:id', async (c) => c.json(await upsertPayrollProfile(ctx(c), c.req.param('id'), await body(c, payrollProfilePatchInput))))
   .delete('/payroll/profiles/:id', async (c) => {
     await archivePayrollProfile(ctx(c), c.req.param('id'));
     return c.body(null, 204);

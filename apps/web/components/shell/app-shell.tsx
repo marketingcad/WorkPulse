@@ -365,7 +365,8 @@ function UserMenu() {
         {t('shell.profileDevices')}
       </MenuItem>
       {/* Personal pages: the person's own records, kept out of the admin sidebar. */}
-      {org.can('timesheets:submit') && (
+      {/* The same gate as the page (R10): reading your own timesheet. */}
+      {org.can('timesheets:read') && (
         <>
           <MenuItem icon={<Clock className="size-3.5" />} onSelect={() => router.push(`${org.base}/timesheets`)}>
             {t('nav.item.myTimesheet')}

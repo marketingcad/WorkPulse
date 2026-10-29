@@ -18,7 +18,7 @@ test.describe('Admin navigation', () => {
     const nav = sidebar(page);
     // The collapsible group headings (the organization switcher above them is not one).
     await expect(nav.getByRole('navigation').getByRole('button')).toHaveText(['Time Tracking', 'Workforce', 'Project Management', 'Finance', 'Reports']);
-    for (const gone of ['My timesheet', 'Pay stubs', 'Sessions', 'API keys', 'Webhooks', 'Teams', 'Attendance', 'Tracking policies', 'What is monitored', 'Approvals', 'Manual time', 'Team timesheets', 'Billing & rates']) {
+    for (const gone of ['My timesheet', 'Pay stubs', 'Sessions', 'API keys', 'Webhooks', 'Teams', 'Attendance', 'Tracking policies', 'What is monitored', 'Session history', 'Manual time', 'Team timesheets', 'Billing & rates']) {
       await expect(nav.getByRole('link', { name: gone, exact: true })).toHaveCount(0);
     }
     await expect(nav.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', `/o/${data.orgId}/settings`);
@@ -63,11 +63,12 @@ test.describe('Admin navigation', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Pay stubs' })).toBeVisible();
   });
 
-  test('Session history is reached from Live, which stays highlighted', async ({ page, data }) => {
+  // Audit 28 Oct 2026 (R4): Session history is a tab of Live, with the same access.
+  test('Session history is a tab of Live, which stays highlighted', async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}/tracking/live`);
-    await page.getByRole('button', { name: 'Session history' }).click();
+    await page.getByRole('navigation', { name: 'Live' }).getByRole('link', { name: 'Session history' }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/sessions$`));
-    await expect(page.getByRole('heading', { level: 1, name: 'Sessions' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Session history' })).toBeVisible();
     await expect(sidebar(page).getByRole('link', { name: 'Live' })).toHaveAttribute('aria-current', 'page');
   });
 

@@ -22,7 +22,7 @@ describe('admin sidebar', () => {
   it('groups 36 items into 21 (with Help), with no personal items, Sessions or Developer in the tree', () => {
     expect(labels(nav)).toEqual([
       [null, ['nav.item.overview']],
-      ['nav.group.time', ['nav.item.timeEntries', 'nav.item.timesheets', 'nav.item.live', 'nav.item.activity', 'nav.item.eodReports']],
+      ['nav.group.time', ['nav.item.timeEntries', 'nav.item.approvals', 'nav.item.live', 'nav.item.activity', 'nav.item.eodReports']],
       ['nav.group.people', ['nav.item.members', 'nav.item.schedulesAttendance', 'nav.item.timeOff']],
       ['nav.group.work', ['nav.item.clients', 'nav.item.projects', 'nav.item.tasks']],
       ['nav.group.money', ['nav.item.rates', 'nav.item.budgets', 'nav.item.expenses', 'nav.item.invoices', 'nav.item.payroll']],
@@ -38,8 +38,9 @@ describe('admin sidebar', () => {
     expect(settings.tabs!.map((t) => t.href)).toEqual(['/settings', '/settings/time', '/settings/policies', '/devices', '/settings/roles', '/settings/access-review', '/settings/security', '/settings/screenshot-retention', '/developer/api-keys', '/developer/webhooks', '/settings/audit']);
   });
 
-  it('Timesheets carries Approvals and Team week; Members carries Teams; Schedules carries Attendance; Invoices carries Payments received', () => {
-    expect(item(nav, 'nav.item.timesheets')!.tabs!.map((t) => t.href)).toEqual(['/timesheets/approvals', '/timesheets/team']);
+  it('Approvals carries Team week; Live carries Session history; Members carries Teams; Schedules carries Attendance; Invoices carries Payments received', () => {
+    expect(item(nav, 'nav.item.approvals')!.tabs!.map((t) => t.href)).toEqual(['/timesheets/approvals', '/timesheets/team']);
+    expect(item(nav, 'nav.item.live')!.tabs!.map((t) => t.href)).toEqual(['/tracking/live', '/sessions']);
     expect(item(nav, 'nav.item.members')!.tabs!.map((t) => t.href)).toEqual(['/workers', '/teams']);
     expect(item(nav, 'nav.item.schedulesAttendance')!.tabs!.map((t) => t.href)).toEqual(['/schedules', '/attendance']);
     expect(item(nav, 'nav.item.invoices')!.tabs!.map((t) => t.href)).toEqual(['/finance/invoices', '/finance/invoices/payments']);
@@ -55,7 +56,7 @@ describe('who sees what', () => {
 
   it('someone who only requests manual time gets Approvals (their requests), not Team week', () => {
     const nav = navFor({ 'org:read': 'org', 'manual_time:request': 'own', 'tracking:read': 'team' });
-    expect(item(nav, 'nav.item.timesheets')!.tabs!.map((t) => t.href)).toEqual(['/timesheets/approvals']);
+    expect(item(nav, 'nav.item.approvals')!.tabs!.map((t) => t.href)).toEqual(['/timesheets/approvals']);
   });
 
   it('a team manager sees no money pages but Budgets and Expenses, and lands on Tracking policies in Settings', () => {
@@ -102,9 +103,9 @@ describe('the highlighted page', () => {
   it('keeps the parent highlighted on detail pages, and related pages under their item', () => {
     expect(at('/workers/0190a000-0000-7000-8000-000000000001')).toEqual(['nav.item.members', '/workers']);
     expect(at('/finance/invoices/new')).toEqual(['nav.item.invoices', '/finance/invoices']);
-    expect(at('/sessions')).toEqual(['nav.item.live', null]);
-    expect(at('/timesheets/approvals')).toEqual(['nav.item.timesheets', '/timesheets/approvals']);
-    expect(at('/timesheets/manual')).toEqual(['nav.item.timesheets', null]);
+    expect(at('/sessions')).toEqual(['nav.item.live', '/sessions']);
+    expect(at('/timesheets/approvals')).toEqual(['nav.item.approvals', '/timesheets/approvals']);
+    expect(at('/timesheets/manual')).toEqual(['nav.item.approvals', null]);
     expect(at('/settings/time')).toEqual(['nav.item.settings', '/settings/time']);
   });
 

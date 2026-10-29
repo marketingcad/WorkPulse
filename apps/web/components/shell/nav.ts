@@ -68,7 +68,8 @@ export const NAV: NavGroup[] = [
     items: [
       { label: 'nav.item.timeEntries', href: '/timesheets/all', icon: ListChecks, perms: ['time:read'], minScope: 'team_or_org' },
       {
-        label: 'nav.item.timesheets',
+        // Named after the page it opens (R1): the queue of submitted timesheets and manual time.
+        label: 'nav.item.approvals',
         href: '/timesheets/approvals',
         icon: ClipboardCheck,
         tabs: [
@@ -78,7 +79,16 @@ export const NAV: NavGroup[] = [
         ],
         also: ['/timesheets/manual'],
       },
-      { label: 'nav.item.live', href: '/tracking/live', icon: Radio, perms: ['tracking:read'], minScope: 'team_or_org', also: ['/sessions'] },
+      {
+        label: 'nav.item.live',
+        href: '/tracking/live',
+        icon: Radio,
+        // Past sessions sit next to who is working now, with the same access (R4).
+        tabs: [
+          { label: 'nav.item.live', href: '/tracking/live', perms: ['tracking:read'], minScope: 'team_or_org' },
+          { label: 'nav.item.sessionHistory', href: '/sessions', perms: ['tracking:read'], minScope: 'team_or_org' },
+        ],
+      },
       { label: 'nav.item.activity', workerLabel: 'nav.item.myActivity', href: '/activity', icon: Activity, perms: ['activity:read'] },
       { label: 'nav.item.eodReports', href: '/tracking/reports', icon: NotebookPen, perms: ['tracking:read'], minScope: 'team_or_org' },
     ],

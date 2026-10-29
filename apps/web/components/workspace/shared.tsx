@@ -550,10 +550,10 @@ export function ProjectFields({
         </Field>
         {canReadRates && (
           <>
-            <Field label="Pay rate per hour" htmlFor="proj-pay" hint={`${currency} / hour, what you pay`} error={err?.field('pay_rate_minor')}>
+            <Field label="Pay rate per hour" htmlFor="proj-pay" hint={`${currency} / hour, what you pay, from today`} error={err?.field('pay_rate_minor')}>
               <Input id="proj-pay" inputMode="decimal" className="tabular" placeholder="0.00" value={f.pay_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, pay_rate: e.target.value })} />
             </Field>
-            <Field label="Bill rate per hour" htmlFor="proj-bill" hint={`${currency} / hour, what you charge`} error={err?.field('bill_rate_minor')}>
+            <Field label="Bill rate per hour" htmlFor="proj-bill" hint={`${currency} / hour, what you charge, from today`} error={err?.field('bill_rate_minor')}>
               <Input id="proj-bill" inputMode="decimal" className="tabular" placeholder="0.00" value={f.bill_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} />
             </Field>
             <RateNote scope="PROJECT" />

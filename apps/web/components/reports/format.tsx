@@ -28,7 +28,7 @@ export interface CatalogItem {
   key: string;
   title: string;
   question: string;
-  category: 'Time' | 'Activity' | 'People' | 'Finance' | 'Compliance';
+  category: 'Time' | 'Activity' | 'Workforce' | 'Finance' | 'Compliance';
   groupings: string[];
   /** Filters the report applies (older servers omit it: all). */
   filters?: Array<'dates' | 'members' | 'teams' | 'projects' | 'clients' | 'billable'>;

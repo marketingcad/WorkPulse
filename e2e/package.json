@@ -17,6 +17,7 @@
     "live": "playwright test --config playwright.live.config.ts"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.64.0",
     "@tallywork/contracts": "workspace:*",
     "@types/node": "^24.13.6"

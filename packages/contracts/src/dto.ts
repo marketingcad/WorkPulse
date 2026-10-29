@@ -322,6 +322,10 @@ export interface TimeEntryDto {
   client_id?: string | null;
   client_name?: string | null;
   edited: boolean;
+  /** the time zone the entry's day and times are in (the member's when it was recorded) */
+  timezone: string;
+  /** increases with every change; send it back when editing (see timeEntryUpdateInput) */
+  revision: number;
   locked: boolean;
   activity_pct: number | null;
 }

@@ -44,7 +44,9 @@ export function RecordPaymentDialog({ open, onOpenChange, invoice }: { open: boo
     () => (invoicesQ.data ?? []).filter(isOpen).sort((a, b) => a.due_date.localeCompare(b.due_date) || a.issue_date.localeCompare(b.issue_date) || a.number.localeCompare(b.number, undefined, { numeric: true })),
     [invoicesQ.data],
   );
-  const currency = invoice?.currency ?? openInvoices[0]?.currency ?? org.organization.currency;
+  // The client's billing currency when it has no open invoice (FE-B7: not the organization's by default).
+  const clientCurrency = clientsQ.data?.find((c) => c.id === clientId)?.currency;
+  const currency = invoice?.currency ?? openInvoices[0]?.currency ?? clientCurrency ?? org.organization.currency;
   const payable = openInvoices.filter((i) => i.currency === currency);
 
   // Depend on primitives so a background refetch of the invoice does not reset the form.

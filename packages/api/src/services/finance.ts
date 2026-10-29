@@ -561,6 +561,13 @@ export async function createExpense(x: Ctx, input: z.infer<typeof expenseInput>)
     if (!c || !(await canOnClient(x, 'clients:read', c.id))) throw notFound('client');
     if (c.archivedAt) throw validation('This client is archived', { errors: [{ field: 'client_id', message: 'Choose a client that is in use' }] });
   }
+  // A billable expense is invoiced in its client's currency; in another one it could never reach an
+  // invoice (U6), so it is refused with the currency to use.
+  if (input.billable && clientId) {
+    const [c] = await x.tx.select({ currency: clients.currency }).from(clients).where(eq(clients.id, clientId));
+    const billed = c?.currency ?? x.org.currency;
+    if (input.currency.toUpperCase() !== billed) throw validation(`This client is invoiced in ${billed}`, { errors: [{ field: 'currency', message: `Billable expenses for this client are in ${billed}` }] });
+  }
   const id = newId();
   await x.tx.insert(expenses).values({
     id,

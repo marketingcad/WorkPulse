@@ -54,8 +54,10 @@ export function EditEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onClo
   const policy = useReasonPolicy(entry.membership_id);
   const isSelf = entry.membership_id === org.membership.id;
   const reasonRequired = isSelf && org.grants['time:edit'] !== 'org' ? policy.edits : false;
-  const [start, setStart] = useState(toLocalInput(entry.started_at));
-  const [end, setEnd] = useState(toLocalInput(entry.ended_at));
+  // Times are entered on the entry's own clock (the member's time zone), as lists show them (U7).
+  const tz = entry.timezone;
+  const [start, setStart] = useState(toLocalInput(entry.started_at, tz));
+  const [end, setEnd] = useState(toLocalInput(entry.ended_at, tz));
   const [target, setTarget] = useState<PickerValue>({ projectId: entry.project_id, taskId: entry.task_id });
   const [billable, setBillable] = useState(entry.billable);
   const [note, setNote] = useState(entry.note ?? '');
@@ -72,8 +74,8 @@ export function EditEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onClo
   }, [assignments, entry]);
 
   const save = async () => {
-    const s = fromLocalInput(start);
-    const e = fromLocalInput(end);
+    const s = fromLocalInput(start, tz);
+    const e = fromLocalInput(end, tz);
     if (!s || !e) return setErr(new ApiError(422, 'validation', 'Enter a valid start and end'));
     if (!target.projectId) return setErr(new ApiError(422, 'validation', 'Choose a project'));
     setSaving(true);
@@ -87,9 +89,12 @@ export function EditEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onClo
           ...(target.projectId !== entry.project_id ? { project_id: target.projectId } : {}),
           ...(target.taskId !== entry.task_id ? { task_id: target.taskId } : {}),
           ...((timeType || null) !== (entry.time_type_id ?? null) ? { time_type_id: timeType || null } : {}),
-          billable,
-          note: note.trim() || null,
+          // Only what was changed here (U2): a field left alone keeps whatever it is now.
+          ...(billable !== entry.billable ? { billable } : {}),
+          ...((note.trim() || null) !== (entry.note ?? null) ? { note: note.trim() || null } : {}),
           reason: reason.trim() || undefined,
+          // A change saved by someone else since this opened is refused, not overwritten.
+          revision: entry.revision,
         },
       });
       await refresh();
@@ -107,7 +112,7 @@ export function EditEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onClo
       open
       onOpenChange={(o) => !o && onClose()}
       title="Edit time entry"
-      description={`Times are shown in your browser's timezone (${Intl.DateTimeFormat().resolvedOptions().timeZone}).`}
+      description={`Times are in ${tz}, the time zone this entry was recorded in.`}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
@@ -156,13 +161,14 @@ export function SplitEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onCl
   const isSelf = entry.membership_id === org.membership.id;
   const reasonRequired = isSelf && org.grants['time:edit'] !== 'org' ? policy.edits : false;
   const mid = new Date((new Date(entry.started_at).getTime() + new Date(entry.ended_at).getTime()) / 2);
-  const [at, setAt] = useState(toLocalInput(mid));
+  const tz = entry.timezone;
+  const [at, setAt] = useState(toLocalInput(mid, tz));
   const [reason, setReason] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
-    const iso = fromLocalInput(at);
+    const iso = fromLocalInput(at, tz);
     if (!iso) return setErr('Enter a valid time');
     if (reasonRequired === true && !reason.trim()) return setErr('Enter a reason for the change');
     setSaving(true);
@@ -184,7 +190,7 @@ export function SplitEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onCl
       open
       onOpenChange={(o) => !o && onClose()}
       title="Split time entry"
-      description={`${fmtTime(entry.started_at)} – ${fmtTime(entry.ended_at)} · ${entry.project_name ?? ''}`}
+      description={`${fmtTime(entry.started_at, entry.timezone)} – ${fmtTime(entry.ended_at, entry.timezone)} · ${entry.project_name ?? ''}`}
       width={420}
       footer={
         <>
@@ -197,7 +203,7 @@ export function SplitEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onCl
     >
       <div className="flex flex-col gap-3">
         <Field label="Split at" htmlFor="split-at" hint="Both parts keep the same project and task; edit either part afterwards." error={err}>
-          <Input id="split-at" type="datetime-local" value={at} min={toLocalInput(entry.started_at)} max={toLocalInput(entry.ended_at)} onChange={(e) => setAt(e.target.value)} />
+          <Input id="split-at" type="datetime-local" value={at} min={toLocalInput(entry.started_at, tz)} max={toLocalInput(entry.ended_at, tz)} onChange={(e) => setAt(e.target.value)} />
         </Field>
         <Field label="Reason" htmlFor="split-reason" required={reasonRequired === true} hint={reasonHint(reasonRequired, 'edits')}>
           <Input id="split-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
@@ -244,7 +250,7 @@ export function DeleteEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onC
       description={
         <div className="flex flex-col gap-3">
           <p>
-            {fmtTime(entry.started_at)} – {fmtTime(entry.ended_at)} on {entry.project_name}. The entry is removed from timesheets and reports; the revision history keeps a record.
+            {fmtTime(entry.started_at, entry.timezone)} – {fmtTime(entry.ended_at, entry.timezone)} on {entry.project_name}. The entry is removed from timesheets and reports; the revision history keeps a record.
           </p>
           <Field label="Reason" htmlFor="del-reason" required={reasonRequired === true} hint={reasonHint(reasonRequired, 'deleting time')} error={err}>
             <Input id="del-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
@@ -338,13 +344,15 @@ export function ManualTimeDialog({ membershipId: fixedMember, defaultDate, prefi
   const toast = useToast();
   const refresh = useRefresh();
   const pickMember = !fixedMember;
-  const workersQ = useMemberOptions(pickMember && org.can('members:read'));
+  const workersQ = useMemberOptions(org.can('members:read'));
   const [member, setMember] = useState(fixedMember ?? org.membership.id);
   const membershipId = fixedMember ?? member;
   const isSelf = membershipId === org.membership.id;
   const { assignments } = useAssignmentsFor(membershipId);
   const policy = useReasonPolicy(membershipId);
   const reasonRequired = isSelf ? policy.manual : false;
+  // Exact times are on the member's clock, the zone their time is recorded and listed in (U7).
+  const tz = (isSelf ? org.membership.timezone : workersQ.data?.find((w) => w.id === membershipId)?.timezone) || org.organization.timezone;
   const [mode, setMode] = useState<'duration' | 'range'>('duration');
   const [date, setDate] = useState(defaultDate);
   const [start, setStart] = useState('09:00');
@@ -370,8 +378,8 @@ export function ManualTimeDialog({ membershipId: fixedMember, defaultDate, prefi
       when = { local_date: date, duration_seconds: secs };
       total = secs;
     } else {
-      const s = fromLocalInput(`${date}T${start}`);
-      const e = fromLocalInput(`${date}T${end}`);
+      const s = fromLocalInput(`${date}T${start}`, tz);
+      const e = fromLocalInput(`${date}T${end}`, tz);
       if (!s || !e) return setErr(new ApiError(422, 'validation', 'Enter a valid date, start and end'));
       when = { started_at: s, ended_at: e };
       total = (Date.parse(e) - Date.parse(s)) / 1000;
@@ -405,7 +413,7 @@ export function ManualTimeDialog({ membershipId: fixedMember, defaultDate, prefi
       open
       onOpenChange={(o) => !o && onClose()}
       title={prefill ? 'Duplicate time entry' : isSelf ? 'Add time' : 'Add time for member'}
-      description={mode === 'duration' ? 'Enter how long you worked. It is placed in a free slot that day.' : `Record exact times, in your browser's timezone (${Intl.DateTimeFormat().resolvedOptions().timeZone}).`}
+      description={mode === 'duration' ? 'Enter how long you worked. It is placed in a free slot that day.' : `Record exact times, in ${tz}${isSelf ? ', your time zone' : ", the member's time zone"}.`}
       width={560}
       footer={
         <>

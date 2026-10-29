@@ -35,6 +35,9 @@ export function BudgetDialog({ value, onClose, preset }: { value: BudgetStatusDt
   const [nonBillable, setNonBillable] = useState(false);
   const [err, setErr] = useState<ApiError | null>(null);
   const m = useOrgMutation<BudgetBody, BudgetStatusDto[]>('PUT', '/budgets');
+  // A subject has one budget: setting a new one replaces it, which is said before saving (U8).
+  const budgetsQ = useOrgQuery<BudgetStatusDto[]>(open && !existing ? '/budgets' : null);
+  const replacing = !existing && subjectId ? budgetsQ.data?.find((b) => b.subject_type === subjectType && b.subject_id === subjectId) : undefined;
 
   useEffect(() => {
     if (!open) return;
@@ -126,6 +129,11 @@ export function BudgetDialog({ value, onClose, preset }: { value: BudgetStatusDt
                   </option>
                 ))}
           </Select>
+          {replacing && (
+            <p role="note" className="mt-1 text-xs text-warning">
+              {replacing.subject_name} already has a budget. Saving replaces it.
+            </p>
+          )}
         </Field>
         <Field label="Type" htmlFor="b-kind">
           <Select id="b-kind" value={kind} onChange={(e) => (setKind(e.target.value as 'HOURS' | 'MONEY'), setAmount(''))}>

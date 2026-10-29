@@ -589,7 +589,7 @@ export function projectPayload(f: ProjectForm, opts: { workers?: boolean; teams?
   };
   const est = f.estimate.trim() === '' ? null : Number(f.estimate);
   if (est !== null && !(est >= 0)) throw new ApiError(422, 'validation', 'Enter a valid estimate', undefined, [{ field: 'estimate_seconds', message: 'A number of hours or days' }]);
-  return {
+  const full = {
     name: f.name,
     client_id: f.client_id || null,
     description: f.description || null,
@@ -607,6 +607,30 @@ export function projectPayload(f: ProjectForm, opts: { workers?: boolean; teams?
     ...(opts.workers ? { member_ids: f.member_ids } : {}),
     ...(opts.teams ? { team_ids: f.team_ids } : {}),
   };
+  const i = opts.initial;
+  if (!i) return full;
+  // Editing: only what was changed here (U3). Access changed meanwhile in Members & teams is not
+  // overwritten from this form's snapshot, and an estimate left alone is not recomputed from today's
+  // hours per day.
+  const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+  const estimateSame = f.estimate.trim() === i.estimate.trim() && f.estimate_unit === i.estimate_unit;
+  const unchanged: Record<string, boolean> = {
+    name: f.name === i.name,
+    client_id: (f.client_id || null) === (i.client_id || null),
+    description: (f.description || null) === (i.description || null),
+    color: f.color === i.color,
+    status: f.status === i.status,
+    billable_default: f.billable_default === i.billable_default,
+    short_name: f.short_name.trim() === i.short_name.trim(),
+    start_date: (f.start_date || null) === (i.start_date || null),
+    end_date: (f.end_date || null) === (i.end_date || null),
+    estimate_seconds: estimateSame,
+    estimate_unit: estimateSame,
+    breaks: JSON.stringify(full.breaks) === JSON.stringify(breaksPayload(i.breaks)),
+    member_ids: sameSet(f.member_ids, i.member_ids),
+    team_ids: sameSet(f.team_ids, i.team_ids),
+  };
+  return Object.fromEntries(Object.entries(full).filter(([k]) => !unchanged[k]));
 }
 
 /**

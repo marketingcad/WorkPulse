@@ -117,8 +117,9 @@ export default function AllTimeEntriesPage() {
   const [exporting, setExporting] = useState(false);
 
   const workersQ = useMemberOptions(org.can('members:read'));
-  const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients' : null);
-  const projectsQ = useOrgQuery<ProjectDto[]>('/projects');
+  // Archived ones too (U4): their time is still here to find, and the history drawer names them.
+  const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients?include_archived=true' : null);
+  const projectsQ = useOrgQuery<ProjectDto[]>('/projects?include_archived=true');
   const tasksQ = useOrgQuery<TaskDto[]>(project && org.can('tasks:read') ? `/projects/${project}/tasks` : null);
   const typesQ = useOrgQuery<TimeTypeDto[]>('/time-types?include_archived=true', { staleTime: 60_000 });
   const search = useSearch();
@@ -232,8 +233,8 @@ export default function AllTimeEntriesPage() {
         e.project_name ?? '',
         e.task_title ?? '',
         e.note ?? '',
-        e.duration_only ? '' : fmtTime(e.started_at),
-        e.duration_only ? '' : fmtTime(e.ended_at),
+        e.duration_only ? '' : fmtTime(e.started_at, e.timezone),
+        e.duration_only ? '' : fmtTime(e.ended_at, e.timezone),
         (e.time_type_id && typeOf.get(e.time_type_id)?.name) || '',
         e.billable ? 'yes' : 'no',
         hours(e.duration_seconds),
@@ -323,6 +324,7 @@ export default function AllTimeEntriesPage() {
             {(clientsQ.data ?? []).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
+                {c.archived_at ? ' (archived)' : ''}
               </option>
             ))}
           </Select>
@@ -332,6 +334,7 @@ export default function AllTimeEntriesPage() {
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
+              {p.archived_at ? ' (archived)' : ''}
             </option>
           ))}
         </Select>
@@ -470,7 +473,7 @@ export default function AllTimeEntriesPage() {
                             </span>
                             {e.note && <span className="block truncate text-xs text-text-muted">{e.note}</span>}
                           </span>
-                          <span className="tabular shrink-0 whitespace-nowrap text-xs text-text-muted">{e.duration_only ? 'Duration entry' : `${fmtTime(e.started_at)} – ${fmtTime(e.ended_at)}`}</span>
+                          <span className="tabular shrink-0 whitespace-nowrap text-xs text-text-muted">{e.duration_only ? 'Duration entry' : `${fmtTime(e.started_at, e.timezone)} – ${fmtTime(e.ended_at, e.timezone)}`}</span>
                           <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                             {e.source === 'MANUAL' ? <StatusBadge status="MANUAL" label="Manual" /> : <StatusBadge status={e.tracking_source ?? 'TRACKED'} label="Tracked" />}
                             {e.time_type_id && typeOf.get(e.time_type_id) && <TimeTypeBadge type={typeOf.get(e.time_type_id)!} />}

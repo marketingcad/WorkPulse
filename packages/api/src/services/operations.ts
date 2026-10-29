@@ -78,9 +78,16 @@ export async function upsertSchedule(x: Ctx, id: string | null, input: z.infer<t
   if (!can(x.actor, 'schedules:manage', { ownerMembershipId: input.membership_id })) throw forbidden();
   if (!(await existsInOrg(x, 'member', input.membership_id))) throw notFound('worker');
   for (const d of input.days) if (d.end <= d.start) throw validation('Each shift must end after it starts (overnight shifts: split across two days)');
+  // A member's schedule versions follow one another without overlapping (U5): one version applies on
+  // any day. The end date is exclusive (the next version's start).
+  if (input.effective_to && input.effective_to <= input.effective_from) throw validation('The end must be after the start', { errors: [{ field: 'effective_to', message: 'After the start date' }] });
+  const others = (await x.tx.select().from(workSchedules).where(eq(workSchedules.membershipId, input.membership_id))).filter((v) => v.id !== id);
   const values = { membershipId: input.membership_id, name: input.name, timezone: input.timezone, days: input.days, effectiveFrom: input.effective_from, effectiveTo: input.effective_to ?? null };
   let sid = id;
+  const overlapping = (from: string, to: string | null, list: typeof others) => list.find((v) => v.effectiveFrom < (to ?? '9999-12-31') && (v.effectiveTo ?? '9999-12-31') > from);
   if (sid) {
+    const clash = overlapping(values.effectiveFrom, values.effectiveTo, others);
+    if (clash) throw validation(`These dates overlap the schedule from ${clash.effectiveFrom}${clash.effectiveTo ? ` to ${clash.effectiveTo}` : ''}`, { errors: [{ field: 'effective_from', message: 'Overlaps another version' }] });
     // The schedule's current owner must be someone this actor manages too, not only the new one.
     const [current] = await x.tx.select({ membershipId: workSchedules.membershipId }).from(workSchedules).where(eq(workSchedules.id, sid));
     if (!current) throw notFound('schedule');
@@ -88,12 +95,19 @@ export async function upsertSchedule(x: Ctx, id: string | null, input: z.infer<t
     const r = await x.tx.update(workSchedules).set({ ...values, updatedAt: new Date() }).where(eq(workSchedules.id, sid)).returning({ id: workSchedules.id });
     if (!r.length) throw notFound('schedule');
   } else {
-    // A new schedule replaces a version starting the same day and ends the previous open-ended one.
+    // A new version replaces one starting the same day and ends the one running on its start day. A
+    // backdated version ends where the next one starts, so there is never a second open-ended version.
     await x.tx.delete(workSchedules).where(and(eq(workSchedules.membershipId, input.membership_id), eq(workSchedules.effectiveFrom, input.effective_from)));
+    const rest = others.filter((v) => v.effectiveFrom !== input.effective_from);
+    const next = rest.filter((v) => v.effectiveFrom > input.effective_from).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom))[0];
+    if (next && (!values.effectiveTo || values.effectiveTo > next.effectiveFrom)) {
+      if (values.effectiveTo) throw validation(`These dates overlap the schedule from ${next.effectiveFrom}`, { errors: [{ field: 'effective_to', message: `End on or before ${next.effectiveFrom}` }] });
+      values.effectiveTo = next.effectiveFrom;
+    }
     await x.tx
       .update(workSchedules)
       .set({ effectiveTo: input.effective_from })
-      .where(and(eq(workSchedules.membershipId, input.membership_id), isNull(workSchedules.effectiveTo), sql`${workSchedules.effectiveFrom} < ${input.effective_from}`));
+      .where(and(eq(workSchedules.membershipId, input.membership_id), sql`${workSchedules.effectiveFrom} < ${input.effective_from}`, sql`(${workSchedules.effectiveTo} is null or ${workSchedules.effectiveTo} > ${input.effective_from})`));
     sid = newId();
     await x.tx.insert(workSchedules).values({ id: sid, organizationId: x.org.id, ...values });
   }
@@ -106,6 +120,12 @@ export async function deleteSchedule(x: Ctx, id: string) {
   if (!s) throw notFound('schedule');
   if (!can(x.actor, 'schedules:manage', { ownerMembershipId: s.membershipId })) throw forbidden();
   await x.tx.delete(workSchedules).where(eq(workSchedules.id, id));
+  // The version before it takes over its dates (U5): deleting the latest version reopens the previous
+  // one, and deleting one in the middle leaves no gap.
+  await x.tx
+    .update(workSchedules)
+    .set({ effectiveTo: s.effectiveTo, updatedAt: new Date() })
+    .where(and(eq(workSchedules.membershipId, s.membershipId), eq(workSchedules.effectiveTo, s.effectiveFrom)));
   await audit(x, { action: 'schedule.deleted', targetType: 'schedule', targetId: id, before: s });
 }
 
@@ -374,13 +394,16 @@ export async function balances(x: Ctx, membershipId: string) {
   const ps = await policiesForMember(x.tx, membershipId);
   const ledger = await x.tx.select().from(timeOffLedger).where(eq(timeOffLedger.membershipId, membershipId));
   const pending = await x.tx.select().from(timeOffRequests).where(and(eq(timeOffRequests.membershipId, membershipId), eq(timeOffRequests.status, 'PENDING')));
+  // Used = time off taken: requests and their cancellations. A reopened timesheet's accrual is also
+  // written as a REVERSAL (of hours earned, keyed by the timesheet), and is not time off used (T6).
+  const requestIds = new Set((await x.tx.select({ id: timeOffRequests.id }).from(timeOffRequests).where(eq(timeOffRequests.membershipId, membershipId))).map((r) => r.id));
   return ps.map((p) => ({
     policy_id: p.id,
     policy_name: p.name,
     paid: p.paid,
     balance_hours: p.accrual.type === 'none' ? null : ledgerBalance(ledger.filter((l) => l.policyId === p.id).map((l) => ({ hours: l.hours, kind: l.kind }))),
     pending_hours: pending.filter((r) => r.policyId === p.id).reduce((s, r) => s + r.hours, 0),
-    used_hours: -ledger.filter((l) => l.policyId === p.id && (l.kind === 'REQUEST' || l.kind === 'REVERSAL')).reduce((s, l) => s + l.hours, 0),
+    used_hours: -ledger.filter((l) => l.policyId === p.id && (l.kind === 'REQUEST' || (l.kind === 'REVERSAL' && !!l.requestId && requestIds.has(l.requestId)))).reduce((s, l) => s + l.hours, 0),
   }));
 }
 

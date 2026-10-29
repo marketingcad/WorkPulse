@@ -87,8 +87,9 @@ function ReportRunner() {
   const manager = org.isManagerView;
   const workersQ = useMemberOptions(manager);
   const teamsQ = useOrgQuery<TeamDto[]>(manager ? '/teams' : null);
-  const projectsQ = useOrgQuery<ProjectDto[]>('/projects');
-  const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients' : null);
+  // Archived ones too (U4): reports cover past work.
+  const projectsQ = useOrgQuery<ProjectDto[]>('/projects?include_archived=true');
+  const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients?include_archived=true' : null);
 
   const [preset, setPreset] = useState<Preset>('this_week');
   const [params, setParams] = useState<Params>(() => ({ ...rangeFor('this_week', tz, ws), membership_ids: [], team_ids: [], project_ids: [], client_ids: [], group_by: [], billable: 'all' }));
@@ -289,8 +290,8 @@ function ReportRunner() {
         )}
         {manager && has('members') && <MultiSelect label="Members" options={(workersQ.data ?? []).map((w) => ({ value: w.id, label: w.name }))} value={params.membership_ids} onChange={(v) => set('membership_ids', v)} loading={workersQ.isLoading} />}
         {manager && has('teams') && (teamsQ.data?.length ?? 0) > 0 && <MultiSelect label="Teams" options={(teamsQ.data ?? []).filter((t) => !t.archived_at).map((t) => ({ value: t.id, label: t.name }))} value={params.team_ids} onChange={(v) => set('team_ids', v)} />}
-        {has('projects') && (projectsQ.data?.length ?? 0) > 0 && <MultiSelect label="Projects" options={(projectsQ.data ?? []).map((p) => ({ value: p.id, label: p.name, sub: p.client_name ?? undefined }))} value={params.project_ids} onChange={(v) => set('project_ids', v)} />}
-        {has('clients') && (clientsQ.data?.length ?? 0) > 0 && <MultiSelect label="Clients" options={(clientsQ.data ?? []).map((c) => ({ value: c.id, label: c.name }))} value={params.client_ids} onChange={(v) => set('client_ids', v)} />}
+        {has('projects') && (projectsQ.data?.length ?? 0) > 0 && <MultiSelect label="Projects" options={(projectsQ.data ?? []).map((p) => ({ value: p.id, label: p.archived_at ? `${p.name} (archived)` : p.name, sub: p.client_name ?? undefined }))} value={params.project_ids} onChange={(v) => set('project_ids', v)} />}
+        {has('clients') && (clientsQ.data?.length ?? 0) > 0 && <MultiSelect label="Clients" options={(clientsQ.data ?? []).map((c) => ({ value: c.id, label: c.archived_at ? `${c.name} (archived)` : c.name }))} value={params.client_ids} onChange={(v) => set('client_ids', v)} />}
         {has('billable') && (
           <Select aria-label="Billable" className="w-52" value={params.billable} onChange={(e) => set('billable', e.target.value as Billable)}>
             <option value="all">Billable + non-billable</option>

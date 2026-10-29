@@ -403,6 +403,20 @@ It can be run again safely.
 - **U8.**
 - **Tests:** E2E for each dialog, covering a concurrent edit, validation and the empty state.
 
+**Status: done on `fix/audit-phase4-forms`.** No migration.
+
+| Item | As built |
+|---|---|
+| U2 | Time entries now return `revision` and `timezone`. An edit that sends an older `revision` is refused (409 `stale_revision`) instead of overwriting the newer change. The server reads the entry again after locking it. The dialog sends only the fields that changed, plus the revision it opened. |
+| U3 | The project form sends only the fields that changed. A member or team change made elsewhere is no longer overwritten, and an estimate in days is no longer recomputed from today's hours per day. |
+| U5 | An end date before the start is refused. A backdated version ends where the next one starts. An edit that overlaps another version is refused. Deleting a version extends the previous one over its dates, so there is never a gap or a second open-ended version. |
+| U6 | The New expense currency follows the project's client. The server refuses a billable expense in a currency other than the client's, and names the right one. |
+| U4 | The Time entries and report filters list archived projects and clients, marked "(archived)". |
+| U7 / FE-4 | Entries are shown and edited in their own time zone (the member's when recorded): in the list, the timesheet view, and the Edit and Split dialogs, each of which names the zone. Add time and CSV import use the member's time zone. |
+| T5 | The missing-time reminder uses each member's own check time, "today" and week (worker profile time zone, else the org's). |
+| T6 | "Used hours" counts time-off requests and their cancellations only, not the accrual reversed when a timesheet is reopened. |
+| U8 | Record payment uses the client's currency. A deleted draft leaves the invoice list straight away. Set budget warns before replacing an existing budget. Rotating a webhook secret asks for confirmation first. |
+
 ### Phase 5: UX and naming
 
 - **R1:** rename the "Timesheets" menu item to "Approvals".

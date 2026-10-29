@@ -24,6 +24,7 @@ import {
   addDaysToDate,
   amountForSeconds,
   businessRule,
+  conflict,
   DomainError,
   can,
   eachDate,
@@ -217,6 +218,8 @@ async function toTimeEntryDtos(x: Ctx, rows: Array<{ e: typeof timeEntries.$infe
       client_id: clientId,
       client_name: clientName,
       edited: e.edited,
+      timezone: e.timezone,
+      revision: e.revision,
       locked: !!e.lockedAt || isAgeLocked(x, cutoff, e.localDate, e.membershipId),
       activity_pct: tracked > 0 ? Math.round((active / tracked) * 100) : null,
     };
@@ -268,7 +271,11 @@ async function loadEntryForEdit(x: Ctx, entryId: string) {
   if (e.lockedAt) throw businessRule('time_locked', 'This entry is part of a submitted or approved timesheet');
   await assertNotAgeLocked(x, e.membershipId, [e.localDate]);
   await lockWorker(x.tx, e.membershipId);
-  return { e, policy, isSelf, isManager };
+  // Read again under the lock: an edit that landed meanwhile is seen (and its revision checked).
+  const [now] = await x.tx.select().from(timeEntries).where(and(eq(timeEntries.id, entryId), isNull(timeEntries.deletedAt)));
+  if (!now) throw notFound('time_entry');
+  if (now.lockedAt) throw businessRule('time_locked', 'This entry is part of a submitted or approved timesheet');
+  return { e: now, policy, isSelf, isManager };
 }
 
 async function assertNoOverlap(tx: Tx, membershipId: string, start: Date, end: Date, excludeIds: string[]) {
@@ -319,6 +326,9 @@ export async function assertPeriodsOpen(x: Ctx, membershipId: string, dates: str
 
 export async function updateTimeEntry(x: Ctx, entryId: string, input: z.infer<typeof timeEntryUpdateInput>) {
   const { e, policy, isSelf, isManager } = await loadEntryForEdit(x, entryId);
+  // U2: an edit is made against the revision the editor saw. A change saved meanwhile (another editor,
+  // a bulk change, an idle discard) is never silently overwritten.
+  if (input.revision !== undefined && input.revision !== e.revision) throw conflict('stale_revision', 'This entry was changed after you opened it. Close it and open it again to see the latest version.');
   if (policy.timeEdits.reasonRequired && !isManager && isSelf && !input.reason) throw validation('A reason is required to edit time');
   const start = input.started_at ? new Date(input.started_at) : e.startedAt;
   const end = input.ended_at ? new Date(input.ended_at) : e.endedAt;

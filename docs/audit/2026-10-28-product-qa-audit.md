@@ -329,6 +329,22 @@ No financial rules change in this phase.
   - approve "accept and flag, never drop";
   - decide whether overlap trimming should still skip duration-only manual time.
 
+**Status: done on `fix/audit-phase2-offline-sync`.** The design and the four approved decisions are in [the offline sync design note](2026-10-29-offline-sync-design.md).
+
+| Item | As built |
+|---|---|
+| Q6 | A start recorded offline, or older than the running timer, becomes a **backfill** session: `tracking_sessions.backfill` is true and the session is left out of the one-live index. It takes its own events, never supersedes or shortens the running timer, and overlap is trimmed when its time entries are created. Only a start happening now takes over a running timer. |
+| Q7 | A desktop start more than 2 minutes before it reached the server counts as recorded offline. It skips the limit check and the project and task checks. Whatever those checks would have refused is kept and flagged: over the limit on the day or week it happened, a project archived, inactive or unassigned since then, or a task that can no longer take time (that time is kept without the task). Tracking turned off for the member, or desktop tracking off by policy, is still refused. |
+| Flags | A new `time_review_flags` table holds one flag per member, day and reason. The `time.needs_review` event notifies the member's approvers, and the approval queue shows "Needs review". |
+| Duration-only time | It stays out of overlap trimming. A day with both duration-only and tracked time is flagged (`duration_only_and_tracked`). |
+| BE-4, T10 | `webSwitch`, `webStop` and `forceStop` lock the worker before reading the session. |
+| T7 | Discarding a paused-then-resumed idle period leaves its paused span unrecorded and touches nothing after Resume. Reassigning it moves only that span. |
+| T9 | Removing a span on the clock (idle discard, screenshot deletion) never cuts a duration-only entry. |
+
+**Migration `0026_offline_backfill`:** it adds two session columns with defaults, rebuilds the one-live index and creates the flags table. It can be re-run, and no existing rows change.
+
+**Not covered by a test:** BE-4 is a race. PGlite runs one query at a time, so the test database can't reproduce it. The fix is structural: the lock is taken before the read.
+
 ### Phase 3: money
 
 - **First:** reconciliation tests on one dataset. One compares approved pay, payroll, the pay stub and the export. The other compares invoice lines, the PDF and the CSV.
@@ -345,6 +361,34 @@ No financial rules change in this phase.
   - the Q9 rule;
   - F9: should time off use project rates?
   - F10: round per line instead of per entry? Invoice totals would change by cents.
+
+**Status: done on `fix/audit-phase3-money`.** The design and the four approved decisions (all as recommended) are in [the money design note](2026-10-29-money-design.md).
+
+| Item | As built |
+|---|---|
+| Reconciliation | For one dataset: approved pay (Amounts Owed) = the payroll line = the pay stub. Every invoice line is quantity × unit price, the lines add up to the subtotal, and subtotal + tax = total. The Billing report's "Invoiced" plus "Invoice rounding" equals the invoice's time lines. |
+| Q8 | `time_off_requests.day_hours` is written when a request is made. Payroll, the Payroll Export and Summary pay the stored days inside each period. Example: a 40 h request crossing the semimonthly boundary, with a holiday added later, pays 32 h + 8 h. Before the fix it paid 24 h + 8 h. The migration fills in existing requests by spreading their hours over weekdays outside holidays (the previous rule). |
+| Q10 | `billing_entries.bill_coefficient` and `pay_coefficient` are stored at approval. Invoice lines group and price by the stored multiplier. Entries approved before the migration are priced from amount ÷ hours. |
+| Q9 | A money budget that includes non-billable time values it at the bill rate of the day it was worked, before and after approval. |
+| F5 | The Invoices, Payments and Expenses reports and their CSV, Excel and PDF exports show one total per currency, and have a Currency column. Drafts and void invoices are not counted. The dashboard widget totals the org currency only. A report with one currency still returns `totals`. |
+| F6 | Billing report rows are split by project, client and currency. The not-yet-approved estimate is priced in each client's currency. |
+| F7 | Money budgets count only amounts in their own currency, and round once per budget. |
+| F8 | The pay stub's overtime is calculated from approved time only. |
+| F9 | Time off and paid holidays are paid at each day's worker or org rate. A line with paid time off but no rate has the `time_off_no_rate` warning, and the payroll page shows "No pay rate for time off". |
+| F10 | Lines are quantity (4 decimals) × unit price, rounded once, including custom lines. The PDF prints the same quantity. The Billing report shows the difference from approved amounts as "Invoice rounding". |
+| F11 | Summary credits approved money to the client it was billed to. |
+
+**Migration `0027_money_integrity`:**
+- adds `time_off_requests.day_hours` and fills it for existing requests;
+- adds `billing_entries.bill_coefficient` and `billing_entries.pay_coefficient`;
+- adds `payroll_run_lines.warnings`.
+
+It can be run again safely.
+
+**What users will notice:**
+- Invoices issued from now on can differ by a few cents from approved billing, and the Billing report shows that difference.
+- Finance reports show one total per currency.
+- Payrolls that cross a period boundary, or include a raise in the middle of a time-off request, now pay the correct amounts.
 
 ### Phase 4: form integrity
 

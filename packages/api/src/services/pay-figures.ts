@@ -43,6 +43,7 @@ export async function priceEntries(tx: Tx, currency: string, from: string, to: s
       bBill: billingEntries.billAmountMinor,
       bBillable: billingEntries.billable,
       bCurrency: billingEntries.currency,
+      bClient: billingEntries.clientId,
       bPayCurrency: billingRates.currency,
     })
     .from(timeEntries)
@@ -60,8 +61,10 @@ export async function priceEntries(tx: Tx, currency: string, from: string, to: s
   const rates = await loadRates(tx);
   const coef = await timeTypeCoefficients(tx);
   return rows.map((r) => {
-    const base = { membershipId: r.m, projectId: r.p, clientId: r.c, localDate: r.d, seconds: r.s };
+    const base: { membershipId: string; projectId: string; clientId: string | null; localDate: string; seconds: number } = { membershipId: r.m, projectId: r.p, clientId: r.c, localDate: r.d, seconds: r.s };
     if (r.bPay !== null) {
+      // Approved time belongs to the client it was billed to, even if its project has moved since (F11).
+      base.clientId = r.bClient;
       // An approved entry keeps one currency, the bill rate's when it is billable; its pay is in the
       // pay rate's currency (as payroll reads it), which can differ.
       const payForeign = !!r.bPayCurrency && r.bPayCurrency !== currency;
@@ -135,15 +138,23 @@ export async function paidHolidayHours(tx: Tx, membershipIds: string[], from: st
  * weeks (loading the days of a week that fall outside the range), then each day keeps its own share
  * (see overtimeByDay), so a week split between two pay periods is not cut into two short weeks.
  */
-export async function overtimeInRange(tx: Tx, weekStart: number, rules: OvertimeRules, membershipIds: string[], from: string, to: string): Promise<Map<string, { regular: number; overtime: number }>> {
+export async function overtimeInRange(tx: Tx, weekStart: number, rules: OvertimeRules, membershipIds: string[], from: string, to: string, opts: { approvedOnly?: boolean } = {}): Promise<Map<string, { regular: number; overtime: number }>> {
   const out = new Map<string, { regular: number; overtime: number }>();
   if (!membershipIds.length) return out;
   const first = startOfWeek(from, weekStart);
   const last = addDaysToDate(startOfWeek(to, weekStart), 6);
-  const rows = await tx
-    .select({ m: rollupWorkerDay.membershipId, d: rollupWorkerDay.localDate, tracked: rollupWorkerDay.trackedSeconds, manual: rollupWorkerDay.manualSeconds })
-    .from(rollupWorkerDay)
-    .where(and(inArray(rollupWorkerDay.membershipId, membershipIds), gte(rollupWorkerDay.localDate, first), lte(rollupWorkerDay.localDate, last)));
+  // A pay stub splits only approved time (F8), so its overtime is part of its approved hours.
+  const rows = opts.approvedOnly
+    ? (
+        await tx
+          .select({ m: billingEntries.membershipId, d: billingEntries.localDate, s: billingEntries.seconds })
+          .from(billingEntries)
+          .where(and(inArray(billingEntries.membershipId, membershipIds), isNull(billingEntries.voidedAt), gte(billingEntries.localDate, first), lte(billingEntries.localDate, last)))
+      ).map((r) => ({ m: r.m, d: r.d, tracked: r.s, manual: 0 }))
+    : await tx
+        .select({ m: rollupWorkerDay.membershipId, d: rollupWorkerDay.localDate, tracked: rollupWorkerDay.trackedSeconds, manual: rollupWorkerDay.manualSeconds })
+        .from(rollupWorkerDay)
+        .where(and(inArray(rollupWorkerDay.membershipId, membershipIds), gte(rollupWorkerDay.localDate, first), lte(rollupWorkerDay.localDate, last)));
   const weeks = new Map<string, number[]>(); // `${member}|${week start}` → seconds per day
   for (const r of rows) {
     const wk = startOfWeek(r.d, weekStart);

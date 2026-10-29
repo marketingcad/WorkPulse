@@ -120,8 +120,17 @@ export function accrualCredit(policy: AccrualPolicy, currentBalance: number, hou
 
 /** Working hours requested between two dates, excluding weekends/holidays, at `hoursPerDay`. */
 export function requestedHours(dates: string[], isNonWorking: (d: string) => boolean, hoursPerDay: number, halfDay = false): number {
-  const days = dates.filter((d) => !isNonWorking(d)).length;
-  return halfDay && days === 1 ? hoursPerDay / 2 : days * hoursPerDay;
+  return Object.values(requestedDayHours(dates, isNonWorking, hoursPerDay, halfDay)).reduce((s, h) => s + h, 0);
+}
+
+/**
+ * The hours a time-off request takes on each of its working days ({ date: hours }), stored with the
+ * request so every pay period pays exactly its own days, whatever happens to the calendar later.
+ */
+export function requestedDayHours(dates: string[], isNonWorking: (d: string) => boolean, hoursPerDay: number, halfDay = false): Record<string, number> {
+  const days = dates.filter((d) => !isNonWorking(d));
+  const each = halfDay && days.length === 1 ? hoursPerDay / 2 : hoursPerDay;
+  return Object.fromEntries(days.map((d) => [d, each]));
 }
 
 /**

@@ -119,9 +119,15 @@ export interface InvoiceTotals {
 }
 
 /** Tax is computed per line then summed (documented rounding rule). */
+/** An invoice quantity as stored: hours or units to 4 decimals. */
+export function roundQuantity(q: number): number {
+  return Math.round(q * 10000) / 10000;
+}
+
 export function invoiceTotals(lines: InvoiceLineInput[]): InvoiceTotals {
   const out = lines.map((l) => {
-    const amountMinor = Math.round(l.quantity * l.unitPriceMinor);
+    // Quantities are kept to 4 decimals, so the amount is priced from the quantity as stored and shown (F10).
+    const amountMinor = Math.round(roundQuantity(l.quantity) * l.unitPriceMinor);
     const taxMinor = Math.round((amountMinor * l.taxRateBps) / 10000);
     return { amountMinor, taxMinor };
   });

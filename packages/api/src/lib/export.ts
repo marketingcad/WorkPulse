@@ -24,6 +24,17 @@ export function formatCell(v: string | number | null | undefined, c: Column, cur
   }
 }
 
+/** The currency a row's money is in: its own, else the report's. */
+function rowCurrency(r: ReportResult, row: Record<string, string | number | null>): string | undefined {
+  return typeof row.currency === 'string' && row.currency ? row.currency : r.currency;
+}
+
+/** The totals lines: one, or one per currency (F5: amounts in different currencies are never added). */
+export function totalLines(r: ReportResult): Array<{ label: string; values: Record<string, number>; currency?: string }> {
+  if (r.totalsByCurrency?.length) return r.totalsByCurrency.map((t) => ({ label: r.totalsByCurrency!.length > 1 ? `Total (${t.currency})` : 'Total', values: t.totals, currency: t.currency }));
+  return r.totals ? [{ label: 'Total', values: r.totals, currency: r.currency }] : [];
+}
+
 function csvEscape(s: string): string {
   // Guard against CSV/formula injection in spreadsheet apps.
   const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
@@ -32,8 +43,8 @@ function csvEscape(s: string): string {
 
 export function toCsv(r: ReportResult): string {
   const header = r.columns.map((c) => csvEscape(c.label)).join(',');
-  const lines = r.rows.map((row) => r.columns.map((c) => csvEscape(formatCell(row[c.key], c, r.currency))).join(','));
-  if (r.totals) lines.push(r.columns.map((c, i) => csvEscape(i === 0 ? 'Total' : r.totals![c.key] !== undefined ? formatCell(r.totals![c.key], c, r.currency) : '')).join(','));
+  const lines = r.rows.map((row) => r.columns.map((c) => csvEscape(formatCell(row[c.key], c, rowCurrency(r, row)))).join(','));
+  for (const t of totalLines(r)) lines.push(r.columns.map((c, i) => csvEscape(i === 0 ? t.label : t.values[c.key] !== undefined ? formatCell(t.values[c.key], c, t.currency) : '')).join(','));
   return `﻿${[header, ...lines].join('\r\n')}\r\n`;
 }
 
@@ -55,11 +66,11 @@ export function csvStream(r: ReportResult, chunkRows = 2000): ReadableStream<Uin
       if (stage === 'rows' && i < r.rows.length) {
         const end = Math.min(i + chunkRows, r.rows.length);
         let out = '';
-        for (; i < end; i++) out += `${r.columns.map((c) => csvEscape(formatCell(r.rows[i]![c.key], c, r.currency))).join(',')}\r\n`;
+        for (; i < end; i++) out += `${r.columns.map((c) => csvEscape(formatCell(r.rows[i]![c.key], c, rowCurrency(r, r.rows[i]!)))).join(',')}\r\n`;
         controller.enqueue(enc.encode(out));
         return;
       }
-      if (r.totals) controller.enqueue(enc.encode(`${r.columns.map((c, k) => csvEscape(k === 0 ? 'Total' : r.totals![c.key] !== undefined ? formatCell(r.totals![c.key], c, r.currency) : '')).join(',')}\r\n`));
+      for (const t of totalLines(r)) controller.enqueue(enc.encode(`${r.columns.map((c, k) => csvEscape(k === 0 ? t.label : t.values[c.key] !== undefined ? formatCell(t.values[c.key], c, t.currency) : '')).join(',')}\r\n`));
       stage = 'done';
       controller.close();
     },
@@ -83,6 +94,20 @@ export async function toXlsx(r: ReportResult & { title: string }): Promise<Buffe
         }),
       ),
     );
+  }
+  for (const t of totalLines(r)) {
+    const row = ws.addRow(
+      Object.fromEntries(
+        r.columns.map((c, i) => {
+          const v = t.values[c.key];
+          if (i === 0) return [c.key, t.label];
+          if (c.type === 'duration' && v !== undefined) return [c.key, v / 86400];
+          if (c.type === 'money' && v !== undefined) return [c.key, v / 100];
+          return [c.key, v ?? null];
+        }),
+      ),
+    );
+    row.font = { bold: true };
   }
   r.columns.forEach((c, i) => {
     const col = ws.getColumn(i + 1);
@@ -120,14 +145,14 @@ export async function toPdf(r: ReportResult & { title: string }, subtitle: strin
   y -= 24;
   header();
   const rows = [...r.rows];
-  if (r.totals) rows.push(Object.fromEntries(r.columns.map((c, i) => [c.key, i === 0 ? 'Total' : (r.totals![c.key] ?? null)])));
+  for (const t of totalLines(r)) rows.push({ ...Object.fromEntries(r.columns.map((c, i) => [c.key, i === 0 ? t.label : (t.values[c.key] ?? null)])), ...(t.currency ? { currency: t.currency } : {}) });
   for (const row of rows) {
     if (y < margin + 12) {
       page = doc.addPage(pageSize);
       y = pageSize[1] - margin;
       header();
     }
-    r.columns.forEach((c, i) => text(formatCell(row[c.key], c, r.currency), margin + i * colW, y));
+    r.columns.forEach((c, i) => text(formatCell(row[c.key], c, rowCurrency(r, row)), margin + i * colW, y));
     y -= 12;
   }
   return Buffer.from(await doc.save());

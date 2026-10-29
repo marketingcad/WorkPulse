@@ -28,6 +28,13 @@ export const trackingSessions = pgTable(
     lastEvidenceAt: tstz(),
     timezone: text().notNull(),
     note: text(),
+    /**
+     * Recorded offline and delivered after a session that started later (audit 28 Oct 2026, Q6). It
+     * takes its own events but never competes with the running timer: not "live", never superseding.
+     */
+    backfill: boolean().notNull().default(false),
+    /** Started offline (delivered late): accepted without the checks for a timer starting now, and flagged instead (Q7). */
+    recordedOffline: boolean().notNull().default(false),
     ...timestamps,
   },
   (t) => [
@@ -36,10 +43,11 @@ export const trackingSessions = pgTable(
     foreignKey({ columns: [t.organizationId, t.projectId], foreignColumns: [projects.organizationId, projects.id] }),
     foreignKey({ columns: [t.organizationId, t.taskId], foreignColumns: [tasks.organizationId, tasks.id] }),
     foreignKey({ columns: [t.organizationId, t.deviceId], foreignColumns: [devices.organizationId, devices.id] }),
-    // At most one live session per worker — the DB guarantees the single-timer rule.
+    // At most one live session per worker — the DB guarantees the single-timer rule. A backfill
+    // session (recorded offline, delivered late) is history being filled in, not a running timer.
     uniqueIndex('tracking_sessions_one_live')
       .on(t.organizationId, t.membershipId)
-      .where(sql`${t.state} in ('CREATED','ACTIVE','PAUSED','INTERRUPTED')`),
+      .where(sql`${t.state} in ('CREATED','ACTIVE','PAUSED','INTERRUPTED') and ${t.backfill} = false`),
     index().on(t.organizationId, t.membershipId, t.startedAt),
     index().on(t.organizationId, t.state),
     index('tracking_sessions_live_idx').on(t.state).where(sql`${t.state} <> 'STOPPED'`),
@@ -371,3 +379,28 @@ export const presence = pgTable('presence', {
   activityPct: smallint(),
   updatedAt: tstz().notNull().default(sql`now()`),
 });
+
+export type TimeReviewReason = 'offline_over_limit' | 'offline_project_unavailable' | 'offline_task_unavailable' | 'duration_only_and_tracked';
+
+/**
+ * Time kept but flagged for an approver (audit 28 Oct 2026, Phase 2): tracked evidence is never dropped,
+ * so what a live check would have refused is recorded and raised here instead. One flag per member, day
+ * and reason; the approval queue shows it as "Needs review".
+ */
+export const timeReviewFlags = pgTable(
+  'time_review_flags',
+  {
+    id: pk(),
+    organizationId: orgId(),
+    membershipId: uuid().notNull(),
+    localDate: text().notNull(),
+    reason: text().$type<TimeReviewReason>().notNull(),
+    sessionId: uuid(),
+    details: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: tstz().notNull().default(sql`now()`),
+  },
+  (t) => [
+    uniqueIndex('time_review_flags_day_reason_uq').on(t.organizationId, t.membershipId, t.localDate, t.reason),
+    foreignKey({ columns: [t.organizationId, t.membershipId], foreignColumns: [memberships.organizationId, memberships.id] }).onDelete('cascade'),
+  ],
+);

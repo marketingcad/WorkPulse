@@ -14,6 +14,7 @@ import {
   timeEntryRevisions,
   timeSegments,
   timesheetEntries,
+  timeReviewFlags,
   timesheets,
   users,
   workerProfiles,
@@ -58,7 +59,7 @@ import { audit, emitFrom } from './events';
 import { effectivePolicy } from './policies';
 import { narrowMemberships } from './scope';
 import { likePattern } from '../lib/search';
-import { lockWorker, markTimeChanged, validateTrackTarget, workerTimezone, type ActorRef } from './tracking';
+import { flagMixedDays, lockWorker, markTimeChanged, validateTrackTarget, workerTimezone, type ActorRef } from './tracking';
 import { memberNames } from './timer';
 import { accrueForTimesheet } from './operations';
 import { checkTimeType, isNotBillableType, timeTypeCoefficients } from './time-types';
@@ -493,6 +494,7 @@ async function insertManualEntry(x: Ctx, req: typeof manualTimeRequests.$inferSe
     dates.push(pc.localDate);
   }
   await x.tx.update(manualTimeRequests).set({ timeEntryId: firstId }).where(eq(manualTimeRequests.id, req.id));
+  if (req.durationOnly) await flagMixedDays(x.tx, { organizationId: x.org.id, membershipId: req.membershipId }, dates);
   await markTimeChanged(x.tx, x.org.id, req.membershipId, dates, ref(x));
   return dates;
 }
@@ -873,6 +875,9 @@ async function createBillingEntries(x: Ctx, ts: typeof timesheets.$inferSelect) 
         payRateId: pay?.id ?? null,
         billAmountMinor: bill ? amountForSeconds(Math.round(s.durationSeconds * k.bill), bill.amountMinor) : 0,
         payAmountMinor: pay ? amountForSeconds(Math.round(s.durationSeconds * k.pay), pay.amountMinor) : 0,
+        // The multipliers it was priced with (Q10): an invoice line reads these, not the time type today.
+        billCoefficient: k.bill,
+        payCoefficient: k.pay,
         currency: bill?.currency ?? pay?.currency ?? x.org.currency,
       })
       .onConflictDoNothing();
@@ -973,6 +978,9 @@ async function toApprovalItems(x: Ctx, rows: Array<typeof timesheets.$inferSelec
     if (avg !== null && avg < 20) flags.push('low_activity');
     const late = await lateSeconds(x.tx, r);
     if (late > 0) flags.push('late_time');
+    // Time kept but flagged (recorded offline over a limit or on an unavailable project, or mixed duration-only and tracked).
+    const [review] = await x.tx.select({ id: timeReviewFlags.id }).from(timeReviewFlags).where(and(eq(timeReviewFlags.membershipId, r.membershipId), gte(timeReviewFlags.localDate, r.periodStart), lte(timeReviewFlags.localDate, r.periodEnd))).limit(1);
+    if (review) flags.push('needs_review');
     out.push({
       timesheet_id: r.id,
       membership_id: r.membershipId,

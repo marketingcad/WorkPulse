@@ -166,6 +166,36 @@ test.describe('Payments across open invoices (admin)', () => {
     const open = await ok<Array<{ number: string; balance_minor: number }>>(await api.get(orgApi(`/invoices?client_id=${c.id}&status=OPEN`)), 'open');
     expect(open.map((i) => [i.number, i.balance_minor])).toEqual([[second.number, 5000]]);
   });
+
+  // Audit 28 Oct 2026 (F5): the Invoices report added dollars and euros into one total, and counted
+  // drafts and void invoices as invoiced. It now totals each currency on its own line.
+  test('the Invoices report totals each currency on its own line, without drafts or void invoices', async ({ page, data, adminApi }) => {
+    const { api, orgApi } = adminApi;
+    const suffix = `${data.run}-${uid()}`;
+    // A month no other spec invoices in, so the totals are this test's alone.
+    const day = '2023-02-15';
+    const make = async (currency: string, cents: number, then: 'draft' | 'send' | 'void') => {
+      const c = await ok<{ id: string }>(await api.post(orgApi('/clients'), { data: { name: `${currency} ${then} ${cents} ${suffix}`, currency } }), 'client');
+      const inv = await ok<{ id: string }>(await api.post(orgApi('/invoices'), { data: { client_id: c.id, period_start: day, period_end: day, issue_date: day, due_date: '2099-01-01', extra_lines: [{ description: 'Fee', quantity: 1, unit_price_minor: cents }] } }), 'invoice');
+      if (then !== 'draft') await ok(await api.post(orgApi(`/invoices/${inv.id}/send`)), 'send');
+      if (then === 'void') await ok(await api.post(orgApi(`/invoices/${inv.id}/void`), { data: {} }), 'void');
+    };
+    await make('USD', 12300, 'send');
+    await make('USD', 99900, 'draft');
+    await make('USD', 55500, 'void');
+    await make('EUR', 40000, 'send');
+    const saved = await ok<{ id: string }>(await api.post(orgApi('/saved-reports'), { data: { report_key: 'invoices', name: `Feb 2023 ${suffix}`, params: { from: '2023-02-01', to: '2023-02-28', preset: 'custom' } } }), 'saved report');
+
+    await page.goto(`/o/${data.orgId}/reports/invoices?saved=${saved.id}`);
+    await expect(page.getByRole('heading', { level: 1, name: `Feb 2023 ${suffix}` })).toBeVisible();
+    const usdTotal = page.getByRole('row', { name: /Total \(USD\)/ });
+    const eurTotal = page.getByRole('row', { name: /Total \(EUR\)/ });
+    await expect(usdTotal).toContainText('$123.00');
+    await expect(eurTotal).toContainText('€400.00');
+    // The draft ($999) and the void invoice ($555) are listed but not counted.
+    await expect(usdTotal).not.toContainText('$1,');
+    await expect(page.getByText('Invoiced (EUR)')).toBeVisible();
+  });
 });
 
 test.describe('Invoices (no money access)', () => {

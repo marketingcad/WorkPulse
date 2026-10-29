@@ -76,9 +76,10 @@ async function myLive(x: Ctx) {
 }
 
 export async function webStop(x: Ctx) {
+  // Lock, then read (T10): a stop racing another stop or a switch sees the other's result.
+  await lockWorker(x.tx, x.actor.membershipId);
   const s = await liveSession(x.tx, x.actor.membershipId);
   if (!s) return currentTracking(x); // idempotent
-  await lockWorker(x.tx, x.actor.membershipId);
   await applyTrigger(x.tx, s, 'STOP', { at: x.deps.now(), actor: ref(x) });
   return currentTracking(x);
 }
@@ -98,6 +99,8 @@ export async function webResume(x: Ctx) {
 
 /** Switching task = stop the current session and start a new one (clean per-task sessions). */
 export async function webSwitch(x: Ctx, input: { projectId: string; taskId: string | null }) {
+  // Lock, then read (BE-4): two switches at once must not both stop the same session and start two.
+  await lockWorker(x.tx, x.actor.membershipId);
   const s = await liveSession(x.tx, x.actor.membershipId);
   const source = s?.source === 'API' ? 'API' : 'WEB';
   if (s && s.source === 'DESKTOP') throw forbidden('Switch tasks in the desktop app while it is tracking');
@@ -112,10 +115,12 @@ export async function setSessionNote(x: Ctx, note: string) {
 }
 
 export async function forceStop(x: Ctx, sessionId: string) {
-  const [s] = await x.tx.select().from(trackingSessions).where(eq(trackingSessions.id, sessionId));
-  if (!s) throw notFound('session');
-  if (!can(x.actor, 'tracking:force_stop', { ownerMembershipId: s.membershipId })) throw forbidden();
-  await lockWorker(x.tx, s.membershipId);
+  const [found] = await x.tx.select({ membershipId: trackingSessions.membershipId }).from(trackingSessions).where(eq(trackingSessions.id, sessionId));
+  if (!found) throw notFound('session');
+  if (!can(x.actor, 'tracking:force_stop', { ownerMembershipId: found.membershipId })) throw forbidden();
+  // Lock, then read the session again (T10): a stop that landed meanwhile is seen, not repeated.
+  await lockWorker(x.tx, found.membershipId);
+  const [s] = (await x.tx.select().from(trackingSessions).where(eq(trackingSessions.id, sessionId))) as [typeof trackingSessions.$inferSelect];
   await applyTrigger(x.tx, s, 'FORCE_STOP', { at: x.deps.now(), actor: ref(x), cause: 'admin_force_stop' });
   await audit(x, { action: 'session.force_stopped', targetType: 'session', targetId: s.id });
   const [dto] = await toSessionDtos(x.tx, [(await x.tx.select().from(trackingSessions).where(eq(trackingSessions.id, sessionId)))[0]!], x.deps.now());
@@ -244,7 +249,7 @@ export async function liveWorkers(x: Ctx): Promise<LiveWorkerDto[]> {
   if (!ms.length) return [];
   const ids = ms.map((m) => m.id);
   const now = x.deps.now();
-  const live = await x.tx.select().from(trackingSessions).where(and(inArray(trackingSessions.membershipId, ids), inArray(trackingSessions.state, ['ACTIVE', 'PAUSED', 'INTERRUPTED'])));
+  const live = await x.tx.select().from(trackingSessions).where(and(inArray(trackingSessions.membershipId, ids), inArray(trackingSessions.state, ['ACTIVE', 'PAUSED', 'INTERRUPTED']), eq(trackingSessions.backfill, false)));
   const liveBy = new Map(live.map((s) => [s.membershipId, s]));
   const openIdle = live.length
     ? await x.tx.select({ sessionId: timeSegments.sessionId, kind: timeSegments.kind }).from(timeSegments).where(and(inArray(timeSegments.sessionId, live.map((s) => s.id)), isNull(timeSegments.endedAt)))

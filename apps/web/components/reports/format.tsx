@@ -17,7 +17,9 @@ export interface ReportResult {
   columns: ReportColumn[];
   rows: Array<Record<string, string | number | null>>;
   totals?: Record<string, number>;
-  summary: Array<{ label: string; value: number | string; type: ColumnType }>;
+  /** Money in several currencies: one totals line per currency, never added together. */
+  totalsByCurrency?: Array<{ currency: string; totals: Record<string, number> }>;
+  summary: Array<{ label: string; value: number | string; type: ColumnType; currency?: string }>;
   chart?: { type: 'bar' | 'stacked-bar' | 'line'; x: string; series: Array<{ key: string; label: string }>; data: Array<Record<string, string | number>> };
   currency?: string;
 }

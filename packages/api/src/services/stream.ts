@@ -21,6 +21,7 @@ export const STREAM_EVENTS = [
   'timesheet.changes_requested',
   'timesheet.reopened',
   'timesheet.late_time',
+  'time.needs_review',
   'manual_time.requested',
   'time_off.requested',
 ];

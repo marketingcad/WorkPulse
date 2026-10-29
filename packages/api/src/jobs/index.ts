@@ -90,6 +90,23 @@ async function handleEvent(tx: Tx, deps: Deps, e: Envelope): Promise<void> {
       });
       break;
     }
+    case 'time.needs_review': {
+      const worker = p.membership_id as string;
+      const names = await memberNames({ tx }, [worker]);
+      const why: Record<string, string> = {
+        offline_over_limit: 'Time recorded offline goes over the time limit',
+        offline_project_unavailable: 'Time recorded offline is on a project that is archived, inactive or no longer assigned',
+        offline_task_unavailable: 'Time recorded offline was on a task that can no longer take it, so it was kept without the task',
+        duration_only_and_tracked: 'The day has both duration-only time and tracked time; check it is not counted twice',
+      };
+      await notify(tx, deps, org, await approversFor(tx, org, worker, 'timesheets:approve'), {
+        type: 'time.needs_review',
+        title: `${names.get(worker) ?? 'A member'}'s time on ${String(p.local_date)} needs review`,
+        body: why[String(p.reason)] ?? 'Kept and flagged for review',
+        link: `/timesheets/approvals`,
+      });
+      break;
+    }
     case 'timesheet.approved':
     case 'timesheet.rejected':
     case 'timesheet.changes_requested':
@@ -222,7 +239,8 @@ export async function sweepSessions(deps: Deps): Promise<Record<string, number>>
         return;
       }
       const [org]= await tx.select().from(organizations).where(eq(organizations.id, s.organizationId));
-      const hit = s.state === 'ACTIVE' ? await limitExceeded(tx, s.membershipId, s.timezone, policy, now, org?.weekStart ?? 1) : null;
+      // Backfill sessions are time recorded offline: flagged when over the limit, never stopped (Q7).
+      const hit = s.state === 'ACTIVE' && !s.backfill ? await limitExceeded(tx, s.membershipId, s.timezone, policy, now, org?.weekStart ?? 1) : null;
       if (hit) {
         // Stop at the moment the limit was reached, not when this sweep ran.
         const [open] = await tx.select({ startedAt: timeSegments.startedAt }).from(timeSegments).where(and(eq(timeSegments.sessionId, s.id), isNull(timeSegments.endedAt)));

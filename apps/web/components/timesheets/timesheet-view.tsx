@@ -30,11 +30,19 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg } from '@/lib/org';
-import { CommentDialog, DeleteEntryDialog, EditEntryDialog, ManualTimeDialog, RevisionsDrawer, SplitEntryDialog } from './entry-dialogs';
+import dynamic from 'next/dynamic';
 import { periodLabel, type TimesheetHistoryItem } from './shared';
-import { CsvImportDialog } from './csv-import';
-import { TimeTypeBadge } from '@/components/settings/time-types-panel';
+import { TimeTypeBadge } from '@/components/settings/time-type-badge';
 import { downloadText, toCsv } from '@/lib/csv';
+
+// Dialogs open on demand, so they load when first opened instead of with the page (first-load JS budget).
+const CommentDialog = dynamic(() => import('./entry-dialogs').then((m) => m.CommentDialog));
+const DeleteEntryDialog = dynamic(() => import('./entry-dialogs').then((m) => m.DeleteEntryDialog));
+const EditEntryDialog = dynamic(() => import('./entry-dialogs').then((m) => m.EditEntryDialog));
+const ManualTimeDialog = dynamic(() => import('./entry-dialogs').then((m) => m.ManualTimeDialog));
+const RevisionsDrawer = dynamic(() => import('./entry-dialogs').then((m) => m.RevisionsDrawer));
+const SplitEntryDialog = dynamic(() => import('./entry-dialogs').then((m) => m.SplitEntryDialog));
+const CsvImportDialog = dynamic(() => import('./csv-import').then((m) => m.CsvImportDialog));
 
 type Decision = 'approve' | 'reject' | 'request-changes' | 'reopen';
 /** "Reopened by Ada", not "Draft by Ada": the status line names the decision that was made. */

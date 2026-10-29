@@ -19,20 +19,45 @@ export class ApiError extends Error {
   field(name: string): string | undefined {
     return this.errors?.find((e) => e.field === name)?.message;
   }
+  /**
+   * What a form's general alert should say, given the fields it shows errors beside: the title when
+   * there are no field errors, otherwise the field errors the form has no place for (audit 30 Oct
+   * 2026, VF-21), so no problem goes unshown. Undefined when every error sits beside its field.
+   */
+  general(shown: readonly string[]): string | undefined {
+    if (!this.errors?.length) return this.title;
+    const rest = this.errors.filter((e) => !shown.includes(e.field));
+    return rest.length ? rest.map((e) => e.message).join(' ') : undefined;
+  }
 }
 
+export const NETWORK_ERROR = "We couldn't reach WorkPulse. Check your connection and try again.";
+
+/** Set once a request in this tab has succeeded: a 401 after that means the session ended, not that the person never signed in. */
+let hadSession = false;
+
 export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal; raw?: boolean } = {}): Promise<T> {
-  const res = await fetch(`/api/v1${path}`, {
-    method: init.method ?? (init.body !== undefined ? 'POST' : 'GET'),
-    headers: init.body !== undefined && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : undefined,
-    body: init.body === undefined ? undefined : init.body instanceof FormData ? init.body : JSON.stringify(init.body),
-    credentials: 'same-origin',
-    signal: init.signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1${path}`, {
+      method: init.method ?? (init.body !== undefined ? 'POST' : 'GET'),
+      headers: init.body !== undefined && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : undefined,
+      body: init.body === undefined ? undefined : init.body instanceof FormData ? init.body : JSON.stringify(init.body),
+      credentials: 'same-origin',
+      signal: init.signal,
+    });
+  } catch (e) {
+    // A cancelled request stays a cancellation; anything else is the connection (the browser says only "Failed to fetch").
+    if (init.signal?.aborted || (e instanceof DOMException && e.name === 'AbortError')) throw e;
+    throw new ApiError(0, 'network_error', NETWORK_ERROR);
+  }
   if (res.status === 401 && typeof window !== 'undefined' && !path.startsWith('/auth/')) {
     const next = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.href = `/login?next=${next}`;
+    window.location.href = `/login?next=${next}${hadSession ? '&reason=expired' : ''}`;
+    // The page is leaving: no error toast in the meantime.
+    return new Promise<never>(() => undefined);
   }
+  if (res.ok && !path.startsWith('/auth/')) hadSession = true;
   if (!res.ok) {
     let p: { title?: string; code?: string; request_id?: string; errors?: Array<{ field: string; message: string }> } = {};
     try {

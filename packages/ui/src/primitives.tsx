@@ -1,5 +1,5 @@
 'use client';
-import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { createContext, forwardRef, useContext, type AriaAttributes, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { clsx } from 'clsx';
 import { Loader2 } from 'lucide-react';
 import { t } from './i18n';
@@ -69,36 +69,67 @@ export const IconButton = forwardRef<HTMLButtonElement, ButtonProps & { label: s
 const widthOf = (className?: string) => (/(^|\s)(w-|min-w-|max-w-|flex-1|basis-)/.test(className ?? '') ? '' : 'w-full');
 const field = 'rounded-sm border border-border bg-surface px-3 text-sm shadow-[0_1px_2px_rgb(15_23_42/0.04)] text-text placeholder:text-text-faint transition-colors hover:border-border-strong focus:border-interactive focus:outline-none focus:ring-2 focus:ring-interactive/20 disabled:bg-surface-muted disabled:text-text-muted aria-[invalid=true]:border-danger';
 
+/** What a Field tells the control it labels. */
+interface FieldInfo {
+  htmlFor?: string;
+  describedBy?: string;
+  invalid: boolean;
+  required: boolean;
+}
+const FieldContext = createContext<FieldInfo | null>(null);
+
+type AriaProps = Pick<AriaAttributes, 'aria-describedby' | 'aria-invalid' | 'aria-required'>;
+
+/**
+ * ARIA for the control a Field labels (audit QA-02): its error or hint as the description, invalid
+ * while it has an error, required when marked. Only the control whose id is the Field's htmlFor gets
+ * them, so a Field around several controls does not mislabel the others. Props set by the caller win.
+ */
+export function useFieldAria(props: AriaProps & { id?: string }): AriaProps {
+  const f = useContext(FieldContext);
+  if (!f || !props.id || props.id !== f.htmlFor) return {};
+  return {
+    'aria-describedby': [props['aria-describedby'], f.describedBy].filter(Boolean).join(' ') || undefined,
+    'aria-invalid': props['aria-invalid'] ?? (f.invalid || undefined),
+    'aria-required': props['aria-required'] ?? (f.required || undefined),
+  };
+}
+
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...rest }, ref) {
-  return <input ref={ref} className={cx(field, widthOf(className), 'h-9', className)} {...rest} />;
+  return <input ref={ref} className={cx(field, widthOf(className), 'h-9', className)} {...rest} {...useFieldAria(rest)} />;
 });
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea({ className, ...rest }, ref) {
-  return <textarea ref={ref} className={cx(field, widthOf(className), 'min-h-20 py-1.5', className)} {...rest} />;
+  return <textarea ref={ref} className={cx(field, widthOf(className), 'min-h-20 py-1.5', className)} {...rest} {...useFieldAria(rest)} />;
 });
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select({ className, children, ...rest }, ref) {
   return (
-    <select ref={ref} className={cx(field, widthOf(className), 'h-9 appearance-none bg-[length:12px] bg-[right_10px_center] bg-no-repeat pr-8', "bg-[url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%238a93a0' stroke-width='1.5'/%3E%3C/svg%3E\")]", className)} {...rest}>
+    <select ref={ref} className={cx(field, widthOf(className), 'h-9 appearance-none bg-[length:12px] bg-[right_10px_center] bg-no-repeat pr-8', "bg-[url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%238a93a0' stroke-width='1.5'/%3E%3C/svg%3E\")]", className)} {...rest} {...useFieldAria(rest)}>
       {children}
     </select>
   );
 });
 
 export function Field({ label, hint, error, children, htmlFor, className, required }: { label: string; hint?: ReactNode; error?: string | null; children: ReactNode; htmlFor?: string; className?: string; required?: boolean }) {
+  // The error (or else the hint) describes the control, so a screen reader reads it with the field.
+  const messageId = htmlFor ? `${htmlFor}-message` : undefined;
+  const info: FieldInfo = { htmlFor, describedBy: error || hint ? messageId : undefined, invalid: !!error, required: !!required };
   return (
     <div className={cx('flex flex-col gap-1', className)}>
       <label htmlFor={htmlFor} className="text-xs font-semibold text-text">
         {label}
         {required && <span className="text-danger"> *</span>}
       </label>
-      {children}
+      <FieldContext.Provider value={info}>{children}</FieldContext.Provider>
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p id={messageId} role="alert" className="text-xs text-danger">
           {error}
         </p>
       ) : hint ? (
-        <p className="text-xs text-text-faint">{hint}</p>
+        <p id={messageId} className="text-xs text-text-faint">
+          {hint}
+        </p>
       ) : null}
     </div>
   );

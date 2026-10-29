@@ -1,12 +1,12 @@
 'use client';
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import * as D from '@radix-ui/react-dialog';
 import * as DM from '@radix-ui/react-dropdown-menu';
 import * as P from '@radix-ui/react-popover';
 import * as SW from '@radix-ui/react-switch';
 import * as T from '@radix-ui/react-tabs';
 import * as TT from '@radix-ui/react-tooltip';
-import { CheckCircle2, X, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react';
 import { Button, cx } from './primitives';
 import { t } from './i18n';
 
@@ -231,34 +231,71 @@ export function SegmentedControl<T extends string>({ value, onChange, options, s
 // ─── Toasts ──────────────────────────────────────────────────────────────────
 interface ToastItem {
   id: number;
-  kind: 'success' | 'error' | 'info';
+  kind: 'success' | 'error' | 'warning' | 'info';
   message: ReactNode;
   action?: { label: string; onClick: () => void };
 }
 const ToastCtx = createContext<(t: Omit<ToastItem, 'id'>) => void>(() => undefined);
 
+const TOAST_ICON = {
+  success: <CheckCircle2 aria-hidden className="mt-0.5 size-4 shrink-0 text-success" />,
+  error: <XCircle aria-hidden className="mt-0.5 size-4 shrink-0 text-danger" />,
+  warning: <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />,
+  info: <Info aria-hidden className="mt-0.5 size-4 shrink-0 text-interactive" />,
+};
+
+/** One toast. It waits while the pointer or keyboard focus is on it, so there is time to read it or use its action. */
+function Toast({ item, onDismiss }: { item: ToastItem; onDismiss: (id: number) => void }) {
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (held) return;
+    const h = setTimeout(() => onDismiss(item.id), item.kind === 'error' ? 8000 : item.action ? 6000 : 4000);
+    return () => clearTimeout(h);
+  }, [held, item, onDismiss]);
+  return (
+    <div
+      className="pointer-events-auto flex items-start gap-2.5 rounded-md border border-border bg-surface px-3.5 py-2.5 text-sm shadow-overlay animate-[pop_140ms_ease-out]"
+      onMouseEnter={() => setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+      onFocus={() => setHeld(true)}
+      onBlur={() => setHeld(false)}
+    >
+      {TOAST_ICON[item.kind]}
+      <div className="min-w-0 flex-1">{item.message}</div>
+      {item.action && (
+        <button type="button" className="shrink-0 font-medium text-interactive hover:underline" onClick={item.action.onClick}>
+          {item.action.label}
+        </button>
+      )}
+      <button type="button" aria-label={t('common.dismiss')} className="-mr-1 shrink-0 rounded-sm p-0.5 text-text-faint hover:bg-surface-muted hover:text-text" onClick={() => onDismiss(item.id)}>
+        <X aria-hidden className="size-3.5" />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Errors are announced at once (assertive); other news waits for a pause (polite). Both regions are
+ * always in the page, so screen readers notice what is added to them (audit 30 Oct 2026, VF-10).
+ */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
+  const dismiss = useCallback((id: number) => setItems((xs) => xs.filter((x) => x.id !== id)), []);
   const push = useCallback((t: Omit<ToastItem, 'id'>) => {
     const id = Date.now() + Math.random();
     setItems((xs) => [...xs.slice(-3), { ...t, id }]);
-    setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), t.action ? 6000 : 4000);
   }, []);
+  const list = (errors: boolean) => items.filter((x) => (x.kind === 'error') === errors).map((x) => <Toast key={x.id} item={x} onDismiss={dismiss} />);
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div aria-live="polite" className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-[calc(100vw-32px)] max-w-sm flex-col gap-2">
-        {items.map((t) => (
-          <div key={t.id} className="pointer-events-auto flex items-start gap-2.5 rounded-md border border-border bg-surface px-3.5 py-2.5 text-sm shadow-overlay animate-[pop_140ms_ease-out]">
-            {t.kind === 'error' ? <XCircle className="mt-0.5 size-4 shrink-0 text-danger" /> : <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" />}
-            <div className="min-w-0 flex-1">{t.message}</div>
-            {t.action && (
-              <button className="shrink-0 font-medium text-interactive hover:underline" onClick={t.action.onClick}>
-                {t.action.label}
-              </button>
-            )}
-          </div>
-        ))}
+      <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-[calc(100vw-32px)] max-w-sm flex-col gap-2">
+        <div aria-live="assertive" className="flex flex-col gap-2">
+          {list(true)}
+        </div>
+        <div aria-live="polite" className="flex flex-col gap-2">
+          {list(false)}
+        </div>
       </div>
     </ToastCtx.Provider>
   );
@@ -269,6 +306,7 @@ export function useToast() {
   return {
     success: (message: ReactNode, action?: ToastItem['action']) => push({ kind: 'success', message, action }),
     error: (message: ReactNode) => push({ kind: 'error', message }),
+    warning: (message: ReactNode) => push({ kind: 'warning', message }),
     info: (message: ReactNode) => push({ kind: 'info', message }),
   };
 }

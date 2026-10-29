@@ -6,6 +6,7 @@ export const uiEn = {
   'common.confirm': 'Confirm',
   'common.save': 'Save',
   'common.close': 'Close',
+  'common.dismiss': 'Dismiss',
   'common.retry': 'Try again',
   'common.loading': 'Loading…',
   'common.noResults': 'No results',

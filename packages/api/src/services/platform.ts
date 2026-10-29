@@ -19,7 +19,7 @@ import {
   type Tx,
   withSystem,
 } from '@tallywork/db';
-import { API_KEY_SCOPES, can, forbidden, newId, notFound, resolvePolicy, type DeepPartial, type TrackingPolicy } from '@tallywork/domain';
+import { API_KEY_SCOPES, can, forbidden, newId, notFound, resolvePolicy, validation, type DeepPartial, type TrackingPolicy } from '@tallywork/domain';
 import type { AuditLogDto, DeviceDto, EffectivePolicyDto, NotificationDto, OffsetPage, apiKeyInput, policyDocInput, retentionInput, webhookInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
@@ -187,6 +187,7 @@ export async function createApiKey(x: Ctx, input: z.infer<typeof apiKeyInput>) {
   if (!x.actor.grants['api_keys:manage']) throw forbidden();
   if (x.actor.principal.type !== 'user') throw forbidden('API keys can only be created by signed-in users');
   for (const s of input.scopes) if (!x.actor.grants[API_KEY_SCOPES[s]]) throw forbidden(`You cannot grant ${s}`);
+  if (input.expires_at && Date.parse(input.expires_at) <= x.deps.now().getTime()) throw validation('The expiry date must be in the future', { errors: [{ field: 'expires_at', message: 'Choose a date in the future' }] });
   const prefix = randomToken(6).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).padEnd(8, 'x');
   const secret = randomToken(32);
   const id = newId();
@@ -239,7 +240,7 @@ export async function upsertWebhook(x: Ctx, id: string | null, input: z.infer<ty
   if (!x.actor.grants['webhooks:manage']) throw forbidden();
   await assertPublicUrl(input.url);
   const events = input.events.filter((e) => e === '*' || (WEBHOOK_EVENTS as readonly string[]).includes(e));
-  if (!events.length) throw forbidden('Choose at least one supported event');
+  if (!events.length) throw validation('Choose at least one supported event', { errors: [{ field: 'events', message: 'Choose at least one supported event' }] });
   let wid = id;
   let secret: string | null = null;
   if (wid) {
@@ -469,8 +470,9 @@ const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
 
 export async function uploadReceipt(x: Ctx, file: File) {
   if (!x.actor.grants['expenses:create']) throw forbidden();
-  if (!RECEIPT_TYPES.has(file.type)) throw forbidden('Receipts must be JPEG, PNG, WebP or PDF');
-  if (file.size > MAX_RECEIPT_BYTES) throw forbidden('Receipts are limited to 10 MB');
+  // The file is the problem, not the person's access: 400 with the field, so the form can say what to change.
+  if (!RECEIPT_TYPES.has(file.type)) throw validation('Receipts must be JPEG, PNG, WebP or PDF', { errors: [{ field: 'file', message: 'Use a JPEG, PNG, WebP or PDF file' }] });
+  if (file.size > MAX_RECEIPT_BYTES) throw validation('Receipts are limited to 10 MB', { errors: [{ field: 'file', message: 'Use a file of 10 MB or less' }] });
   const id = newId();
   const ext = file.type === 'application/pdf' ? 'pdf' : file.type.split('/')[1];
   const key = `org/${x.org.id}/receipts/${x.actor.membershipId}/${id}.${ext}`;

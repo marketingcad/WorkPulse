@@ -22,7 +22,9 @@ const pdfSafeLogo = z
   .regex(/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+=*$/, 'Use a PNG or JPEG image');
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
-export const password = z.string().min(10, 'Use at least 10 characters').max(200);
+export const password = z.string().min(10, 'Use at least 10 characters').max(200, 'Use at most 200 characters');
+/** A token from an emailed link. A malformed one gets the same answer as an unknown or expired one. */
+const linkToken = (message: string) => z.string().min(20, message).max(200, message);
 
 export const signupInput = z.object({
   name: nonEmpty(100),
@@ -39,7 +41,7 @@ export const loginInput = z.object({
   remember: z.boolean().default(true),
 });
 export const forgotPasswordInput = z.object({ email: z.email().max(254) });
-export const resetPasswordInput = z.object({ token: z.string().min(20).max(200), password });
+export const resetPasswordInput = z.object({ token: linkToken('This link is invalid or has expired'), password });
 export const changePasswordInput = z.object({ current_password: z.string().min(1).max(200), new_password: password });
 export const totpVerifyInput = z.object({ code: z.string().regex(/^\d{6}$/) });
 
@@ -98,7 +100,7 @@ export const inviteInput = z.object({
   team_role: z.enum(['MEMBER', 'MANAGER']).default('MEMBER'),
   project_ids: z.array(id).max(100).default([]),
 });
-export const acceptInviteInput = z.object({ token: z.string().min(20).max(200), name: nonEmpty(100).optional(), password: password.optional() });
+export const acceptInviteInput = z.object({ token: linkToken('This invitation is invalid or has expired'), name: nonEmpty(100).optional(), password: password.optional() });
 
 export const updateWorkerInput = z.object({
   role_id: id.optional(),
@@ -218,7 +220,7 @@ export const clientPortalSettingsInput = z.object({
 export const clientPortalInviteInput = z.object({ email: z.email().max(254), name: optionalText(100) });
 
 export const clientPortalAcceptInput = z.object({
-  token: z.string().min(20).max(200),
+  token: linkToken('This invitation is invalid or has expired'),
   name: optionalText(100),
   password: password.optional(),
 });
@@ -349,6 +351,14 @@ export const payrollProfileInput = z.object({
   is_default: z.boolean().optional(),
   member_ids: z.array(id).max(2000).default([]),
 });
+/** PATCH: only the fields sent change. Leaving out `member_ids` keeps the members and their bank details. */
+export const payrollProfilePatchInput = z.object({
+  name: nonEmpty(100).optional(),
+  period: payPeriodConfig.optional(),
+  currency: currency.optional(),
+  is_default: z.boolean().optional(),
+  member_ids: z.array(id).max(2000).optional(),
+});
 export const bankDetailsInput = z.object({
   type: z.enum(['bank', 'paypal', 'wise', 'other']),
   bank_name: optionalText(150),
@@ -379,6 +389,8 @@ export const timeTypeInput = z.object({
   not_billable: z.boolean().optional(),
   is_default: z.boolean().optional(),
 });
+/** PATCH: only the fields sent change. */
+export const timeTypePatchInput = timeTypeInput.partial();
 
 // ─── Idle / screenshots ──────────────────────────────────────────────────────
 export const idleResolveInput = z
@@ -431,11 +443,19 @@ export const rateInput = z.object({
   currency,
   effective_from: isoDate,
 });
+/** Upper bound for stored totals (payments, budgets): far above any real amount, and safe to add up as numbers. */
+const MAX_TOTAL_MINOR = 1_000_000_000_000;
+/**
+ * An invoice line quantity: within the database column, and small enough that quantity × price
+ * stays a safe integer even over 100 lines. Extra decimals are rounded to 4 when priced (F10).
+ */
+const invoiceQuantity = z.number().min(0).max(100_000, 'Use a quantity up to 100,000');
+
 export const budgetInput = z.object({
   subject_type: z.enum(['PROJECT', 'CLIENT']),
   subject_id: id,
   kind: z.enum(['HOURS', 'MONEY']),
-  amount: z.number().int().min(1),
+  amount: z.number().int().min(1).max(MAX_TOTAL_MINOR),
   period: z.enum(['TOTAL', 'MONTHLY']).default('TOTAL'),
   warn_pct: z.number().int().min(1).max(100).default(80),
   include_non_billable: z.boolean().default(false),
@@ -463,7 +483,7 @@ export const invoiceCreateInput = z.object({
   include_expenses: z.boolean().default(true),
   notes: optionalText(2000),
   extra_lines: z
-    .array(z.object({ description: nonEmpty(300), quantity: z.number().min(0), unit_price_minor: z.number().int().min(0), tax_rate_bps: z.number().int().min(0).max(10_000).default(0) }))
+    .array(z.object({ description: nonEmpty(300), quantity: invoiceQuantity, unit_price_minor: z.number().int().min(0).max(100_000_000), tax_rate_bps: z.number().int().min(0).max(10_000).default(0) }))
     .max(100)
     .default([]),
 });
@@ -471,13 +491,14 @@ export const invoiceCreateInput = z.object({
 export const invoiceDraftUpdateInput = z.object({ issue_date: isoDate.optional(), due_date: isoDate.optional(), notes: optionalText(2000) });
 export const paymentInput = z.object({
   client_id: id.nullable().optional(),
-  amount_minor: z.number().int().min(1),
+  amount_minor: z.number().int().min(1).max(MAX_TOTAL_MINOR),
   currency,
   received_on: isoDate,
-  provider: z.string().max(40).default('manual'),
-  provider_ref: z.string().max(200).nullable().optional(),
+  provider: z.string().trim().toLowerCase().max(40).default('manual'),
+  /** trimmed, so " CHK1" and "CHK1" are the same reference for the duplicate check; blank means none */
+  provider_ref: z.string().trim().max(200).nullable().optional().transform((v) => v || null),
   note: optionalText(500),
-  allocations: z.array(z.object({ invoice_id: id, amount_minor: z.number().int().min(1) })).max(100).default([]),
+  allocations: z.array(z.object({ invoice_id: id, amount_minor: z.number().int().min(1).max(MAX_TOTAL_MINOR) })).max(100).default([]),
 });
 
 // ─── Platform ────────────────────────────────────────────────────────────────
@@ -515,7 +536,12 @@ export const dashboardLayoutInput = z.object({
   scope: z.enum(['ALL', 'ME', 'WORKER']),
   widgets: z.array(z.object({ key: z.string().max(60), size: z.enum(['S', 'M', 'L']), settings: z.record(z.string(), z.unknown()).optional() })).max(40),
 });
-export const reportQueryInput = z.object({
+/** The same range rule as dateRangeQuery and the report screen: from on or before to, at most 400 days. */
+const reportRange = <T extends { from: string; to: string }>(schema: z.ZodType<T>) =>
+  schema
+    .refine((v) => v.from <= v.to, { message: 'Choose a start on or before the end', path: ['to'] })
+    .refine((v) => (Date.parse(v.to) - Date.parse(v.from)) / 86400000 <= 400, { message: 'Choose a range of up to 400 days', path: ['to'] });
+const reportQueryFields = z.object({
   from: isoDate,
   to: isoDate,
   membership_ids: z.array(id).max(500).optional(),
@@ -526,7 +552,8 @@ export const reportQueryInput = z.object({
   billable: z.enum(['all', 'billable', 'non_billable']).default('all'),
   status: z.string().max(30).optional(),
 });
-export const exportInput = reportQueryInput.extend({ format: z.enum(['CSV', 'XLSX', 'PDF']) });
+export const reportQueryInput = reportRange(reportQueryFields);
+export const exportInput = reportRange(reportQueryFields.extend({ format: z.enum(['CSV', 'XLSX', 'PDF']) }));
 export const savedReportInput = z.object({
   report_key: z.string().max(60),
   name: nonEmpty(100),

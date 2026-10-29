@@ -2,7 +2,7 @@ import { and, asc, eq, gte, isNull, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { timeEntries, timeTypes, type Tx } from '@tallywork/db';
 import { addDaysToDate, forbidden, localDate, newId, notFound, validation } from '@tallywork/domain';
-import type { TimeTypeDto, timeTypeInput } from '@tallywork/contracts';
+import type { TimeTypeDto, timeTypeInput, timeTypePatchInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { audit } from './events';
 import { recomputeWorkerDays } from './projector';
@@ -29,22 +29,30 @@ export async function listTimeTypes(x: Ctx, opts: { includeArchived?: boolean } 
   return rows.map(dto);
 }
 
-export async function upsertTimeType(x: Ctx, id: string | null, input: z.infer<typeof timeTypeInput>) {
+export async function upsertTimeType(x: Ctx, id: string | null, input: z.infer<typeof timeTypeInput> | z.infer<typeof timeTypePatchInput>) {
   if (!x.actor.grants['org:update']) throw forbidden();
-  const values = {
-    name: input.name,
-    shortName: input.short_name,
-    color: input.color ?? '#475569',
-    payCoefficient: input.pay_coefficient,
-    billCoefficient: input.bill_coefficient,
-    notBillable: input.not_billable ?? false,
-    isDefault: input.is_default ?? false,
-  };
   let before: typeof timeTypes.$inferSelect | undefined;
+  if (id) {
+    [before] = await x.tx.select().from(timeTypes).where(eq(timeTypes.id, id));
+    if (!before) throw notFound('time_type');
+  }
+  // An update changes only what it sends; anything left out keeps its saved value.
+  const name = input.name ?? before?.name;
+  const shortName = input.short_name ?? before?.shortName;
+  const payCoefficient = input.pay_coefficient ?? before?.payCoefficient;
+  const billCoefficient = input.bill_coefficient ?? before?.billCoefficient;
+  if (name === undefined || shortName === undefined || payCoefficient === undefined || billCoefficient === undefined) throw validation('Give the time type a name, a short name and its pay and bill multipliers');
+  const values = {
+    name,
+    shortName,
+    color: input.color ?? before?.color ?? '#475569',
+    payCoefficient,
+    billCoefficient,
+    notBillable: input.not_billable ?? before?.notBillable ?? false,
+    isDefault: input.is_default ?? before?.isDefault ?? false,
+  };
   let tid = id;
   if (tid) {
-    [before] = await x.tx.select().from(timeTypes).where(eq(timeTypes.id, tid));
-    if (!before) throw notFound('time_type');
     await x.tx.update(timeTypes).set({ ...values, updatedAt: new Date() }).where(eq(timeTypes.id, tid));
   } else {
     tid = newId();

@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { DomainError, conflict, notFound, validation } from '@tallywork/domain';
-import type { Problem } from '@tallywork/contracts';
+import { fieldLabel, issueMessage, type Problem } from '@tallywork/contracts';
 
 const STATUS: Record<DomainError['category'], number> = {
   validation: 400,
@@ -15,14 +15,21 @@ const STATUS: Record<DomainError['category'], number> = {
 
 /**
  * Database errors that are the caller's doing, not ours: a malformed id in the path (22P02, the
- * value is not a uuid) is a missing record, and a unique violation (23505) is a conflict. Drizzle
- * wraps the driver error, so the code may sit on a cause.
+ * value is not a uuid) is a missing record, a unique violation (23505) is a conflict, and a value
+ * the database cannot hold or a rule it enforces (22001, 22003, 23502, 23503, 23514) is a request to
+ * fix, not a server fault. Validation should catch these first; this keeps any gap from becoming a
+ * 500. Drizzle wraps the driver error, so the code may sit on a cause.
  */
 export function fromDatabaseError(err: unknown): DomainError | null {
   for (let e = err, depth = 0; e && typeof e === 'object' && depth < 4; e = (e as { cause?: unknown }).cause, depth++) {
     const code = (e as { code?: unknown }).code;
     if (code === '22P02') return notFound('resource');
     if (code === '23505') return conflict('duplicate', 'This already exists');
+    if (code === '22003') return new DomainError('validation', 'value_out_of_range', 'A number is too large to save. Use a smaller value.');
+    if (code === '22001') return new DomainError('validation', 'value_too_long', 'A text is too long to save. Shorten it and try again.');
+    if (code === '23502') return new DomainError('validation', 'value_missing', 'A required value is missing.');
+    if (code === '23514') return new DomainError('validation', 'value_not_allowed', 'A value is not allowed here. Check the form and try again.');
+    if (code === '23503') return conflict('related_record_missing', 'Something this refers to no longer exists. Reload and try again.');
   }
   return null;
 }
@@ -57,13 +64,20 @@ export function problemFromError(error: unknown, requestId: string): Problem {
   return { type: 'about:blank', title: 'Something went wrong on our side', status: 500, code: 'internal_error', request_id: requestId };
 }
 
+/**
+ * `errors[].field` is the exact path, which forms match against their inputs. The title is for a
+ * person reading a toast: the first problem, labelled ("Name: This field is required").
+ */
 function zodToDomain(e: z.ZodError): DomainError {
   const errors = e.issues.map((i) => ({ field: i.path.join('.') || '(root)', message: i.message }));
-  return validation(errors[0] ? `${errors[0].field}: ${errors[0].message}` : 'Invalid request', { errors });
+  const first = e.issues[0];
+  const label = first ? fieldLabel(first.path) : null;
+  const title = !first ? 'Check the request and try again' : label ? `${label}: ${first.message}` : first.message;
+  return validation(e.issues.length > 1 ? `${title} (and ${e.issues.length - 1} more)` : title, { errors });
 }
 
 export function parse<T extends z.ZodType>(schema: T, data: unknown): z.infer<T> {
-  const r = schema.safeParse(data);
+  const r = schema.safeParse(data, { error: issueMessage });
   if (!r.success) throw zodToDomain(r.error);
   return r.data;
 }
@@ -81,6 +95,21 @@ export async function body<T extends z.ZodType>(c: Context, schema: T): Promise<
     throw validation('Request body must be valid JSON');
   }
   return parse(schema, json);
+}
+
+/** The uploaded file in a multipart form; anything else is a 400 the person can act on, not a server error. */
+export async function formFile(c: Context, field = 'file'): Promise<File> {
+  const type = (c.req.header('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+  if (type !== 'multipart/form-data') throw new DomainError('validation', 'unsupported_media_type', 'Send the file as multipart/form-data');
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    throw validation('The upload could not be read. Try again.');
+  }
+  const file = form.get(field);
+  if (!(file instanceof File)) throw validation('Attach a file', { errors: [{ field, message: 'Choose a file' }] });
+  return file;
 }
 
 export function query<T extends z.ZodType>(c: Context, schema: T): z.infer<T> {

@@ -624,7 +624,9 @@ interface DraftLine {
 async function buildInvoiceDraft(x: Ctx, input: z.infer<typeof invoiceCreateInput>) {
   const [client] = await x.tx.select().from(clients).where(eq(clients.id, input.client_id));
   if (!client) throw notFound('client');
-  if (input.period_end < input.period_start) throw validation('Period end must be after period start');
+  if (input.period_end < input.period_start) throw validation('Period end must be after period start', { errors: [{ field: 'period_end', message: 'Choose an end on or after the start' }] });
+  // Same rule as editing a draft (updateInvoiceDraft).
+  if (input.due_date < input.issue_date) throw validation('The due date cannot be before the issue date', { errors: [{ field: 'due_date', message: 'The due date cannot be before the issue date' }] });
   const currency = client.currency ?? x.org.currency;
   const entries = await x.tx
     .select({ b: billingEntries, projectName: projects.name, taskTitle: tasks.title, workerName: users.name, rateAmount: billingRates.amountMinor, timeTypeId: timesheetEntries.timeTypeId })

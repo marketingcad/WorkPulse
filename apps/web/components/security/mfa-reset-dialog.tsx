@@ -61,7 +61,7 @@ export function MfaResetDialog({ open, onOpenChange, member }: { open: boolean; 
           void submit();
         }}
       >
-        <Field label="Your password" htmlFor="mfa-reset-password" error={error?.field('password') ?? (error && !error.errors?.length ? error.title : undefined)}>
+        <Field label="Your password" htmlFor="mfa-reset-password" error={error?.field('password') ?? error?.general(['password'])}>
           <Input id="mfa-reset-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus />
         </Field>
       </form>

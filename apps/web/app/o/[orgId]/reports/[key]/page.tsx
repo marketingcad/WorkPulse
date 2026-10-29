@@ -87,8 +87,9 @@ function ReportRunner() {
   const manager = org.isManagerView;
   const workersQ = useMemberOptions(manager);
   const teamsQ = useOrgQuery<TeamDto[]>(manager ? '/teams' : null);
-  const projectsQ = useOrgQuery<ProjectDto[]>('/projects');
-  const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients' : null);
+  // Archived ones too (U4): reports cover past work.
+  const projectsQ = useOrgQuery<ProjectDto[]>('/projects?include_archived=true');
+  const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients?include_archived=true' : null);
 
   const [preset, setPreset] = useState<Preset>('this_week');
   const [params, setParams] = useState<Params>(() => ({ ...rangeFor('this_week', tz, ws), membership_ids: [], team_ids: [], project_ids: [], client_ids: [], group_by: [], billable: 'all' }));
@@ -192,7 +193,8 @@ function ReportRunner() {
       (result?.columns ?? []).map((c, i) => ({
         key: c.key,
         header: c.label,
-        cell: (r) => formatCell(c.type, r[c.key], f),
+        // A row's money is in its own currency when it has one (reports that mix currencies).
+        cell: (r) => formatCell(c.type, r[c.key], typeof r.currency === 'string' && r.currency ? { ...f, currency: r.currency } : f),
         value: (r) => r[c.key] ?? null,
         align: NUMERIC_TYPES.includes(c.type) ? 'right' : undefined,
         priority: i === 0 ? 'primary' : i < 3 ? 'secondary' : 'low',
@@ -215,7 +217,13 @@ function ReportRunner() {
   const chart = result?.chart;
   const chartType: ColumnType = chart ? (result!.columns.find((c) => c.key === chart.series[0]?.key)?.type ?? (result!.columns.some((c) => c.type === 'duration') ? 'duration' : result!.columns.some((c) => c.type === 'money') ? 'money' : 'number')) : 'number';
   const xIsDate = chart ? chart.x === 'date' || result!.columns.find((c) => c.key === chart.x)?.type === 'date' : false;
-  const hasTotals = !!result?.totals && Object.keys(result.totals).length > 0;
+  // One totals line, or one per currency when the report mixes them.
+  const totalLines = result?.totalsByCurrency?.length
+    ? result.totalsByCurrency.map((t) => ({ label: result.totalsByCurrency!.length > 1 ? `Total (${t.currency})` : 'Total', values: t.totals, f: { ...f, currency: t.currency } }))
+    : result?.totals && Object.keys(result.totals).length > 0
+      ? [{ label: 'Total', values: result.totals, f }]
+      : [];
+  const hasTotals = totalLines.length > 0;
   const filtersActive = params.membership_ids.length + params.team_ids.length + params.project_ids.length + params.client_ids.length > 0 || params.billable !== 'all';
 
   return (
@@ -282,8 +290,8 @@ function ReportRunner() {
         )}
         {manager && has('members') && <MultiSelect label="Members" options={(workersQ.data ?? []).map((w) => ({ value: w.id, label: w.name }))} value={params.membership_ids} onChange={(v) => set('membership_ids', v)} loading={workersQ.isLoading} />}
         {manager && has('teams') && (teamsQ.data?.length ?? 0) > 0 && <MultiSelect label="Teams" options={(teamsQ.data ?? []).filter((t) => !t.archived_at).map((t) => ({ value: t.id, label: t.name }))} value={params.team_ids} onChange={(v) => set('team_ids', v)} />}
-        {has('projects') && (projectsQ.data?.length ?? 0) > 0 && <MultiSelect label="Projects" options={(projectsQ.data ?? []).map((p) => ({ value: p.id, label: p.name, sub: p.client_name ?? undefined }))} value={params.project_ids} onChange={(v) => set('project_ids', v)} />}
-        {has('clients') && (clientsQ.data?.length ?? 0) > 0 && <MultiSelect label="Clients" options={(clientsQ.data ?? []).map((c) => ({ value: c.id, label: c.name }))} value={params.client_ids} onChange={(v) => set('client_ids', v)} />}
+        {has('projects') && (projectsQ.data?.length ?? 0) > 0 && <MultiSelect label="Projects" options={(projectsQ.data ?? []).map((p) => ({ value: p.id, label: p.archived_at ? `${p.name} (archived)` : p.name, sub: p.client_name ?? undefined }))} value={params.project_ids} onChange={(v) => set('project_ids', v)} />}
+        {has('clients') && (clientsQ.data?.length ?? 0) > 0 && <MultiSelect label="Clients" options={(clientsQ.data ?? []).map((c) => ({ value: c.id, label: c.archived_at ? `${c.name} (archived)` : c.name }))} value={params.client_ids} onChange={(v) => set('client_ids', v)} />}
         {has('billable') && (
           <Select aria-label="Billable" className="w-52" value={params.billable} onChange={(e) => set('billable', e.target.value as Billable)}>
             <option value="all">Billable + non-billable</option>
@@ -341,7 +349,7 @@ function ReportRunner() {
         </Panel>
       ) : (
         <div className={cx('flex flex-col gap-4 transition-opacity', resultQ.isFetching && 'opacity-70')}>
-          {result.summary.length > 0 && <KpiStrip items={result.summary.map((s) => ({ label: s.label, value: formatValue(s.type, s.value, f) }))} />}
+          {result.summary.length > 0 && <KpiStrip items={result.summary.map((s) => ({ label: s.label, value: formatValue(s.type, s.value, s.currency ? { ...f, currency: s.currency } : f) }))} />}
           {chart && chart.data.length > 0 && chart.series.length > 0 && (
             <Panel title={xIsDate ? (chart.series.length > 1 ? 'Per day' : `${chart.series[0]?.label ?? ''} per day`) : `${chart.series[0]?.label ?? ''} by ${(result.columns.find((c) => c.key === chart.x)?.label ?? chart.x).toLowerCase()}`}>
               <div className="p-4">
@@ -359,16 +367,20 @@ function ReportRunner() {
               empty={<EmptyState title="No data for these filters" description="Try a wider date range or clear some filters." />}
               footer={
                 hasTotals ? (
-                  <tr className="h-10">
-                    {result.columns.map((c, i) => {
-                      const v = result.totals![c.key];
-                      return (
-                        <td key={c.key} className={cx('px-3 py-1.5', NUMERIC_TYPES.includes(c.type) && 'tabular text-right')}>
-                          {i === 0 ? 'Total' : v !== undefined ? formatValue(c.type, v, f) : ''}
-                        </td>
-                      );
-                    })}
-                  </tr>
+                  <>
+                    {totalLines.map((t) => (
+                      <tr key={t.label} className="h-10">
+                        {result.columns.map((c, i) => {
+                          const v = t.values[c.key];
+                          return (
+                            <td key={c.key} className={cx('px-3 py-1.5', NUMERIC_TYPES.includes(c.type) && 'tabular text-right')}>
+                              {i === 0 ? t.label : v !== undefined ? formatValue(c.type, v, t.f) : ''}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </>
                 ) : undefined
               }
             />

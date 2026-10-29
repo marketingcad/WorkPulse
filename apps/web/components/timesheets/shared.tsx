@@ -5,6 +5,7 @@ import { Badge, type Tone } from '@tallywork/ui';
 import { useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import type { Assignment } from '@/components/project-task-picker';
+import { fromZonedInput, toZonedInput } from '@/lib/zoned';
 
 /** Approval action recorded by GET /timesheets/:id/history. */
 export interface TimesheetHistoryItem {
@@ -34,18 +35,14 @@ export interface BulkResult {
   error?: string;
 }
 
-/** ISO instant -> value for <input type="datetime-local"> in the viewer's browser timezone. */
-export function toLocalInput(iso: string | Date): string {
-  const d = typeof iso === 'string' ? new Date(iso) : iso;
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+/** ISO instant -> value for <input type="datetime-local"> on the wall clock of `timeZone` (the browser's when omitted). */
+export function toLocalInput(iso: string | Date, timeZone?: string): string {
+  return toZonedInput(iso, timeZone);
 }
 
-/** datetime-local value (browser wall time) -> ISO instant. */
-export function fromLocalInput(v: string): string | null {
-  if (!v) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+/** datetime-local value on the wall clock of `timeZone` (the browser's when omitted) -> ISO instant. */
+export function fromLocalInput(v: string, timeZone?: string): string | null {
+  return fromZonedInput(v, timeZone);
 }
 
 export const FLAG_META: Record<string, { label: string; tone: Tone }> = {
@@ -54,6 +51,7 @@ export const FLAG_META: Record<string, { label: string; tone: Tone }> = {
   over_expected: { label: 'Over expected', tone: 'info' },
   low_activity: { label: 'Low activity', tone: 'secondary' },
   late_time: { label: 'Time added after submit', tone: 'danger' },
+  needs_review: { label: 'Needs review', tone: 'warning' },
 };
 
 export function FlagBadges({ flags }: { flags: string[] }) {

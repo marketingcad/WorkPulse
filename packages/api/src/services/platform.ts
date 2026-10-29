@@ -216,6 +216,7 @@ export const WEBHOOK_EVENTS = [
   'timesheet.approved',
   'timesheet.rejected',
   'timesheet.late_time',
+  'time.needs_review',
   'time_off.requested',
   'time_off.approved',
   'invoice.created',

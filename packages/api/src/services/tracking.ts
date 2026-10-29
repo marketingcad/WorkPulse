@@ -9,9 +9,12 @@ import {
   timeEntries,
   timeEntryRevisions,
   timeSegments,
+  organizations,
+  timeReviewFlags,
   timesheets,
   trackingSessions,
   workerProfiles,
+  type TimeReviewReason,
   type TrackingSource,
   type Tx,
 } from '@tallywork/db';
@@ -37,6 +40,7 @@ import {
 import type { SessionDto } from '@tallywork/contracts';
 import { auditSystem, emit } from './events';
 import { workerCanTrackProject } from './work';
+import { effectivePolicy } from './policies';
 
 export type ActorRef = { type: 'user' | 'agent' | 'system' | 'api_key'; id: string | null };
 type Session = typeof trackingSessions.$inferSelect;
@@ -50,9 +54,36 @@ export async function liveSession(tx: Tx, membershipId: string): Promise<Session
   const [s] = await tx
     .select()
     .from(trackingSessions)
-    .where(and(eq(trackingSessions.membershipId, membershipId), inArray(trackingSessions.state, LIVE_STATES as SessionState[])))
+    .where(and(eq(trackingSessions.membershipId, membershipId), inArray(trackingSessions.state, LIVE_STATES as SessionState[]), eq(trackingSessions.backfill, false)))
     .limit(1);
   return s ?? null;
+}
+
+/** A start this long before it reached the server was recorded offline (the desktop's queue). */
+export const OFFLINE_AFTER_MS = 2 * 60_000;
+
+/**
+ * Raise time that was kept for an approver to review (Phase 2: tracked evidence is never dropped, so
+ * what a live check would refuse is recorded and flagged). Once per member, day and reason.
+ */
+export async function flagForReview(tx: Tx, s: { organizationId: string; membershipId: string }, localDay: string, reason: TimeReviewReason, details: Record<string, unknown> = {}, sessionId: string | null = null): Promise<void> {
+  const [row] = await tx
+    .insert(timeReviewFlags)
+    .values({ id: newId(), organizationId: s.organizationId, membershipId: s.membershipId, localDate: localDay, reason, sessionId, details })
+    .onConflictDoNothing()
+    .returning({ id: timeReviewFlags.id });
+  if (row) await emit(tx, s.organizationId, 'time.needs_review', { membership_id: s.membershipId, local_date: localDay, reason, session_id: sessionId, ...details }, { workerId: s.membershipId, sessionId: sessionId ?? undefined });
+}
+
+/** Days that now have both duration-only time and tracked time are flagged: trimming can't compare them. */
+export async function flagMixedDays(tx: Tx, s: { organizationId: string; membershipId: string }, dates: string[]): Promise<void> {
+  for (const d of [...new Set(dates)]) {
+    const kinds = await tx
+      .select({ durationOnly: timeEntries.durationOnly, source: timeEntries.source })
+      .from(timeEntries)
+      .where(and(eq(timeEntries.membershipId, s.membershipId), eq(timeEntries.localDate, d), isNull(timeEntries.deletedAt)));
+    if (kinds.some((k) => k.durationOnly) && kinds.some((k) => k.source === 'TRACKED')) await flagForReview(tx, s, d, 'duration_only_and_tracked');
+  }
 }
 
 export async function workerTimezone(tx: Tx, membershipId: string, fallback: string): Promise<string> {
@@ -174,7 +205,9 @@ async function deriveEntries(tx: Tx, s: Session, seg: { id: string | null; start
     });
   }
   if (seg.id) await tx.update(timeSegments).set({ derivedAt: new Date() }).where(eq(timeSegments.id, seg.id));
-  return [...new Set(pieces.map((p) => p.localDate))];
+  const dates = [...new Set(pieces.map((p) => p.localDate))];
+  await flagMixedDays(tx, s, dates);
+  return dates;
 }
 
 export async function markTimeChanged(tx: Tx, organizationId: string, membershipId: string, dates: string[], actor: ActorRef): Promise<void> {
@@ -234,7 +267,32 @@ export async function applyTrigger(
     await emit(tx, s.organizationId, evt, { session_id: s.id, membership_id: s.membershipId, project_id: s.projectId, task_id: s.taskId, trigger, end_reason: patch.endReason ?? null }, { workerId: s.membershipId, sessionId: s.id, occurredAt: at, actor: opts.actor });
   }
   await markTimeChanged(tx, s.organizationId, s.membershipId, dates, opts.actor);
+  if (r.to === 'STOPPED' && s.recordedOffline) await flagOfflineOverLimit(tx, updated!);
   return updated!;
+}
+
+/**
+ * An offline session is accepted whatever the limits (Q7), so once it ends, check the days and weeks it
+ * covered: over the daily or weekly limit is flagged for review, never cut.
+ */
+async function flagOfflineOverLimit(tx: Tx, s: Session): Promise<void> {
+  const policy = await effectivePolicy(tx, s.organizationId, s.membershipId);
+  const { dailySeconds, weeklySeconds } = policy.limits;
+  if (dailySeconds == null && weeklySeconds == null) return;
+  const [org] = await tx.select({ weekStart: organizations.weekStart }).from(organizations).where(eq(organizations.id, s.organizationId));
+  const end = s.endedAt && s.endedAt > s.startedAt ? s.endedAt : s.startedAt;
+  const days = [...new Set([localDate(s.startedAt, s.timezone), ...splitAtLocalMidnight({ start: s.startedAt, end }, s.timezone).map((p) => p.localDate)])];
+  for (const d of days) {
+    const day = await trackedSecondsBetween(tx, s.membershipId, s.timezone, d, d, end, false);
+    if (dailySeconds != null && day > dailySeconds) {
+      await flagForReview(tx, s, d, 'offline_over_limit', { limit: 'daily', limit_seconds: dailySeconds, seconds: day }, s.id);
+      continue;
+    }
+    if (weeklySeconds == null) continue;
+    const wk = startOfWeek(d, org?.weekStart ?? 1);
+    const week = await trackedSecondsBetween(tx, s.membershipId, s.timezone, wk, addDaysToDate(wk, 6), end, false);
+    if (week > weeklySeconds) await flagForReview(tx, s, d, 'offline_over_limit', { limit: 'weekly', limit_seconds: weeklySeconds, seconds: week }, s.id);
+  }
 }
 
 export interface StartInput {
@@ -261,10 +319,26 @@ export async function validateTrackTarget(tx: Tx, membershipId: string, projectI
   if (!p || p.archivedAt) throw notFound('project');
   if (p.status !== 'ACTIVE') throw businessRule('project_inactive', 'This project is not active');
   if (!(await workerCanTrackProject({ tx }, membershipId, projectId))) throw forbidden('You are not a member of this project');
-  if (taskId) {
-    const [t] = await tx.select().from(tasks).where(eq(tasks.id, taskId));
-    if (!t || t.projectId !== projectId || t.archivedAt) throw notFound('task');
-  }
+  if (taskId && !(await taskTrackable(tx, projectId, taskId))) throw notFound('task');
+}
+
+async function taskTrackable(tx: Tx, projectId: string, taskId: string): Promise<boolean> {
+  const [t] = await tx.select().from(tasks).where(eq(tasks.id, taskId));
+  return !!t && t.projectId === projectId && !t.archivedAt;
+}
+
+/**
+ * For time recorded offline: the project and task as they were may since have been archived, closed or
+ * unassigned. The time is kept on the project (a task that can't take it is left out) and flagged.
+ * A project that doesn't exist can't hold time and is still refused.
+ */
+async function offlineTrackTarget(tx: Tx, membershipId: string, projectId: string, taskId: string | null): Promise<{ taskId: string | null; problems: TimeReviewReason[] }> {
+  const [p] = await tx.select().from(projects).where(eq(projects.id, projectId));
+  if (!p) throw notFound('project');
+  const problems: TimeReviewReason[] = [];
+  if (p.archivedAt || p.status !== 'ACTIVE' || !(await workerCanTrackProject({ tx }, membershipId, projectId))) problems.push('offline_project_unavailable');
+  if (taskId && !(await taskTrackable(tx, projectId, taskId))) return { taskId: null, problems: [...problems, 'offline_task_unavailable'] };
+  return { taskId, problems };
 }
 
 export async function startSession(tx: Tx, input: StartInput): Promise<{ session: Session; duplicate: boolean }> {
@@ -283,15 +357,28 @@ export async function startSession(tx: Tx, input: StartInput): Promise<{ session
   }
 
   const [profile] = await tx.select().from(workerProfiles).where(eq(workerProfiles.membershipId, input.membershipId));
+  // Turning tracking off is respected even for time recorded offline (Phase 2, decision 3).
   if (profile && !profile.trackingEnabled) throw businessRule('tracking_disabled', 'Time tracking is disabled for your account');
-  await validateTrackTarget(tx, input.membershipId, input.projectId, input.taskId);
   const timezone = profile?.timezone ?? input.orgTimezone;
 
-  const limitHit = await limitReached(tx, input.membershipId, timezone, policy, input.now, input.orgWeekStart);
-  if (limitHit) throw businessRule('limit_reached', limitHit === 'daily' ? 'You have reached your daily time limit' : 'You have reached your weekly time limit');
+  // Recorded offline and delivered late (Q7): the checks for a timer starting now don't apply to work
+  // that already happened. The time is kept and whatever they would have refused is flagged instead.
+  const offline = input.source === 'DESKTOP' && input.now.getTime() - input.at.getTime() > OFFLINE_AFTER_MS;
+  let taskId = input.taskId;
+  let problems: TimeReviewReason[] = [];
+  if (offline) ({ taskId, problems } = await offlineTrackTarget(tx, input.membershipId, input.projectId, input.taskId));
+  else {
+    await validateTrackTarget(tx, input.membershipId, input.projectId, input.taskId);
+    const limitHit = await limitReached(tx, input.membershipId, timezone, policy, input.now, input.orgWeekStart);
+    if (limitHit) throw businessRule('limit_reached', limitHit === 'daily' ? 'You have reached your daily time limit' : 'You have reached your weekly time limit');
+  }
 
+  // A timer is running and this start was recorded offline, or before that timer began (Q6): this one is
+  // history being filled in. It never supersedes or shortens the running timer, whichever started first;
+  // overlapping moments are trimmed when derived. Only a start happening now takes over.
   const existing = await liveSession(tx, input.membershipId);
-  if (existing) {
+  const backfill = !!existing && (offline || existing.startedAt > input.at);
+  if (existing && !backfill) {
     if (policy.tracking.singleTimer === 'reject') throw conflict('session_already_running', 'A timer is already running. Stop it first.');
     await applyTrigger(tx, existing, 'SUPERSEDE', { at: input.at < existing.startedAt ? existing.startedAt : input.at, actor: input.actor, cause: `superseded_by_${input.source.toLowerCase()}` });
   }
@@ -306,7 +393,7 @@ export async function startSession(tx: Tx, input: StartInput): Promise<{ session
       deviceId: input.deviceId,
       source: input.source,
       projectId: input.projectId,
-      taskId: input.taskId,
+      taskId,
       state: 'ACTIVE',
       startedAt: input.at,
       timezone,
@@ -314,8 +401,11 @@ export async function startSession(tx: Tx, input: StartInput): Promise<{ session
       lastSeq: input.seq ?? 0,
       lastHeartbeatAt: input.now,
       lastEvidenceAt: input.at,
+      backfill,
+      recordedOffline: offline,
     })
     .returning();
+  for (const reason of problems) await flagForReview(tx, session!, localDate(input.at, timezone), reason, { project_id: input.projectId, task_id: input.taskId }, id);
   await openSegment(tx, session!, 'WORK', input.at);
   await tx.insert(sessionTransitions).values({
     id: newId(),
@@ -328,7 +418,7 @@ export async function startSession(tx: Tx, input: StartInput): Promise<{ session
     actorId: input.actor.id,
     occurredAt: input.at,
   });
-  await emit(tx, input.organizationId, 'session.started', { session_id: id, membership_id: input.membershipId, project_id: input.projectId, task_id: input.taskId, source: input.source }, { workerId: input.membershipId, sessionId: id, occurredAt: input.at, actor: input.actor });
+  await emit(tx, input.organizationId, 'session.started', { session_id: id, membership_id: input.membershipId, project_id: input.projectId, task_id: taskId, source: input.source, backfill, recorded_offline: offline }, { workerId: input.membershipId, sessionId: id, occurredAt: input.at, actor: input.actor });
   return { session: session!, duplicate: false };
 }
 
@@ -412,7 +502,8 @@ export async function removeInterval(
   const rows = await tx
     .select()
     .from(timeEntries)
-    .where(and(eq(timeEntries.membershipId, params.membershipId), isNull(timeEntries.deletedAt), lt(timeEntries.startedAt, end), gt(timeEntries.endedAt, start)))
+    // Duration-only entries have placeholder clock times, so a span on the clock never cuts them (T9).
+    .where(and(eq(timeEntries.membershipId, params.membershipId), isNull(timeEntries.deletedAt), eq(timeEntries.durationOnly, false), lt(timeEntries.startedAt, end), gt(timeEntries.endedAt, start)))
     .orderBy(asc(timeEntries.startedAt));
   const dates: string[] = [];
   for (const e of rows) {
@@ -507,10 +598,15 @@ export async function resolveIdle(
       const dates = await deriveEntries(tx, current, { id: null, startedAt: start, endedAt: end });
       await markTimeChanged(tx, s.organizationId, s.membershipId, dates, params.actor);
     }
-  } else if (closedIdle && params.resolution === 'KEPT') {
-    const dates = await deriveEntries(tx, current, { id: null, startedAt: closedIdle.startedAt, endedAt: closedIdle.endedAt! });
+  } else if (closedIdle) {
+    // Paused on idle and resumed already (T7): only the paused span is in question. It has no time
+    // entries, so keeping it derives them, discarding leaves it as it is, and reassigning derives it on
+    // the chosen project below. Work after Resume is never touched.
+    if (params.resolution === 'KEPT') {
+      const dates = await deriveEntries(tx, current, { id: null, startedAt: closedIdle.startedAt, endedAt: closedIdle.endedAt! });
+      await markTimeChanged(tx, s.organizationId, s.membershipId, dates, params.actor);
+    }
     await tx.update(timeSegments).set({ derivedAt: new Date() }).where(eq(timeSegments.id, closedIdle.id));
-    await markTimeChanged(tx, s.organizationId, s.membershipId, dates, params.actor);
   } else if (params.resolution !== 'KEPT') {
     // Tracking continued during idle: close the running segment so the idle span is derived, then carve it out.
     if (current.state === 'ACTIVE') {
@@ -527,7 +623,8 @@ export async function resolveIdle(
 
   if (params.resolution === 'REASSIGNED' && params.projectId) {
     await validateTrackTarget(tx, s.membershipId, params.projectId, params.taskId ?? null);
-    const dates = await deriveEntries(tx, current, { id: null, startedAt: start, endedAt: end }, { projectId: params.projectId, taskId: params.taskId ?? null });
+    const span = closedIdle ? { startedAt: closedIdle.startedAt, endedAt: closedIdle.endedAt! } : { startedAt: start, endedAt: end };
+    const dates = await deriveEntries(tx, current, { id: null, ...span }, { projectId: params.projectId, taskId: params.taskId ?? null });
     await markTimeChanged(tx, s.organizationId, s.membershipId, dates, params.actor);
   }
 

@@ -27,6 +27,7 @@ const NOTIFICATION_TYPES: Array<{ type: string; label: string; manager?: boolean
   { type: 'shift.not_started', label: 'My shift started and my timer is not running (managers: a team member’s)' },
   { type: 'break.overrun', label: 'My break ran over its maximum length' },
   { type: 'timesheet.late_time', label: 'Time was added to a submitted or approved timesheet', manager: true },
+  { type: 'time.needs_review', label: 'Time was kept but needs review (recorded offline, or mixed duration-only and tracked)', manager: true },
   { type: 'digest.daily', label: 'Daily summary (email)' },
 ];
 

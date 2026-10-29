@@ -302,6 +302,8 @@ export const timeEntryUpdateInput = z.object({
   note: optionalText(1000),
   time_type_id: id.nullable().optional(),
   reason: optionalText(500),
+  /** the revision the editor saw: a newer one is refused (stale_revision) instead of overwritten */
+  revision: z.number().int().min(1).optional(),
 });
 export const timeEntrySplitInput = z.object({ at: isoDateTime, reason: optionalText(500) });
 export const timeEntryDeleteInput = z.object({ reason: optionalText(500) });

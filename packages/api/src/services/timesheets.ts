@@ -14,6 +14,7 @@ import {
   timeEntryRevisions,
   timeSegments,
   timesheetEntries,
+  timeReviewFlags,
   timesheets,
   users,
   workerProfiles,
@@ -23,6 +24,7 @@ import {
   addDaysToDate,
   amountForSeconds,
   businessRule,
+  conflict,
   DomainError,
   can,
   eachDate,
@@ -58,7 +60,7 @@ import { audit, emitFrom } from './events';
 import { effectivePolicy } from './policies';
 import { narrowMemberships } from './scope';
 import { likePattern } from '../lib/search';
-import { lockWorker, markTimeChanged, validateTrackTarget, workerTimezone, type ActorRef } from './tracking';
+import { flagMixedDays, lockWorker, markTimeChanged, validateTrackTarget, workerTimezone, type ActorRef } from './tracking';
 import { memberNames } from './timer';
 import { accrueForTimesheet } from './operations';
 import { checkTimeType, isNotBillableType, timeTypeCoefficients } from './time-types';
@@ -216,6 +218,8 @@ async function toTimeEntryDtos(x: Ctx, rows: Array<{ e: typeof timeEntries.$infe
       client_id: clientId,
       client_name: clientName,
       edited: e.edited,
+      timezone: e.timezone,
+      revision: e.revision,
       locked: !!e.lockedAt || isAgeLocked(x, cutoff, e.localDate, e.membershipId),
       activity_pct: tracked > 0 ? Math.round((active / tracked) * 100) : null,
     };
@@ -267,7 +271,11 @@ async function loadEntryForEdit(x: Ctx, entryId: string) {
   if (e.lockedAt) throw businessRule('time_locked', 'This entry is part of a submitted or approved timesheet');
   await assertNotAgeLocked(x, e.membershipId, [e.localDate]);
   await lockWorker(x.tx, e.membershipId);
-  return { e, policy, isSelf, isManager };
+  // Read again under the lock: an edit that landed meanwhile is seen (and its revision checked).
+  const [now] = await x.tx.select().from(timeEntries).where(and(eq(timeEntries.id, entryId), isNull(timeEntries.deletedAt)));
+  if (!now) throw notFound('time_entry');
+  if (now.lockedAt) throw businessRule('time_locked', 'This entry is part of a submitted or approved timesheet');
+  return { e: now, policy, isSelf, isManager };
 }
 
 async function assertNoOverlap(tx: Tx, membershipId: string, start: Date, end: Date, excludeIds: string[]) {
@@ -318,6 +326,9 @@ export async function assertPeriodsOpen(x: Ctx, membershipId: string, dates: str
 
 export async function updateTimeEntry(x: Ctx, entryId: string, input: z.infer<typeof timeEntryUpdateInput>) {
   const { e, policy, isSelf, isManager } = await loadEntryForEdit(x, entryId);
+  // U2: an edit is made against the revision the editor saw. A change saved meanwhile (another editor,
+  // a bulk change, an idle discard) is never silently overwritten.
+  if (input.revision !== undefined && input.revision !== e.revision) throw conflict('stale_revision', 'This entry was changed after you opened it. Close it and open it again to see the latest version.');
   if (policy.timeEdits.reasonRequired && !isManager && isSelf && !input.reason) throw validation('A reason is required to edit time');
   const start = input.started_at ? new Date(input.started_at) : e.startedAt;
   const end = input.ended_at ? new Date(input.ended_at) : e.endedAt;
@@ -493,6 +504,7 @@ async function insertManualEntry(x: Ctx, req: typeof manualTimeRequests.$inferSe
     dates.push(pc.localDate);
   }
   await x.tx.update(manualTimeRequests).set({ timeEntryId: firstId }).where(eq(manualTimeRequests.id, req.id));
+  if (req.durationOnly) await flagMixedDays(x.tx, { organizationId: x.org.id, membershipId: req.membershipId }, dates);
   await markTimeChanged(x.tx, x.org.id, req.membershipId, dates, ref(x));
   return dates;
 }
@@ -873,6 +885,9 @@ async function createBillingEntries(x: Ctx, ts: typeof timesheets.$inferSelect) 
         payRateId: pay?.id ?? null,
         billAmountMinor: bill ? amountForSeconds(Math.round(s.durationSeconds * k.bill), bill.amountMinor) : 0,
         payAmountMinor: pay ? amountForSeconds(Math.round(s.durationSeconds * k.pay), pay.amountMinor) : 0,
+        // The multipliers it was priced with (Q10): an invoice line reads these, not the time type today.
+        billCoefficient: k.bill,
+        payCoefficient: k.pay,
         currency: bill?.currency ?? pay?.currency ?? x.org.currency,
       })
       .onConflictDoNothing();
@@ -973,6 +988,9 @@ async function toApprovalItems(x: Ctx, rows: Array<typeof timesheets.$inferSelec
     if (avg !== null && avg < 20) flags.push('low_activity');
     const late = await lateSeconds(x.tx, r);
     if (late > 0) flags.push('late_time');
+    // Time kept but flagged (recorded offline over a limit or on an unavailable project, or mixed duration-only and tracked).
+    const [review] = await x.tx.select({ id: timeReviewFlags.id }).from(timeReviewFlags).where(and(eq(timeReviewFlags.membershipId, r.membershipId), gte(timeReviewFlags.localDate, r.periodStart), lte(timeReviewFlags.localDate, r.periodEnd))).limit(1);
+    if (review) flags.push('needs_review');
     out.push({
       timesheet_id: r.id,
       membership_id: r.membershipId,

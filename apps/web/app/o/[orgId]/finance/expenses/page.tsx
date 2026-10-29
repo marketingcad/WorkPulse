@@ -328,7 +328,16 @@ function ExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
           <Input id="ex-cur" value={currency} maxLength={3} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
         </Field>
         <Field label="Project" htmlFor="ex-project" className="sm:col-span-2" hint="Billable expenses on a client project can be added to that client's invoice." error={err?.field('project_id')}>
-          <Select id="ex-project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          <Select
+            id="ex-project"
+            value={projectId}
+            onChange={(e) => {
+              setProjectId(e.target.value);
+              // Follow the project's billing currency (its client's), the one an invoice can take (U6).
+              const pr = projectsQ.data?.find((x) => x.id === e.target.value);
+              if (pr?.client_id) setCurrency(pr.currency);
+            }}
+          >
             <option value="">No project</option>
             {projectsQ.data?.map((p) => (
               <option key={p.id} value={p.id}>

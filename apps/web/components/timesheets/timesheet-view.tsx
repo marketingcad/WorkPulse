@@ -432,7 +432,7 @@ function EntriesList({ ts, entriesQ, money, day, onClearDay, onAdd }: { ts: Time
             <ul className="divide-y divide-border">
               {g.entries.map((e) => (
                 <li key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 text-sm">
-                  <span className="tabular w-36 shrink-0 text-text-muted">{e.duration_only ? <span className="text-text-faint">Duration entry</span> : `${fmtTime(e.started_at)} – ${fmtTime(e.ended_at)}`}</span>
+                  <span className="tabular w-36 shrink-0 text-text-muted">{e.duration_only ? <span className="text-text-faint">Duration entry</span> : `${fmtTime(e.started_at, e.timezone)} – ${fmtTime(e.ended_at, e.timezone)}`}</span>
                   <span className="min-w-0 flex-1 basis-48">
                     <span className="block truncate">
                       <span className="font-medium">{e.project_name}</span>

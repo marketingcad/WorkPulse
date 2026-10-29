@@ -128,6 +128,32 @@ test.describe('Payroll (admin)', () => {
     await expect(line).toContainText('from earlier periods');
     await expect(line).toContainText(usd(6000));
   });
+
+  // Audit 28 Oct 2026 (F9): paid time off for someone with no worker or organization pay rate was paid
+  // nothing, with no sign of it. The line now says so before anyone pays.
+  test('a pay stub line with time off but no pay rate says "No pay rate for time off"', async ({ page, data, adminApi }) => {
+    const suffix = `${data.run}-${uid()}`;
+    const person = `Nora Norate ${suffix}`;
+    const email = `nora+${suffix}@e2e.test`;
+    const membershipId = await invitePerson(adminApi, email, person);
+    const o = adminApi.orgApi;
+    const policy = await ok<{ id: string }>(
+      await adminApi.api.post(o('/time-off/policies'), { data: { name: `Leave ${suffix}`, requires_approval: false, accrual: { type: 'none', amountHours: 0, maxBalanceHours: null, carryOverHours: null }, applies_to_all: false, member_ids: [membershipId] } }),
+      'policy',
+    );
+    // Nora takes a day off in a month no other spec pays.
+    const nora = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL }, storageState: { cookies: [], origins: [] } });
+    await ok(await nora.post('/api/v1/auth/login', { data: { email, password: PASSWORD } }), 'sign in');
+    await ok(await nora.post(`/api/v1/orgs/${data.orgId}/time-off/requests`, { data: { policy_id: policy.id, start_date: '2024-04-10', end_date: '2024-04-10' } }), 'time off');
+    await nora.dispose();
+    const group = await ok<{ id: string }>(await adminApi.api.post(o('/payroll/profiles'), { data: { name: `Nora's group ${suffix}`, period: { type: 'monthly' }, currency: 'USD', member_ids: [membershipId] } }), 'pay group');
+    const run = await ok<{ id: string }>(await adminApi.api.post(o('/payroll/runs'), { data: { profile_id: group.id, date: '2024-04-10' } }), 'payroll');
+
+    await page.goto(`/o/${data.orgId}/finance/payroll/${run.id}`);
+    const line = page.getByRole('row', { name: new RegExp(person) });
+    await expect(line).toContainText('8 h');
+    await expect(line).toContainText('No pay rate for time off');
+  });
 });
 
 test.describe('Payroll (no money access)', () => {

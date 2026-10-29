@@ -373,7 +373,7 @@ const KIND_LABEL = { TIME: 'Time', EXPENSE: 'Expense', CUSTOM: 'Custom' } as con
 function LinesTable({ lines, currency }: { lines: InvoicePreview['lines']; currency: string }) {
   if (!lines.length) return null;
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="w-full border-collapse text-sm">
         <caption className="sr-only">Invoice lines</caption>
         <thead>

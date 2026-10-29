@@ -329,7 +329,7 @@ function HistoryPanel({ active }: { active: boolean }) {
       ) : !q.data.length ? (
         <EmptyState icon={<Trash2 />} title="No cleanups yet" description="Previews and cleanup runs appear here." />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full text-sm">
             <caption className="sr-only">Cleanup history</caption>
             <thead>

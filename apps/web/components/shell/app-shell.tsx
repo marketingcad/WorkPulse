@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -16,6 +16,60 @@ import { HelpReturnBar } from '@/components/help/help-return';
 import { NewOrgDialog } from './new-org-dialog';
 import { TimerBar } from './timer-bar';
 import { CalculatorLauncher } from '@/components/calculator/calculator-launcher';
+
+/**
+ * The phone navigation drawer, as a modal dialog (audit QA-04): focus moves in and stays in while it
+ * is open, Escape closes it, and focus goes back to the menu button afterwards.
+ */
+function MobileNav({ onClose }: { onClose: () => void }) {
+  const panel = useRef<HTMLElement>(null);
+  // The latest onClose, without re-running the effect (which would move focus again) on every render.
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusable = () => Array.from(panel.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input, select, [tabindex]:not([tabindex="-1"])') ?? []);
+    focusable()[0]?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close.current();
+      } else if (e.key === 'Tab') {
+        const items = focusable();
+        if (!items.length) return;
+        const first = items[0]!;
+        const last = items[items.length - 1]!;
+        const inside = panel.current?.contains(document.activeElement);
+        if (e.shiftKey && (document.activeElement === first || !inside)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && (document.activeElement === last || !inside)) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      if (opener?.isConnected) opener.focus();
+    };
+  }, []);
+  return (
+    <div className="fixed inset-0 z-50 md:hidden">
+      <button className="absolute inset-0 bg-black/40" aria-label={t('nav.close')} tabIndex={-1} onClick={onClose} />
+      <aside
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('nav.menu')}
+        className="absolute inset-y-0 left-0 flex w-72 flex-col bg-nav bg-[radial-gradient(130%_55%_at_0%_100%,rgba(23,102,255,0.20),transparent_65%),radial-gradient(90%_35%_at_100%_0%,rgba(109,76,245,0.12),transparent_70%)] text-nav-fg shadow-overlay"
+      >
+        <Sidebar collapsed={false} onClose={onClose} />
+      </aside>
+    </div>
+  );
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const org = useOrg();
@@ -49,14 +103,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Sidebar collapsed={collapsed} onToggle={toggle} />
         </aside>
         {/* Mobile drawer */}
-        {mobileOpen && (
-          <div className="fixed inset-0 z-50 md:hidden">
-            <button className="absolute inset-0 bg-black/40" aria-label={t('nav.close')} onClick={() => setMobileOpen(false)} />
-            <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-nav bg-[radial-gradient(130%_55%_at_0%_100%,rgba(23,102,255,0.20),transparent_65%),radial-gradient(90%_35%_at_100%_0%,rgba(109,76,245,0.12),transparent_70%)] text-nav-fg shadow-overlay">
-              <Sidebar collapsed={false} onClose={() => setMobileOpen(false)} />
-            </aside>
-          </div>
-        )}
+        {mobileOpen && <MobileNav onClose={() => setMobileOpen(false)} />}
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-surface/90 px-3 shadow-[0_1px_2px_rgb(15_23_42/0.03)] backdrop-blur supports-[backdrop-filter]:bg-surface/75 sm:px-4">
             <IconButton label={t('nav.open')} className="md:hidden" onClick={() => setMobileOpen(true)} data-tour="nav-menu">

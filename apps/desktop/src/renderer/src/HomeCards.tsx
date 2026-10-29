@@ -14,23 +14,28 @@ export function TodaySummaryCard({ s, now }: { s: AgentState; now: number }) {
         <h2 className="text-sm font-semibold">Today's summary</h2>
         {sum.error && !d && <span className="text-2xs text-warning">Offline</span>}
       </div>
-      <dl className="flex flex-col gap-3 px-4 py-3">
-        <Total label="Tracked today" seconds={s.todaySeconds} limit={limits.dailySeconds} />
-        <Total label="This week" seconds={s.weekSeconds} limit={limits.weeklySeconds} />
-        <div className="grid grid-cols-3 gap-2 border-t border-border pt-3">
+      {/* Each <dl> holds only term/value groups, so labels and values are paired for screen readers (audit QA-07). */}
+      <div className="flex flex-col gap-3 px-4 py-3">
+        <dl className="flex flex-col gap-3">
+          <Total label="Tracked today" seconds={s.todaySeconds} limit={limits.dailySeconds} />
+          <Total label="This week" seconds={s.weekSeconds} limit={limits.weeklySeconds} />
+        </dl>
+        <dl className="grid grid-cols-3 gap-2 border-t border-border pt-3">
           <Mini label="Active" value={d ? fmtHm(d.active_seconds) : '—'} />
           <Mini label="Away" value={d ? fmtHm(d.idle_seconds) : '—'} warn={!!d && d.idle_seconds > 0} />
           <Mini label="Activity" value={d?.activity_pct != null ? `${d.activity_pct}%` : '—'} />
-        </div>
+        </dl>
         {shift && (
-          <div className="flex items-baseline justify-between gap-2">
-            <dt className="text-xs text-text-muted">Your shift</dt>
-            <dd className="tabular text-sm font-semibold">
-              {fmtTime(shift.startsAt)} – {fmtTime(shift.endsAt)}
-            </dd>
-          </div>
+          <dl>
+            <div className="flex items-baseline justify-between gap-2">
+              <dt className="text-xs text-text-muted">Your shift</dt>
+              <dd className="tabular text-sm font-semibold">
+                {fmtTime(shift.startsAt)} – {fmtTime(shift.endsAt)}
+              </dd>
+            </div>
+          </dl>
         )}
-      </dl>
+      </div>
     </section>
   );
 }
@@ -47,19 +52,18 @@ function Mini({ label, value, warn }: { label: string; value: string; warn?: boo
 /** A total, with a progress bar toward the organization's limit when it has one. */
 export function Total({ label, seconds, limit }: { label: string; seconds: number; limit: number | null }) {
   const pct = limit ? Math.min(100, Math.round((seconds / limit) * 100)) : null;
+  // One term/value group; the progress bar is a second description of the same term.
   return (
-    <div>
-      <div className="flex items-baseline justify-between gap-2">
-        <dt className="text-xs text-text-muted">{label}</dt>
-        <dd className="tabular text-sm font-semibold">
-          {fmtHm(seconds)}
-          {limit && <span className="font-normal text-text-muted"> / {fmtHm(limit)}</span>}
-        </dd>
-      </div>
+    <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-2">
+      <dt className="text-xs text-text-muted">{label}</dt>
+      <dd className="tabular text-sm font-semibold">
+        {fmtHm(seconds)}
+        {limit && <span className="font-normal text-text-muted"> / {fmtHm(limit)}</span>}
+      </dd>
       {pct !== null && (
-        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-sunken" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% of the limit`}>
+        <dd className="col-span-2 mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-sunken" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% of the limit`}>
           <div className={`h-full rounded-full ${pct >= 100 ? 'bg-danger' : pct >= 90 ? 'bg-warning' : 'bg-interactive'}`} style={{ width: `${pct}%` }} />
-        </div>
+        </dd>
       )}
     </div>
   );

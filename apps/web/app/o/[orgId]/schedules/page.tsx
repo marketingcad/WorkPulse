@@ -140,7 +140,7 @@ export default function SchedulesPage() {
         ) : members.length === 0 ? (
           <EmptyState title={search ? 'No matching members' : 'No members to schedule'} description={search ? 'Try a different search.' : 'Invite members to plan their shifts here.'} />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full min-w-[880px] border-collapse text-sm">
               <caption className="sr-only">Shifts for the week of {dateRangeLabel(weekStart, weekEnd)}</caption>
               <thead>

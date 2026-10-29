@@ -580,6 +580,9 @@ export async function resolveIdle(
     await tx.insert(idleEvents).values({ id: params.idleId, organizationId: s.organizationId, sessionId: s.id, membershipId: s.membershipId, startedAt: params.startedAt, clientEventId: params.idleId });
     [ev] = await tx.select().from(idleEvents).where(eq(idleEvents.id, params.idleId));
   }
+  // An idle period is answered for the session it belongs to (AUTHZ-006): a device can't close someone
+  // else's by naming its id alongside its own session.
+  if (ev!.sessionId !== s.id) throw notFound('idle_event');
   if (ev!.resolution !== 'PENDING') return; // idempotent
   const start = ev!.startedAt;
   const end = params.endedAt > start ? params.endedAt : start;

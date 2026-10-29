@@ -179,7 +179,7 @@ function SecuritySettingsPanel() {
             hint={
               f.enforceMfa === 'none'
                 ? 'People can turn on two-factor in their profile, but are not required to.'
-                : `${f.enforceMfa === 'all' ? 'Everyone' : 'The owner and anyone who can change the organization or manage members'} must enter an authenticator code when signing in. Anyone without two-factor sees a setup screen and cannot use the organization until it is on.`
+                : `${f.enforceMfa === 'all' ? 'Everyone' : 'The owner and anyone who can change the organization or manage members'} must enter an authenticator code when signing in. Anyone without two-factor sees a setup screen and cannot use the organization until it is on. This applies to the web app; the desktop app signs in without it.`
             }
           >
             <Select id="sec-mfa" value={f.enforceMfa} onChange={(e) => set('enforceMfa', e.target.value as EnforceMfa)}>

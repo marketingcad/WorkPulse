@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  apiKeys,
   invitations,
   memberDetails,
   memberships,
@@ -134,12 +135,39 @@ function holdsGrant(x: Ctx, perm: string, scope: string): boolean {
  * Giving someone a role (inviting or changing their role) is bounded like creating one: every
  * permission in it must be one the actor holds at that scope or wider.
  */
-async function assertCanAssignRole(x: Ctx, roleId: string) {
+async function assertCanAssignRole(x: Ctx, roleId: string, message = 'You cannot give a role with more access than you have') {
   const [role] = await x.tx.select().from(roles).where(eq(roles.id, roleId));
   if (!role || role.key === 'AGENT') throw notFound('role');
   const grants = await x.tx.select().from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
-  for (const g of grants) if (!holdsGrant(x, g.permission, g.scope)) throw forbidden('You cannot give a role with more access than you have');
+  for (const g of grants) if (!holdsGrant(x, g.permission, g.scope)) throw forbidden(message);
   return role;
+}
+
+/**
+ * Changing someone's role or status, removing them or erasing their data needs at least the access
+ * their current role has (audit 29 Oct 2026, AUTHZ-004): a team-scope member manager can't suspend or
+ * erase a System Admin who happens to be in their team.
+ */
+/**
+ * Revoke the API keys a member created (AUTHZ-007): when they leave, are suspended, or no longer hold
+ * api_keys:manage. Keys used to stop only while the member was inactive, and worked again if they came back.
+ */
+async function revokeKeysOf(x: Ctx, membershipId: string) {
+  const [m] = await x.tx.select({ userId: memberships.userId }).from(memberships).where(eq(memberships.id, membershipId));
+  if (!m) return;
+  const revoked = await x.tx.update(apiKeys).set({ revokedAt: new Date() }).where(and(eq(apiKeys.organizationId, x.org.id), eq(apiKeys.createdBy, m.userId), isNull(apiKeys.revokedAt))).returning({ id: apiKeys.id });
+  if (revoked.length) await audit(x, { action: 'api_key.revoked', targetType: 'membership', targetId: membershipId, metadata: { keys: revoked.length, reason: 'member_access_changed' } });
+}
+
+export async function assertOutranks(x: Ctx, membershipId: string) {
+  const [m] = await x.tx.select({ roleId: memberships.roleId }).from(memberships).where(eq(memberships.id, membershipId));
+  if (!m) throw notFound('worker');
+  // Compared on power over others: grants at team or org scope (everyone reads their organization),
+  // and managing at assigned scope. Self-service grants (own data, reading assigned work) don't count,
+  // so a worker is never above a team lead, while a System Admin or Team Manager is.
+  const grants = await x.tx.select().from(rolePermissions).where(eq(rolePermissions.roleId, m.roleId));
+  const power = grants.filter((g) => (g.scope === 'team' || g.scope === 'org' ? g.permission !== 'org:read' : g.scope === 'assigned' && !g.permission.endsWith(':read')));
+  if (power.some((g) => !holdsGrant(x, g.permission, g.scope))) throw forbidden('This member has access you don’t have, so your role can’t change them');
 }
 
 export async function upsertRole(x: Ctx, roleId: string | null, input: z.infer<typeof roleInput>) {
@@ -155,6 +183,9 @@ export async function upsertRole(x: Ctx, roleId: string | null, input: z.infer<t
     const [r] = await x.tx.select().from(roles).where(eq(roles.id, id));
     if (!r) throw notFound('role');
     if (r.builtin) throw businessRule('builtin_role', 'Built-in roles cannot be edited; create a custom role instead');
+    // A role is edited only by someone who holds everything it gives now (AUTHZ-008): otherwise an editor
+    // without payroll access could strip it from the payroll team's role.
+    await assertCanAssignRole(x, id, 'This role has access you don’t have, so your role can’t change it');
     await x.tx.update(roles).set({ name: input.name, description: input.description ?? null, updatedAt: new Date() }).where(eq(roles.id, id));
     await x.tx.delete(rolePermissions).where(eq(rolePermissions.roleId, id));
   } else {
@@ -172,6 +203,7 @@ export async function deleteRole(x: Ctx, roleId: string) {
   const [r] = await x.tx.select().from(roles).where(eq(roles.id, roleId));
   if (!r) throw notFound('role');
   if (r.builtin) throw businessRule('builtin_role', 'Built-in roles cannot be deleted');
+  await assertCanAssignRole(x, roleId, 'This role has access you don’t have, so your role can’t delete it');
   const [used] = await x.tx.select({ id: memberships.id }).from(memberships).where(eq(memberships.roleId, roleId)).limit(1);
   if (used) throw conflict('role_in_use', 'Reassign members before deleting this role');
   await x.tx.delete(roles).where(eq(roles.id, roleId));
@@ -332,6 +364,7 @@ export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<
   if (input.start_date && input.end_date && input.end_date < input.start_date) throw validation('The end date is before the start date', { errors: [{ field: 'end_date', message: 'Must be on or after the start date' }] });
   if (input.role_id !== undefined || input.status !== undefined) {
     if (before.is_owner) throw businessRule('owner_protected', 'The organization owner’s role and status cannot be changed');
+    if (!isSelf) await assertOutranks(x, membershipId);
     if (input.role_id && input.role_id !== before.role_id) {
       if (isSelf) throw forbidden('You cannot change your own role');
       await assertCanAssignRole(x, input.role_id);
@@ -340,6 +373,11 @@ export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<
       .update(memberships)
       .set({ ...(input.role_id ? { roleId: input.role_id } : {}), ...(input.status ? { status: input.status } : {}), updatedAt: new Date() })
       .where(eq(memberships.id, membershipId));
+    if (input.status === 'SUSPENDED') await revokeKeysOf(x, membershipId);
+    else if (input.role_id && input.role_id !== before.role_id) {
+      const [keep] = await x.tx.select({ s: rolePermissions.scope }).from(rolePermissions).where(and(eq(rolePermissions.roleId, input.role_id), eq(rolePermissions.permission, 'api_keys:manage')));
+      if (keep?.s !== 'org') await revokeKeysOf(x, membershipId);
+    }
   }
   const profilePatch: Partial<typeof workerProfiles.$inferInsert> = {};
   if (input.title !== undefined) profilePatch.title = input.title;
@@ -365,7 +403,9 @@ export async function removeWorker(x: Ctx, membershipId: string) {
   if (!can(x.actor, 'members:manage', { ownerMembershipId: membershipId })) throw forbidden();
   const w = await getWorker(x, membershipId);
   if (w.is_owner) throw businessRule('owner_protected', 'Transfer ownership before removing the owner');
+  await assertOutranks(x, membershipId);
   await x.tx.update(memberships).set({ status: 'REMOVED', updatedAt: new Date() }).where(eq(memberships.id, membershipId));
+  await revokeKeysOf(x, membershipId);
   // Off every team, project and task: if they are invited back, they start with only what that invitation gives.
   await x.tx.delete(teamMembers).where(eq(teamMembers.membershipId, membershipId));
   await x.tx.delete(projectMembers).where(eq(projectMembers.membershipId, membershipId));
@@ -458,8 +498,17 @@ export async function inviteWorker(x: Ctx, input: z.infer<typeof inviteInput>) {
     .innerJoin(users, eq(users.id, memberships.userId))
     .where(and(eq(memberships.organizationId, x.org.id), eq(users.email, input.email.toLowerCase())));
   if (existing.some((e) => e.status === 'ACTIVE')) throw conflict('already_member', 'This person is already a member');
+  // Accepting brings a suspended member back (AUTHZ-003): only someone who outranks them may invite them.
+  for (const e of existing.filter((m) => m.status === 'SUSPENDED')) await assertOutranks(x, e.id);
   const teamIds = [...new Set(input.team_ids)];
   const projectIds = [...new Set(input.project_ids)];
+  // A narrower grant invites into its own reach only (audit 29 Oct 2026, AUTHZ-003): teams it manages,
+  // as a member, and projects it is assigned to. Making someone a team manager is organization-wide.
+  if (x.actor.grants['members:manage'] !== 'org') {
+    if (teamIds.some((t) => !x.actor.managedTeamIds.includes(t))) throw forbidden('You can only add people to teams you manage');
+    if (teamIds.length && input.team_role === 'MANAGER') throw forbidden('Your role can’t make someone a team manager');
+    if (projectIds.some((p) => !x.actor.assignedProjectIds.has(p))) throw forbidden('You can only add people to projects you are on');
+  }
   if (teamIds.length && (await x.tx.select({ id: teams.id }).from(teams).where(inArray(teams.id, teamIds))).length !== teamIds.length) throw validation('Choose teams from this workspace', { errors: [{ field: 'team_ids', message: 'Choose teams from this workspace' }] });
   if (projectIds.length && (await x.tx.select({ id: projects.id }).from(projects).where(and(inArray(projects.id, projectIds), isNull(projects.archivedAt)))).length !== projectIds.length)
     throw validation('Choose active projects from this workspace', { errors: [{ field: 'project_ids', message: 'Choose active projects from this workspace' }] });
@@ -510,14 +559,19 @@ export async function listInvitations(x: Ctx) {
     .select({ i: invitations, roleName: roles.name })
     .from(invitations)
     .innerJoin(roles, eq(roles.id, invitations.roleId))
-    .where(and(eq(invitations.organizationId, x.org.id), isNull(invitations.acceptedAt), isNull(invitations.revokedAt)))
+    // A narrower grant sees the invitations it sent; the organization's are for org-wide admins.
+    .where(and(eq(invitations.organizationId, x.org.id), isNull(invitations.acceptedAt), isNull(invitations.revokedAt), x.actor.grants['members:manage'] === 'org' ? undefined : eq(invitations.invitedBy, x.actor.membershipId)))
     .orderBy(asc(invitations.createdAt));
   return rows.map(({ i, roleName }) => ({ id: i.id, email: i.email, name: i.name, role_id: i.roleId, role_name: roleName, expires_at: iso(i.expiresAt), created_at: iso(i.createdAt), expired: i.expiresAt < new Date() }));
 }
 
 export async function revokeInvitation(x: Ctx, id: string) {
   if (!x.actor.grants['members:manage']) throw forbidden();
-  const r = await x.tx.update(invitations).set({ revokedAt: new Date() }).where(and(eq(invitations.id, id), isNull(invitations.acceptedAt))).returning({ id: invitations.id });
+  const r = await x.tx
+    .update(invitations)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(invitations.id, id), isNull(invitations.acceptedAt), x.actor.grants['members:manage'] === 'org' ? undefined : eq(invitations.invitedBy, x.actor.membershipId)))
+    .returning({ id: invitations.id });
   if (!r.length) throw notFound('invitation');
   await audit(x, { action: 'invitation.revoked', targetType: 'invitation', targetId: id });
 }

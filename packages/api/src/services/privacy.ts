@@ -40,6 +40,7 @@ import { randomToken } from '../lib/crypto';
 import { hashPassword } from '../lib/crypto';
 import type { Ctx } from './ctx';
 import { audit } from './events';
+import { assertOutranks } from './org';
 
 export const DATA_EXPORT_KEY = 'data-export';
 
@@ -104,6 +105,7 @@ export async function anonymizeMember(x: Ctx, membershipId: string) {
   const [m] = await x.tx.select().from(memberships).where(eq(memberships.id, membershipId));
   if (!m || !can(x.actor, 'members:manage', { ownerMembershipId: membershipId })) throw notFound('worker');
   if (m.isOwner) throw businessRule('owner_protected', 'Transfer ownership before erasing the owner');
+  await assertOutranks(x, membershipId);
   const live = await x.tx.select({ id: trackingSessions.id }).from(trackingSessions).where(and(eq(trackingSessions.membershipId, membershipId), inArray(trackingSessions.state, ['ACTIVE', 'PAUSED', 'INTERRUPTED']))).limit(1);
   if (live.length) throw businessRule('member_tracking', 'Stop this member’s timer first');
 

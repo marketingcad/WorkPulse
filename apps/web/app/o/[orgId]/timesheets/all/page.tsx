@@ -38,7 +38,7 @@ import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
 import { downloadText, toCsv } from '@/lib/csv';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { DeleteEntryDialog, EditEntryDialog, ManualTimeDialog, RevisionsDrawer, SplitEntryDialog } from '@/components/timesheets/entry-dialogs';
-import { TimeTypeBadge } from '@/components/settings/time-types-panel';
+import { TimeTypeBadge } from '@/components/settings/time-type-badge';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemberOptions } from '@/lib/members';
 

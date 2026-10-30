@@ -43,7 +43,8 @@ The voice comes from `TUTORIAL_TTS`:
 
 | `TUTORIAL_TTS` | Voice | Needs |
 |---|---|---|
-| `windows` (default) | A built-in Windows voice, `TUTORIAL_VOICE` (default `Microsoft Zira Desktop`). Robotic: for checking the cut | Nothing |
+| `piper` (default) | [Piper](https://github.com/rhasspy/piper), free and open source, runs on this computer. `TUTORIAL_VOICE` (default `en_US-lessac-high`; try `en_US-ryan-high` for a male voice) is any name from [piper-voices](https://huggingface.co/rhasspy/piper-voices) | Nothing: Piper and the voice download into `e2e/.tmp/piper` on first use (Windows) |
+| `windows` | A built-in Windows voice, `TUTORIAL_VOICE` (default `Microsoft Zira Desktop`). Robotic | Nothing |
 | `openai` | `TUTORIAL_VOICE` (default `alloy`), `TUTORIAL_TTS_MODEL` (default `gpt-4o-mini-tts`) | `OPENAI_API_KEY` |
 | `elevenlabs` | `TUTORIAL_VOICE` is the voice id | `ELEVENLABS_API_KEY` |
 

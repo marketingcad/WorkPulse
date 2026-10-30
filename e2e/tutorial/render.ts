@@ -9,8 +9,10 @@
  * re-run only redoes the scenes whose clip, words or voice changed.
  *
  * Voice, from TUTORIAL_TTS:
- * - `windows` (default): a built-in Windows voice, TUTORIAL_VOICE (default "Microsoft Zira Desktop").
- *   Robotic, free, offline: for checking the cut.
+ * - `piper` (default): Piper, a free open-source voice that runs on this computer. TUTORIAL_VOICE
+ *   (default "en_US-lessac-high") names a voice from https://huggingface.co/rhasspy/piper-voices.
+ *   Piper and the voice are downloaded into e2e/.tmp/piper on first use.
+ * - `windows`: a built-in Windows voice, TUTORIAL_VOICE (default "Microsoft Zira Desktop"). Robotic.
  * - `openai`: OPENAI_API_KEY; TUTORIAL_VOICE (default "alloy"), TUTORIAL_TTS_MODEL (default "gpt-4o-mini-tts").
  * - `elevenlabs`: ELEVENLABS_API_KEY; TUTORIAL_VOICE is the voice id.
  *
@@ -32,6 +34,8 @@ const NAME = 'workpulse-tutorial';
 /** Silence before and after the narration in each scene. */
 const LEAD = 0.4;
 const TAIL = 0.8;
+/** The fastest a scene's footage is played to keep up with its narration. */
+const MAX_SPEED = 1.5;
 /** Zoom: how long it holds, how long the ease in and out takes, and its largest factor (subtle). */
 const ZOOM_HOLD = 3.5;
 const ZOOM_EASE = 0.6;
@@ -40,9 +44,11 @@ const BG = '0x111A3A';
 const ACCENT = '0xA5B4FC';
 const ENCODE = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-r', '30', '-g', '60', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2'];
 
-type Tts = 'windows' | 'openai' | 'elevenlabs';
-const TTS = (process.env.TUTORIAL_TTS ?? 'windows') as Tts;
-const VOICE = process.env.TUTORIAL_VOICE ?? { windows: 'Microsoft Zira Desktop', openai: 'alloy', elevenlabs: '' }[TTS];
+type Tts = 'piper' | 'windows' | 'openai' | 'elevenlabs';
+const TTS = (process.env.TUTORIAL_TTS ?? 'piper') as Tts;
+const VOICE = process.env.TUTORIAL_VOICE ?? { piper: 'en_US-lessac-high', windows: 'Microsoft Zira Desktop', openai: 'alloy', elevenlabs: '' }[TTS];
+const PIPER = path.resolve(HERE, '../.tmp/piper');
+const PIPER_RELEASE = 'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip';
 const MODEL = process.env.TUTORIAL_TTS_MODEL ?? (TTS === 'openai' ? 'gpt-4o-mini-tts' : 'eleven_multilingual_v2');
 
 interface Box {
@@ -112,7 +118,7 @@ const spoken = (text: string) => text.replace(/\s*›\s*/g, ', ').replace(/\s*�
 async function voices(scenes: Scene[]): Promise<Map<string, string>> {
   const dir = path.join(WORK, 'voice');
   mkdirSync(dir, { recursive: true });
-  const ext = TTS === 'windows' ? 'wav' : 'mp3';
+  const ext = TTS === 'windows' || TTS === 'piper' ? 'wav' : 'mp3';
   const files = new Map<string, string>();
   const todo: Array<{ text: string; out: string }> = [];
   for (const s of scenes) {
@@ -141,8 +147,50 @@ async function voices(scenes: Scene[]): Promise<Map<string, string>> {
     if (r.status !== 0) throw new Error(`Windows speech failed: ${r.stderr || r.stdout}`);
     for (const j of todo) renameSync(`${j.out}.part`, j.out);
   }
-  if (TTS !== 'windows') for (const j of todo) writeFileSync(j.out, await speakOnline(j.text));
+  if (TTS === 'piper' && todo.length) {
+    const { exe, model } = await piper();
+    for (const j of todo) {
+      const r = spawnSync(exe, ['--model', model, '--output_file', `${j.out}.part`, '--sentence_silence', '0.3', '--length_scale', '1.05'], { input: j.text, encoding: 'utf8' });
+      if (r.status !== 0) throw new Error(`Piper failed: ${r.stderr}`);
+      renameSync(`${j.out}.part`, j.out);
+    }
+  }
+  if (TTS === 'openai' || TTS === 'elevenlabs') for (const j of todo) writeFileSync(j.out, await speakOnline(j.text));
   return files;
+}
+
+async function download(url: string, to: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`download failed: ${res.status} ${url}`);
+  writeFileSync(`${to}.part`, Buffer.from(await res.arrayBuffer()));
+  renameSync(`${to}.part`, to);
+}
+
+/** Piper and the voice model, downloaded on first use. */
+async function piper(): Promise<{ exe: string; model: string }> {
+  if (process.platform !== 'win32') throw new Error('TUTORIAL_TTS=piper downloads the Windows build; elsewhere install Piper and use the OpenAI or ElevenLabs voice, or extend this');
+  const exe = path.join(PIPER, 'piper', 'piper.exe');
+  if (!existsSync(exe)) {
+    console.log('[render] downloading Piper');
+    mkdirSync(PIPER, { recursive: true });
+    const zip = path.join(PIPER, 'piper.zip');
+    await download(PIPER_RELEASE, zip);
+    // Windows' own tar opens zip files.
+    const r = spawnSync(path.join(process.env.WINDIR ?? 'C:\\Windows', 'System32', 'tar.exe'), ['-xf', zip, '-C', PIPER]);
+    if (r.status !== 0) throw new Error(`cannot unpack Piper: ${r.stderr}`);
+  }
+  // "en_US-lessac-high" lives at en/en_US/lessac/high/ in the voice repository.
+  const name = /^([a-z]+)_([A-Z]+)-(.+)-(x_low|low|medium|high)$/.exec(VOICE);
+  if (!name) throw new Error(`TUTORIAL_VOICE="${VOICE}" is not a Piper voice name like en_US-lessac-high`);
+  const model = path.join(PIPER, 'voices', `${VOICE}.onnx`);
+  if (!existsSync(model)) {
+    console.log(`[render] downloading the Piper voice ${VOICE}`);
+    mkdirSync(path.dirname(model), { recursive: true });
+    const base = `https://huggingface.co/rhasspy/piper-voices/resolve/main/${name[1]}/${name[1]}_${name[2]}/${name[3]}/${name[4]}/${VOICE}`;
+    await download(`${base}.onnx.json`, `${model}.json`);
+    await download(`${base}.onnx`, model);
+  }
+  return { exe, model };
 }
 
 async function speakOnline(text: string): Promise<Buffer> {
@@ -253,16 +301,18 @@ async function scene(s: Scene, voice: string, first: boolean, last: boolean): Pr
   const markers = (JSON.parse(readFileSync(markersFile, 'utf8')) as { markers: Marker[] }).markers;
   const start = markers.find((m) => m.label.startsWith('scene start'))?.at ?? 0;
   const end = markers.find((m) => m.label.startsWith('scene end'))?.at ?? seconds(clip);
-  const picture = end - start;
   const speech = seconds(voice);
+  // Where the clicking outlasts the words, play the footage faster (up to 1.5×) rather than leave a silence.
+  const speed = Math.min(MAX_SPEED, Math.max(1, (end - start) / (LEAD + speech + TAIL + 1)));
+  const picture = (end - start) / speed;
   const length = Math.max(picture, LEAD + speech + TAIL);
 
   const shown = callouts(s);
   const slot = (length - 1.5) / Math.max(1, shown.length);
   const notes = shown.map((t, i) => text(t, { size: 40, bold: true, y: 'h-text_h-150', box: true, from: 1.5 + i * slot, to: 1.5 + i * slot + Math.min(5, slot - 0.4) }));
-  const zoom = zoompan(markers.map((m) => ({ ...m, at: m.at - start })));
+  const zoom = zoompan(markers.map((m) => ({ ...m, at: (m.at - start) / speed })));
   const video = [
-    'setpts=PTS-STARTPTS',
+    `setpts=(PTS-STARTPTS)/${round(speed)}`,
     'fps=30',
     'scale=1920:1080',
     `tpad=stop_mode=clone:stop_duration=${round(length - picture + 0.1)}`,

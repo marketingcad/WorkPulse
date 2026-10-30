@@ -25,7 +25,8 @@
     "test:e2e:record": "pnpm --filter @tallywork/e2e record",
     "test:live": "pnpm --filter @tallywork/e2e live",
     "tutorial:record": "pnpm --filter @tallywork/e2e tutorial:record",
-    "tutorial:package": "pnpm --filter @tallywork/e2e tutorial:package"
+    "tutorial:package": "pnpm --filter @tallywork/e2e tutorial:package",
+    "tutorial:render": "pnpm --filter @tallywork/e2e tutorial:render"
   },
   "devDependencies": {
     "@playwright/test": "1.64.0",

@@ -38,8 +38,8 @@ The tutorial follows one company through the product's whole flow: **Organizatio
 
 The 16 chapters: Welcome · Getting started · Finding your way around · Set up your organization · Add your people · Clients, projects and tasks · The desktop app for workers · Watching the work · Time and approvals · Schedules, attendance and time off · Money · Reports · Security and administration · The team manager's view · Questions and troubleshooting · Wrap-up. Their planned start times are in [06-title-description-chapters.md](06-title-description-chapters.md#chapter-timestamps).
 
-## What is not automated
+## Automatic or by hand
 
-- **The voiceover.** It is a script for a person or a text-to-speech service to read; no audio is generated here.
-- **The edit.** Overlays, zooms, chapter cards, music and the final MP4 are made in a video editor, following [08-editing-guide.md](08-editing-guide.md). The clips are WebM (VP8). Most editors import them directly; otherwise convert them to MP4 first (see the guide).
-- **The end card (scene 16.2) and the title card.** Made in the editor.
+**Automatic:** `pnpm tutorial:render` makes the whole video from the clips: a text-to-speech voiceover, each clip timed to it, the zooms, callouts, title, chapter and end cards, captions and chapter marks. It writes `e2e/tutorial/video/workpulse-tutorial.mp4`. The default voice is Piper, free and run on your own computer; an OpenAI or ElevenLabs voice sounds more natural still (see [e2e/tutorial/README.md](../../e2e/tutorial/README.md#rendering-the-video)). There is no music, and the thumbnail is not made.
+
+**By hand:** record the voiceover from [03-voiceover-script.md](03-voiceover-script.md) and edit in a video editor, following [08-editing-guide.md](08-editing-guide.md). The clips are WebM (VP8). Most editors import them directly; otherwise convert them to MP4 first (see the guide).

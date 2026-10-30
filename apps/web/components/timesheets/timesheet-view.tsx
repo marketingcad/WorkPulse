@@ -302,7 +302,7 @@ function WeekGrid({ ts, today, onDay }: { ts: TimesheetDto; today: string; onDay
   const d = org.fmtDuration;
   if (!ts.projects.length) return <EmptyState title="No time in this period" description="Tracked and manual time shows up here by project and day." />;
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="w-full min-w-[640px] border-collapse text-sm">
         <caption className="sr-only">Time per project and day</caption>
         <thead>

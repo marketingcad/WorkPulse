@@ -168,7 +168,7 @@ export default function InvoiceDetailPage() {
             </dl>
           </header>
 
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <caption className="sr-only">Invoice lines</caption>
               <thead>

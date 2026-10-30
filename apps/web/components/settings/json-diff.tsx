@@ -39,7 +39,7 @@ export function JsonDiff({ before, after }: { before: unknown; after: unknown })
       {changes.length > 0 && (
         <section>
           <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">Changed fields</h3>
-          <div className="overflow-x-auto rounded-sm border border-border">
+          <div className="relative overflow-x-auto rounded-sm border border-border">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-surface-muted/60 text-left text-2xs uppercase tracking-wide text-text-muted">

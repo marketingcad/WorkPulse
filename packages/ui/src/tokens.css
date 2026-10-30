@@ -86,7 +86,7 @@
   --tw-interactive: #155ff5;
   --tw-interactive-hover: #0b4fd6;
   --tw-interactive-soft: #ecf2ff;
-  --tw-secondary: #6d4cf5;
+  --tw-secondary: #6845ee; /* 4.9:1 on secondary-soft (was #6d4cf5, 4.49:1; audit QA-06) */
   --tw-secondary-soft: #efebff;
   --tw-success: #13774c;
   --tw-success-soft: #e2f5eb;

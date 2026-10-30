@@ -7,6 +7,7 @@ export const webEn = {
   'nav.primary': 'Primary',
   'nav.open': 'Open navigation',
   'nav.close': 'Close navigation',
+  'nav.menu': 'Navigation',
   'nav.expand': 'Expand navigation',
   'nav.collapseLabel': 'Collapse navigation',
   'nav.collapse': 'Collapse',

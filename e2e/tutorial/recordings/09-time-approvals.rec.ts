@@ -1,0 +1,100 @@
+import { expect, label, test } from '../kit';
+
+test('09.1', async ({ d, page }) => {
+  await d.go('');
+  d.begin();
+  const nav = page.getByRole('complementary', { name: 'Primary' });
+  const group = nav.getByRole('button', { name: 'Time Tracking' });
+  if ((await group.getAttribute('aria-expanded')) !== 'true') await d.click(group, { settle: false });
+  await d.click(nav.getByRole('link', { name: 'Time entries' }));
+  await expect(page.getByRole('heading', { level: 1, name: 'Time entries' })).toBeVisible();
+  const range = page.getByRole('group', { name: 'Date range' });
+  await d.mark('zoom to the filters', range);
+  await d.click(range.getByRole('button', { name: 'This week' }));
+  await d.choose(page.getByLabel('Member', { exact: true }), 'Ava Okafor');
+  await d.settle();
+  await d.point(page.getByText(/^Time logged/).last(), { hold: 2000 });
+  // A full-length entry from earlier in the week, not the few minutes Ava tracked in chapter 7.
+  const entry = page.getByRole('listitem').filter({ hasText: /\dh \d\dm/ }).filter({ has: page.getByRole('button', { name: 'Entry actions' }) }).first();
+  await d.click(entry.getByRole('button', { name: 'Entry actions' }), { settle: false });
+  await d.click(page.getByRole('menuitem', { name: 'Edit' }), { settle: false });
+  const edit = page.getByRole('dialog', { name: 'Edit time entry' });
+  await d.mark('zoom to the Edit dialog', edit);
+  await d.type(edit.getByLabel(label('Note')), 'Homepage hero review with Maya');
+  await d.type(edit.getByLabel(/Reason for change/), 'Added the missing note');
+  await d.click(edit.getByRole('button', { name: 'Save changes' }), { settle: false });
+  await expect(page.getByText('Time entry updated')).toBeVisible();
+  await d.click(entry.getByRole('button', { name: 'Entry actions' }), { settle: false });
+  await d.click(page.getByRole('menuitem', { name: 'View history' }), { settle: false });
+  const history = page.getByRole('dialog').filter({ hasText: 'Revision history' });
+  await expect(history).toBeVisible();
+  await d.mark('zoom to the revision history', history);
+  await d.beat(4000);
+  await page.keyboard.press('Escape');
+  await d.finish();
+});
+
+test('09.2', async ({ d, page }) => {
+  await d.go('/timesheets/all');
+  d.begin();
+  await d.click(page.getByRole('button', { name: 'Add time' }).first(), { settle: false });
+  const dialog = page.getByRole('dialog', { name: /^Add time/ });
+  await d.mark('zoom to the Add time dialog', dialog);
+  const member = dialog.getByLabel(label('Member'));
+  if (await member.isVisible()) await d.choose(member, 'Kenji Mensah');
+  const yesterday = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
+  await d.set(dialog.getByLabel(label('Date')), yesterday);
+  await d.type(dialog.getByLabel(label('Time logged')), '1:30');
+  await d.click(dialog.getByRole('button', { name: 'Choose project and task' }), { settle: false });
+  await d.click(page.getByRole('option', { name: /Globex — Website Redesign/ }).first(), { settle: false });
+  await d.type(dialog.getByLabel(label('Work performed')), 'Client workshop at the Globex office');
+  await d.type(dialog.getByLabel(label('Reason')), 'Worked away from the computer');
+  await d.click(dialog.getByRole('button', { name: 'Add time' }), { settle: false });
+  await expect(dialog).toBeHidden();
+  await d.finish();
+});
+
+test('09.3', async ({ d, page }) => {
+  await d.go('/timesheets/all');
+  d.begin();
+  await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('link', { name: 'Approvals' }));
+  await expect(page.getByRole('heading', { level: 1, name: 'Approvals' })).toBeVisible();
+  const rows = page.getByRole('row').filter({ has: page.getByRole('cell') });
+  await d.click(rows.first(), { settle: false });
+  const sheet = page.getByRole('dialog').first();
+  await expect(sheet.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
+  await d.mark('zoom to the timesheet panel', sheet);
+  await d.beat(3500);
+  await d.mark('highlight the Approve button', sheet.getByRole('button', { name: 'Approve', exact: true }));
+  await d.click(sheet.getByRole('button', { name: 'Approve', exact: true }), { settle: false });
+  await expect(page.getByText(/Timesheet approved/)).toBeVisible();
+  await d.beat(1500);
+  await d.click(rows.first(), { settle: false });
+  await d.click(page.getByRole('dialog').first().getByRole('button', { name: 'Request changes' }), { settle: false });
+  const ask = page.getByRole('dialog').last();
+  await d.type(ask.getByLabel('Comment'), 'Please add a note for Wednesday afternoon.');
+  await d.click(ask.getByRole('button', { name: /^Request changes/ }), { settle: false });
+  await expect(page.getByText(/Changes requested/)).toBeVisible();
+  await d.beat(1500);
+  const manual = page.getByText('Manual time requests', { exact: true }).first();
+  await d.scrollTo(manual);
+  await d.mark('zoom to the manual time requests', manual);
+  await d.beat(2000);
+  const approve = page.getByRole('button', { name: 'Approve', exact: true }).last();
+  await d.click(approve, { settle: false });
+  await d.beat(2000);
+  await d.finish();
+});
+
+test('09.4', async ({ d, page }) => {
+  await d.go('/timesheets/approvals');
+  d.begin();
+  await d.click(page.getByRole('group', { name: 'Sections' }).getByRole('button', { name: 'Team week', exact: true }).or(page.getByRole('link', { name: 'Team week' })).first());
+  const table = page.getByText(/Hours per member/).first();
+  await d.mark('zoom to the hours table', table);
+  await d.point(table, { hold: 3000 });
+  await d.click(page.getByRole('button', { name: 'Previous week' }));
+  await d.beat(2000);
+  await d.click(page.getByRole('button', { name: 'Next week' }));
+  await d.finish();
+});

@@ -4,8 +4,9 @@
  * ends, the zooms from its .markers.json, the callouts from the script, title, chapter and end
  * cards, chapter marks, and captions timed to the real audio (as an .srt next to the MP4).
  *
- * Output in e2e/tutorial/video (git-ignored): workpulse-tutorial.mp4, workpulse-tutorial.en.srt
- * and youtube-chapters.txt. Work files and the voice cache are in e2e/.tmp/tutorial-render, so a
+ * Output in e2e/tutorial/video (git-ignored): workpulse-tutorial.mp4, workpulse-tutorial.en.srt,
+ * workpulse-tutorial-thumbnail.png and youtube-chapters.txt. TUTORIAL_MUSIC=<audio file> mixes a
+ * music track in quietly under the voice. Work files and the voice cache are in e2e/.tmp/tutorial-render, so a
  * re-run only redoes the scenes whose clip, words or voice changed.
  *
  * Voice, from TUTORIAL_TTS:
@@ -36,6 +37,8 @@ const LEAD = 0.4;
 const TAIL = 0.8;
 /** The fastest a scene's footage is played to keep up with its narration. */
 const MAX_SPEED = 1.5;
+/** Background music level under the voice (TUTORIAL_MUSIC): about −20 dB. */
+const MUSIC_VOLUME = 0.1;
 /** Zoom: how long it holds, how long the ease in and out takes, and its largest factor (subtle). */
 const ZOOM_HOLD = 3.5;
 const ZOOM_EASE = 0.6;
@@ -423,14 +426,57 @@ async function main() {
   const mp4 = path.join(OUT, `${NAME}.mp4`);
   console.log('[render] joining the segments');
   // Captions stay in the .srt next to the MP4: an embedded caption track corrupts the MP4's first chapter mark.
+  const music = process.env.TUTORIAL_MUSIC;
+  if (music && !existsSync(music)) throw new Error(`TUTORIAL_MUSIC: no file at ${music}`);
   await ffmpeg([
     '-f', 'concat', '-safe', '0', '-i', 'list.txt', '-i', 'metadata.txt',
-    '-map', '0:v', '-map', '0:a', '-map_metadata', '1', '-map_chapters', '1',
-    '-c', 'copy', '-movflags', '+faststart', mp4,
+    ...(music
+      ? [
+          '-stream_loop', '-1', '-i', path.resolve(music),
+          // Quietly under the voice, looped for the whole video, faded in and out.
+          '-filter_complex', `[2:a]volume=${MUSIC_VOLUME},atrim=0:${round(total)},afade=t=in:d=2,afade=t=out:st=${round(total - 4)}:d=4[m];[0:a][m]amix=inputs=2:duration=first:normalize=0[a]`,
+          '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k',
+        ]
+      : ['-map', '0:v', '-map', '0:a', '-c', 'copy']),
+    '-map_metadata', '1', '-map_chapters', '1', '-movflags', '+faststart', mp4,
   ]);
+  await thumbnail();
   copyFileSync(path.join(WORK, 'captions.srt'), path.join(OUT, `${NAME}.en.srt`));
   writeFileSync(path.join(OUT, 'youtube-chapters.txt'), `${chapters.map((c) => `${clock(c.at)} ${c.title}`).join('\n')}\n`, 'utf8');
-  console.log(`[render] ${path.relative(process.cwd(), mp4)} · ${clock(total)} · ${segments.length} segments · voice: ${TTS} "${VOICE}"`);
+  console.log(`[render] ${path.relative(process.cwd(), mp4)} · ${clock(total)} · ${segments.length} segments · voice: ${TTS} "${VOICE}"${music ? ` · music: ${path.basename(music)}` : ''}`);
+}
+
+/** The thumbnail from the script's concept (scenes.ts VIDEO.thumbnail), built from frames of the real app. */
+async function thumbnail(): Promise<void> {
+  const frame = (id: string, before: number) => {
+    const s = CHAPTERS.flatMap((c) => c.scenes).find((x) => x.id === id)!;
+    const base = path.join(CLIPS, `${s.id}-${slug(s.title)}`);
+    const end = (JSON.parse(readFileSync(`${base}.markers.json`, 'utf8')) as { markers: Marker[] }).markers.find((m) => m.label.startsWith('scene end'))!.at;
+    return ['-ss', String(round(end - before)), '-i', `${base}.webm`];
+  };
+  const filter = 'seg/thumbnail.filter.txt';
+  writeFileSync(
+    path.join(WORK, filter),
+    [
+      // The Overview (01.1) as the main picture, the desktop timer card (07.3) floating over its right edge.
+      // Both frames are seeked to; their times start at 0 to line up with the background's only frame.
+      '[1:v]setpts=PTS-STARTPTS,scale=800:-1,pad=iw+8:ih+8:4:4:white[ov];',
+      '[2:v]setpts=PTS-STARTPTS,crop=564:228:826:136,scale=500:-1,pad=iw+8:ih+8:4:4:white[tm];',
+      '[0:v][ov]overlay=48:250[a];',
+      '[a]drawbox=x=752:y=318:w=516:h=218:color=black@0.35:t=fill[b];',
+      `[b][tm]overlay=744:310,${[
+        text('WorkPulse', { size: 104, bold: true, y: '22' }).replace('x=(w-text_w)/2', 'x=44'),
+        text('Complete Tutorial', { size: 76, bold: true, color: '0xFFD23F', y: '140' }).replace('x=(w-text_w)/2', 'x=48'),
+        text('Time • Approvals • Payroll', { size: 30, bold: true, y: 'h-text_h-52', box: true }).replace('x=(w-text_w)/2', 'x=w-text_w-56').replace('boxborderw=26', 'boxborderw=18'),
+      ].join(',')}[v]`,
+    ].join('\n'),
+    'utf8',
+  );
+  await ffmpeg([
+    '-f', 'lavfi', '-i', 'gradients=s=1280x720:c0=0x5B5FD6:c1=0x2E3192:x0=0:y0=0:x1=1280:y1=720:nb_colors=2',
+    ...frame('01.1', 3), ...frame('07.3', 5),
+    '-/filter_complex', filter, '-map', '[v]', '-frames:v', '1', path.join(OUT, `${NAME}-thumbnail.png`),
+  ]);
 }
 
 await main();

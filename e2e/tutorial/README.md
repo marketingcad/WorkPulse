@@ -37,7 +37,10 @@ These are recordings, not tests. They are not part of `pnpm test:e2e`: separate 
 
 - `workpulse-tutorial.mp4`: 1920 × 1080, 30 fps, H.264 and AAC, with chapter marks;
 - `workpulse-tutorial.en.srt`: the English captions, timed to the real voiceover. Upload them with the video; VLC and most players load them from the same folder. They are not embedded, because an MP4 caption track corrupts the first chapter mark;
+- `workpulse-tutorial-thumbnail.png`: 1280 × 720, built from frames of the Overview and the desktop timer, as the script's thumbnail concept describes;
 - `youtube-chapters.txt`: the chapter timestamps for the video description.
+
+Background music: `TUTORIAL_MUSIC=path/to/track.mp3 pnpm tutorial:render` loops the track quietly under the voice (about −20 dB) and fades it in and out. Use a track you have the rights to, such as one from the YouTube Audio Library. Only the final join is redone.
 
 The voice comes from `TUTORIAL_TTS`:
 

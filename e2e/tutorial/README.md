@@ -5,6 +5,7 @@ Playwright scripts that record the screen footage for the WorkPulse video tutori
 ```bash
 pnpm tutorial:record    # record every scene → e2e/tutorial/clips
 pnpm tutorial:package   # regenerate docs/video-tutorial from scenes.ts
+pnpm tutorial:render    # voiceover + edit → e2e/tutorial/video/workpulse-tutorial.mp4
 ```
 
 These are recordings, not tests. They are not part of `pnpm test:e2e`: separate config, separate folder, separate server.
@@ -21,6 +22,7 @@ These are recordings, not tests. They are not part of `pnpm test:e2e`: separate 
 | Kit | [kit.ts](kit.ts) | The `d` fixture: visible cursor and click ripple, eased mouse moves, typing at reading speed, `mark()` for zooms, pacing to the narration, saving the clip as `clips/<id>-<title>.webm` |
 | Desktop | [desktop.ts](desktop.ts) | Opens the desktop app's window with a bridge that plays the main process: a real device sign-in for Ava Okafor, real reads and requests, and a visible timer whose clock-in, breaks and clock-out are sent to the server as the app's session events |
 | Package | [build-package.ts](build-package.ts) | Writes the generated docs |
+| Render | [render.ts](render.ts) | Makes the finished MP4 from the clips with ffmpeg: a synthetic voiceover per scene, each clip held until its narration ends, the zooms from its markers, the callouts, title, chapter and end cards, captions and chapter marks. See below. |
 | Clip check | [inspect-clip.mjs](inspect-clip.mjs) | Prints a clip's size and saves frames as PNG |
 
 ## Safety
@@ -28,6 +30,24 @@ These are recordings, not tests. They are not part of `pnpm test:e2e`: separate 
 - The server only ever uses the local throwaway database and has email and storage off, like the E2E server. Setup refuses any host but localhost.
 - Rate limits stay on, as in production. Sign-ins happen once per person per run (setup.ts, and one desktop sign-in each for Ava and the five people put to work in 08.1), well under the limits.
 - The webhook scene adds a **disabled** endpoint at example.com, so nothing is ever sent out.
+
+## Rendering the video
+
+`pnpm tutorial:render` needs ffmpeg (`winget install Gyan.FFmpeg`) and the clips from `pnpm tutorial:record`. It writes `e2e/tutorial/video/` (git-ignored):
+
+- `workpulse-tutorial.mp4`: 1920 × 1080, 30 fps, H.264 and AAC, with chapter marks;
+- `workpulse-tutorial.en.srt`: the English captions, timed to the real voiceover. Upload them with the video; VLC and most players load them from the same folder. They are not embedded, because an MP4 caption track corrupts the first chapter mark;
+- `youtube-chapters.txt`: the chapter timestamps for the video description.
+
+The voice comes from `TUTORIAL_TTS`:
+
+| `TUTORIAL_TTS` | Voice | Needs |
+|---|---|---|
+| `windows` (default) | A built-in Windows voice, `TUTORIAL_VOICE` (default `Microsoft Zira Desktop`). Robotic: for checking the cut | Nothing |
+| `openai` | `TUTORIAL_VOICE` (default `alloy`), `TUTORIAL_TTS_MODEL` (default `gpt-4o-mini-tts`) | `OPENAI_API_KEY` |
+| `elevenlabs` | `TUTORIAL_VOICE` is the voice id | `ELEVENLABS_API_KEY` |
+
+Set keys in the environment, never in a file in the repo. Voice files and encoded scenes are cached in `e2e/.tmp/tutorial-render`, so a re-run only redoes what changed; switching the voice re-renders every scene. Callouts are the quoted text of each scene's overlays. Watch the result before publishing.
 
 ## Writing or changing a scene
 

@@ -14,7 +14,9 @@
     "install-browsers": "playwright install chromium",
     "typecheck": "tsc -p tsconfig.json",
     "record": "playwright test --config playwright.record.config.ts",
-    "live": "playwright test --config playwright.live.config.ts"
+    "live": "playwright test --config playwright.live.config.ts",
+    "tutorial:record": "playwright test --config playwright.tutorial.config.ts",
+    "tutorial:package": "node ../node_modules/tsx/dist/cli.mjs tutorial/build-package.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

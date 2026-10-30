@@ -138,6 +138,10 @@ Rules:
 - **Production rate limits apply.** The suite signs in once per run, and runs on 2 workers.
 - Reports go to `playwright-report/live`, failure artifacts to `test-results/live`.
 
+## Video tutorial recordings
+
+[tutorial/](tutorial/README.md) uses the same tools to record the screen footage of the WorkPulse video tutorial, one clip per scene, against its own isolated server with demo data on :3200 (`pnpm tutorial:record`). It is not part of `pnpm test:e2e`. When a feature that the tutorial shows changes, re-record its scenes.
+
 ## Adding tests for a new or changed feature
 
 Every new feature or change that a user can see needs E2E coverage, alongside its unit tests. See [AGENTS.md](../AGENTS.md).

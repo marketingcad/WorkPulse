@@ -52,6 +52,7 @@ import {
   pageTasks,
   listTeams,
   setClientArchived,
+  deleteClient,
   setProjectArchived,
   setTeamMember,
   upsertClient,
@@ -157,6 +158,10 @@ export const orgRoutes = new Hono<AppEnv>()
   .patch('/clients/:id', async (c) => c.json(await upsertClient(ctx(c), c.req.param('id'), await body(c, clientInput.partial()))))
   .post('/clients/:id/archive', async (c) => {
     await setClientArchived(ctx(c), c.req.param('id'), true);
+    return c.body(null, 204);
+  })
+  .delete('/clients/:id', async (c) => {
+    await deleteClient(ctx(c), c.req.param('id'));
     return c.body(null, 204);
   })
   .post('/clients/:id/restore', async (c) => {

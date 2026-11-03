@@ -35,7 +35,7 @@ if (!(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) && !env.BLOB_READ_WRITE
 // A placeholder or a key pasted with smart quotes would otherwise fail deep inside fetch ("Cannot convert argument to a ByteString").
 for (const name of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'BLOB_READ_WRITE_TOKEN'] as const) {
   const value = env[name];
-  if (value !== undefined && (!/^[\x21-\x7e]+$/.test(value) || value === '...')) throw new Error(`${name} is not a real value (it has spaces, quotes or symbols like "…"): copy it exactly from Vercel › Settings › Environment Variables`);
+  if (value && (!/^[\x21-\x7e]+$/.test(value) || value === '...')) throw new Error(`${name} is not a real value (it has spaces, quotes or symbols like "…"): copy it exactly from Vercel › Settings › Environment Variables`);
 }
 // Storage lives at {SUPABASE_URL}/storage/v1, so a URL copied with the REST path (…/rest/v1/) points nowhere.
 if (env.SUPABASE_URL && !/^https:\/\/[^/]+\/?$/.test(env.SUPABASE_URL)) throw new Error('SUPABASE_URL must be the project URL only, like https://abcd1234.supabase.co (no /rest/v1/ or other path)');

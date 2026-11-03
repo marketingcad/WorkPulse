@@ -32,6 +32,13 @@ if (env.LOCAL_STORAGE_DIR && !path.isAbsolute(env.LOCAL_STORAGE_DIR)) env.LOCAL_
 if (!(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) && !env.BLOB_READ_WRITE_TOKEN && !env.LOCAL_STORAGE_DIR) {
   throw new Error('No storage configured: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or BLOB_READ_WRITE_TOKEN, or LOCAL_STORAGE_DIR for a local server)');
 }
+// A placeholder or a key pasted with smart quotes would otherwise fail deep inside fetch ("Cannot convert argument to a ByteString").
+for (const name of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'BLOB_READ_WRITE_TOKEN'] as const) {
+  const value = env[name];
+  if (value && (!/^[\x21-\x7e]+$/.test(value) || value === '...')) throw new Error(`${name} is not a real value (it has spaces, quotes or symbols like "…"): copy it exactly from Vercel › Settings › Environment Variables`);
+}
+// Storage lives at {SUPABASE_URL}/storage/v1, so a URL copied with the REST path (…/rest/v1/) points nowhere.
+if (env.SUPABASE_URL && !/^https:\/\/[^/]+\/?$/.test(env.SUPABASE_URL)) throw new Error('SUPABASE_URL must be the project URL only, like https://abcd1234.supabase.co (no /rest/v1/ or other path)');
 if (!existsSync(path.join(DIR, 'manifest.json'))) throw new Error(`No chapter files in ${DIR}: run pnpm tutorial:render first`);
 
 // @tallywork/api is a dependency of the web app, not of the e2e package.

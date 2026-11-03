@@ -724,3 +724,21 @@ export interface ScreenshotStorageDto {
   /** screenshots whose storage deletion keeps failing and needs attention */
   stuck: number;
 }
+
+/**
+ * The WorkPulse video tutorial shown in the Help Center (system admins only): one video per chapter.
+ * File names are fetched from /orgs/:orgId/help/tutorial/files/:name.
+ */
+export interface HelpTutorialDto {
+  title: string;
+  chapters: Array<{
+    n: number;
+    title: string;
+    seconds: number;
+    video: string;
+    /** WebVTT English captions */
+    captions: string | null;
+    /** a still for the player before it starts */
+    poster: string | null;
+  }>;
+}

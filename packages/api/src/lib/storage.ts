@@ -9,7 +9,11 @@ import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 export interface Storage {
   readonly kind: string;
   put(key: string, body: Buffer | ReadableStream | Blob, contentType: string): Promise<void>;
-  get(key: string): Promise<{ body: ReadableStream; contentType: string } | null>;
+  /**
+   * With `range`, a backend that can read part of an object returns only those bytes and says which
+   * (`range`); one that cannot returns the whole object without `range`. `size` is the whole object's.
+   */
+  get(key: string, range?: ByteRange): Promise<StoredObject | null>;
   delete(keys: string[]): Promise<void>;
   /** Token the desktop agent uses to upload one object directly. `url` is set when the upload goes to a pre-signed URL. */
   createUploadToken(key: string, contentType: string, maxBytes: number): Promise<UploadTarget>;
@@ -30,6 +34,32 @@ function safeKey(key: string): string {
   return key;
 }
 
+/** Bytes `start` to `end` inclusive; without `end`, to the end of the object (an HTTP Range header). */
+export interface ByteRange {
+  start: number;
+  end?: number;
+}
+
+export interface StoredObject {
+  body: ReadableStream;
+  contentType: string;
+  size?: number;
+  range?: { start: number; end: number; size: number };
+}
+
+/** The part of a `size`-byte object a range covers, or null when it starts past the end. */
+function clampRange(range: ByteRange, size: number): { start: number; end: number } | null {
+  if (range.start >= size) return null;
+  return { start: range.start, end: Math.min(range.end ?? size - 1, size - 1) };
+}
+
+/** Serves an in-memory object, whole or the part `range` asks for (a range past the end gets the whole object). */
+function fromBuffer(data: Buffer, contentType: string, range?: ByteRange): StoredObject {
+  const part = range && clampRange(range, data.length);
+  if (!part) return { body: new Response(new Uint8Array(data)).body!, contentType, size: data.length };
+  return { body: new Response(new Uint8Array(data.subarray(part.start, part.end + 1))).body!, contentType, size: data.length, range: { ...part, size: data.length } };
+}
+
 export interface UploadTarget {
   token: string;
   method: 'vercel-blob' | 'supabase' | 'api';
@@ -45,7 +75,8 @@ export class VercelBlobStorage implements Storage {
     await put(key, body, { access: 'private', contentType, token: this.token, addRandomSuffix: false, allowOverwrite: true });
   }
 
-  async get(key: string) {
+  /** Always the whole object: ranges are not read from Vercel Blob. */
+  async get(key: string): Promise<StoredObject | null> {
     safeKey(key);
     const res = await get(key, { access: 'private', token: this.token });
     if (!res || res.statusCode !== 200 || !res.stream) return null;
@@ -116,7 +147,8 @@ export class SupabaseStorage implements Storage {
       const settings = {
         public: false,
         file_size_limit: 50 * 1024 * 1024,
-        allowed_mime_types: ['image/*', 'application/pdf', 'text/csv', 'application/json', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        // video/mp4 and text/vtt: the Help Center's video tutorial, one file per chapter (under the size limit).
+        allowed_mime_types: ['image/*', 'application/pdf', 'text/csv', 'application/json', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'video/mp4', 'text/vtt'],
       };
       const res = await this.fetchImpl(`${this.base}/bucket`, {
         method: 'POST',
@@ -155,13 +187,23 @@ export class SupabaseStorage implements Storage {
     if (!res.ok) await this.fail(res, 'upload');
   }
 
-  async get(key: string) {
+  async get(key: string, range?: ByteRange): Promise<StoredObject | null> {
     safeKey(key);
-    const res = await this.fetchImpl(`${this.base}/object/authenticated/${this.objectPath(key)}`, { headers: this.headers() });
+    const url = `${this.base}/object/authenticated/${this.objectPath(key)}`;
+    let res = await this.fetchImpl(url, { headers: this.headers(range ? { Range: `bytes=${range.start}-${range.end ?? ''}` } : {}) });
+    // A range past the end: answer with the whole object instead.
+    if (range && res.status === 416) {
+      await res.body?.cancel();
+      res = await this.fetchImpl(url, { headers: this.headers() });
+    }
     // Supabase reports a missing object as 400 or 404.
     if (res.status === 400 || res.status === 404) return null;
     if (!res.ok || !res.body) return this.fail(res, 'download');
-    return { body: res.body, contentType: res.headers.get('content-type') ?? 'application/octet-stream' };
+    const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
+    const part = res.status === 206 ? /^bytes (\d+)-(\d+)\/(\d+)$/.exec(res.headers.get('content-range') ?? '') : null;
+    if (part) return { body: res.body, contentType, size: Number(part[3]), range: { start: Number(part[1]), end: Number(part[2]), size: Number(part[3]) } };
+    const length = Number(res.headers.get('content-length'));
+    return { body: res.body, contentType, ...(res.status === 200 && length > 0 ? { size: length } : {}) };
   }
 
   async delete(keys: string[]): Promise<void> {
@@ -204,11 +246,11 @@ export class MemoryStorage implements Storage {
     this.objects.set(key, { data, contentType });
   }
 
-  async get(key: string) {
+  async get(key: string, range?: ByteRange): Promise<StoredObject | null> {
     safeKey(key);
     const o = this.objects.get(key);
     if (!o) return null;
-    return { body: new Response(new Uint8Array(o.data)).body!, contentType: o.contentType };
+    return fromBuffer(o.data, o.contentType, range);
   }
 
   async delete(keys: string[]): Promise<void> {
@@ -242,13 +284,13 @@ export class FileStorage implements Storage {
     await fs.writeFile(`${p}.type`, contentType);
   }
 
-  async get(key: string) {
+  async get(key: string, range?: ByteRange): Promise<StoredObject | null> {
     safeKey(key);
     const fs = await import('node:fs/promises');
     try {
       const data = await fs.readFile(this.path(key));
       const contentType = await fs.readFile(`${this.path(key)}.type`, 'utf8').catch(() => 'application/octet-stream');
-      return { body: new Response(new Uint8Array(data)).body!, contentType };
+      return fromBuffer(data, contentType, range);
     } catch {
       return null;
     }

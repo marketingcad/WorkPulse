@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createStorage, SupabaseStorage } from '../src/lib/storage';
+import { createStorage, MemoryStorage, SupabaseStorage } from '../src/lib/storage';
 
 interface Call {
   url: string;
@@ -87,6 +87,37 @@ describe('SupabaseStorage', () => {
     expect(await new Response(obj!.body).text()).toBe('hello');
   });
 
+  it('reads part of an object with a Range header and reports which bytes came back', async () => {
+    const { impl, calls } = stubFetch({
+      'GET /storage/v1/object/authenticated/tallywork/v.mp4': () => new Response('2345', { status: 206, headers: { 'content-type': 'video/mp4', 'content-range': 'bytes 2-5/10' } }),
+    });
+    const obj = await new SupabaseStorage(URL_, 'k', 'tallywork', impl).get('v.mp4', { start: 2, end: 5 });
+    expect(calls[0]!.headers).toMatchObject({ Range: 'bytes=2-5' });
+    expect(obj).toMatchObject({ contentType: 'video/mp4', size: 10, range: { start: 2, end: 5, size: 10 } });
+    expect(await new Response(obj!.body).text()).toBe('2345');
+    await new SupabaseStorage(URL_, 'k', 'tallywork', impl).get('v.mp4', { start: 2 });
+    expect(calls[1]!.headers).toMatchObject({ Range: 'bytes=2-' });
+  });
+
+  it('answers a range past the end with the whole object', async () => {
+    let n = 0;
+    const { impl, calls } = stubFetch({
+      'GET /storage/v1/object/authenticated/tallywork/v.mp4': () => (n++ === 0 ? new Response('', { status: 416 }) : new Response('0123456789', { status: 200, headers: { 'content-length': '10' } })),
+    });
+    const obj = await new SupabaseStorage(URL_, 'k', 'tallywork', impl).get('v.mp4', { start: 50 });
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.headers).not.toHaveProperty('Range');
+    expect(obj).toMatchObject({ size: 10 });
+    expect(obj?.range).toBeUndefined();
+    expect(await new Response(obj!.body).text()).toBe('0123456789');
+  });
+
+  it('allows the video tutorial files (MP4 and WebVTT) in the bucket', async () => {
+    const { impl, calls } = stubFetch({ 'POST /storage/v1/bucket': bucketOk, 'POST /storage/v1/object/tallywork/v.mp4': () => new Response('{}', { status: 200 }) });
+    await new SupabaseStorage(URL_, 'k', 'tallywork', impl).put('v.mp4', Buffer.from('x'), 'video/mp4');
+    expect(JSON.parse(calls[0]!.body as string).allowed_mime_types).toEqual(expect.arrayContaining(['video/mp4', 'text/vtt']));
+  });
+
   it('throws on server errors instead of reporting the object as missing', async () => {
     const { impl } = stubFetch({ 'GET /storage/v1/object/authenticated/tallywork/x': () => new Response('boom', { status: 503 }) });
     await expect(new SupabaseStorage(URL_, 'k', 'tallywork', impl).get('x')).rejects.toThrow(/503/);
@@ -109,6 +140,20 @@ describe('SupabaseStorage', () => {
     const t = await new SupabaseStorage(URL_, 'k', 'tallywork', impl).createUploadToken('org/o1/s.jpg');
     expect(t).toEqual({ method: 'supabase', token: 'abc.def', url: `${URL_}/storage/v1/object/upload/sign/tallywork/org/o1/s.jpg?token=abc.def` });
     expect(calls[1]!.headers).toMatchObject({ 'x-upsert': 'true' });
+  });
+});
+
+describe('MemoryStorage ranges', () => {
+  it('returns the requested bytes, clamped to the end, and the whole object for a range past the end', async () => {
+    const s = new MemoryStorage();
+    await s.put('k', Buffer.from('0123456789'), 'video/mp4');
+    const part = await s.get('k', { start: 8, end: 20 });
+    expect(part?.range).toEqual({ start: 8, end: 9, size: 10 });
+    expect(await new Response(part!.body).text()).toBe('89');
+    const whole = await s.get('k', { start: 10 });
+    expect(whole?.range).toBeUndefined();
+    expect(whole?.size).toBe(10);
+    expect(await new Response(whole!.body).text()).toBe('0123456789');
   });
 });
 

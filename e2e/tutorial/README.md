@@ -6,6 +6,7 @@ Playwright scripts that record the screen footage for the WorkPulse video tutori
 pnpm tutorial:record    # record every scene → e2e/tutorial/clips
 pnpm tutorial:package   # regenerate docs/video-tutorial from scenes.ts
 pnpm tutorial:render    # voiceover + edit → e2e/tutorial/video/workpulse-tutorial.mp4
+pnpm tutorial:publish   # upload the chapters to storage → Help Center, for system admins
 ```
 
 These are recordings, not tests. They are not part of `pnpm test:e2e`: separate config, separate folder, separate server.
@@ -22,6 +23,7 @@ These are recordings, not tests. They are not part of `pnpm test:e2e`: separate 
 | Kit | [kit.ts](kit.ts) | The `d` fixture: visible cursor and click ripple, eased mouse moves, typing at reading speed, `mark()` for zooms, pacing to the narration, saving the clip as `clips/<id>-<title>.webm` |
 | Desktop | [desktop.ts](desktop.ts) | Opens the desktop app's window with a bridge that plays the main process: a real device sign-in for Ava Okafor, real reads and requests, and a visible timer whose clock-in, breaks and clock-out are sent to the server as the app's session events |
 | Package | [build-package.ts](build-package.ts) | Writes the generated docs |
+| Publish | [publish.ts](publish.ts) | Uploads the chapter files to storage for the Help Center (see below) |
 | Render | [render.ts](render.ts) | Makes the finished MP4 from the clips with ffmpeg: a synthetic voiceover per scene, each clip held until its narration ends, the zooms from its markers, the callouts, title, chapter and end cards, captions and chapter marks. See below. |
 | Clip check | [inspect-clip.mjs](inspect-clip.mjs) | Prints a clip's size and saves frames as PNG |
 
@@ -52,6 +54,21 @@ The voice comes from `TUTORIAL_TTS`:
 | `elevenlabs` | `TUTORIAL_VOICE` is the voice id | `ELEVENLABS_API_KEY` |
 
 Set keys in the environment, never in a file in the repo. Voice files and encoded scenes are cached in `e2e/.tmp/tutorial-render`, so a re-run only redoes what changed; switching the voice re-renders every scene. Callouts are the quoted text of each scene's overlays. Watch the result before publishing.
+
+## Publishing to the Help Center
+
+System admins (anyone who may change the organization, `org:update`) can watch the tutorial on the Help page: a player at the top of the topics with the chapter list, a "Video tutorial" topic link, and a "Watch the video" button in the page header. Nobody else sees it, and the API refuses them.
+
+`pnpm tutorial:render` also writes `e2e/tutorial/video/chapters/`: one MP4 per chapter (each under the storage bucket's 50 MB limit), WebVTT captions, a poster and `manifest.json`. File names carry a content hash. `pnpm tutorial:publish` uploads them to `platform/tutorial/` in the storage the environment configures, the same way the app picks it:
+
+| Target | Environment |
+|---|---|
+| Production | `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` of the production project (from Vercel, never committed) |
+| Local dev server (`pnpm dev`) | `LOCAL_STORAGE_DIR=apps/web/.data/blobs` |
+
+It refuses to run with no storage configured. It uploads the chapter files first and the manifest last, so the Help Center never lists a chapter that is missing, then removes the previous version's files. Until a tutorial is published, the Help page shows no video section.
+
+The API is `GET /orgs/:orgId/help/tutorial` (the manifest, or `null`) and `GET /orgs/:orgId/help/tutorial/files/:name` (streamed with `Range` support, so viewers can skip ahead), both `org:update` only. See `packages/api/src/services/help-tutorial.ts`.
 
 ## Writing or changing a scene
 

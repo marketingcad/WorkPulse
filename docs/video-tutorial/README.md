@@ -42,4 +42,6 @@ The 16 chapters: Welcome · Getting started · Finding your way around · Set up
 
 **Automatic:** `pnpm tutorial:render` makes the whole video from the clips: a text-to-speech voiceover, each clip timed to it, the zooms, callouts, title, chapter and end cards, captions and chapter marks. It writes `e2e/tutorial/video/workpulse-tutorial.mp4`. The default voice is Piper, free and run on your own computer; an OpenAI or ElevenLabs voice sounds more natural still (see [e2e/tutorial/README.md](../../e2e/tutorial/README.md#rendering-the-video)). There is no music, and the thumbnail is not made.
 
+**In the app:** `pnpm tutorial:publish` puts the video in the Help Center for system admins, chapter by chapter (see [e2e/tutorial/README.md](../../e2e/tutorial/README.md#publishing-to-the-help-center)).
+
 **By hand:** record the voiceover from [03-voiceover-script.md](03-voiceover-script.md) and edit in a video editor, following [08-editing-guide.md](08-editing-guide.md). The clips are WebM (VP8). Most editors import them directly; otherwise convert them to MP4 first (see the guide).

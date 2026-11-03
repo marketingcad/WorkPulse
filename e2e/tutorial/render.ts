@@ -5,8 +5,8 @@
  * cards, chapter marks, and captions timed to the real audio (as an .srt next to the MP4).
  *
  * Output in e2e/tutorial/video (git-ignored): workpulse-tutorial.mp4, workpulse-tutorial.en.srt,
- * workpulse-tutorial-thumbnail.png and youtube-chapters.txt. TUTORIAL_MUSIC=<audio file> mixes a
- * music track in quietly under the voice. Work files and the voice cache are in e2e/.tmp/tutorial-render, so a
+ * workpulse-tutorial-thumbnail.png, youtube-chapters.txt, and chapters/ (one video per chapter for the
+ * Help Center, see publish.ts). TUTORIAL_MUSIC=<audio file> mixes a music track in quietly under the voice. Work files and the voice cache are in e2e/.tmp/tutorial-render, so a
  * re-run only redoes the scenes whose clip, words or voice changed.
  *
  * Voice, from TUTORIAL_TTS:
@@ -21,7 +21,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { clock, srtTime, timedCues } from './format';
 import { CHAPTERS, slug, VIDEO, type Scene } from './scenes';
@@ -441,9 +441,48 @@ async function main() {
     '-map_metadata', '1', '-map_chapters', '1', '-movflags', '+faststart', mp4,
   ]);
   await thumbnail();
+  await chapterFiles(segments, voice);
   copyFileSync(path.join(WORK, 'captions.srt'), path.join(OUT, `${NAME}.en.srt`));
   writeFileSync(path.join(OUT, 'youtube-chapters.txt'), `${chapters.map((c) => `${clock(c.at)} ${c.title}`).join('\n')}\n`, 'utf8');
   console.log(`[render] ${path.relative(process.cwd(), mp4)} · ${clock(total)} · ${segments.length} segments · voice: ${TTS} "${VOICE}"${music ? ` · music: ${path.basename(music)}` : ''}`);
+}
+
+/**
+ * The Help Center's copy of the video (`pnpm tutorial:publish`): one MP4 per chapter, each under the
+ * storage upload limit, with WebVTT captions, a poster and manifest.json. Names carry a content hash,
+ * so browsers may cache them and a new render never overwrites what viewers are watching.
+ */
+async function chapterFiles(segments: Segment[], voice: Map<string, string>): Promise<void> {
+  const dir = path.join(OUT, 'chapters');
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const groups: Array<{ title: string; segments: Segment[] }> = [];
+  for (const g of segments) {
+    if (g.chapter) groups.push({ title: g.chapter, segments: [] });
+    groups.at(-1)!.segments.push(g);
+  }
+  const chapters = [];
+  for (const [i, group] of groups.entries()) {
+    const id = `ch${String(i + 1).padStart(2, '0')}`;
+    const tag = hash(...group.segments.map((g) => readFileSync(path.join(WORK, g.file.replace(/\.mp4$/, '.key')), 'utf8'))).slice(0, 8);
+    const name = `${id}-${tag}`;
+    writeFileSync(path.join(WORK, `${id}.list.txt`), group.segments.map((g) => `file '${g.file}'`).join('\n'), 'utf8');
+    await ffmpeg(['-f', 'concat', '-safe', '0', '-i', `${id}.list.txt`, '-c', 'copy', '-movflags', '+faststart', path.join(dir, `${name}.mp4`)]);
+    // The poster: a moment into the chapter's first scene, after its title card.
+    await ffmpeg(['-ss', String(round(group.segments[0]!.seconds + 2)), '-i', path.join(dir, `${name}.mp4`), '-frames:v', '1', '-vf', 'scale=1280:-1', '-q:v', '4', path.join(dir, `${name}.jpg`)]);
+    const vtt = ['WEBVTT', ''];
+    let t = 0;
+    for (const g of group.segments) {
+      if (g.scene) for (const [a, b, p] of timedCues(g.scene.narration, t + LEAD, seconds(voice.get(g.scene.id)!))) vtt.push(`${srtTime(a).replace(',', '.')} --> ${srtTime(b).replace(',', '.')}`, p, '');
+      t += g.seconds;
+    }
+    writeFileSync(path.join(dir, `${name}.vtt`), vtt.join('\n'), 'utf8');
+    const size = statSync(path.join(dir, `${name}.mp4`)).size;
+    if (size > 50 * 1024 * 1024) console.warn(`[render] ${name}.mp4 is ${Math.round(size / 1048576)} MB, over the 50 MB storage upload limit`);
+    chapters.push({ n: i + 1, title: group.title, seconds: round(t), video: `${name}.mp4`, captions: `${name}.vtt`, poster: `${name}.jpg` });
+  }
+  writeFileSync(path.join(dir, 'manifest.json'), `${JSON.stringify({ title: 'WorkPulse Complete Tutorial', chapters }, null, 2)}\n`, 'utf8');
+  console.log(`[render] ${chapters.length} chapter files for the Help Center in ${path.relative(process.cwd(), dir)}`);
 }
 
 /** The thumbnail from the script's concept (scenes.ts VIDEO.thumbnail), built from frames of the real app. */

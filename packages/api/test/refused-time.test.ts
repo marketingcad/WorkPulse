@@ -47,6 +47,8 @@ const entriesFor = async (sid: string) => {
   const body = (await admin.get<Entry[] | { data: Entry[] }>(o(`/time-entries?from=${day(-3)}&to=${day(1)}`))).body;
   return (Array.isArray(body) ? body : body.data).filter((e) => e.session_id === sid);
 };
+/** A session's time across its entries (an hour can be split in two at a day or period boundary). */
+const secondsFor = async (sid: string) => (await entriesFor(sid)).reduce((n, e) => n + e.duration_seconds, 0);
 
 /** Turn tracking off for the worker for one test (the one refusal offline time still gets). */
 async function trackingOff() {
@@ -73,9 +75,8 @@ describe('offline sync', () => {
       const again = await agent.post('/agent/ingest/batch', { sent_at: t.clock.now.toISOString(), events: s.events });
       expect(again.body.results.map((r: { status: string }) => r.status)).toEqual(['duplicate', 'duplicate', 'duplicate']);
     }
-    const entries = await entriesFor(s.sid);
-    expect(entries).toHaveLength(1);
-    expect(entries[0]!.duration_seconds).toBe(3600);
+    // Counted once: the hour, not two or three of them.
+    expect(await secondsFor(s.sid)).toBe(3600);
   });
 
   it('time on a project the worker was taken off, or one archived since, is kept (flagged for review), not refused', async () => {
@@ -88,8 +89,8 @@ describe('offline sync', () => {
     const b = offlineSession(archived, t.clock.now.getTime() - 8 * 3600_000);
     const r = await agent.post('/agent/ingest/batch', { sent_at: t.clock.now.toISOString(), events: [...a.events, ...b.events] });
     expect(r.body.results.every((x: { status: string }) => x.status === 'accepted')).toBe(true);
-    expect((await entriesFor(a.sid))[0]!.duration_seconds).toBe(3600);
-    expect((await entriesFor(b.sid))[0]!.duration_seconds).toBe(3600);
+    expect(await secondsFor(a.sid)).toBe(3600);
+    expect(await secondsFor(b.sid)).toBe(3600);
     // Kept time is for the approver to review, not "time not added".
     const listed = (await admin.get<Array<{ project_id: string }>>(o(`/time-not-added?from=${day(-3)}&to=${day(1)}&status=all`))).body;
     expect(listed.filter((x) => x.project_id === removed || x.project_id === archived)).toEqual([]);
@@ -110,7 +111,7 @@ describe('offline sync', () => {
     expect(byId.get(refused.events[2]!.event_id)).toMatchObject({ status: 'rejected' });
     expect(await entriesFor(refused.sid)).toHaveLength(0);
     // Time sent before tracking was turned off stays.
-    expect((await entriesFor(fine.sid))[0]!.duration_seconds).toBe(3600);
+    expect(await secondsFor(fine.sid)).toBe(3600);
   });
 
   it('a monitor turned off while offline refuses only its data; the time still counts', async () => {
@@ -121,7 +122,7 @@ describe('offline sync', () => {
     const s = offlineSession(p, t.clock.now.getTime() - 10 * 3600_000);
     const r = await agent.post('/agent/ingest/batch', { sent_at: t.clock.now.toISOString(), events: s.events });
     expect(r.body.results.map((x: { status: string; code?: string }) => x.code ?? x.status)).toEqual(['accepted', 'activity_disabled', 'accepted']);
-    expect((await entriesFor(s.sid))[0]!.duration_seconds).toBe(3600);
+    expect(await secondsFor(s.sid)).toBe(3600);
   });
 
   it('a computer waiting for approval keeps its time: after approval the same records are accepted', async () => {
@@ -137,7 +138,7 @@ describe('offline sync', () => {
     const sent = await agent.post('/agent/ingest/batch', { sent_at: t.clock.now.toISOString(), events: s.events });
     // Not "duplicate": nothing was recorded while it waited.
     expect(sent.body.results.map((x: { status: string }) => x.status)).toEqual(['accepted', 'accepted', 'accepted']);
-    expect((await entriesFor(s.sid))[0]!.duration_seconds).toBe(3600);
+    expect(await secondsFor(s.sid)).toBe(3600);
   });
 });
 

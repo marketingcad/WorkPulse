@@ -108,7 +108,10 @@ test('changing a filter clears the selection, so a bulk delete touches only rows
   await page.goto(`/o/${data.orgId}/timesheets/all`);
   await page.getByLabel('From', { exact: true }).fill(day);
   await page.getByLabel('To', { exact: true }).fill(day);
+  // The list for this search and these dates (an earlier answer, for the dates before, can arrive first).
+  const listed = page.waitForResponse((r) => { const u = new URL(r.url()); return u.pathname.endsWith('/time-entries') && u.searchParams.get('q') === note && u.searchParams.get('from') === day && u.searchParams.get('to') === day && r.ok(); });
   await search(page, 'Search time entries', note, '/time-entries');
+  await listed;
   await expect(page.getByRole('listitem').filter({ hasText: note })).toHaveCount(2);
   await page.getByRole('checkbox', { name: 'Select all editable entries' }).check();
   await expect(page.getByText('2 selected')).toBeVisible();
@@ -130,4 +133,23 @@ test('changing a filter clears the selection, so a bulk delete touches only rows
   // The app entry, out of view, is still there.
   const left = await ok<Array<{ project_id: string }>>(await api.get(orgApi(`/time-entries?from=${day}&to=${day}&q=${encodeURIComponent(note)}`)), 'entries');
   expect(left.map((e) => e.project_id)).toEqual([data.projects.app.id]);
+});
+
+test('From and To changed one right after the other both stick (neither writes back the old other date)', async ({ page, data }) => {
+  await page.goto(`/o/${data.orgId}/timesheets/all`);
+  await expect(page.getByRole('heading', { level: 1, name: 'Time entries' })).toBeVisible();
+  // Both in one task, before the page re-renders (fast typing, autofill, a slow computer): the To
+  // change used to write back the From date of the previous render.
+  await page.evaluate(() => {
+    const set = (label: string, value: string) => {
+      const input = document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    set('From', '2025-12-01');
+    set('To', '2025-12-05');
+  });
+  await expect(page).toHaveURL(/from=2025-12-01&to=2025-12-05/);
+  await expect(page.getByLabel('From', { exact: true })).toHaveValue('2025-12-01');
+  await expect(page.getByLabel('To', { exact: true })).toHaveValue('2025-12-05');
 });

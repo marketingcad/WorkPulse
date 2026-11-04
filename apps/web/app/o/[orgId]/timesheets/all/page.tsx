@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowDown, ArrowUp, CalendarOff, Copy, Download, History, Lock, MoreHorizontal, Pencil, Plus, Save, Scissors, Trash2 } from 'lucide-react';
 import type { ClientDto, InsightsDto, OffsetPage, ProjectDto, TaskDto, TimeEntryDto, TimeEntryPageSummary, TimeTypeDto } from '@tallywork/contracts';
@@ -108,7 +108,14 @@ export default function AllTimeEntriesPage() {
   const preset: Preset = url.range && (PRESETS as Array<{ value: string }>).some((p) => p.value === url.range) && (url.range !== 'custom' || customOk) ? (url.range as Preset) : customOk ? 'custom' : 'this_week';
   const range = preset === 'custom' ? { from: url.from!, to: url.to! } : presetRange(preset, today, org.organization.week_start);
   const setPreset = (p: Preset) => setUrl(p === 'custom' ? { range: 'custom', from: range.from, to: range.to } : { range: p === 'this_week' ? null : p, from: null, to: null });
-  const setCustom = (r: { from: string; to: string }) => setUrl({ range: 'custom', from: r.from, to: r.to });
+  // The range as last written, not as last rendered: From and To changed one after the other, before
+  // the page re-renders (fast typing, autofill, a slow computer), must not write the old other date back.
+  const latest = useRef(range);
+  latest.current = range;
+  const setCustom = (r: { from: string; to: string }) => {
+    latest.current = r;
+    setUrl({ range: 'custom', from: r.from, to: r.to });
+  };
   const member = isId(url.member) ? url.member : '';
   const client = isId(url.client) ? url.client : '';
   const project = isId(url.project) ? url.project : '';
@@ -296,7 +303,7 @@ export default function AllTimeEntriesPage() {
             onChange={(e) =>
               setCustom({
                 from: e.target.value,
-                to: range.to < e.target.value ? e.target.value : range.to,
+                to: latest.current.to < e.target.value ? e.target.value : latest.current.to,
               })
             }
             className="h-7 w-36 text-xs"
@@ -307,7 +314,7 @@ export default function AllTimeEntriesPage() {
             aria-label="To"
             value={range.to}
             min={range.from}
-            onChange={(e) => setCustom({ from: range.from, to: e.target.value })}
+            onChange={(e) => setCustom({ from: latest.current.from, to: e.target.value })}
             className="h-7 w-36 text-xs"
           />
         </span>

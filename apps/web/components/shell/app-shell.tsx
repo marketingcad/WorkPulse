@@ -16,7 +16,6 @@ import { HelpReturnBar } from '@/components/help/help-return';
 import { NewOrgDialog } from './new-org-dialog';
 import { TimerBar } from './timer-bar';
 import { HelpLink } from '@/components/help/help-link';
-import { guideFor } from '@/components/help/page-help';
 import { CalculatorLauncher } from '@/components/calculator/calculator-launcher';
 
 /**
@@ -302,11 +301,25 @@ function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-/** "Help" to this page's guide, in the same place on every page that has one (phones included). */
+type GuideFor = (typeof import('@/components/help/page-help'))['guideFor'];
+
+/**
+ * "Help" to this page's guide, in the same place on every page that has one (phones included).
+ * The guides are loaded after the page shows, so every page does not carry the whole Help Center
+ * in its first load (the bundle budget).
+ */
 function PageHelp() {
   const org = useOrg();
   const path = usePathname().slice(org.base.length);
-  const guide = path === '/help' ? null : guideFor(path, org.can);
+  const [guideFor, setGuideFor] = useState<GuideFor | null>(null);
+  useEffect(() => {
+    let live = true;
+    void import('@/components/help/page-help').then((m) => live && setGuideFor(() => m.guideFor));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const guide = !guideFor || path === '/help' ? null : guideFor(path, org.can);
   return guide ? <HelpLink article={guide.id} /> : null;
 }
 

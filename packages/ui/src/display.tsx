@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { AlertTriangle, CircleCheck, CircleDashed, CircleDot, CircleX, Clock, Inbox, Lock, MinusCircle, PauseCircle, TrendingDown, TrendingUp } from 'lucide-react';
 import { cx } from './primitives';
 import { t } from './i18n';
+import { Avatar, type AvatarImage } from './avatar';
 
 export type Tone = 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'brand' | 'secondary';
 
@@ -88,31 +89,10 @@ export function StatusBadge({ status, label, className }: { status: string; labe
   );
 }
 
-export function Avatar({ name, size = 28, className }: { name: string; size?: number; className?: string }) {
-  const initials = name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]!.toUpperCase())
-    .join('');
-  // Stable hue per name so people are recognizable across screens.
-  let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
-  return (
-    <span
-      aria-hidden
-      className={cx('inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white', className)}
-      style={{ width: size, height: size, fontSize: Math.max(10, size * 0.38), background: `hsl(${h} 50% 32%)` }}
-    >
-      {initials || '?'}
-    </span>
-  );
-}
-
-export function PersonCell({ name, sub, size = 24 }: { name: string; sub?: ReactNode; size?: number }) {
+export function PersonCell({ name, sub, size = 24, image, seed }: { name: string; sub?: ReactNode; size?: number; image?: AvatarImage; seed?: string }) {
   return (
     <span className="flex min-w-0 items-center gap-2">
-      <Avatar name={name} size={size} />
+      <Avatar name={name} size={size} image={image} seed={seed} />
       <span className="min-w-0">
         <span className="block truncate font-medium">{name}</span>
         {sub && <span className="block truncate text-xs text-text-muted">{sub}</span>}

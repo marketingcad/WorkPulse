@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Check, ChevronRight, ChevronsUpDown, Clock, Eye, LogOut, Menu as MenuIcon, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Plus, Sun, UserRound, Wallet, X } from 'lucide-react';
 import type { MeDto, NotificationDto } from '@tallywork/contracts';
-import { Avatar, IconButton, Logo, Menu, MenuItem, MenuLabel, MenuSeparator, Popover, cx, fmtRelative } from '@tallywork/ui';
+import { IconButton, Logo, Menu, MenuItem, MenuLabel, MenuSeparator, Popover, cx, fmtRelative } from '@tallywork/ui';
 import { api, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
@@ -17,6 +17,7 @@ import { NewOrgDialog } from './new-org-dialog';
 import { TimerBar } from './timer-bar';
 import { HelpLink } from '@/components/help/help-link';
 import { CalculatorLauncher } from '@/components/calculator/calculator-launcher';
+import { MyAvatar } from '@/lib/avatars';
 
 /**
  * The phone navigation drawer, as a modal dialog (audit QA-04): focus moves in and stays in while it
@@ -424,13 +425,16 @@ function UserMenu() {
     <Menu
       trigger={
         <button data-tour="account-menu" className="flex items-center gap-2 rounded-sm p-1 hover:bg-surface-muted" aria-label={t('shell.accountMenu')}>
-          <Avatar name={name || '?'} size={28} />
+          <MyAvatar size={28} />
         </button>
       }
     >
-      <div className="px-2 py-1.5">
+      <div className="flex items-center gap-2.5 px-2 py-1.5">
+        <MyAvatar size={36} />
+        <div className="min-w-0">
         <div className="truncate text-sm font-semibold">{name}</div>
         <div className="truncate text-xs text-text-muted">{me?.user.email}</div>
+        </div>
       </div>
       <MenuSeparator />
       <MenuItem icon={<UserRound className="size-3.5" />} onSelect={() => router.push(`${org.base}/me/profile`)}>

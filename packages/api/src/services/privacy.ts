@@ -41,6 +41,7 @@ import { hashPassword } from '../lib/crypto';
 import type { Ctx } from './ctx';
 import { audit } from './events';
 import { assertOutranks } from './org';
+import { deleteReplaced } from './avatar';
 
 export const DATA_EXPORT_KEY = 'data-export';
 
@@ -151,6 +152,10 @@ export async function anonymizeMember(x: Ctx, membershipId: string) {
 }
 
 async function anonymizeUser(tx: Tx, deps: Deps, userId: string) {
+  // Their profile picture goes too (the file; the reference is cleared below). Erasing is final, so a
+  // rare rollback after this only leaves the initials showing.
+  const [prior] = await tx.select({ avatar: users.avatarUrl }).from(users).where(eq(users.id, userId));
+  await deleteReplaced(deps, userId, prior?.avatar ?? null);
   await tx
     .update(users)
     .set({ name: 'Former member', email: `erased+${userId}@erased.invalid`, passwordHash: await hashPassword(randomToken(32)), emailVerifiedAt: null, avatarUrl: null, anonymizedAt: deps.now(), updatedAt: new Date() })

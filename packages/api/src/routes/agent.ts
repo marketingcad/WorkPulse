@@ -11,6 +11,7 @@ import { requireUser, userId } from '../middleware/auth';
 import { runInTenantTx } from '../middleware/tenant';
 import { cancelMyTimeOff, myActivity, myClientVisibility, myNotifications, myPayStub, myPayStubs, mySchedule, mySessions, mySummary, myTasks, myTimeOff, myTimesheet, readMyNotifications, requestMyTimeOff, submitMyTimesheet } from '../services/agent-me';
 import { acknowledgePolicy, bootstrap, createDeviceAuthCode, heartbeat, ingestBatch, loadAgentCtx, loginDevice, refreshDeviceToken, registerDevice, isOwnScreenshotKey, screenshotKeyPrefix, type AgentCtx } from '../services/agent';
+import { agentAvatar } from '../services/avatar';
 
 type AgentEnv = AppEnv & { Variables: AppEnv['Variables'] & { agent: AgentCtx } };
 
@@ -81,6 +82,8 @@ agentOnly
   .get('/me/tasks', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myTasks(c.var.agent)))
   .get('/me/schedule', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await mySchedule(c.var.agent, query(c, rangeQuery))))
   .get('/me/time-off', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myTimeOff(c.var.agent)))
+  // The worker's own profile picture (never anyone else's), with the image inline for the app.
+  .get('/me/avatar', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await agentAvatar(c.var.agent)))
   .post('/me/time-off', rateLimit('agent-me-write', 30, 60), tenant, async (c) => c.json(await requestMyTimeOff(c.var.agent, await body(c, timeOffRequestInput)), 201))
   .post('/me/time-off/:id/cancel', rateLimit('agent-me-write', 30, 60), tenant, async (c) => {
     const id = z.uuid().safeParse(c.req.param('id'));

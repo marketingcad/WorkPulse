@@ -2,12 +2,13 @@
 import { useState } from 'react';
 import { Check, Plus, X } from 'lucide-react';
 import type { ManualTimeDto, OffsetPage } from '@tallywork/contracts';
-import { Button, DataTable, EmptyState, ErrorState, Input, Panel, PersonCell, StatusBadge, Tabs, fmtDate, fmtDateTime, fmtTime, useToast, type Column } from '@tallywork/ui';
+import { Button, DataTable, EmptyState, ErrorState, Input, Panel, StatusBadge, Tabs, fmtDate, fmtDateTime, fmtTime, useToast, type Column } from '@tallywork/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { CommentDialog, ManualTimeDialog } from '@/components/timesheets/entry-dialogs';
+import { MemberCell } from '@/lib/avatars';
 
 type Tab = 'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL';
 
@@ -54,7 +55,7 @@ export function ManualRequests() {
   };
 
   const columns: Column<ManualTimeDto>[] = [
-    ...(showMember ? [{ key: 'member', header: 'Member', cell: (r: ManualTimeDto) => <PersonCell name={r.worker_name} />, value: (r: ManualTimeDto) => r.worker_name, priority: 'primary' } satisfies Column<ManualTimeDto>] : []),
+    ...(showMember ? [{ key: 'member', header: 'Member', cell: (r: ManualTimeDto) => <MemberCell membershipId={r.membership_id} name={r.worker_name} />, value: (r: ManualTimeDto) => r.worker_name, priority: 'primary' } satisfies Column<ManualTimeDto>] : []),
     {
       key: 'when',
       header: 'When',

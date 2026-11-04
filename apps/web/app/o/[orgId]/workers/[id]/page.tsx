@@ -5,7 +5,6 @@ import { useParams, useRouter } from 'next/navigation';
 import { Activity, ArrowRight, Check, Clock, Eraser, KeyRound, Lock, Pencil, UserX, X } from 'lucide-react';
 import type { DeviceDto, EffectivePolicyDto, MemberDetailsDto, ProjectDto, TeamDto, TimeEntryDto, WorkerDto } from '@tallywork/contracts';
 import {
-  Avatar,
   Badge,
   Button,
   ConfirmDialog,
@@ -41,6 +40,7 @@ import { DataExportAction } from '@/components/security/data-export';
 import { MfaResetDialog } from '@/components/security/mfa-reset-dialog';
 import { fromMinor, toMinor } from '@/components/finance/types';
 import { useUrlValue } from '@/lib/url-state';
+import { MemberAvatar } from '@/lib/avatars';
 
 /** Platform names as on the Devices page (the desktop app reports windows, macos or linux). */
 const PLATFORM: Record<string, string> = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
@@ -84,7 +84,7 @@ export default function WorkerDetailPage() {
         }
         title={
           <span className="flex items-center gap-3">
-            <Avatar name={w.name} size={36} />
+            <MemberAvatar membershipId={w.id} name={w.name} size={36} />
             <span className="min-w-0 truncate">{w.name}</span>
           </span>
         }

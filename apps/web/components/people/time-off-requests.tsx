@@ -2,13 +2,14 @@
 import { useState } from 'react';
 import { Check, X } from 'lucide-react';
 import type { OffsetPage } from '@tallywork/contracts';
-import { Button, ConfirmDialog, DataTable, Dialog, EmptyState, ErrorState, Field, Input, Panel, PersonCell, SegmentedControl, StatusBadge, Textarea, fmtRelative, useToast, type Column } from '@tallywork/ui';
+import { Button, ConfirmDialog, DataTable, Dialog, EmptyState, ErrorState, Field, Input, Panel, SegmentedControl, StatusBadge, Textarea, fmtRelative, useToast, type Column } from '@tallywork/ui';
 import { api, errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { overlappingNames } from './overlap';
 import { dateRangeLabel, fmtHours, type TimeOffBalance, type TimeOffRequest, type TimeOffStatus } from './shared';
+import { MemberCell } from '@/lib/avatars';
 
 type Decision = { id: string; action: 'approve' | 'reject' | 'cancel'; comment?: string | null };
 
@@ -74,7 +75,7 @@ export function TimeOffRequests() {
   };
 
   const columns: Column<TimeOffRequest>[] = [
-    { key: 'member', header: 'Member', cell: (r) => <PersonCell name={r.worker_name} sub={r.policy_name} />, value: (r) => r.worker_name, priority: 'primary' },
+    { key: 'member', header: 'Member', cell: (r) => <MemberCell membershipId={r.membership_id} name={r.worker_name} sub={r.policy_name} />, value: (r) => r.worker_name, priority: 'primary' },
     { key: 'dates', header: 'Dates', cell: (r) => <span className="tabular whitespace-nowrap">{dateRangeLabel(r.start_date, r.end_date)}</span>, value: (r) => r.start_date, priority: 'secondary' },
     { key: 'hours', header: 'Hours', align: 'right', cell: (r) => `${fmtHours(r.hours)}${r.half_day ? ' (½)' : ''}`, value: (r) => r.hours, priority: 'secondary' },
     ...(status === 'PENDING'

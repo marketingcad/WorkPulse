@@ -696,9 +696,12 @@ function SettingsView({ s, onBack }: { s: AgentState; onBack: () => void }) {
           ))}
         </dl>
         {s.sync.error && <p className="mx-4 mt-2 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">{s.sync.error}</p>}
-        <div className="p-4">
-          <TrackingDisclosure s={s} compact />
-        </div>
+        {/* An organization setting: admins show or hide it (hidden by default). */}
+        {s.showMonitoringCard && (
+          <div className="p-4">
+            <TrackingDisclosure s={s} compact />
+          </div>
+        )}
       </div>
       <div className="flex shrink-0 flex-col gap-2 border-t border-border p-4">
         <button onClick={() => leave(s, 'logout')} className="flex h-9 items-center justify-center gap-2 rounded-sm border border-border text-sm text-danger hover:bg-danger-soft">

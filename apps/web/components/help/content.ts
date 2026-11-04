@@ -512,6 +512,24 @@ export const HELP_ARTICLES: HelpArticle[] = [
 
   // ─── Settings ──────────────────────────────────────────────────────────────
   {
+    id: 'profile-picture',
+    category: 'settings',
+    title: 'Set your profile picture',
+    summary: 'Upload a photo, choose a ready-made avatar, or keep your initials.',
+    steps: [
+      'Open your profile (the account menu at the top right, then Profile & devices).',
+      'Under Profile picture, click Upload photo (or drop a picture on the panel), then drag and zoom so the circle shows what you want, and click Save picture.',
+      'Prefer not to use a photo? Click Choose an avatar and pick one from the collection.',
+      'To go back to your initials, click Remove.',
+    ],
+    points: [
+      'JPEG, PNG or WebP pictures of up to 5 MB and 4096 × 4096 pixels. WorkPulse stores a square copy and removes the photo’s hidden details, such as where it was taken.',
+      'Your picture is the same in every organization you belong to. It shows to people who may see members (admins, and managers for their team); others see your initials.',
+    ],
+    links: [{ label: 'Open your profile', href: '/me/profile' }],
+    keywords: ['avatar', 'profile picture', 'photo', 'picture', 'initials', 'account'],
+  },
+  {
     id: 'organization-settings',
     category: 'settings',
     title: 'Change organization, timesheet period and timesheet rules',
@@ -539,9 +557,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'Turn each kind of tracking on or off and adjust its options (for example how many screenshots, and whether they are blurred).',
       'Click Save policy. Members are told that their tracking settings changed, and the desktop app follows the new settings.',
     ],
+    points: [
+      'At the top, Desktop app › Show “What WorkPulse records” in the desktop app decides whether workers see a card listing what is recorded (on their Home and Settings screens). It is off by default, applies to the whole organization, and running apps follow a change within about a minute. When it is off, tell your staff what is monitored another way if your organization must.',
+    ],
     tip: 'A team or member setting overrides the organization’s; Reset to inherited removes the override.',
     links: [{ label: 'Open Tracking policies', href: '/settings/policies' }],
-    keywords: ['policy', 'screenshots', 'blur', 'idle', 'monitoring', 'privacy', 'limits'],
+    keywords: ['policy', 'screenshots', 'blur', 'idle', 'monitoring', 'privacy', 'limits', 'what is recorded', 'disclosure'],
   },
   {
     id: 'devices',

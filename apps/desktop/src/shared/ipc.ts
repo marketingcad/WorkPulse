@@ -5,7 +5,7 @@ import type { NotAddedItem } from './not-added';
 import type { MacPermissions } from './permissions';
 
 /** Own-data resources the renderer may read (GET /api/v1/agent/me/<resource>). */
-export const ME_RESOURCES = ['summary', 'sessions', 'timesheet', 'activity', 'tasks', 'schedule', 'time-off', 'notifications', 'pay-stubs'] as const;
+export const ME_RESOURCES = ['summary', 'sessions', 'timesheet', 'activity', 'tasks', 'schedule', 'time-off', 'notifications', 'pay-stubs', 'avatar'] as const;
 export type MeResource = (typeof ME_RESOURCES)[number];
 
 /**
@@ -138,6 +138,8 @@ export interface AgentState {
   notAdded: NotAddedItem[];
   /** macOS privacy permissions (null on other systems). */
   permissions: MacPermissions | null;
+  /** show the "What WorkPulse records" card (an organization setting; hidden by default) */
+  showMonitoringCard: boolean;
   capabilities: Record<string, boolean>;
   /** Browsers whose Tallywork extension is connected (Windows); others fall back to reading the address bar. */
   browserExtension: string[];

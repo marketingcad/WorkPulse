@@ -49,6 +49,12 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🆕 New updates
 
+- **5 November 2026 (desktop "What WorkPulse records" card):** a system admin shows or hides the card for the whole organization (Settings › Tracking policies › Desktop app). Hidden by default (`settings.showMonitoringCard`, no migration). The desktop app reads it at start-up and with every heartbeat, so a change applies within about a minute without a "tracking settings changed" notice, and its saved copy keeps the choice offline. When hidden, the card is gone from both Home and Settings; the switch says the organization must then tell staff what is monitored another way where it has to.
+- **5 November 2026 (profile pictures):** people can upload a photo (cropped and zoomed in the browser), choose one of 14 curated avatars, or keep their initials.
+  - **One picture per account**, the same in every organization (`users.avatar_url` holds `photo:<id>` or `preset:<id>`; no migration). Photos are checked by their contents, re-encoded on the server to a 512 px WebP without metadata (`sharp`), and kept in private storage at `avatars/{userId}/{imageId}.webp`; the API streams them after an authorization check, at an address that changes with the picture.
+  - **Who sees a photo:** the person, and whom their members:read grant covers (everyone with organization scope, a manager's team). Everyone else sees initials, in a color from the person's id. Another organization sees nothing.
+  - **Where:** profile, account menu, Members, Teams, a member's page, Time entries, approvals, manual time, time off, activity, tasks, the Overview, and the desktop app (the worker's own, through the device's own-data API; initials offline).
+  - **API:** `GET/POST/PUT/DELETE /api/v1/me/avatar`, `GET /api/v1/orgs/:orgId/avatars`, `GET /api/v1/orgs/:orgId/avatars/:membershipId`, `GET /api/v1/agent/me/avatar`.
 - **4 November 2026 (UX remediation, phases 1–2):** from a usability audit of the web and desktop apps. The rule: workers never have to guess whether their time is being recorded, whether their computer is approved, or whether their work has synced.
   - **Lists on phones:** every table keeps its row actions (approve, reject, edit, download…) and its selection checkboxes on phones; rows open with Enter or Space and show a focus ring. A test guards all 37 pages built on the shared table.
   - **Desktop app offline:**
@@ -60,7 +66,7 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
     - Choosing a project only selects it; **Clock in** or **Switch** starts tracking (arrow keys in the list used to start sessions).
     - Clear states for a computer waiting for approval, for no projects assigned, and for missing macOS permissions (with a button to the right setting).
     - Signing out or quitting while clocked in asks for the end-of-day report first.
-    - **What WorkPulse records** on Home and in Settings, from the organization's policy.
+    - **What WorkPulse records** on Home and in Settings, from the organization's policy (since 5 November, shown only when an admin turns it on).
     - Errors in plain words instead of network codes.
   - **Web:** the Overview tells a failed load ("Try again") from missing access; the download page tells phones to use a computer and explains that the app is called "Tallywork" on the computer.
 - **4 November 2026 (UX remediation, phase 3):** nobody finishes an important action wondering what to do next.

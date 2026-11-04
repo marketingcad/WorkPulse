@@ -5,7 +5,6 @@ import { AlertTriangle, ArrowDown, ArrowUp, BriefcaseBusiness, ClipboardCheck, C
 import type { CurrentTrackingDto, LiveWorkerDto, SessionDto } from '@tallywork/contracts';
 import {
   ActivityBar,
-  Avatar,
   BudgetProgress,
   Button,
   EmptyState,
@@ -37,6 +36,7 @@ import { useCurrentTracking, useLiveSeconds } from '@/components/shell/timer-bar
 import { StackedBars } from '@/components/charts';
 import { useMemberOptions } from '@/lib/members';
 import { SetupChecklist } from '@/components/workspace/setup-checklist';
+import { MemberAvatar } from '@/lib/avatars';
 
 type Size = 'S' | 'M' | 'L';
 interface WidgetCfg {
@@ -472,7 +472,7 @@ function Widget({ k, data }: { k: string; data: any }) {
         <ul className="divide-y divide-border">
           {data.map((r: any) => (
             <li key={r.id} className="flex items-center gap-3 px-4 py-2 text-sm">
-              <Avatar name={r.worker_name} size={22} />
+              <MemberAvatar membershipId={r.membership_id} name={r.worker_name} size={22} />
               <span className="min-w-0 flex-1 truncate">{r.worker_name}</span>
               <span className="text-xs text-text-muted">
                 {fmtDate(r.start_date, { month: 'short', day: 'numeric' })}

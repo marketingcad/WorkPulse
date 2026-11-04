@@ -1,5 +1,6 @@
 export * from './primitives';
 export * from './display';
+export * from './avatar';
 export * from './overlays';
 export * from './table';
 export * from './format';

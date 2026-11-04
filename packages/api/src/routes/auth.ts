@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { users } from '@tallywork/db';
 import {
   acceptInviteInput,
+  avatarPresetInput,
   changePasswordInput,
   createOrgInput,
   forgotPasswordInput,
@@ -15,7 +16,8 @@ import { DomainError, validation } from '@tallywork/domain';
 import { z } from 'zod';
 import { cancelTotpSetup, confirmTotpSetup, disableTotp, hasMfa, recoveryCodesLeft, regenerateRecoveryCodes, startTotpSetup, verifyLoginCode } from '../services/mfa';
 import type { AppEnv, Deps } from '../context';
-import { body } from '../lib/http';
+import { body, formFile } from '../lib/http';
+import { avatarResponse, myAvatarImage, removeMyAvatar, selectMyAvatarPreset, uploadMyAvatar } from '../services/avatar';
 import { rateLimit } from '../middleware/rate-limit';
 import { SESSION_COOKIE, requireUser, sessionId, userId } from '../middleware/auth';
 import {
@@ -211,6 +213,14 @@ export const meRoutes = new Hono<AppEnv>()
     }
     await c.var.deps.db.update(users).set(patch).where(eq(users.id, userId(c)));
     return c.json(await getMe(c.var.deps.db, userId(c), await hasMfa(c.var.deps, userId(c))));
+  })
+  // Their profile picture: an upload (checked and re-encoded on the server), a curated avatar, or none.
+  .get('/avatar', async (c) => avatarResponse(await myAvatarImage(c.var.deps, userId(c)), c.req.query('v')))
+  .post('/avatar', rateLimit('avatar-upload', 30, 3600), async (c) => c.json({ avatar: await uploadMyAvatar(c.var.deps, userId(c), await formFile(c)) }, 201))
+  .put('/avatar', async (c) => c.json({ avatar: await selectMyAvatarPreset(c.var.deps, userId(c), (await body(c, avatarPresetInput)).preset) }))
+  .delete('/avatar', async (c) => {
+    await removeMyAvatar(c.var.deps, userId(c));
+    return c.body(null, 204);
   })
   .get('/mfa', async (c) => {
     const p = c.var.principal as { mfaVerified?: boolean };

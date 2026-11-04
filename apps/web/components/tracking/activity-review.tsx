@@ -4,7 +4,6 @@ import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, EyeOff, ImageOf
 import type { ActivityBlockDto, ActivityDayDto, EffectivePolicyDto, LiveWorkerDto } from '@tallywork/contracts';
 import {
   ActivityBar,
-  Avatar,
   Button,
   Checkbox,
   ConfirmDialog,
@@ -31,6 +30,7 @@ import { BLOCK_MS, BlockDetail, blockRange, groupCaptures, isLow } from './block
 import { useTrackedWorkers } from './filters';
 import { SpansDrawer } from './spans-drawer';
 import { dayStartMs, localDateOf } from './time';
+import { MemberAvatar } from '@/lib/avatars';
 
 type Level = 'all' | 'lt25' | '25_50' | '50_75' | 'gt75';
 const LEVELS: Array<{ value: Level; label: string }> = [
@@ -327,7 +327,7 @@ export function ActivityReview({ member: memberParam, date, onChange }: { member
                           aria-current={active ? 'true' : undefined}
                           className={cx('flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm', active ? 'bg-interactive-soft font-medium text-interactive' : 'hover:bg-surface-muted')}
                         >
-                          <Avatar name={w.name} size={20} />
+                          <MemberAvatar membershipId={w.id} name={w.name} size={20} />
                           <span className="min-w-0 flex-1 truncate">{w.name}</span>
                           {st && (
                             <span className={cx('size-2 shrink-0 rounded-full', st === 'WORKING' ? 'bg-success' : st === 'IDLE' ? 'bg-warning' : 'bg-text-faint')} title={st === 'WORKING' ? 'Working' : st === 'IDLE' ? 'Idle' : 'Offline'}>

@@ -4,6 +4,7 @@ import { Avatar, EmptyState, ErrorState, Panel, SkeletonRows, StatusBadge, cx, f
 import { qs, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
 import { DOW_SHORT, DateStepper, dateRangeLabel, fmtHours, orderedDows, type HolidayRow, type TimeOffRequest } from './shared';
+import { MemberAvatar } from '@/lib/avatars';
 
 function monthStart(date: string) {
   return `${date.slice(0, 7)}-01`;
@@ -105,7 +106,7 @@ export function TimeOffCalendar() {
                       <span className="flex flex-wrap items-center gap-0.5">
                         {list.slice(0, MAX_AVATARS).map((r) => (
                           <span key={r.id} title={`${r.worker_name} · ${r.policy_name}${r.status === 'PENDING' ? ' (pending)' : ''}`}>
-                            <Avatar name={r.worker_name} size={20} className={cx(r.status === 'PENDING' && 'grayscale outline-1 outline-dashed outline-offset-1 outline-text-muted')} />
+                            <MemberAvatar membershipId={r.membership_id} name={r.worker_name} size={20} className={cx(r.status === 'PENDING' && 'grayscale outline-1 outline-dashed outline-offset-1 outline-text-muted')} />
                           </span>
                         ))}
                         {list.length > MAX_AVATARS && <span className="tabular text-2xs text-text-muted">+{list.length - MAX_AVATARS}</span>}
@@ -130,7 +131,7 @@ export function TimeOffCalendar() {
           <ul className="divide-y divide-border">
             {focusList.map((r) => (
               <li key={r.id} className="flex items-center gap-3 px-4 py-2 text-sm">
-                <Avatar name={r.worker_name} size={24} />
+                <MemberAvatar membershipId={r.membership_id} name={r.worker_name} size={24} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{r.worker_name}</div>
                   <div className="truncate text-xs text-text-muted">

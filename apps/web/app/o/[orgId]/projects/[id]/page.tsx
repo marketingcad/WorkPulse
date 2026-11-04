@@ -5,7 +5,6 @@ import { useParams } from 'next/navigation';
 import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { BudgetStatusDto, ClientDto, ProjectDto, TaskDto, TeamDto, MemberOptionDto } from '@tallywork/contracts';
 import {
-  Avatar,
   Badge,
   BudgetProgress,
   Button,
@@ -38,6 +37,7 @@ import { ColorDot, PriorityBadge, ProjectFields, ProjectStatusBadge, TaskDialog,
 import { BudgetDialog } from '@/components/finance/budget-dialog';
 import { ProjectDocumentsTab } from '@/components/workspace/project-documents';
 import { useMemberOptions } from '@/lib/members';
+import { MemberAvatar } from '@/lib/avatars';
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -206,7 +206,7 @@ function TasksTab({ project, tasks, loading, error, onRetry, workers }: { projec
         ) : (
           <span className="flex items-center -space-x-1.5" title={t.assignee_ids.map((a) => names.get(a) ?? 'Member').join(', ')}>
             {t.assignee_ids.slice(0, 4).map((a) => (
-              <Avatar key={a} name={names.get(a) ?? '?'} size={22} className="ring-2 ring-surface" />
+              <MemberAvatar key={a} membershipId={a} name={names.get(a) ?? '?'} size={22} className="ring-2 ring-surface" />
             ))}
             {t.assignee_ids.length > 4 && <span className="pl-2.5 text-xs text-text-muted">+{t.assignee_ids.length - 4}</span>}
             <span className="sr-only">{t.assignee_ids.map((a) => names.get(a) ?? 'Member').join(', ')}</span>

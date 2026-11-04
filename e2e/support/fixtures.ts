@@ -100,6 +100,7 @@ function readyState(d: Device): AgentState {
     offline: { mode: 'online', settingsSavedAt: null, allowedUntil: null, totalsPartial: false },
     notAdded: [],
     permissions: null,
+    showMonitoringCard: b.organization.show_monitoring_card === true,
     capabilities: {},
     browserExtension: [],
     lastProject: null,

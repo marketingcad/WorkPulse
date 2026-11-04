@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, boolean, index, integer, jsonb, numeric, pgTable, primaryKey, text, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { bigint, boolean, index, integer, jsonb, numeric, pgTable, primaryKey, text, unique, uniqueIndex, uuid, real } from 'drizzle-orm/pg-core';
 import type { PayPeriodConfig, RateKind, RateScope } from '@tallywork/domain';
 import { orgId, pk, timestamps, tstz } from './_helpers';
 
@@ -84,6 +84,8 @@ export const payrollRunLines = pgTable(
     grossMinor: bigint({ mode: 'number' }).notNull().default(0),
     adjustments: jsonb().$type<PayAdjustment[]>().notNull().default([]),
     netMinor: bigint({ mode: 'number' }).notNull().default(0),
+    /** what the admin should look at before paying, e.g. 'time_off_no_rate' (F9) */
+    warnings: jsonb().$type<string[]>().notNull().default([]),
     ...timestamps,
   },
   (t) => [unique().on(t.runId, t.membershipId), index().on(t.organizationId, t.membershipId)],
@@ -127,6 +129,9 @@ export const billingEntries = pgTable(
     payRateId: uuid(),
     billAmountMinor: bigint({ mode: 'number' }).notNull().default(0),
     payAmountMinor: bigint({ mode: 'number' }).notNull().default(0),
+    /** the time type's multipliers when this was approved (Q10); null on entries approved before they were kept */
+    billCoefficient: real(),
+    payCoefficient: real(),
     currency: text().notNull(),
     invoiceLineId: uuid(),
     /** the pay stub line that paid this time; set when the payroll is finalized */

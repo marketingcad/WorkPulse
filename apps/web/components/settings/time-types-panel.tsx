@@ -5,6 +5,7 @@ import type { TimeTypeDto } from '@tallywork/contracts';
 import { Badge, Button, ConfirmDialog, DataTable, Dialog, EmptyState, ErrorState, Field, IconButton, Input, Menu, MenuItem, Panel, Switch, useToast, type Column } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { ColorPicker } from '@/components/workspace/shared';
+import { TimeTypeBadge } from './time-type-badge';
 
 interface TimeTypeBody {
   name: string;
@@ -18,13 +19,7 @@ interface TimeTypeBody {
 
 const times = (n: number) => `${Number(n.toFixed(3))}×`;
 
-export function TimeTypeBadge({ type }: { type: Pick<TimeTypeDto, 'short_name' | 'name' | 'color'> }) {
-  return (
-    <span title={type.name} className="inline-flex h-5 items-center rounded-sm px-1.5 text-2xs font-semibold text-white" style={{ background: type.color }}>
-      {type.short_name}
-    </span>
-  );
-}
+export { TimeTypeBadge };
 
 export function TimeTypesPanel() {
   const toast = useToast();

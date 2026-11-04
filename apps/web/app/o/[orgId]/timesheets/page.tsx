@@ -1,9 +1,7 @@
 'use client';
-import { Suspense } from 'react';
-import Link from 'next/link';
-import type { WorkerDto } from '@tallywork/contracts';
+import { Suspense, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { PageHeader, Panel, PermissionState, SkeletonRows } from '@tallywork/ui';
-import { useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { TimesheetView } from '@/components/timesheets/timesheet-view';
 import { useUrlParams } from '@/components/timesheets/use-url-params';
@@ -19,27 +17,21 @@ export default function MyTimesheetPage() {
 function MyTimesheet() {
   const org = useOrg();
   const [params, setParams] = useUrlParams(['member', 'date'] as const);
-  const membershipId = params.member || org.membership.id;
-  const isSelf = membershipId === org.membership.id;
+  const router = useRouter();
+  const other = params.member && params.member !== org.membership.id ? params.member : null;
   const date = params.date || todayIn(org.membership.timezone || org.organization.timezone);
-  const workerQ = useOrgQuery<WorkerDto>(!isSelf && org.can('members:read') ? `/workers/${membershipId}` : null, { retry: false });
+  // Someone else's timesheet has one address, under Team week (R2); older links still arrive here.
+  useEffect(() => {
+    if (other) router.replace(`${org.base}/timesheets/team?member=${other}${params.date ? `&date=${params.date}` : ''}`);
+  }, [other, params.date, org.base, router]);
 
   if (!org.can('timesheets:read')) return <PermissionState />;
+  if (other) return <Panel><SkeletonRows /></Panel>;
 
   return (
     <>
-      <PageHeader
-        title={isSelf ? 'My timesheet' : `Timesheet${workerQ.data ? ` · ${workerQ.data.name}` : ''}`}
-        description={isSelf ? 'Review your time for the period, fix mistakes, and submit it for approval.' : 'Review and edit this member’s time for the period.'}
-        breadcrumbs={
-          !isSelf && org.can('timesheets:read', 'team') ? (
-            <Link href={`${org.base}/timesheets/team`} className="hover:underline">
-              Team week
-            </Link>
-          ) : undefined
-        }
-      />
-      <TimesheetView membershipId={membershipId} date={date} onDateChange={(d) => setParams({ date: d })} decisions={!isSelf} />
+      <PageHeader title="My timesheet" description="Review your time for the period, fix mistakes, and submit it for approval." />
+      <TimesheetView membershipId={org.membership.id} date={date} onDateChange={(d) => setParams({ date: d })} />
     </>
   );
 }

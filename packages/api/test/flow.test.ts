@@ -265,19 +265,19 @@ describe('timesheets → billing → invoice → payment', () => {
   it('runs reports and exports CSV', async () => {
     const cat = await admin.get(`/orgs/${orgId}/reports`);
     expect(cat.body.length).toBeGreaterThanOrEqual(17);
-    const r = await admin.post(`/orgs/${orgId}/reports/time-activity/query`, { from: '2000-01-01', to: '2100-01-01', group_by: ['worker', 'project'] });
+    const r = await admin.post(`/orgs/${orgId}/reports/time-activity/query`, { from: day(-200), to: day(150), group_by: ['worker', 'project'] });
     expect(r.status).toBe(200);
     expect(r.body.rows[0].worker).toBe('Walt Worker');
     expect(r.body.totals.total).toBeGreaterThan(0);
-    const pr = await admin.post(`/orgs/${orgId}/reports/payroll/query`, { from: '2000-01-01', to: '2100-01-01' });
+    const pr = await admin.post(`/orgs/${orgId}/reports/payroll/query`, { from: day(-200), to: day(150) });
     expect(pr.body.rows[0].approval).toBe('APPROVED');
     expect(pr.body.rows[0].earnings).toBeGreaterThan(0);
-    const csv = await t.app.request(`/api/v1/orgs/${orgId}/reports/time-activity/export`, { method: 'POST', headers: { Cookie: admin.cookie, Origin: 'http://localhost:3000', 'Content-Type': 'application/json' }, body: JSON.stringify({ from: '2000-01-01', to: '2100-01-01', format: 'CSV' }) });
+    const csv = await t.app.request(`/api/v1/orgs/${orgId}/reports/time-activity/export`, { method: 'POST', headers: { Cookie: admin.cookie, Origin: 'http://localhost:3000', 'Content-Type': 'application/json' }, body: JSON.stringify({ from: day(-200), to: day(150), format: 'CSV' }) });
     const text = await csv.text();
     expect(text).toContain('Member,Project');
     expect(text).toContain('Walt Worker');
     // Workers cannot run finance reports.
-    expect((await worker.post(`/orgs/${orgId}/reports/payroll/query`, { from: '2000-01-01', to: '2100-01-01' })).status).toBe(403);
+    expect((await worker.post(`/orgs/${orgId}/reports/payroll/query`, { from: day(-200), to: day(150) })).status).toBe(403);
   });
 
   it('serves dashboard widgets per role', async () => {

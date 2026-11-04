@@ -81,8 +81,8 @@ let ids: Ids;
 async function seed(data: import('../../support/global-setup').E2EData, { api, orgApi }: { api: import('@playwright/test').APIRequestContext; orgApi: (p: string) => string }, workerIndex: number) {
   const tag = `Phone ${uid()}`;
   const day = new Date().toISOString().slice(0, 10);
-  // beforeAll runs in each worker process: one day of leave each, as overlapping requests are refused.
-  const leaveDay = new Date(Date.UTC(2027, 5, 1) + workerIndex * 86400_000).toISOString().slice(0, 10);
+  // beforeAll runs in each worker process: one weekday each (a request with no working day is refused), a week apart.
+  const leaveDay = new Date(Date.UTC(2027, 5, 7) + workerIndex * 7 * 86400_000).toISOString().slice(0, 10);
   const worker = await request.newContext({ baseURL: WEB_URL, storageState: WORKER_STATE, extraHTTPHeaders: { Origin: WEB_URL } });
   const w = (p: string) => `/api/v1/orgs/${data.orgId}${p}`;
   const roles = await ok<Array<{ id: string; key: string }>>(await api.get(orgApi('/roles')), 'roles');

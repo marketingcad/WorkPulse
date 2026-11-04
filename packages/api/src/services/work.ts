@@ -1,20 +1,36 @@
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  activityWindows,
+  billingEntries,
   billingRates,
   breakTypes,
+  budgets,
+  clientContacts,
+  clientPortalAccess,
+  clientPortalSettings,
   clients,
+  eodReports,
+  expenses,
+  invoices,
+  manualTimeRequests,
   memberships,
+  payments,
+  presence,
   projectBreaks,
+  projectDocuments,
   projectMembers,
   projectTeams,
   projects,
+  rollupAppDay,
   rollupWorkerDay,
   taskAssignees,
   tasks,
   teamMembers,
   teams,
   timeEntries,
+  timesheetEntries,
+  trackingSessions,
   users,
 } from '@tallywork/db';
 import { can, conflict, forbidden, localDate, newId, notFound, businessRule, validation } from '@tallywork/domain';
@@ -53,8 +69,20 @@ export async function listTeams(x: Ctx): Promise<TeamDto[]> {
   }));
 }
 
+/**
+ * Audit 28 Oct 2026 (A2b): a narrower teams:manage grant than org changes only the teams the actor
+ * manages. Creating a team is organization-wide.
+ */
+function assertCanManageTeam(x: Ctx, teamId: string | null) {
+  const scope = x.actor.grants['teams:manage'];
+  if (!scope) throw forbidden();
+  if (scope === 'org') return;
+  if (!teamId) throw forbidden('Your role can’t create teams');
+  if (!x.actor.managedTeamIds.includes(teamId)) throw forbidden('You can only change teams you manage');
+}
+
 export async function upsertTeam(x: Ctx, teamId: string | null, input: z.infer<typeof teamInput>) {
-  if (!x.actor.grants['teams:manage']) throw forbidden();
+  assertCanManageTeam(x, teamId);
   let id = teamId;
   if (id) {
     const r = await x.tx.update(teams).set({ name: input.name, description: input.description ?? null, updatedAt: new Date() }).where(eq(teams.id, id)).returning({ id: teams.id });
@@ -68,7 +96,7 @@ export async function upsertTeam(x: Ctx, teamId: string | null, input: z.infer<t
 }
 
 export async function archiveTeam(x: Ctx, teamId: string) {
-  if (!x.actor.grants['teams:manage']) throw forbidden();
+  assertCanManageTeam(x, teamId);
   await x.tx.update(teams).set({ archivedAt: new Date() }).where(eq(teams.id, teamId));
   await x.tx.delete(teamMembers).where(eq(teamMembers.teamId, teamId));
   await audit(x, { action: 'team.archived', targetType: 'team', targetId: teamId });
@@ -84,6 +112,12 @@ export async function setTeamMember(x: Ctx, teamId: string, membershipId: string
   if (scope !== 'org' && membershipId === x.actor.membershipId) throw forbidden('You cannot change your own team role');
   const [m] = await x.tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.id, membershipId), eq(memberships.organizationId, x.org.id)));
   if (!m) throw notFound('worker');
+  // SEC-7: a team-scope grant can't pull anyone into its team (and so under its reach); it adds only
+  // people it already manages through another team. Removing and changing roles stay open.
+  if (scope !== 'org' && role !== null && !x.actor.managedMembershipIds.has(membershipId)) {
+    const [already] = await x.tx.select({ id: teamMembers.membershipId }).from(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.membershipId, membershipId)));
+    if (!already) throw forbidden('You can only add people you already manage; ask an admin to add someone new');
+  }
   if (role === null) {
     await x.tx.delete(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.membershipId, membershipId)));
   } else {
@@ -246,6 +280,67 @@ export async function setClientArchived(x: Ctx, clientId: string, archived: bool
   await audit(x, { action: archived ? 'client.archived' : 'client.restored', targetType: 'client', targetId: clientId, metadata: { projects: moved.map((m) => m.id) } });
 }
 
+/**
+ * Permanently deletes a client that was never used: no invoices, payments or expenses, no time tracked
+ * on its projects and no project documents. Its unused projects (with their tasks, members and breaks),
+ * its rates, budgets, contacts and portal access go with it. A client with history is refused, so past
+ * invoices, pay and reports never change: archive it instead.
+ */
+export async function deleteClient(x: Ctx, clientId: string) {
+  if (!(await canOnClient(x, 'clients:manage', clientId))) throw x.actor.grants['clients:manage'] ? notFound('client') : forbidden();
+  const [c] = await x.tx.select({ name: clients.name }).from(clients).where(eq(clients.id, clientId));
+  if (!c) throw notFound('client');
+  const projectIds = (await x.tx.select({ id: projects.id }).from(projects).where(eq(projects.clientId, clientId))).map((p) => p.id);
+  const onProjects = (col: Parameters<typeof inArray>[0]) => (projectIds.length ? inArray(col, projectIds) : sql`false`);
+  const found = async (q: Promise<unknown[]>) => (await q).length > 0;
+
+  const used: string[] = [];
+  if (await found(x.tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.clientId, clientId)).limit(1))) used.push('invoices');
+  if (await found(x.tx.select({ id: payments.id }).from(payments).where(eq(payments.clientId, clientId)).limit(1))) used.push('payments');
+  if (await found(x.tx.select({ id: expenses.id }).from(expenses).where(or(eq(expenses.clientId, clientId), onProjects(expenses.projectId))).limit(1))) used.push('expenses');
+  const tracked = [
+    x.tx.select({ id: timeEntries.id }).from(timeEntries).where(onProjects(timeEntries.projectId)).limit(1),
+    x.tx.select({ id: trackingSessions.id }).from(trackingSessions).where(onProjects(trackingSessions.projectId)).limit(1),
+    x.tx.select({ id: manualTimeRequests.id }).from(manualTimeRequests).where(onProjects(manualTimeRequests.projectId)).limit(1),
+    x.tx.select({ id: timesheetEntries.id }).from(timesheetEntries).where(onProjects(timesheetEntries.projectId)).limit(1),
+    x.tx.select({ id: billingEntries.id }).from(billingEntries).where(or(eq(billingEntries.clientId, clientId), onProjects(billingEntries.projectId))).limit(1),
+    x.tx.select({ id: eodReports.id }).from(eodReports).where(onProjects(eodReports.projectId)).limit(1),
+    x.tx.select({ p: activityWindows.projectId }).from(activityWindows).where(onProjects(activityWindows.projectId)).limit(1),
+    x.tx.select({ p: rollupWorkerDay.projectId }).from(rollupWorkerDay).where(onProjects(rollupWorkerDay.projectId)).limit(1),
+    x.tx.select({ p: rollupAppDay.projectId }).from(rollupAppDay).where(onProjects(rollupAppDay.projectId)).limit(1),
+    x.tx.select({ p: presence.projectId }).from(presence).where(onProjects(presence.projectId)).limit(1),
+  ];
+  for (const q of tracked) if (await found(q)) {
+    used.push('tracked time');
+    break;
+  }
+  if (await found(x.tx.select({ id: projectDocuments.id }).from(projectDocuments).where(onProjects(projectDocuments.projectId)).limit(1))) used.push('project documents');
+  if (used.length) {
+    const list = used.length > 1 ? `${used.slice(0, -1).join(', ')} and ${used.at(-1)}` : used[0];
+    throw businessRule('client_in_use', `${c.name} has ${list}, so it can't be deleted. Archive it instead: it disappears from lists and its history stays.`, { in_use: used });
+  }
+
+  if (projectIds.length) {
+    const taskIds = (await x.tx.select({ id: tasks.id }).from(tasks).where(inArray(tasks.projectId, projectIds))).map((t) => t.id);
+    if (taskIds.length) await x.tx.delete(taskAssignees).where(inArray(taskAssignees.taskId, taskIds));
+    await x.tx.delete(tasks).where(inArray(tasks.projectId, projectIds));
+    await x.tx.delete(projectMembers).where(inArray(projectMembers.projectId, projectIds));
+    await x.tx.delete(projectTeams).where(inArray(projectTeams.projectId, projectIds));
+    await x.tx.delete(projectBreaks).where(inArray(projectBreaks.projectId, projectIds));
+    await x.tx.delete(budgets).where(and(eq(budgets.subjectType, 'PROJECT'), inArray(budgets.subjectId, projectIds)));
+    // A project rate's scope id is the project; a project-and-worker rate's is "project:membership".
+    await x.tx.delete(billingRates).where(or(and(eq(billingRates.scope, 'PROJECT'), inArray(billingRates.scopeId, projectIds)), and(eq(billingRates.scope, 'PROJECT_WORKER'), inArray(sql`split_part(${billingRates.scopeId}, ':', 1)`, projectIds))));
+  }
+  await x.tx.delete(budgets).where(and(eq(budgets.subjectType, 'CLIENT'), eq(budgets.subjectId, clientId)));
+  await x.tx.delete(billingRates).where(and(eq(billingRates.scope, 'CLIENT'), eq(billingRates.scopeId, clientId)));
+  await x.tx.delete(clientPortalAccess).where(eq(clientPortalAccess.clientId, clientId));
+  await x.tx.delete(clientPortalSettings).where(eq(clientPortalSettings.clientId, clientId));
+  await x.tx.delete(clientContacts).where(eq(clientContacts.clientId, clientId));
+  await x.tx.delete(projects).where(eq(projects.clientId, clientId));
+  await x.tx.delete(clients).where(eq(clients.id, clientId));
+  await audit(x, { action: 'client.deleted', targetType: 'client', targetId: clientId, before: { name: c.name }, metadata: { projects: projectIds } });
+}
+
 // ─── Projects ────────────────────────────────────────────────────────────────
 /** Each project's planned breaks, in order. Breaks of an archived break type are left out. */
 export async function projectBreaksFor(x: Pick<Ctx, 'tx'>, projectIds: string[]): Promise<Map<string, ProjectBreakDto[]>> {
@@ -406,9 +501,16 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
     await x.tx.insert(projects).values({ id, organizationId: x.org.id, name: input.name, ...values });
   }
   if (input.member_ids) {
-    await assertActiveMembers(x, input.member_ids, 'member_ids');
+    // People being added must be active. Someone already linked who is no longer active (removed before
+    // removal also cleared project links) is dropped, as removing them does today, rather than making
+    // the whole save fail: the access editor sends every linked id, including ones it cannot show.
+    const linked = new Set((await x.tx.select({ m: projectMembers.membershipId }).from(projectMembers).where(eq(projectMembers.projectId, id))).map((r) => r.m));
+    const wanted = [...new Set(input.member_ids)];
+    const active = new Set(wanted.length ? (await x.tx.select({ id: memberships.id }).from(memberships).where(and(inArray(memberships.id, wanted), eq(memberships.status, 'ACTIVE')))).map((r) => r.id) : []);
+    await assertActiveMembers(x, wanted.filter((m) => !linked.has(m)), 'member_ids');
+    const keep = wanted.filter((m) => active.has(m));
     await x.tx.delete(projectMembers).where(eq(projectMembers.projectId, id));
-    if (input.member_ids.length) await x.tx.insert(projectMembers).values(input.member_ids.map((m) => ({ organizationId: x.org.id, projectId: id!, membershipId: m })));
+    if (keep.length) await x.tx.insert(projectMembers).values(keep.map((m) => ({ organizationId: x.org.id, projectId: id!, membershipId: m })));
   }
   if (input.team_ids) {
     const found = input.team_ids.length ? await x.tx.select({ id: teams.id }).from(teams).where(and(inArray(teams.id, input.team_ids), isNull(teams.archivedAt))) : [];

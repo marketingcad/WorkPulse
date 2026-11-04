@@ -30,13 +30,23 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg } from '@/lib/org';
-import { CommentDialog, DeleteEntryDialog, EditEntryDialog, ManualTimeDialog, RevisionsDrawer, SplitEntryDialog } from './entry-dialogs';
+import dynamic from 'next/dynamic';
 import { periodLabel, type TimesheetHistoryItem } from './shared';
-import { CsvImportDialog } from './csv-import';
-import { TimeTypeBadge } from '@/components/settings/time-types-panel';
+import { TimeTypeBadge } from '@/components/settings/time-type-badge';
 import { downloadText, toCsv } from '@/lib/csv';
 
+// Dialogs open on demand, so they load when first opened instead of with the page (first-load JS budget).
+const CommentDialog = dynamic(() => import('./entry-dialogs').then((m) => m.CommentDialog));
+const DeleteEntryDialog = dynamic(() => import('./entry-dialogs').then((m) => m.DeleteEntryDialog));
+const EditEntryDialog = dynamic(() => import('./entry-dialogs').then((m) => m.EditEntryDialog));
+const ManualTimeDialog = dynamic(() => import('./entry-dialogs').then((m) => m.ManualTimeDialog));
+const RevisionsDrawer = dynamic(() => import('./entry-dialogs').then((m) => m.RevisionsDrawer));
+const SplitEntryDialog = dynamic(() => import('./entry-dialogs').then((m) => m.SplitEntryDialog));
+const CsvImportDialog = dynamic(() => import('./csv-import').then((m) => m.CsvImportDialog));
+
 type Decision = 'approve' | 'reject' | 'request-changes' | 'reopen';
+/** "Reopened by Ada", not "Draft by Ada": the status line names the decision that was made. */
+const DECIDED_LABEL: Record<string, string> = { APPROVE: 'Approved', REJECT: 'Rejected', REQUEST_CHANGES: 'Changes requested', REOPEN: 'Reopened' };
 
 export interface TimesheetViewProps {
   membershipId: string;
@@ -132,6 +142,9 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
 
   const variance = ts.expected_seconds != null ? ts.total_seconds - ts.expected_seconds : null;
   const showComment = !!ts.comment && (ts.status === 'REJECTED' || ts.status === 'DRAFT');
+  // A draft's comment comes from "Request changes" or from "Reopen": say which one happened.
+  const reopened = ts.status === 'DRAFT' && ts.last_decision === 'REOPEN';
+  const commentTitle = ts.status === 'REJECTED' ? 'Rejected' : reopened ? 'Reopened' : 'Changes requested';
 
   return (
     <div className={cx('flex flex-col', compact ? 'gap-3 p-4' : 'gap-4')}>
@@ -159,7 +172,7 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
         {ts.submitted_at && <span className="text-xs text-text-muted">Submitted {fmtDateTime(ts.submitted_at)}</span>}
         {ts.decided_at && ts.decided_by_name && ts.status !== 'SUBMITTED' && (
           <span className="text-xs text-text-muted">
-            {humanize(ts.status)} by {ts.decided_by_name} · {fmtDateTime(ts.decided_at)}
+            {DECIDED_LABEL[ts.last_decision ?? ''] ?? humanize(ts.status)} by {ts.decided_by_name} · {fmtDateTime(ts.decided_at)}
           </span>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -212,11 +225,11 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
       {showComment && (
         <div role="status" className={cx('rounded-md border px-4 py-3 text-sm', ts.status === 'REJECTED' ? 'border-danger/30 bg-danger-soft' : 'border-warning/30 bg-warning-soft')}>
           <div className={cx('font-medium', ts.status === 'REJECTED' ? 'text-danger' : 'text-warning')}>
-            {ts.status === 'REJECTED' ? 'Rejected' : 'Changes requested'}
+            {commentTitle}
             {ts.decided_by_name && ` by ${ts.decided_by_name}`}
           </div>
           <p className="mt-0.5 text-text">“{ts.comment}”</p>
-          {isSelf && <p className="mt-1 text-xs text-text-muted">Fix the entries below, then submit again.</p>}
+          {isSelf && <p className="mt-1 text-xs text-text-muted">{reopened ? 'Correct the entries if needed, then submit again.' : 'Fix the entries below, then submit again.'}</p>}
         </div>
       )}
 
@@ -289,7 +302,7 @@ function WeekGrid({ ts, today, onDay }: { ts: TimesheetDto; today: string; onDay
   const d = org.fmtDuration;
   if (!ts.projects.length) return <EmptyState title="No time in this period" description="Tracked and manual time shows up here by project and day." />;
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="w-full min-w-[640px] border-collapse text-sm">
         <caption className="sr-only">Time per project and day</caption>
         <thead>
@@ -427,7 +440,7 @@ function EntriesList({ ts, entriesQ, money, day, onClearDay, onAdd }: { ts: Time
             <ul className="divide-y divide-border">
               {g.entries.map((e) => (
                 <li key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 text-sm">
-                  <span className="tabular w-36 shrink-0 text-text-muted">{e.duration_only ? <span className="text-text-faint">Duration entry</span> : `${fmtTime(e.started_at)} – ${fmtTime(e.ended_at)}`}</span>
+                  <span className="tabular w-36 shrink-0 text-text-muted">{e.duration_only ? <span className="text-text-faint">Duration entry</span> : `${fmtTime(e.started_at, e.timezone)} – ${fmtTime(e.ended_at, e.timezone)}`}</span>
                   <span className="min-w-0 flex-1 basis-48">
                     <span className="block truncate">
                       <span className="font-medium">{e.project_name}</span>

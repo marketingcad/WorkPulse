@@ -7,6 +7,7 @@ import * as schema from './schema/index';
 
 export { schema };
 export * from './schema/index';
+export { withQueryStats, currentQueryStats, type QueryStats } from './query-stats';
 
 export type Schema = typeof schema;
 export type Db = PgDatabase<PgQueryResultHKT, Schema>;

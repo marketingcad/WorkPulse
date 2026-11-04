@@ -153,28 +153,32 @@ test('clocked in when offline tracking runs out: paused at that moment, and not 
   await expect(timer.getByText('Not clocked in', { exact: true })).toBeVisible();
 });
 
-test('time tracked offline on a project the worker was taken off is kept and explained, not lost', async ({ adminApi }) => {
+test('time the server refuses after an offline stretch is kept and explained, not lost', async ({ adminApi }) => {
   test.setTimeout(180_000);
   // Sessions this worker already has (earlier tests): the refused one must not add to them.
   const before = (await serverSessions(adminApi)).length;
   await proxy.down();
   const window = await open();
   await expect(window.getByRole('region', { name: 'Offline' })).toBeVisible({ timeout: 30_000 });
-  await clockInAndOut(window, 'Worked on it before I was moved.');
-  // Meanwhile, the manager takes the worker off the project.
-  await ok(await adminApi.api.patch(adminApi.orgApi(`/projects/${worker.projectId}`), { data: { member_ids: [] } }), 'remove from project');
-
-  await proxy.up();
-  const card = window.getByRole('region', { name: 'Not added to your time' });
-  await expect(card).toBeVisible({ timeout: 60_000 });
-  await expect(card).toContainText('You are no longer on this project.');
-  await expect(card).toContainText('kept here until you deal with them');
-  // Nothing was added for it on the server, and the app does not pretend otherwise.
-  await expect.poll(async () => (await serverSessions(adminApi)).length).toBe(before);
+  await clockInAndOut(window, 'Worked on it while tracking was turned off.');
+  // Meanwhile, the manager turns tracking off for the worker: the one reason offline time is still
+  // refused (time whose project changed meanwhile is kept and flagged for review instead).
+  await ok(await adminApi.api.patch(adminApi.orgApi(`/workers/${worker.membershipId}`), { data: { tracking_enabled: false } }), 'tracking off');
+  try {
+    await proxy.up();
+    const card = window.getByRole('region', { name: 'Not added to your time' });
+    await expect(card).toBeVisible({ timeout: 60_000 });
+    await expect(card).toContainText('Your organization turned off time tracking from the desktop app for you.');
+    await expect(card).toContainText('kept here until you deal with them');
+    // Nothing was added for it on the server, and the app does not pretend otherwise.
+    await expect.poll(async () => (await serverSessions(adminApi)).length).toBe(before);
+  } finally {
+    await ok(await adminApi.api.patch(adminApi.orgApi(`/workers/${worker.membershipId}`), { data: { tracking_enabled: true } }), 'tracking on');
+  }
 
   // Still there after a restart, until the worker removes it.
   const again = await open();
-  await expect(again.getByRole('region', { name: 'Not added to your time' })).toContainText('You are no longer on this project.', { timeout: 30_000 });
+  await expect(again.getByRole('region', { name: 'Not added to your time' })).toContainText('Your organization turned off time tracking from the desktop app for you.', { timeout: 30_000 });
 });
 
 test('a device revoked by an administrator is signed out, and the saved account is removed', async ({ adminApi }) => {

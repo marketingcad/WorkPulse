@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Archive, ArchiveRestore, FileText, FolderKanban, LayoutDashboard, MoreHorizontal, Pencil, Plus } from 'lucide-react';
+import { Archive, ArchiveRestore, FileText, FolderKanban, LayoutDashboard, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { ClientDto } from '@tallywork/contracts';
 import { Button, Checkbox, ConfirmDialog, DataTable, EmptyState, ErrorState, IconButton, Menu, MenuItem, PageHeader, Panel, PermissionState, StatusBadge, useToast, type Column } from '@tallywork/ui';
 import { errorMessage, qs, useOrgQuery } from '@/lib/api';
@@ -19,6 +19,7 @@ export default function ClientsPage() {
   const q = useOrgQuery<ClientDto[]>(org.can('clients:read') ? `/clients${qs({ include_archived: showArchived || undefined })}` : null);
   const [edit, setEdit] = useState<ClientDto | 'new' | null>(null);
   const [archive, setArchive] = useState<ClientDto | null>(null);
+  const [remove, setRemove] = useState<ClientDto | null>(null);
   const [busy, setBusy] = useState(false);
   const run = useOrgAction();
   const toast = useToast();
@@ -90,6 +91,9 @@ export default function ClientsPage() {
                       Archive
                     </MenuItem>
                   )}
+                  <MenuItem icon={<Trash2 className="size-3.5" />} danger onSelect={() => setRemove(c)}>
+                    Delete
+                  </MenuItem>
                 </Menu>
               </span>
             ),
@@ -154,6 +158,29 @@ export default function ClientsPage() {
             await run('POST', `/clients/${archive.id}/archive`);
             toast.success(`${archive.name} archived`, { label: 'Undo', onClick: () => void restore(archive) });
             setArchive(null);
+          } catch (e) {
+            toast.error(errorMessage(e));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+      {/* Only a client that was never used can be deleted; the server says why otherwise (services/work.ts, deleteClient). */}
+      <ConfirmDialog
+        open={!!remove}
+        onOpenChange={(o) => !o && setRemove(null)}
+        title={`Delete ${remove?.name ?? 'client'}?`}
+        description="This permanently deletes the client with its projects, tasks, rates, budgets and portal access. It works only for a client with no invoices, payments, expenses or tracked time; otherwise archive it instead. This cannot be undone."
+        confirmLabel="Delete client"
+        danger
+        loading={busy}
+        onConfirm={async () => {
+          if (!remove) return;
+          setBusy(true);
+          try {
+            await run('DELETE', `/clients/${remove.id}`);
+            toast.success(`${remove.name} deleted`);
+            setRemove(null);
           } catch (e) {
             toast.error(errorMessage(e));
           } finally {

@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { rateLimitBuckets } from '@tallywork/db';
 import { DomainError } from '@tallywork/domain';
 import type { AppEnv } from '../context';
+import { clientIp } from '../lib/cidr';
 
 /**
  * Fixed-window rate limiter backed by Postgres (works on serverless without Redis).
@@ -14,7 +15,7 @@ export function rateLimit(bucket: string, max: number, windowSeconds: number): M
     if (config.env === 'test' && c.req.header('x-test-rate-limit') !== 'on') return next();
     const p = c.var.principal;
     const who =
-      p?.type === 'user' ? `u:${p.userId}` : p?.type === 'agent' ? `d:${p.deviceId}` : p?.type === 'api_key' ? `k:${p.keyId}` : `ip:${c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local'}`;
+      p?.type === 'user' ? `u:${p.userId}` : p?.type === 'agent' ? `d:${p.deviceId}` : p?.type === 'api_key' ? `k:${p.keyId}` : `ip:${clientIp((n) => c.req.header(n)) ?? 'local'}`;
     const key = `${bucket}:${who}`;
     const t = now();
     const windowStart = new Date(Math.floor(t.getTime() / (windowSeconds * 1000)) * windowSeconds * 1000);

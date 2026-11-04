@@ -57,12 +57,15 @@ describe('approved time reconciles: invoice = billing report = amounts owed', ()
     await approveWeek('2026-09-08');
   });
 
-  it('builds one line per rate whose amount is the exact sum of the billed entries', async () => {
+  // Audit 28 Oct 2026 (F10, approved): a line is quantity × unit price, rounded once, so the invoice
+  // multiplies out. Approved billing keeps its per-entry amounts; the Billing report shows the difference.
+  it('builds one line per rate, priced as quantity × unit price, with any rounding shown in the Billing report', async () => {
     const preview = (await admin.post(o('/invoices/preview'), invoiceInput())).body;
-    const expected = durations.reduce((s, d) => s + amount(d, BILL), 0);
+    const billed = durations.reduce((s, d) => s + amount(d, BILL), 0);
+    const quantity = Math.round((durations.reduce((a, b) => a + b, 0) / 3600) * 10000) / 10000;
+    const expected = Math.round(quantity * BILL);
     expect(preview.lines).toHaveLength(1);
-    expect(preview.lines[0]).toMatchObject({ kind: 'TIME', unit_price_minor: BILL, amount_minor: expected, entries: 4 });
-    expect(preview.lines[0].quantity).toBeCloseTo(durations.reduce((a, b) => a + b, 0) / 3600, 4);
+    expect(preview.lines[0]).toMatchObject({ kind: 'TIME', unit_price_minor: BILL, quantity, amount_minor: expected, entries: 4 });
     expect(preview.subtotal_minor).toBe(expected);
     expect(preview.tax_minor).toBe(Math.round((expected * 825) / 10000)); // tax per line, half-up
     expect(preview.other_currency_entries).toBe(0);
@@ -73,7 +76,9 @@ describe('approved time reconciles: invoice = billing report = amounts owed', ()
     expect(inv.body.subtotal_minor).toBe(expected);
 
     const billing = await report('billing', { from: '2026-09-01', to: '2026-09-30' });
-    expect(billing.totals).toMatchObject({ approved: expected, invoiced: expected, approved_seconds: durations.reduce((a, b) => a + b, 0), unapproved_estimate: 0 });
+    expect(billing.totals).toMatchObject({ approved: billed, invoiced: billed, approved_seconds: durations.reduce((a, b) => a + b, 0), unapproved_estimate: 0 });
+    const rounding = (billing.summary as Array<{ label: string; value: number }>).find((s) => s.label === 'Invoice rounding')?.value ?? 0;
+    expect(rounding).toBe(expected - billed);
     const owed = (await admin.get(o('/billing/amounts-owed?from=2026-09-01&to=2026-09-30'))).body.find((r: { membership_id: string }) => r.membership_id === workerId);
     expect(owed).toMatchObject({ approved_seconds: durations.reduce((a, b) => a + b, 0), approved_amount_minor: durations.reduce((s, d) => s + amount(d, PAY), 0) });
   });

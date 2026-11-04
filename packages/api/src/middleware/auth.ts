@@ -76,6 +76,11 @@ export const authenticate: MiddlewareHandler<AppEnv> = async (c, next) => {
       }
     }
   }
+  // Signed-out writes to the sign-in, password and invitation routes must come from our own site when a
+  // browser says where it is (AUTH-004: login CSRF). The desktop app and API clients send no Origin.
+  if (!principal && !['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) && /\/(auth|portal)\//.test(c.req.path) && c.req.header('origin')) {
+    assertSameOrigin(c.req.header('origin'), c.req.header('host'), config.appUrl);
+  }
   c.set('principal', principal);
   await next();
 };

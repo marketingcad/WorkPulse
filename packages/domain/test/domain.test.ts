@@ -260,7 +260,10 @@ describe('workforce (Phase 8 gate)', () => {
     ['exactly at grace', { firstIn: day(9, 5), lastOut: day(17), workedSeconds: 8 * 3600 }, { status: 'PRESENT', lateSeconds: 0 }],
     ['late past grace', { firstIn: day(9, 6), lastOut: day(17), workedSeconds: 8 * 3600 }, { status: 'LATE', lateSeconds: 360 }],
     ['absent after the shift started', {}, { status: 'ABSENT' }],
-    ['not absent yet inside grace', { now: day(9, 3) }, { status: 'UNSCHEDULED' }],
+    // Live, 28 Oct 2026: before the shift people were "unscheduled" and left out of the roster.
+    ['not absent yet inside grace', { now: day(9, 3) }, { status: 'SCHEDULED' }],
+    ['shift later today', { now: day(4) }, { status: 'SCHEDULED', scheduledSeconds: 8 * 3600 }],
+    ['nothing scheduled and no time', { scheduledStart: null, scheduledEnd: null }, { status: 'UNSCHEDULED' }],
     ['on leave', { onLeave: true }, { status: 'ON_LEAVE' }],
     ['holiday', { isHoliday: true }, { status: 'HOLIDAY' }],
     ['worked on a holiday', { isHoliday: true, firstIn: day(10), lastOut: day(12), workedSeconds: 7200 }, { status: 'LATE' }],
@@ -407,5 +410,23 @@ describe('authorization matrix document', () => {
     const { fileURLToPath } = await import('node:url');
     const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../docs/security/authorization-matrix.md');
     expect(readFileSync(file, 'utf8')).toBe(authorizationMatrixMarkdown());
+  });
+});
+
+describe('money integrity (audit 28 Oct 2026, phase 3)', () => {
+  it('requestedDayHours keeps each working day’s hours, adding up to requestedHours (Q8)', async () => {
+    const { requestedDayHours, requestedHours } = await import('../src');
+    const weekend = (d: string) => ['2026-10-17', '2026-10-18'].includes(d);
+    const dates = ['2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18', '2026-10-19'];
+    expect(requestedDayHours(dates, weekend, 8)).toEqual({ '2026-10-15': 8, '2026-10-16': 8, '2026-10-19': 8 });
+    expect(requestedHours(dates, weekend, 8)).toBe(24);
+    expect(requestedDayHours(['2026-10-15'], () => false, 8, true)).toEqual({ '2026-10-15': 4 });
+    expect(requestedDayHours(['2026-10-17'], weekend, 8)).toEqual({});
+  });
+
+  it('invoice amounts are priced from the quantity as stored, to 4 decimals (F10)', async () => {
+    const { invoiceTotals, roundQuantity } = await import('../src');
+    expect(roundQuantity(1.33333)).toBe(1.3333);
+    expect(invoiceTotals([{ quantity: 1.33333, unitPriceMinor: 9999, taxRateBps: 0 }]).lines[0]!.amountMinor).toBe(Math.round(1.3333 * 9999));
   });
 });

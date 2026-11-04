@@ -17,7 +17,9 @@ export interface ReportResult {
   columns: ReportColumn[];
   rows: Array<Record<string, string | number | null>>;
   totals?: Record<string, number>;
-  summary: Array<{ label: string; value: number | string; type: ColumnType }>;
+  /** Money in several currencies: one totals line per currency, never added together. */
+  totalsByCurrency?: Array<{ currency: string; totals: Record<string, number> }>;
+  summary: Array<{ label: string; value: number | string; type: ColumnType; currency?: string }>;
   chart?: { type: 'bar' | 'stacked-bar' | 'line'; x: string; series: Array<{ key: string; label: string }>; data: Array<Record<string, string | number>> };
   currency?: string;
 }
@@ -26,7 +28,7 @@ export interface CatalogItem {
   key: string;
   title: string;
   question: string;
-  category: 'Time' | 'Activity' | 'People' | 'Finance' | 'Compliance';
+  category: 'Time' | 'Activity' | 'Workforce' | 'Finance' | 'Compliance';
   groupings: string[];
   /** Filters the report applies (older servers omit it: all). */
   filters?: Array<'dates' | 'members' | 'teams' | 'projects' | 'clients' | 'billable'>;

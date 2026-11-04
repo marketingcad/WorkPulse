@@ -80,6 +80,9 @@ export default function WebhooksPage() {
   const [deleting, setDeleting] = useState<Endpoint | null>(null);
   const [deliveriesFor, setDeliveriesFor] = useState<Endpoint | null>(null);
   const [rotated, setRotated] = useState<string | null>(null);
+  // Rotating stops the old secret at once, so it is confirmed first (FE-C8).
+  const [rotating, setRotating] = useState<Endpoint | null>(null);
+  const [rotateBusy, setRotateBusy] = useState(false);
   const del = useOrgMutation<{ id: string }>('DELETE', (b) => `/webhooks/${b.id}`, {
     onSuccess: () => {
       toast.success('Endpoint deleted');
@@ -97,11 +100,15 @@ export default function WebhooksPage() {
   };
 
   const rotate = async (e: Endpoint) => {
+    setRotateBusy(true);
     try {
       const r = await api<{ secret: string }>(`/orgs/${org.organization.id}/webhooks/${e.id}/rotate-secret`, { method: 'POST', body: {} });
+      setRotating(null);
       setRotated(r.secret);
     } catch (err) {
       toast.error(errorMessage(err));
+    } finally {
+      setRotateBusy(false);
     }
   };
 
@@ -161,7 +168,7 @@ export default function WebhooksPage() {
               <MenuItem icon={<Pencil className="size-3.5" />} onSelect={() => setEditing(e)}>
                 Edit
               </MenuItem>
-              <MenuItem icon={<KeyRound className="size-3.5" />} onSelect={() => rotate(e)}>
+              <MenuItem icon={<KeyRound className="size-3.5" />} onSelect={() => setRotating(e)}>
                 Rotate signing secret
               </MenuItem>
               <MenuSeparator />
@@ -233,6 +240,16 @@ export default function WebhooksPage() {
       <Dialog open={!!rotated} onOpenChange={(o) => !o && setRotated(null)} title="New signing secret" width={560} footer={<Button variant="primary" onClick={() => setRotated(null)}>I have stored the secret</Button>}>
         {rotated && <SecretReveal label="Signing secret" secret={rotated} warning="The old secret stopped working. Update your endpoint to verify with this one; it will not be shown again." />}
       </Dialog>
+      <ConfirmDialog
+        open={!!rotating}
+        onOpenChange={(o) => !o && setRotating(null)}
+        title="Rotate signing secret?"
+        description={rotating ? `The current secret for ${rotating.url} stops working straight away. Deliveries fail verification until your endpoint uses the new one.` : undefined}
+        confirmLabel="Rotate secret"
+        danger
+        loading={rotateBusy}
+        onConfirm={() => rotating && rotate(rotating)}
+      />
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}

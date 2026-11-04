@@ -17,10 +17,12 @@ export interface Mailer {
 export class MemoryMailer implements Mailer {
   readonly delivers = false;
   readonly sent: MailMessage[] = [];
-  constructor(private readonly log = false) {}
+  /** `full` logs the message (local development); `headers` only who and what (AUTH-010: bodies carry sign-in, reset and invite links). */
+  constructor(private readonly log: false | 'headers' | 'full' = false) {}
   async send(msg: MailMessage): Promise<void> {
     this.sent.push(msg);
-    if (this.log) console.info(`[mail] to=${msg.to} subject="${msg.subject}"\n${msg.text}`);
+    if (this.log === 'full') console.info(`[mail] to=${msg.to} subject="${msg.subject}"\n${msg.text}`);
+    else if (this.log === 'headers') console.warn(JSON.stringify({ level: 'warn', msg: 'email not sent: no mail provider configured', to: msg.to, subject: msg.subject }));
   }
 }
 
@@ -80,5 +82,7 @@ export function createMailer(env: Record<string, string | undefined> = process.e
     const from = env.MAIL_FROM ?? (env.SMTP_USER ? `WorkPulse <${env.SMTP_USER}>` : 'WorkPulse <no-reply@tallywork.app>');
     return new SmtpMailer({ host: env.SMTP_HOST, port, secure, user: env.SMTP_USER, pass: env.SMTP_PASS }, from);
   }
-  return new MemoryMailer(env.NODE_ENV !== 'test');
+  // No provider: emails are not sent. In production the log never gets the body, which can hold a
+  // password reset or invitation link (audit 29 Oct 2026, AUTH-010).
+  return new MemoryMailer(env.NODE_ENV === 'test' ? false : env.NODE_ENV === 'production' ? 'headers' : 'full');
 }

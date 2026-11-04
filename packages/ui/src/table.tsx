@@ -231,9 +231,7 @@ export function DataTable<T>({
         (empty ?? <EmptyState title={q ? t('table.noMatches') : t('table.empty')} description={q ? t('table.tryDifferentSearch') : undefined} />)
       ) : (
         <>
-          {/* Desktop/tablet table */}
-          {/* relative: screen-reader-only header text (position: absolute) stays inside this scroll
-              box; otherwise a table wider than the box makes the whole page scroll sideways. */}
+          {/* Desktop/tablet table. `relative` keeps absolutely positioned content (e.g. sr-only headers) inside the scroll box, instead of widening the page (audit QA-05). */}
           <div className="relative hidden overflow-x-auto md:block">
             <table className="w-full border-collapse text-sm">
               {caption && <caption className="sr-only">{caption}</caption>}

@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Info, RotateCcw } from 'lucide-react';
-import type { TeamDto } from '@tallywork/contracts';
+import { fieldLabel, type TeamDto } from '@tallywork/contracts';
 import type { TrackingPolicy } from '@tallywork/domain';
 import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, Input, PageHeader, Panel, PermissionState, SegmentedControl, Select, SkeletonRows, Switch, Textarea, cx, fmtDateTime, useToast } from '@tallywork/ui';
 import { ApiError, useOrgMutation, useOrgQuery } from '@/lib/api';
@@ -31,6 +31,7 @@ function setIn(d: Doc, s: string, k: string, v: unknown): Doc {
   } else next[s]![k] = v;
   return next;
 }
+
 const countOverrides = (d: Doc) => Object.values(d).reduce((n, s) => n + Object.keys(s ?? {}).length, 0);
 
 export default function PoliciesPage() {
@@ -144,11 +145,6 @@ export default function PoliciesPage() {
           save.mutate(doc);
         }}
       />
-      {invalid.size > 0 && (
-        <p role="alert" className="mb-4 rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
-          Some values are outside what is allowed (marked in red). Fix them to save.
-        </p>
-      )}
       <InvalidContext.Provider value={markInvalid}>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SegmentedControl
@@ -198,10 +194,14 @@ export default function PoliciesPage() {
         )}
       </div>
 
+      {invalid.size > 0 && (
+        <p role="status" className="mb-4 rounded-sm bg-warning-soft px-3 py-2 text-sm text-warning">
+          {invalid.size === 1 ? 'A value is' : `${invalid.size} values are`} out of range. Correct the highlighted {invalid.size === 1 ? 'field' : 'fields'} to save.
+        </p>
+      )}
       {err && (
         <p role="alert" className="mb-4 rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
-          {err.title}
-          {err.errors?.length ? `: ${err.errors.map((e) => `${e.field} ${e.message}`).join('; ')}` : ''}
+          {err.errors?.length ? err.errors.map((e) => `${fieldLabel(e.field.split('.')) ?? 'Policy'}: ${e.message}`).join(' ') : err.title}
         </p>
       )}
 

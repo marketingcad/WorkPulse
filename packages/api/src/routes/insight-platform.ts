@@ -5,7 +5,7 @@ import { reportRuns, savedReports } from '@tallywork/db';
 import { apiKeyInput, dashboardLayoutInput, dateRangeQuery, exportInput, reportQueryInput, retentionInput, savedReportInput, screenshotCleanupApproveInput, screenshotCleanupInput, webhookInput } from '@tallywork/contracts';
 import { newId, notFound } from '@tallywork/domain';
 import type { AppEnv } from '../context';
-import { body, idList, query } from '../lib/http';
+import { body, formFile, idList, parse, query } from '../lib/http';
 import { insights } from '../services/insights';
 import { toCsv, toPdf, toXlsx } from '../lib/export';
 import { ctx } from '../services/ctx';
@@ -27,6 +27,8 @@ import { anonymizeMember, permissionReview, queueDataExport } from '../services/
 import { getSupportAccess, grantSupportAccess, revokeSupportAccess } from '../services/support';
 import { connectionInput, createConnection, deleteConnection, listConnections, listProviders, requestSync } from '../services/integrations';
 import { streamSSE } from 'hono/streaming';
+import { requirePermission } from '../middleware/tenant';
+import { helpTutorial, helpTutorialFile, parseRange } from '../services/help-tutorial';
 import { reportCatalog, runReport } from '../services/reports';
 import { createSavedReport, listRuns, listSavedReports, queueExport, updateSavedReport } from '../services/report-runs';
 import {
@@ -54,9 +56,9 @@ import {
 const scope = z.enum(['ALL', 'ME', 'WORKER']);
 
 export const insightRoutes = new Hono<AppEnv>()
-  .get('/dashboard/layout', async (c) => c.json(await getLayout(ctx(c), scope.parse(c.req.query('scope') ?? 'ALL'))))
+  .get('/dashboard/layout', async (c) => c.json(await getLayout(ctx(c), parse(scope, c.req.query('scope') ?? 'ALL'))))
   .put('/dashboard/layout', async (c) => c.json(await saveLayout(ctx(c), await body(c, dashboardLayoutInput))))
-  .delete('/dashboard/layout', async (c) => c.json(await resetLayout(ctx(c), scope.parse(c.req.query('scope') ?? 'ALL'))))
+  .delete('/dashboard/layout', async (c) => c.json(await resetLayout(ctx(c), parse(scope, c.req.query('scope') ?? 'ALL'))))
   /**
    * Server-sent events for live views (dashboard, live view, timer). Runs outside the request
    * transaction; each poll is a short tenant transaction. Closes after streamMaxMs; the browser
@@ -201,10 +203,27 @@ export const platformRoutes = new Hono<AppEnv>()
   .post('/support-access', async (c) => c.json(await grantSupportAccess(ctx(c), await body(c, z.object({ hours: z.number().int().min(1).max(72), reason: z.string().trim().min(3).max(300) })))))
   .delete('/support-access', async (c) => c.json(await revokeSupportAccess(ctx(c))))
   .post('/files/receipts', async (c) => {
-    const form = await c.req.formData();
-    const file = form.get('file');
-    if (!(file instanceof File)) throw notFound('file');
-    return c.json(await uploadReceipt(ctx(c), file), 201);
+    return c.json(await uploadReceipt(ctx(c), await formFile(c)), 201);
+  })
+  // The Help Center's video tutorial: for people who run the organization (system admins).
+  .get('/help/tutorial', requirePermission('org:update'), async (c) => c.json(await helpTutorial(ctx(c).deps)))
+  .get('/help/tutorial/files/:name', requirePermission('org:update'), async (c) => {
+    const f = await helpTutorialFile(ctx(c).deps, c.req.param('name'), parseRange(c.req.header('range')));
+    const headers: Record<string, string> = {
+      'Content-Type': f.contentType,
+      'Accept-Ranges': 'bytes',
+      // Published names change with their content, so a browser may keep a file for a day.
+      'Cache-Control': 'private, max-age=86400',
+      'Content-Disposition': 'inline',
+      'X-Content-Type-Options': 'nosniff',
+    };
+    if (f.range) {
+      headers['Content-Range'] = `bytes ${f.range.start}-${f.range.end}/${f.range.size}`;
+      headers['Content-Length'] = String(f.range.end - f.range.start + 1);
+      return new Response(f.body, { status: 206, headers });
+    }
+    if (f.size !== undefined) headers['Content-Length'] = String(f.size);
+    return new Response(f.body, { headers });
   })
   .get('/files/:id', async (c) => {
     const x = ctx(c);

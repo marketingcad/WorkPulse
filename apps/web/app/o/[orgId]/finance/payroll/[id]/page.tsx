@@ -74,7 +74,21 @@ export default function PayrollRunPage() {
       ),
     },
     { key: 'ot', header: 'Overtime', align: 'right', value: (l) => l.overtime_seconds, cell: (l) => <span className="tabular text-text-muted">{l.overtime_seconds ? h(l.overtime_seconds) : '—'}</span> },
-    { key: 'off', header: 'Time off', align: 'right', value: (l) => l.time_off_hours, cell: (l) => <span className="tabular text-text-muted">{l.time_off_hours ? `${l.time_off_hours} h` : '—'}</span> },
+    {
+      key: 'off',
+      header: 'Time off',
+      align: 'right',
+      value: (l) => l.time_off_hours,
+      cell: (l) => (
+        <span className="tabular text-text-muted">
+          {l.time_off_hours ? `${l.time_off_hours} h` : '—'}
+          {/* Paid time off with no worker or org pay rate is paid nothing: say so before anyone pays. */}
+          {l.warnings?.includes('time_off_no_rate') && (
+            <span className="ml-1 block text-xs font-medium text-warning">No pay rate for time off</span>
+          )}
+        </span>
+      ),
+    },
     { key: 'gross', header: 'Gross', align: 'right', value: (l) => l.gross_minor, cell: (l) => <span className="tabular">{m(l.gross_minor)}</span> },
     {
       key: 'adj',

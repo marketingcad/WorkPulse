@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ArrowRight, ChevronRight, Compass, LifeBuoy, PlayCircle, Search, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronRight, Compass, Film, LifeBuoy, PlayCircle, Search, X } from 'lucide-react';
 import { Button, EmptyState, Input, PageHeader, cx } from '@tallywork/ui';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
@@ -10,11 +10,12 @@ import { activeNav, filterNav, type NavItem } from '@/components/shell/nav';
 import { HELP_ARTICLES, HELP_CATEGORIES, NAV_GUIDE, type HelpArticle, type HelpCategoryId } from '@/components/help/content';
 import { searchArticles } from '@/components/help/search';
 import { rememberHelpArticle } from '@/components/help/help-return';
+import { useHelpTutorial, VideoTutorial } from '@/components/help/video-tutorial';
 
 /**
  * Help Center: a plain-language manual for admins and managers, with search, step-by-step guides
- * that link straight to the right page, answers to common questions, and the product tour.
- * Only guides and links for pages this person can open are shown.
+ * that link straight to the right page, answers to common questions, the product tour, and for
+ * system admins the video tutorial. Only guides and links for pages this person can open are shown.
  */
 export default function HelpPage() {
   const org = useOrg();
@@ -47,6 +48,12 @@ export default function HelpPage() {
   const toggle = (id: string) => setOpen((o) => (o.has(id) ? (o.delete(id), new Set(o)) : new Set(o).add(id)));
   const restartTour = () => router.push(`${org.base}?tour=1`);
   const guide = nav.flatMap((g) => g.items).filter((i) => NAV_GUIDE[i.label]);
+  const tutorial = useHelpTutorial();
+  const watchVideo = () => {
+    // The video is with the topics, which a search hides.
+    setQuery('');
+    window.setTimeout(() => document.getElementById('topic-video')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);
+  };
 
   return (
     <>
@@ -58,6 +65,11 @@ export default function HelpPage() {
             <Button icon={<ArrowLeft className="size-3.5" />} onClick={() => (window.history.length > 1 ? router.back() : router.push(org.base))}>
               Back
             </Button>
+            {tutorial.data && (
+              <Button icon={<Film className="size-3.5" />} onClick={watchVideo}>
+                Watch the video
+              </Button>
+            )}
             <Button variant="primary" icon={<PlayCircle className="size-3.5" />} onClick={restartTour}>
               Start the tour
             </Button>
@@ -101,6 +113,13 @@ export default function HelpPage() {
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
           <nav aria-label="Help topics" className="lg:sticky lg:top-20 lg:self-start">
             <ul className="flex flex-wrap gap-1.5 lg:flex-col lg:gap-0.5">
+              {tutorial.data && (
+                <li>
+                  <a href="#topic-video" className="flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-sm text-text-muted hover:bg-surface-muted hover:text-text">
+                    <Film className="size-3.5" aria-hidden /> Video tutorial
+                  </a>
+                </li>
+              )}
               {HELP_CATEGORIES.map((c) => (
                 <li key={c.id}>
                   <a href={`#topic-${c.id}`} className="block rounded-sm px-2.5 py-1.5 text-sm text-text-muted hover:bg-surface-muted hover:text-text">
@@ -117,6 +136,7 @@ export default function HelpPage() {
           </nav>
 
           <div className="flex min-w-0 max-w-3xl flex-col gap-10">
+            <VideoTutorial />
             {HELP_CATEGORIES.map((c) => {
               const list = articles.filter((a) => a.category === c.id);
               if (!list.length) return null;

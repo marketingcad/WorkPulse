@@ -29,7 +29,7 @@ export function CheckEmail({ email }: { email: string }) {
       )}
       {state === 'failed' && (
         <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
-          {t('auth.login.failed')}
+          {t('auth.verify.resendFailed')}
         </p>
       )}
       <Button type="button" variant="secondary" size="md" loading={state === 'sending'} onClick={resend} className="w-full">

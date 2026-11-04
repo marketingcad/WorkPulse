@@ -1,6 +1,8 @@
-import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, ne, sql } from 'drizzle-orm';
 import {
   clientPortalAccess,
+  deviceCredentials,
+  devices,
   clientPortalSettings,
   clients,
   emailTokens,
@@ -158,14 +160,17 @@ export async function createSession(deps: Deps, userIdValue: string, meta: { ip:
 }
 
 export async function login(deps: Deps, email: string, password: string): Promise<{ userId: string }> {
-  const invalid = new DomainError('unauthenticated', 'invalid_credentials', 'Email or password is incorrect');
+  // One answer for a wrong password, an unknown email and a locked account (AUTH-009): a different reply
+  // for locked accounts told anyone which emails have one.
+  const invalid = new DomainError('unauthenticated', 'invalid_credentials', 'Email or password is incorrect. After repeated attempts, wait a few minutes and try again.');
   const u = await findUserByEmail(deps.db, email);
   if (!u) {
     await verifyPassword(await dummyPasswordHash(), password); // constant-ish timing
     throw invalid;
   }
   if (u.lockedUntil && u.lockedUntil > deps.now()) {
-    throw new DomainError('rate_limited', 'account_locked', 'Too many failed attempts. Try again in a few minutes.');
+    await verifyPassword(await dummyPasswordHash(), password); // same timing as a real check
+    throw invalid;
   }
   if (!(await verifyPassword(u.passwordHash, password))) {
     const failed = u.failedLoginCount + 1;
@@ -226,26 +231,67 @@ export async function getMe(db: Db, userIdValue: string, mfaEnabled = false): Pr
 
 export async function issueEmailToken(db: Db, userIdValue: string, purpose: 'VERIFY_EMAIL' | 'RESET_PASSWORD', ttlMinutes: number): Promise<string> {
   const token = randomToken(32);
+  // Only the newest link works: an older reset or verification link still sitting in the inbox is retired.
+  // Expired rather than marked used: a used link is proof the person opened it (see assertSupportStaff).
+  await db.update(emailTokens).set({ expiresAt: new Date() }).where(and(eq(emailTokens.userId, userIdValue), eq(emailTokens.purpose, purpose), isNull(emailTokens.usedAt), gt(emailTokens.expiresAt, new Date())));
   await db.insert(emailTokens).values({ id: newId(), userId: userIdValue, purpose, tokenHash: sha256(token), expiresAt: new Date(Date.now() + ttlMinutes * 60_000) });
   return token;
 }
 
 export async function consumeEmailToken(db: Db, token: string, purpose: 'VERIFY_EMAIL' | 'RESET_PASSWORD'): Promise<string> {
+  // Claimed in one conditional update: two requests with the same link can't both use it.
   const [t] = await db
-    .select()
-    .from(emailTokens)
+    .update(emailTokens)
+    .set({ usedAt: new Date() })
     .where(and(eq(emailTokens.tokenHash, sha256(token)), eq(emailTokens.purpose, purpose), isNull(emailTokens.usedAt), gt(emailTokens.expiresAt, new Date())))
-    .limit(1);
+    .returning({ userId: emailTokens.userId });
   if (!t) throw businessRule('invalid_token', 'This link is invalid or has expired');
-  await db.update(emailTokens).set({ usedAt: new Date() }).where(eq(emailTokens.id, t.id));
   return t.userId;
+}
+
+/**
+ * Sign a user out everywhere after their password changes (audit 29 Oct 2026, AUTH-001/002): every web
+ * session but `keepSessionId`, and the refresh tokens of every desktop device in every organization,
+ * so a stolen cookie or device token stops working. A device's 10-minute access token lapses on its own.
+ */
+export async function signOutEverywhere(db: Db, uid: string, keepSessionId: string | null = null): Promise<void> {
+  await db
+    .update(userSessions)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(userSessions.userId, uid), isNull(userSessions.revokedAt), keepSessionId ? ne(userSessions.id, keepSessionId) : undefined));
+  await withSystem(db, (tx) =>
+    tx
+      .update(deviceCredentials)
+      .set({ revokedAt: new Date() })
+      .where(and(isNull(deviceCredentials.revokedAt), inArray(deviceCredentials.deviceId, tx.select({ id: devices.id }).from(devices).innerJoin(memberships, eq(memberships.id, devices.membershipId)).where(eq(memberships.userId, uid))))),
+  );
 }
 
 export async function resetPassword(db: Db, token: string, password: string): Promise<void> {
   const uid = await consumeEmailToken(db, token, 'RESET_PASSWORD');
   await db.update(users).set({ passwordHash: await hashPassword(password), failedLoginCount: 0, lockedUntil: null, updatedAt: new Date() }).where(eq(users.id, uid));
-  // Sign out everywhere after a reset.
-  await db.update(userSessions).set({ revokedAt: new Date() }).where(and(eq(userSessions.userId, uid), isNull(userSessions.revokedAt)));
+  // Sign out everywhere after a reset, desktop devices included.
+  await signOutEverywhere(db, uid);
+}
+
+/**
+ * Change your password while signed in. A wrong current password counts toward the same lockout as
+ * sign-in (so it can't be guessed here instead), and success signs out every other session and device.
+ */
+export async function changePassword(deps: Deps, uid: string, keepSessionId: string, current: string, next: string): Promise<void> {
+  const [u] = await deps.db.select().from(users).where(eq(users.id, uid));
+  if (!u) throw businessRule('invalid_password', 'Current password is incorrect');
+  if (u.lockedUntil && u.lockedUntil > deps.now()) throw new DomainError('rate_limited', 'account_locked', 'Too many failed attempts. Try again in a few minutes.');
+  if (!(await verifyPassword(u.passwordHash, current))) {
+    const failed = u.failedLoginCount + 1;
+    await deps.db
+      .update(users)
+      .set({ failedLoginCount: failed >= MAX_FAILED_LOGINS ? 0 : failed, lockedUntil: failed >= MAX_FAILED_LOGINS ? new Date(deps.now().getTime() + LOCK_MINUTES * 60_000) : null })
+      .where(eq(users.id, uid));
+    throw businessRule('invalid_password', 'Current password is incorrect');
+  }
+  await deps.db.update(users).set({ passwordHash: await hashPassword(next), failedLoginCount: 0, lockedUntil: null, updatedAt: new Date() }).where(eq(users.id, uid));
+  await signOutEverywhere(deps.db, uid, keepSessionId);
 }
 
 /** Accept an invitation: creates the user if needed, then the membership. */
@@ -276,6 +322,9 @@ export async function acceptInvitation(
   }
 
   return withTenant(db, inv.organizationId, async (tx) => {
+    // Claim the invitation first, conditionally: a second accept running at the same time finds it taken.
+    const [claimed] = await tx.update(invitations).set({ acceptedAt: new Date() }).where(and(eq(invitations.id, inv.id), isNull(invitations.acceptedAt))).returning({ id: invitations.id });
+    if (!claimed) throw businessRule('invalid_token', 'This invitation is invalid or has expired');
     const [role] = await tx.select({ key: roles.key }).from(roles).where(eq(roles.id, inv.roleId));
     const [dup] = await tx.select({ id: memberships.id, status: memberships.status }).from(memberships).where(and(eq(memberships.userId, uid!), eq(memberships.organizationId, inv.organizationId))).limit(1);
     let membershipId: string;
@@ -303,7 +352,6 @@ export async function acceptInvitation(
     for (const projectId of inv.projectIds) {
       await tx.insert(projectMembers).values({ organizationId: inv.organizationId, projectId, membershipId }).onConflictDoNothing();
     }
-    await tx.update(invitations).set({ acceptedAt: new Date() }).where(eq(invitations.id, inv.id));
     await auditSystem(tx, inv.organizationId, { action: 'invitation.accepted', actorType: 'user', actorId: membershipId, targetType: 'membership', targetId: membershipId, after: { email: inv.email } });
     return { userId: uid!, organizationId: inv.organizationId, membershipId, roleKey: role?.key ?? null };
   });

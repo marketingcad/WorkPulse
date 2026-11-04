@@ -528,7 +528,7 @@ export function ProjectFields({
         )}
         {showAssignments && teams && (
           <Field label="Teams" htmlFor="proj-teams" hint="Everyone in these teams can track time here." error={err?.field('team_ids')}>
-            <MultiSelect id="proj-teams" options={teams.map((t) => ({ value: t.id, label: t.name, sub: `${t.members.length} members` }))} value={f.team_ids} onChange={(team_ids) => setF({ ...f, team_ids })} placeholder="No teams" />
+            <MultiSelect id="proj-teams" options={teams.map((t) => ({ value: t.id, label: t.name, sub: `${t.members.length} ${t.members.length === 1 ? 'member' : 'members'}` }))} value={f.team_ids} onChange={(team_ids) => setF({ ...f, team_ids })} placeholder="No teams" />
           </Field>
         )}
         <Field label="Description" htmlFor="proj-desc" className="sm:col-span-2">
@@ -550,10 +550,10 @@ export function ProjectFields({
         </Field>
         {canReadRates && (
           <>
-            <Field label="Pay rate per hour" htmlFor="proj-pay" hint={`${currency} / hour, what you pay`} error={err?.field('pay_rate_minor')}>
+            <Field label="Pay rate per hour" htmlFor="proj-pay" hint={`${currency} / hour, what you pay, from today`} error={err?.field('pay_rate_minor')}>
               <Input id="proj-pay" inputMode="decimal" className="tabular" placeholder="0.00" value={f.pay_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, pay_rate: e.target.value })} />
             </Field>
-            <Field label="Bill rate per hour" htmlFor="proj-bill" hint={`${currency} / hour, what you charge`} error={err?.field('bill_rate_minor')}>
+            <Field label="Bill rate per hour" htmlFor="proj-bill" hint={`${currency} / hour, what you charge, from today`} error={err?.field('bill_rate_minor')}>
               <Input id="proj-bill" inputMode="decimal" className="tabular" placeholder="0.00" value={f.bill_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} />
             </Field>
             <RateNote scope="PROJECT" />
@@ -589,7 +589,7 @@ export function projectPayload(f: ProjectForm, opts: { workers?: boolean; teams?
   };
   const est = f.estimate.trim() === '' ? null : Number(f.estimate);
   if (est !== null && !(est >= 0)) throw new ApiError(422, 'validation', 'Enter a valid estimate', undefined, [{ field: 'estimate_seconds', message: 'A number of hours or days' }]);
-  return {
+  const full = {
     name: f.name,
     client_id: f.client_id || null,
     description: f.description || null,
@@ -607,6 +607,30 @@ export function projectPayload(f: ProjectForm, opts: { workers?: boolean; teams?
     ...(opts.workers ? { member_ids: f.member_ids } : {}),
     ...(opts.teams ? { team_ids: f.team_ids } : {}),
   };
+  const i = opts.initial;
+  if (!i) return full;
+  // Editing: only what was changed here (U3). Access changed meanwhile in Members & teams is not
+  // overwritten from this form's snapshot, and an estimate left alone is not recomputed from today's
+  // hours per day.
+  const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+  const estimateSame = f.estimate.trim() === i.estimate.trim() && f.estimate_unit === i.estimate_unit;
+  const unchanged: Record<string, boolean> = {
+    name: f.name === i.name,
+    client_id: (f.client_id || null) === (i.client_id || null),
+    description: (f.description || null) === (i.description || null),
+    color: f.color === i.color,
+    status: f.status === i.status,
+    billable_default: f.billable_default === i.billable_default,
+    short_name: f.short_name.trim() === i.short_name.trim(),
+    start_date: (f.start_date || null) === (i.start_date || null),
+    end_date: (f.end_date || null) === (i.end_date || null),
+    estimate_seconds: estimateSame,
+    estimate_unit: estimateSame,
+    breaks: JSON.stringify(full.breaks) === JSON.stringify(breaksPayload(i.breaks)),
+    member_ids: sameSet(f.member_ids, i.member_ids),
+    team_ids: sameSet(f.team_ids, i.team_ids),
+  };
+  return Object.fromEntries(Object.entries(full).filter(([k]) => !unchanged[k]));
 }
 
 /**

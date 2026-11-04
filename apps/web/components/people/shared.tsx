@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button, IconButton, Input } from '@tallywork/ui';
 
 // ─── API shapes (packages/api/src/services/operations.ts) ────────────────────
-export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'ON_LEAVE' | 'HOLIDAY' | 'UNSCHEDULED';
+export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'ON_LEAVE' | 'HOLIDAY' | 'SCHEDULED' | 'UNSCHEDULED';
 
 export interface AttendanceRow {
   membership_id: string;

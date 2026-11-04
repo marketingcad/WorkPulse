@@ -25,7 +25,7 @@ test.describe('signing in', () => {
     await page.getByRole('button', { name: 'Sign in' }).click();
 
     // (Next.js also renders an empty role=alert route announcer.)
-    await expect(page.getByRole('alert').filter({ hasText: /./ })).toHaveText('Email or password is incorrect');
+    await expect(page.getByRole('alert').filter({ hasText: /./ })).toHaveText('Email or password is incorrect. After repeated attempts, wait a few minutes and try again.');
     await expect(page).toHaveURL(/\/login/);
   });
 
@@ -85,6 +85,31 @@ test.describe('signing in', () => {
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}`));
     await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
     expect(offSite).toEqual([]);
+  });
+
+  // Security audit 29 Oct 2026 (AUTH-003): "/.//evil.example" resolved to "//evil.example", another site.
+  test('a return link whose dot segments resolve to another site is ignored', async ({ page, data }) => {
+    const offSite: string[] = [];
+    await page.route(/^https?:\/\/(?!localhost)/, (route) => {
+      offSite.push(route.request().url());
+      return route.abort();
+    });
+    await page.goto(`/login?next=${encodeURIComponent('/.//evil.example/phish')}`);
+    await page.getByLabel('Work email').fill(data.admin.email);
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}`));
+    await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
+    expect(offSite).toEqual([]);
+  });
+
+  // Security audit 29 Oct 2026 (SEC-13): pages carry a Content Security Policy.
+  test('pages are served with a Content Security Policy', async ({ page }) => {
+    const res = await page.goto('/login');
+    const csp = res?.headers()['content-security-policy'] ?? '';
+    for (const part of ["default-src 'self'", "object-src 'none'", "frame-ancestors 'none'", "form-action 'self'"]) expect(csp).toContain(part);
+    // The page still works under it.
+    await expect(page.getByRole('heading', { level: 1, name: 'Welcome Back' })).toBeVisible();
   });
 });
 

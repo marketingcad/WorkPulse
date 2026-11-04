@@ -4,13 +4,14 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Button, Field } from '@tallywork/ui';
 import { AuthInput, AuthShell } from '@/components/auth-shell';
-import { api } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import { t } from '@/lib/i18n';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
     <AuthShell
       title={t('auth.forgot.title')}
@@ -29,13 +30,25 @@ export default function ForgotPasswordPage() {
           onSubmit={async (e) => {
             e.preventDefault();
             setLoading(true);
-            await api('/auth/password/forgot', { body: { email } }).catch(() => undefined);
-            setSent(true);
+            setError(null);
+            // Known and unknown addresses get the same answer; a request that failed is not "sent" (VF-14).
+            try {
+              await api('/auth/password/forgot', { body: { email } });
+              setSent(true);
+            } catch (err) {
+              setError(errorMessage(err));
+              setLoading(false);
+            }
           }}
         >
           <Field label={t('auth.workEmail')} htmlFor="email">
             <AuthInput icon={Mail} id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
           </Field>
+          {error && (
+            <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
+              {error}
+            </p>
+          )}
           <Button type="submit" variant="primary" size="md" loading={loading}>
             {t('auth.forgot.submit')}
           </Button>

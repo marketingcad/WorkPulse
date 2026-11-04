@@ -5,6 +5,8 @@ import {
   billingEntries,
   clients,
   holidays,
+  invoiceLines,
+  invoices,
   memberships,
   overtimeRuleSets,
   projects,
@@ -39,9 +41,13 @@ export interface Column {
 }
 export interface ReportResult {
   columns: Column[];
+  /** A row's money is in its own `currency` when it has one, else the report's. */
   rows: Array<Record<string, string | number | null>>;
   totals?: Record<string, number>;
-  summary: Array<{ label: string; value: number | string; type: ColumnType }>;
+  /** Money in several currencies (F5): one totals line per currency, never added together. Replaces `totals`. */
+  totalsByCurrency?: Array<{ currency: string; totals: Record<string, number> }>;
+  /** A money figure in another currency than the report's names it. */
+  summary: Array<{ label: string; value: number | string; type: ColumnType; currency?: string }>;
   chart?: { type: 'bar' | 'stacked-bar' | 'line'; x: string; series: Array<{ key: string; label: string }>; data: Array<Record<string, string | number>> };
   currency?: string;
 }
@@ -55,7 +61,8 @@ export interface ReportDefinition {
   key: string;
   title: string;
   question: string;
-  category: 'Time' | 'Activity' | 'People' | 'Finance' | 'Compliance';
+  /** matches the sidebar's group names (R8) */
+  category: 'Time' | 'Activity' | 'Workforce' | 'Finance' | 'Compliance';
   permission: Permission;
   /** The data permission the report is scoped by (any of). Listed only when the viewer holds one, so it never 403s on run. */
   requires?: Permission[];
@@ -289,13 +296,47 @@ async function timesheetApproval(x: Ctx, p: ReportParams): Promise<ReportResult>
   };
 }
 
+type CurrencyTotals = Array<{ currency: string; totals: Record<string, number> }>;
+
+/**
+ * Totals per currency (F5): money in different currencies is never added together, and there are no
+ * exchange rates. The organization's currency comes first; with no rows it still has a zero line.
+ */
+function totalsPerCurrency<R>(rows: R[], keys: string[], currencyOf: (r: R) => string, orgCurrency: string): CurrencyTotals {
+  const by = new Map<string, Record<string, number>>([[orgCurrency, Object.fromEntries(keys.map((k) => [k, 0]))]]);
+  for (const r of rows) {
+    const c = currencyOf(r);
+    const t = by.get(c) ?? Object.fromEntries(keys.map((k) => [k, 0]));
+    for (const k of keys) t[k]! += Number((r as Record<string, unknown>)[k] ?? 0);
+    by.set(c, t);
+  }
+  return [...by.entries()]
+    .filter(([c, t]) => c === orgCurrency || keys.some((k) => t[k] !== 0))
+    .sort(([a], [b]) => (a === orgCurrency ? -1 : b === orgCurrency ? 1 : a.localeCompare(b)))
+    .map(([currency, totals]) => ({ currency, totals }));
+}
+
+/** Totals per currency; with one currency, also as `totals` (what callers read before F5). */
+function currencyTotals(list: CurrencyTotals): Pick<ReportResult, 'totals' | 'totalsByCurrency'> {
+  return { totalsByCurrency: list, ...(list.length === 1 ? { totals: list[0]!.totals } : {}) };
+}
+
+/** One money figure per currency, labelled with the currency when there is more than one. */
+function moneyFigures(label: string, list: CurrencyTotals, value: (t: Record<string, number>) => number): ReportResult['summary'] {
+  return list.map((t) => ({ label: list.length > 1 ? `${label} (${t.currency})` : label, value: value(t.totals), type: 'money' as ColumnType, currency: t.currency }));
+}
+
+const CURRENCY_COLUMN: Column = { key: 'currency', label: 'Currency', type: 'text' };
+
 async function expensesReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
   const rows = await listExpenses(x, { from: p.from, to: p.to, status: p.status }, null);
+  const totals = totalsPerCurrency(rows, ['amount_minor'], (r) => r.currency, x.org.currency);
+  const billable = totalsPerCurrency(rows.filter((r) => r.billable), ['amount_minor'], (r) => r.currency, x.org.currency);
   return {
-    columns: [{ key: 'spent_on', label: 'Date', type: 'date' }, { key: 'worker_name', label: 'Member', type: 'text' }, { key: 'category', label: 'Category', type: 'text' }, { key: 'project_name', label: 'Project', type: 'text' }, { key: 'client_name', label: 'Client', type: 'text' }, { key: 'amount_minor', label: 'Amount', type: 'money' }, { key: 'status', label: 'Status', type: 'status' }],
+    columns: [{ key: 'spent_on', label: 'Date', type: 'date' }, { key: 'worker_name', label: 'Member', type: 'text' }, { key: 'category', label: 'Category', type: 'text' }, { key: 'project_name', label: 'Project', type: 'text' }, { key: 'client_name', label: 'Client', type: 'text' }, { key: 'amount_minor', label: 'Amount', type: 'money' }, CURRENCY_COLUMN, { key: 'status', label: 'Status', type: 'status' }],
     rows: rows as unknown as ReportResult['rows'],
-    totals: { amount_minor: rows.reduce((s, r) => s + r.amount_minor, 0) },
-    summary: [{ label: 'Expenses', value: rows.length, type: 'number' }, { label: 'Total', value: rows.reduce((s, r) => s + r.amount_minor, 0), type: 'money' }, { label: 'Billable', value: rows.filter((r) => r.billable).reduce((s, r) => s + r.amount_minor, 0), type: 'money' }],
+    ...currencyTotals(totals),
+    summary: [{ label: 'Expenses', value: rows.length, type: 'number' }, ...moneyFigures('Total', totals, (t) => t.amount_minor!), ...moneyFigures('Billable', billable, (t) => t.amount_minor!)],
     currency: x.org.currency,
   };
 }
@@ -313,11 +354,12 @@ async function amountsOwedReport(x: Ctx, p: ReportParams): Promise<ReportResult>
 
 async function paymentsReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
   const rows = await listPayments(x, { from: p.from, to: p.to }, null);
+  const totals = totalsPerCurrency(rows, ['amount_minor'], (r) => r.currency, x.org.currency);
   return {
-    columns: [{ key: 'received_on', label: 'Date', type: 'date' }, { key: 'client_name', label: 'Client', type: 'text' }, { key: 'provider', label: 'Method', type: 'status' }, { key: 'provider_ref', label: 'Reference', type: 'text' }, { key: 'amount_minor', label: 'Amount', type: 'money' }],
+    columns: [{ key: 'received_on', label: 'Date', type: 'date' }, { key: 'client_name', label: 'Client', type: 'text' }, { key: 'provider', label: 'Method', type: 'status' }, { key: 'provider_ref', label: 'Reference', type: 'text' }, { key: 'amount_minor', label: 'Amount', type: 'money' }, CURRENCY_COLUMN],
     rows: rows.map(({ allocations: _a, ...r }) => r) as unknown as ReportResult['rows'],
-    totals: { amount_minor: rows.reduce((s, r) => s + r.amount_minor, 0) },
-    summary: [{ label: 'Payments', value: rows.length, type: 'number' }, { label: 'Received', value: rows.reduce((s, r) => s + r.amount_minor, 0), type: 'money' }],
+    ...currencyTotals(totals),
+    summary: [{ label: 'Payments', value: rows.length, type: 'number' }, ...moneyFigures('Received', totals, (t) => t.amount_minor!)],
     currency: x.org.currency,
   };
 }
@@ -386,31 +428,75 @@ async function billingReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
         p.client_ids?.length ? inArray(billingEntries.clientId, p.client_ids) : undefined,
       ),
     );
-  type Row = { client: string; project: string; seconds: number; approved_seconds: number; approved: number; invoiced: number; unapproved_estimate: number };
+  type Row = { client: string; project: string; currency: string; seconds: number; approved_seconds: number; approved: number; invoiced: number; unapproved_estimate: number };
+  // Each client bills in its own currency (the organization's when it has none).
+  const clientIds = [...new Set([...entries.map((e) => e.b.clientId), ...rows.map((r) => r.clientId)].filter((c): c is string => !!c))];
+  const clientCurrency = new Map(clientIds.length ? (await x.tx.select({ id: clients.id, c: clients.currency }).from(clients).where(inArray(clients.id, clientIds))).map((c) => [c.id, c.c ?? x.org.currency]) : []);
+  const home = (clientId: string | null) => (clientId ? (clientCurrency.get(clientId) ?? x.org.currency) : x.org.currency);
   const agg = new Map<string, Row>();
-  // One row per project and client: a project that moved shows its approved work under the client it
-  // was billed to, and its current work under its current client.
-  const row = (projectId: string, clientId: string | null, client: string | null, project: string) => {
-    const key = `${projectId}|${clientId ?? ''}`;
+  // One row per project, client and currency: a project that moved shows its approved work under the
+  // client it was billed to and its current work under its current client, and an amount is only ever
+  // added to amounts in the same currency (F6).
+  const row = (projectId: string, clientId: string | null, client: string | null, project: string, currency: string) => {
+    const key = `${projectId}|${clientId ?? ''}|${currency}`;
     let a = agg.get(key);
-    if (!a) agg.set(key, (a = { client: client ?? '(no client)', project, seconds: 0, approved_seconds: 0, approved: 0, invoiced: 0, unapproved_estimate: 0 }));
+    if (!a) agg.set(key, (a = { client: client ?? '(no client)', project, currency, seconds: 0, approved_seconds: 0, approved: 0, invoiced: 0, unapproved_estimate: 0 }));
     return a;
   };
   for (const { b, projectName, clientName } of entries) {
-    const a = row(b.projectId, b.clientId, clientName, projectName);
+    const a = row(b.projectId, b.clientId, clientName, projectName, b.currency);
     a.approved_seconds += b.seconds;
     a.approved += b.billAmountMinor;
     if (b.invoiceLineId) a.invoiced += b.billAmountMinor;
   }
-  for (const r of rows) row(r.r.projectId, r.clientId, r.clientName, r.projectName).seconds += r.r.trackedSeconds + r.r.manualSeconds;
-  // Time not approved yet, priced per entry as approving it now would (see priceEntries).
-  for (const e of await priceEntries(x.tx, x.org.currency, p.from, p.to, members)) {
-    if (e.approved || !e.billable || (projectIds && !projectIds.includes(e.projectId))) continue;
-    const a = agg.get(`${e.projectId}|${e.clientId ?? ''}`);
-    if (a) a.unapproved_estimate += e.billMinor;
+  for (const r of rows) row(r.r.projectId, r.clientId, r.clientName, r.projectName, home(r.clientId)).seconds += r.r.trackedSeconds + r.r.manualSeconds;
+  // Time not approved yet, priced per entry as approving it now would (see priceEntries), in each
+  // client's currency (before, a client billed in another currency got no estimate).
+  for (const cur of new Set([x.org.currency, ...clientCurrency.values()])) {
+    for (const e of await priceEntries(x.tx, cur, p.from, p.to, members)) {
+      if (e.approved || !e.billable || home(e.clientId) !== cur || (projectIds && !projectIds.includes(e.projectId))) continue;
+      const a = agg.get(`${e.projectId}|${e.clientId ?? ''}|${cur}`);
+      if (a) a.unapproved_estimate += e.billMinor;
+    }
   }
-  const out = [...agg.values()].sort((a, b) => a.client.localeCompare(b.client) || a.project.localeCompare(b.project));
-  const sum = (k: keyof Row) => out.reduce((s, r) => s + (r[k] as number), 0);
+  const out = [...agg.values()].sort((a, b) => a.client.localeCompare(b.client) || a.project.localeCompare(b.project) || a.currency.localeCompare(b.currency));
+  // Billed amounts are money, shown as Summary shows them: with billing:read or rates:read (A4).
+  if (!x.actor.grants['billing:read'] && !x.actor.grants['rates:read']) {
+    const time = new Map<string, { client: string; project: string; seconds: number; approved_seconds: number }>();
+    for (const r of out) {
+      const t = time.get(`${r.client}|${r.project}`) ?? { client: r.client, project: r.project, seconds: 0, approved_seconds: 0 };
+      t.seconds += r.seconds;
+      t.approved_seconds += r.approved_seconds;
+      time.set(`${r.client}|${r.project}`, t);
+    }
+    const timeRows = [...time.values()];
+    return {
+      columns: [
+        { key: 'client', label: 'Client', type: 'text' },
+        { key: 'project', label: 'Project', type: 'text' },
+        { key: 'seconds', label: 'Billable time', type: 'duration' },
+        { key: 'approved_seconds', label: 'Approved time', type: 'duration' },
+      ],
+      rows: timeRows,
+      totals: { seconds: timeRows.reduce((s, r) => s + r.seconds, 0), approved_seconds: timeRows.reduce((s, r) => s + r.approved_seconds, 0) },
+      summary: [],
+      currency: x.org.currency,
+    };
+  }
+  const totals = totalsPerCurrency(out, ['seconds', 'approved_seconds', 'approved', 'invoiced', 'unapproved_estimate'], (r) => r.currency, x.org.currency);
+  // Invoice lines are priced as quantity × unit price, rounded once (F10), so an invoice can differ by a
+  // few cents from the approved amounts it covers. That difference is shown here, per currency.
+  const lineIds = [...new Set(entries.map((e) => e.b.invoiceLineId).filter((l): l is string => !!l))];
+  const rounding = new Map<string, number>();
+  if (lineIds.length) {
+    const lines = await x.tx.select({ id: invoiceLines.id, amount: invoiceLines.amountMinor, currency: invoices.currency }).from(invoiceLines).innerJoin(invoices, eq(invoices.id, invoiceLines.invoiceId)).where(inArray(invoiceLines.id, lineIds));
+    const billed = await x.tx
+      .select({ line: billingEntries.invoiceLineId, amount: sql<number>`sum(${billingEntries.billAmountMinor})::bigint` })
+      .from(billingEntries)
+      .where(and(inArray(billingEntries.invoiceLineId, lineIds), isNull(billingEntries.voidedAt)))
+      .groupBy(billingEntries.invoiceLineId);
+    for (const l of lines) rounding.set(l.currency, (rounding.get(l.currency) ?? 0) + Number(l.amount) - Number(billed.find((b) => b.line === l.id)?.amount ?? 0));
+  }
   return {
     columns: [
       { key: 'client', label: 'Client', type: 'text' },
@@ -420,13 +506,15 @@ async function billingReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
       { key: 'approved', label: 'Approved amount', type: 'money' },
       { key: 'invoiced', label: 'Invoiced', type: 'money' },
       { key: 'unapproved_estimate', label: 'Not yet approved (est.)', type: 'money' },
+      CURRENCY_COLUMN,
     ],
     rows: out,
-    totals: { seconds: sum('seconds'), approved_seconds: sum('approved_seconds'), approved: sum('approved'), invoiced: sum('invoiced'), unapproved_estimate: sum('unapproved_estimate') },
+    ...currencyTotals(totals),
     summary: [
-      { label: 'Approved amount', value: sum('approved'), type: 'money' },
-      { label: 'Invoiced', value: sum('invoiced'), type: 'money' },
-      { label: 'Ready to invoice', value: sum('approved') - sum('invoiced'), type: 'money' },
+      ...moneyFigures('Approved amount', totals, (t) => t.approved!),
+      ...moneyFigures('Invoiced', totals, (t) => t.invoiced!),
+      ...moneyFigures('Ready to invoice', totals, (t) => t.approved! - t.invoiced!),
+      ...[...rounding.entries()].filter(([, v]) => v !== 0).map(([currency, value]) => ({ label: totals.length > 1 ? `Invoice rounding (${currency})` : 'Invoice rounding', value, type: 'money' as ColumnType, currency })),
     ],
     currency: x.org.currency,
   };
@@ -436,11 +524,15 @@ async function invoicesReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
   // The whole date range, not only the newest 1000 invoices; and the same client and search as the
   // list it was exported from (the file used to hold every client's invoices).
   const rows = await listInvoices(x, { status: p.status, from: p.from, to: p.to, clientIds: p.client_ids, search: p.q || undefined }, null);
+  // Drafts are listed but not invoiced yet, and a void invoice owes nothing: neither is in a total (F5),
+  // as on the Invoices page.
+  const counted = rows.filter((r) => r.status !== 'DRAFT' && r.status !== 'VOID');
+  const totals = totalsPerCurrency(counted, ['total_minor', 'balance_minor'], (r) => r.currency, x.org.currency);
   return {
-    columns: [{ key: 'number', label: 'Invoice', type: 'text' }, { key: 'client_name', label: 'Client', type: 'text' }, { key: 'issue_date', label: 'Issued', type: 'date' }, { key: 'due_date', label: 'Due', type: 'date' }, { key: 'status', label: 'Status', type: 'status' }, { key: 'total_minor', label: 'Total', type: 'money' }, { key: 'balance_minor', label: 'Balance', type: 'money' }],
+    columns: [{ key: 'number', label: 'Invoice', type: 'text' }, { key: 'client_name', label: 'Client', type: 'text' }, { key: 'issue_date', label: 'Issued', type: 'date' }, { key: 'due_date', label: 'Due', type: 'date' }, { key: 'status', label: 'Status', type: 'status' }, { key: 'total_minor', label: 'Total', type: 'money' }, { key: 'balance_minor', label: 'Balance', type: 'money' }, CURRENCY_COLUMN],
     rows: rows as unknown as ReportResult['rows'],
-    totals: { total_minor: rows.reduce((s, r) => s + r.total_minor, 0), balance_minor: rows.reduce((s, r) => s + r.balance_minor, 0) },
-    summary: [{ label: 'Invoiced', value: rows.filter((r) => r.status !== 'VOID').reduce((s, r) => s + r.total_minor, 0), type: 'money' }, { label: 'Outstanding', value: rows.reduce((s, r) => s + r.balance_minor, 0), type: 'money' }, { label: 'Overdue', value: rows.filter((r) => r.status === 'OVERDUE').length, type: 'number' }],
+    ...currencyTotals(totals),
+    summary: [...moneyFigures('Invoiced', totals, (t) => t.total_minor!), ...moneyFigures('Outstanding', totals, (t) => t.balance_minor!), { label: 'Overdue', value: rows.filter((r) => r.status === 'OVERDUE').length, type: 'number' }],
     currency: x.org.currency,
   };
 }
@@ -459,11 +551,14 @@ async function auditReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
 }
 
 /**
- * Hours of an approved time-off request that fall inside [from, to]: the whole request when it
- * lies inside, otherwise its working days in the range (weekends and holidays excluded) at the
- * policy's hours per day, never more than the request itself.
+ * Hours of an approved time-off request that fall inside [from, to]: the hours stored for its days in
+ * the range (Q8: fixed when it was requested, so a holiday added later or a schedule change doesn't
+ * move pay between periods). A request without stored days (none are left after migration 0027) falls
+ * back to the old estimate: the whole request when it lies inside, otherwise its weekdays outside
+ * holidays at the policy's hours per day, never more than the request itself.
  */
-export function timeOffHoursInRange(t: { startDate: string; endDate: string; hours: number; halfDay: boolean }, from: string, to: string, hols: Set<string>, hoursPerDay: number): number {
+export function timeOffHoursInRange(t: { startDate: string; endDate: string; hours: number; halfDay: boolean; dayHours?: Record<string, number> | null }, from: string, to: string, hols: Set<string>, hoursPerDay: number): number {
+  if (t.dayHours) return Object.entries(t.dayHours).reduce((s, [d, h]) => (d >= from && d <= to ? s + h : s), 0);
   if (t.startDate >= from && t.endDate <= to) return t.hours;
   const days = eachDate(t.startDate > from ? t.startDate : from, t.endDate < to ? t.endDate : to).filter((d) => !hols.has(d) && ![0, 6].includes(dayOfWeek(d))).length;
   return Math.min(t.hours, days * hoursPerDay);
@@ -536,25 +631,25 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
 // catalogue: another report covers them, or the list page exports the same rows (Invoices, Payments
 // received, Expenses, Budgets, Payroll › Owed).
 export const REPORTS: ReportDefinition[] = [
-  { key: 'time-activity', title: 'Time & Activity', question: 'Where did time go, and how active was it?', category: 'Time', permission: 'reports:read', groupings: ['worker', 'project', 'task', 'client', 'date', 'week'], requires: ['time:read'], run: timeAndActivity },
-  { key: 'daily-totals', title: 'Daily Totals', question: 'How much did each person work each day?', category: 'Time', permission: 'reports:read', requires: ['time:read'], hidden: true, run: dailyTotals },
-  { key: 'work-sessions', title: 'Work Sessions', question: 'When did people start and stop?', category: 'Time', permission: 'reports:read', requires: ['tracking:read'], filters: ['dates', 'members', 'teams', 'projects'], run: workSessions },
-  { key: 'manual-time', title: 'Manual Time Edits', question: 'How much time was added manually, and why?', category: 'Time', permission: 'reports:read', requires: ['time:read'], filters: ['dates', 'members', 'teams'], run: manualTimeReport },
-  { key: 'work-breaks', title: 'Work Breaks', question: 'How much break and idle time was taken?', category: 'Time', permission: 'reports:read', requires: ['tracking:read'], filters: ['dates', 'members', 'teams', 'projects'], hidden: true, run: workBreaks },
+  { key: 'time-activity', title: 'Time & activity', question: 'Where did time go, and how active was it?', category: 'Time', permission: 'reports:read', groupings: ['worker', 'project', 'task', 'client', 'date', 'week'], requires: ['time:read'], run: timeAndActivity },
+  { key: 'daily-totals', title: 'Daily totals', question: 'How much did each person work each day?', category: 'Time', permission: 'reports:read', requires: ['time:read'], hidden: true, run: dailyTotals },
+  { key: 'work-sessions', title: 'Work sessions', question: 'When did people start and stop?', category: 'Time', permission: 'reports:read', requires: ['tracking:read'], filters: ['dates', 'members', 'teams', 'projects'], run: workSessions },
+  { key: 'manual-time', title: 'Manual time edits', question: 'How much time was added manually, and why?', category: 'Time', permission: 'reports:read', requires: ['time:read'], filters: ['dates', 'members', 'teams'], run: manualTimeReport },
+  { key: 'work-breaks', title: 'Work breaks', question: 'How much break and idle time was taken?', category: 'Time', permission: 'reports:read', requires: ['tracking:read'], filters: ['dates', 'members', 'teams', 'projects'], hidden: true, run: workBreaks },
   { key: 'apps-urls', title: 'Apps & URLs', question: 'Which tools and sites were used?', category: 'Activity', permission: 'reports:read', requires: ['apps:read'], filters: ['dates', 'members', 'teams'], run: appsUrls },
-  { key: 'timesheet-approval', title: 'Timesheet Approval', question: 'Which timesheets are approved or pending?', category: 'People', permission: 'reports:read', requires: ['timesheets:read'], filters: ['dates', 'members', 'teams'], run: timesheetApproval },
-  { key: 'attendance', title: 'Attendance', question: 'Who was late, absent or in overtime?', category: 'People', permission: 'reports:read', requires: ['attendance:read'], filters: ['dates', 'members', 'teams'], run: attendanceReport },
-  { key: 'time-off', title: 'Time Off', question: 'Who took time off and how much?', category: 'People', permission: 'reports:read', requires: ['time_off:read'], filters: ['dates', 'members', 'teams'], run: timeOffReport },
-  { key: 'payroll', title: 'Payroll Export', question: 'What should payroll pay for this period?', category: 'Finance', permission: 'reports:finance', requires: ['payroll:read'], filters: ['dates', 'members', 'teams'], run: payroll },
-  { key: 'amounts-owed', title: 'Amounts Owed', question: 'What do we owe each member?', category: 'Finance', permission: 'reports:finance', requires: ['billing:read', 'rates:read'], filters: ['dates'], hidden: true, run: amountsOwedReport },
+  { key: 'timesheet-approval', title: 'Timesheet approval', question: 'Which timesheets are approved or pending?', category: 'Workforce', permission: 'reports:read', requires: ['timesheets:read'], filters: ['dates', 'members', 'teams'], run: timesheetApproval },
+  { key: 'attendance', title: 'Attendance', question: 'Who was late, absent or in overtime?', category: 'Workforce', permission: 'reports:read', requires: ['attendance:read'], filters: ['dates', 'members', 'teams'], run: attendanceReport },
+  { key: 'time-off', title: 'Time off', question: 'Who took time off and how much?', category: 'Workforce', permission: 'reports:read', requires: ['time_off:read'], filters: ['dates', 'members', 'teams'], run: timeOffReport },
+  { key: 'payroll', title: 'Payroll export', question: 'What should payroll pay for this period?', category: 'Finance', permission: 'reports:finance', requires: ['payroll:read'], filters: ['dates', 'members', 'teams'], run: payroll },
+  { key: 'amounts-owed', title: 'Amounts owed', question: 'What do we owe each member?', category: 'Finance', permission: 'reports:finance', requires: ['billing:read', 'rates:read'], filters: ['dates'], hidden: true, run: amountsOwedReport },
   { key: 'billing', title: 'Billing', question: 'What is billable per client and project?', category: 'Finance', permission: 'reports:finance', requires: ['time:read'], filters: ['dates', 'members', 'teams', 'projects', 'clients'], run: billingReport },
   { key: 'invoices', title: 'Invoices', question: 'What has been invoiced and what is outstanding?', category: 'Finance', permission: 'reports:finance', requires: ['invoices:read'], filters: ['dates'], hidden: true, run: invoicesReport },
   { key: 'payments', title: 'Payments', question: 'What payments came in?', category: 'Finance', permission: 'reports:finance', requires: ['payments:read'], filters: ['dates'], hidden: true, run: paymentsReport },
   { key: 'expenses', title: 'Expenses', question: 'What was spent, and is it billable?', category: 'Finance', permission: 'reports:read', requires: ['expenses:read'], filters: ['dates'], hidden: true, run: expensesReport },
   { key: 'budgets', title: 'Budgets', question: 'Which projects and clients are near or over budget?', category: 'Finance', permission: 'reports:read', requires: ['budgets:read'], filters: [], hidden: true, run: budgetReport(null) },
-  { key: 'project-budgets', title: 'Project Budgets', question: 'Which projects are near or over budget?', category: 'Finance', permission: 'reports:read', requires: ['budgets:read'], filters: [], hidden: true, run: budgetReport('PROJECT') },
-  { key: 'client-budgets', title: 'Client Budgets', question: 'Which clients are near or over budget?', category: 'Finance', permission: 'reports:read', requires: ['budgets:read'], filters: [], hidden: true, run: budgetReport('CLIENT') },
-  { key: 'audit-log', title: 'Audit Log', question: 'Who changed what, and when?', category: 'Compliance', permission: 'audit:read', filters: ['dates'], hidden: true, run: auditReport },
+  { key: 'project-budgets', title: 'Project budgets', question: 'Which projects are near or over budget?', category: 'Finance', permission: 'reports:read', requires: ['budgets:read'], filters: [], hidden: true, run: budgetReport('PROJECT') },
+  { key: 'client-budgets', title: 'Client budgets', question: 'Which clients are near or over budget?', category: 'Finance', permission: 'reports:read', requires: ['budgets:read'], filters: [], hidden: true, run: budgetReport('CLIENT') },
+  { key: 'audit-log', title: 'Audit log', question: 'Who changed what, and when?', category: 'Compliance', permission: 'audit:read', filters: ['dates'], hidden: true, run: auditReport },
 ];
 
 /** The report's own permission plus (when listed) one of the permissions its data needs, as on the matching page. */

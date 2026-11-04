@@ -86,6 +86,12 @@ function LoginForm() {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+      {/* Sent here by a 401 after the app had been working (lib/api.ts): say why. */}
+      {params.get('reason') === 'expired' && !error && (
+        <p role="status" className="rounded-sm bg-warning-soft px-3 py-2 text-sm text-warning">
+          {t('auth.login.expired')}
+        </p>
+      )}
       <Field label={t('auth.workEmail')} htmlFor="email">
         <AuthInput icon={Mail} id="email" type="email" autoComplete="email" placeholder={t('auth.login.emailPlaceholder')} required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
       </Field>

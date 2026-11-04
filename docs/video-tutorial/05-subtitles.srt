@@ -1,0 +1,2710 @@
+1
+00:00:00,000 --> 00:00:01,167
+Welcome to WorkPulse.
+
+2
+00:00:01,217 --> 00:00:02,385
+Track, focus, achieve.
+
+3
+00:00:02,435 --> 00:00:08,472
+In this tutorial you will learn how to use
+WorkPulse from beginning to end: setting
+
+4
+00:00:08,522 --> 00:00:13,341
+up your organization, inviting your team,
+tracking time with the desktop app,
+
+5
+00:00:13,391 --> 00:00:17,399
+approving timesheets, billing your
+clients, running payroll, and getting the
+
+6
+00:00:17,449 --> 00:00:18,617
+reports you need.
+
+7
+00:00:18,667 --> 00:00:23,486
+Everything you see is the real
+application, running with a demo company
+
+8
+00:00:23,536 --> 00:00:27,950
+called Northwind Creative, so you can
+follow along step by step.
+
+9
+00:00:30,000 --> 00:00:32,362
+WorkPulse has three kinds of users.
+
+10
+00:00:32,412 --> 00:00:37,185
+Administrators and managers use this web
+app to organize people and projects,
+
+11
+00:00:37,235 --> 00:00:39,999
+approve time, and handle billing and
+payroll.
+
+12
+00:00:40,049 --> 00:00:45,626
+Workers, the people whose time is tracked,
+use the WorkPulse desktop app on Windows,
+
+13
+00:00:45,676 --> 00:00:46,832
+macOS or Linux.
+
+14
+00:00:46,882 --> 00:00:52,862
+It tracks their time and shows them their
+own timesheet, time off and pay stubs.
+
+15
+00:00:52,912 --> 00:00:58,891
+And your clients can get a read-only
+client portal that shows the work done for
+
+16
+00:00:58,941 --> 00:01:00,499
+them, without any money.
+
+17
+00:01:00,549 --> 00:01:06,126
+What each person sees depends on their
+role, so two people can see different
+
+18
+00:01:06,176 --> 00:01:06,528
+menus.
+
+19
+00:01:06,578 --> 00:01:10,950
+That is normal, and we will come back to
+it later.
+
+20
+00:01:13,000 --> 00:01:17,750
+The menu on the left follows the way work
+flows through WorkPulse.
+
+21
+00:01:17,800 --> 00:01:20,950
+You set up the organization and invite
+people.
+
+22
+00:01:21,000 --> 00:01:24,550
+You organize the work into clients,
+projects and tasks.
+
+23
+00:01:24,600 --> 00:01:26,150
+Your team tracks time.
+
+24
+00:01:26,200 --> 00:01:28,150
+Managers review and approve it.
+
+25
+00:01:28,200 --> 00:01:30,550
+Approved time becomes invoices and
+payroll.
+
+26
+00:01:30,600 --> 00:01:33,350
+And reports turn it all into insight.
+
+27
+00:01:33,400 --> 00:01:38,950
+This tutorial follows the same order, and
+the chapter list in the description lets
+
+28
+00:01:39,000 --> 00:01:40,950
+you jump to any part.
+
+29
+00:01:46,000 --> 00:01:48,804
+To start using WorkPulse, create your
+organization.
+
+30
+00:01:48,854 --> 00:01:55,736
+Enter your name, the name of your company,
+your work email and a password of at least
+
+31
+00:01:55,786 --> 00:01:56,552
+ten characters.
+
+32
+00:01:56,602 --> 00:01:58,183
+Then click Create organization.
+
+33
+00:01:58,233 --> 00:02:03,076
+You are the owner of this new
+organization, and WorkPulse takes you
+
+34
+00:02:03,126 --> 00:02:04,707
+straight to the Overview.
+
+35
+00:02:04,757 --> 00:02:10,008
+For a new organization, the Overview shows
+a Getting started checklist with five
+
+36
+00:02:10,058 --> 00:02:15,717
+steps: invite your team, create a project,
+set pay and bill rates, connect the
+
+37
+00:02:15,767 --> 00:02:18,571
+desktop app, and review what is tracked.
+
+38
+00:02:18,621 --> 00:02:24,688
+Each step links to the right page, and it
+ticks itself off as you go.
+
+39
+00:02:24,738 --> 00:02:27,950
+You can hide the checklist at any time.
+
+40
+00:02:30,000 --> 00:02:33,593
+Next time, sign in from the Welcome Back
+page.
+
+41
+00:02:33,643 --> 00:02:39,260
+If you forget your password, click Forgot
+password, enter your work email and click
+
+42
+00:02:39,310 --> 00:02:40,474
+Send reset link.
+
+43
+00:02:40,524 --> 00:02:44,521
+WorkPulse emails you a link to choose a
+new password.
+
+44
+00:02:44,571 --> 00:02:50,998
+For your privacy, the message is the same
+whether or not the address has an account.
+
+45
+00:02:51,048 --> 00:02:55,045
+Back on the sign-in page, enter your email
+and password.
+
+46
+00:02:55,095 --> 00:02:59,498
+The eye button shows the password so you
+can check it.
+
+47
+00:02:59,548 --> 00:03:03,950
+Click Sign in, and WorkPulse opens the
+organization you used last.
+
+48
+00:03:06,000 --> 00:03:10,479
+When someone invites you to their
+organization, you receive an invitation
+
+49
+00:03:10,529 --> 00:03:10,891
+link.
+
+50
+00:03:10,941 --> 00:03:12,950
+Opening it shows this page.
+
+51
+00:03:13,000 --> 00:03:17,068
+Check your name, choose a password and
+click Join organization.
+
+52
+00:03:17,118 --> 00:03:21,597
+Managers and administrators land in the
+web app, ready to work.
+
+53
+00:03:21,647 --> 00:03:27,362
+Workers are taken to a page where they
+download the desktop app instead, because
+
+54
+00:03:27,412 --> 00:03:30,244
+that is where they track their time.
+
+55
+00:03:30,294 --> 00:03:33,950
+You will see that page in the desktop
+chapter.
+
+56
+00:03:36,000 --> 00:03:38,382
+Protect your account with two-factor
+sign-in.
+
+57
+00:03:38,432 --> 00:03:42,842
+Open the account menu, choose Profile and
+devices, and find Two-factor
+
+58
+00:03:42,892 --> 00:03:43,247
+authentication.
+
+59
+00:03:43,297 --> 00:03:46,085
+Click Set up and confirm your password.
+
+60
+00:03:46,135 --> 00:03:51,761
+Scan the QR code with an authenticator app
+on your phone, such as Google
+
+61
+00:03:51,811 --> 00:03:56,626
+Authenticator or Microsoft Authenticator,
+then type the six-digit code it shows and
+
+62
+00:03:56,676 --> 00:03:57,842
+click Turn on.
+
+63
+00:03:57,892 --> 00:04:00,680
+WorkPulse now gives you ten recovery
+codes.
+
+64
+00:04:00,730 --> 00:04:04,734
+Each one works once, if you ever lose your
+phone.
+
+65
+00:04:04,784 --> 00:04:10,004
+Download them and keep them somewhere
+safe, tick the box and click Done.
+
+66
+00:04:10,054 --> 00:04:14,869
+From now on, signing in asks for a code
+from your phone.
+
+67
+00:04:14,919 --> 00:04:20,139
+Administrators can also require two-factor
+for everyone, which we will see in the
+
+68
+00:04:20,189 --> 00:04:20,950
+security chapter.
+
+69
+00:04:26,000 --> 00:04:28,397
+The Overview is your home page.
+
+70
+00:04:28,447 --> 00:04:32,474
+It updates live, so you always see the
+current picture.
+
+71
+00:04:32,524 --> 00:04:38,183
+At the top, This month shows the time
+logged, the estimated pay, the billable
+
+72
+00:04:38,233 --> 00:04:41,037
+time and the estimated amount to bill.
+
+73
+00:04:41,087 --> 00:04:46,338
+Estimates come from your rates and become
+final once the time is approved.
+
+74
+00:04:46,388 --> 00:04:51,232
+Worked today shows how much your team has
+tracked so far today.
+
+75
+00:04:51,282 --> 00:04:56,533
+Waiting for approval counts the timesheets
+and manual time requests that need your
+
+76
+00:04:56,583 --> 00:05:01,018
+decision, and Project budgets warns you
+before a project runs over.
+
+77
+00:05:01,068 --> 00:05:06,727
+The switch at the top right changes whose
+numbers you see: everyone, only yourself,
+
+78
+00:05:06,777 --> 00:05:07,950
+or one member.
+
+79
+00:05:10,000 --> 00:05:14,399
+You can arrange the Overview to suit the
+way you work.
+
+80
+00:05:14,449 --> 00:05:15,208
+Click Customize.
+
+81
+00:05:15,258 --> 00:05:22,085
+Every card now has controls to change its
+size, move it up or down, or hide it.
+
+82
+00:05:22,135 --> 00:05:28,557
+Hidden cards wait in the Hidden widgets
+panel, so you can add them back at any
+
+83
+00:05:28,607 --> 00:05:28,961
+time.
+
+84
+00:05:29,011 --> 00:05:34,624
+There are cards for the current timer, who
+is working, recent screenshots, time off,
+
+85
+00:05:34,674 --> 00:05:37,051
+attendance, invoices, weekly limits and
+more.
+
+86
+00:05:37,101 --> 00:05:41,096
+When you are happy with the layout, click
+Save layout.
+
+87
+00:05:41,146 --> 00:05:45,950
+Each person has their own layout, and
+Reset brings back the default.
+
+88
+00:05:48,000 --> 00:05:52,774
+The sidebar groups the pages by job: Time
+Tracking, Workforce, Project Management,
+
+89
+00:05:52,824 --> 00:05:56,793
+Finance and Reports, with Settings and
+Help at the bottom.
+
+90
+00:05:56,843 --> 00:05:59,205
+Click a group to open it.
+
+91
+00:05:59,255 --> 00:06:02,421
+At the top left is the organization
+switcher.
+
+92
+00:06:02,471 --> 00:06:07,646
+If you belong to more than one
+organization, switch between them here, or
+
+93
+00:06:07,696 --> 00:06:09,254
+create a new one.
+
+94
+00:06:09,304 --> 00:06:14,881
+At the top right, the bell shows your
+notifications, such as a timesheet waiting
+
+95
+00:06:14,931 --> 00:06:17,695
+for approval or a time off request.
+
+96
+00:06:17,745 --> 00:06:20,509
+Click Mark all read to clear them.
+
+97
+00:06:20,559 --> 00:06:26,538
+Next to it is your account menu, with your
+profile and devices, what is monitored,
+
+98
+00:06:26,588 --> 00:06:28,950
+and the light and dark themes.
+
+99
+00:06:31,000 --> 00:06:33,374
+Whenever you are unsure, open Help.
+
+100
+00:06:33,424 --> 00:06:37,819
+The Help Center is a plain-language manual
+for the whole app.
+
+101
+00:06:37,869 --> 00:06:43,475
+Search for what you want to do, for
+example invoice, and open a guide.
+
+102
+00:06:43,525 --> 00:06:49,132
+Each guide gives you numbered steps, with
+buttons that take you straight to the
+
+103
+00:06:49,182 --> 00:06:49,940
+right page.
+
+104
+00:06:49,990 --> 00:06:54,384
+Many pages also have their own Help link
+at the top.
+
+105
+00:06:54,434 --> 00:06:57,617
+If you are new, click Start the tour.
+
+106
+00:06:57,667 --> 00:07:02,061
+It highlights each part of the screen with
+a short explanation.
+
+107
+00:07:02,111 --> 00:07:06,506
+Use Next to move on, or Skip tour to close
+it.
+
+108
+00:07:06,556 --> 00:07:10,950
+The tour starts by itself the first time
+you sign in.
+
+109
+00:07:16,000 --> 00:07:18,822
+Now let us set up the organization.
+
+110
+00:07:18,872 --> 00:07:19,642
+Open Settings.
+
+111
+00:07:19,692 --> 00:07:25,796
+The tabs across the top hold every
+setting, and you only see the ones your
+
+112
+00:07:25,846 --> 00:07:26,617
+role allows.
+
+113
+00:07:26,667 --> 00:07:32,771
+On the Organization tab, the General panel
+sets your company name, time zone, the day
+
+114
+00:07:32,821 --> 00:07:36,873
+your week starts, your currency, and how
+durations are shown.
+
+115
+00:07:36,923 --> 00:07:42,206
+The Company profile below holds your logo,
+tax ID, address and contact details.
+
+116
+00:07:42,256 --> 00:07:45,488
+They appear on your invoices and pay
+stubs.
+
+117
+00:07:45,538 --> 00:07:47,950
+After a change, click Save changes.
+
+118
+00:07:50,000 --> 00:07:53,950
+The Time and pay tab controls how time
+becomes pay.
+
+119
+00:07:54,000 --> 00:07:58,750
+The timesheet period sets how often
+members submit their time, for example
+
+120
+00:07:58,800 --> 00:07:59,550
+every week.
+
+121
+00:07:59,600 --> 00:08:05,550
+Timesheet rules can lock old time so it
+cannot be changed, set minimum hours, and
+
+122
+00:08:05,600 --> 00:08:07,550
+remind people about missing time.
+
+123
+00:08:07,600 --> 00:08:13,550
+Below are the overtime rules and your time
+types, such as regular or overtime, each
+
+124
+00:08:13,600 --> 00:08:16,350
+with its own pay and bill multiplier.
+
+125
+00:08:16,400 --> 00:08:19,950
+Break types define the breaks your people
+can take.
+
+126
+00:08:20,000 --> 00:08:27,150
+Let us add a coffee break: name it Coffee,
+make it a paid break, with a maximum of
+
+127
+00:08:27,200 --> 00:08:27,950
+fifteen minutes.
+
+128
+00:08:28,000 --> 00:08:31,550
+And a lunch break: unpaid, up to sixty
+minutes.
+
+129
+00:08:31,600 --> 00:08:35,950
+We will plan these breaks on a project in
+a moment.
+
+130
+00:08:38,000 --> 00:08:41,209
+Tracking policies decide what the desktop
+app records.
+
+131
+00:08:41,259 --> 00:08:43,654
+The organization default applies to
+everyone.
+
+132
+00:08:43,704 --> 00:08:47,728
+Activity counts keyboard and mouse use,
+never the keys themselves.
+
+133
+00:08:47,778 --> 00:08:53,024
+Idle detection asks people what to do with
+time when they step away.
+
+134
+00:08:53,074 --> 00:08:59,135
+Screenshots can be switched on, taken a
+set number of times every ten minutes, and
+
+135
+00:08:59,185 --> 00:08:59,543
+blurred.
+
+136
+00:08:59,593 --> 00:09:03,617
+Apps and URLs record which applications
+and websites are used.
+
+137
+00:09:03,667 --> 00:09:08,506
+You can override any setting for a team or
+for one member.
+
+138
+00:09:08,556 --> 00:09:12,172
+Here, the Client Success team has its
+screenshots blurred.
+
+139
+00:09:12,222 --> 00:09:15,024
+An overridden setting shows Reset to
+inherited.
+
+140
+00:09:15,074 --> 00:09:20,728
+When you save, the affected members are
+notified, and each member can always see
+
+141
+00:09:20,778 --> 00:09:21,950
+what is monitored.
+
+142
+00:09:24,000 --> 00:09:27,150
+Roles control who can see and do what.
+
+143
+00:09:27,200 --> 00:09:31,950
+WorkPulse comes with built-in roles:
+System Admin for full access, Team Manager
+
+144
+00:09:32,000 --> 00:09:37,550
+for running teams and projects without the
+money settings, and Worker for people who
+
+145
+00:09:37,600 --> 00:09:38,350
+track time.
+
+146
+00:09:38,400 --> 00:09:41,550
+The matrix shows every permission for
+every role.
+
+147
+00:09:41,600 --> 00:09:45,550
+If you need something in between, create a
+custom role.
+
+148
+00:09:45,600 --> 00:09:51,150
+Give it a name, start from an existing
+role, and then adjust its permissions.
+
+149
+00:09:51,200 --> 00:09:55,950
+Each permission can apply to the person
+themselves, their assigned projects, their
+
+150
+00:09:56,000 --> 00:09:57,950
+team, or the whole organization.
+
+151
+00:10:03,000 --> 00:10:07,375
+To add people, open Workforce, then
+Members, and click Invite member.
+
+152
+00:10:07,425 --> 00:10:11,398
+Enter their email address and name, and
+choose a role.
+
+153
+00:10:11,448 --> 00:10:13,812
+Most people you track are Workers.
+
+154
+00:10:13,862 --> 00:10:20,249
+You can also put them in teams and give
+them projects right away, so everything is
+
+155
+00:10:20,299 --> 00:10:21,858
+ready when they join.
+
+156
+00:10:21,908 --> 00:10:23,065
+Click Send invitation.
+
+157
+00:10:23,115 --> 00:10:24,674
+WorkPulse emails the invitation.
+
+158
+00:10:24,724 --> 00:10:31,111
+If the email cannot be sent, the dialog
+shows the invitation link so you can share
+
+159
+00:10:31,161 --> 00:10:31,916
+it yourself.
+
+160
+00:10:31,966 --> 00:10:36,743
+Until the person accepts, the invitation
+waits under Pending invitations, where you
+
+161
+00:10:36,793 --> 00:10:37,950
+can revoke it.
+
+162
+00:10:40,000 --> 00:10:42,769
+Click a member to open their profile.
+
+163
+00:10:42,819 --> 00:10:46,394
+The Overview shows their details, quick
+links and access.
+
+164
+00:10:46,444 --> 00:10:52,033
+Here you can suspend or remove someone, or
+reset their two-factor sign-in if they
+
+165
+00:10:52,083 --> 00:10:53,242
+lose their phone.
+
+166
+00:10:53,292 --> 00:10:56,464
+Personal info holds HR details and private
+notes.
+
+167
+00:10:56,514 --> 00:11:01,297
+The other tabs show the member's time,
+activity, projects, the computers they
+
+168
+00:11:01,347 --> 00:11:06,533
+use, and the tracking policy that applies
+to them, combined from the organization,
+
+169
+00:11:06,583 --> 00:11:08,950
+their team and any personal overrides.
+
+170
+00:11:11,000 --> 00:11:13,382
+Teams group people who work together.
+
+171
+00:11:13,432 --> 00:11:20,274
+On the Teams tab, click New team, give it
+a name and a description, and click Create
+
+172
+00:11:20,324 --> 00:11:20,680
+team.
+
+173
+00:11:20,730 --> 00:11:21,896
+Then add people.
+
+174
+00:11:21,946 --> 00:11:27,166
+A team member with the Manager role
+approves the team's timesheets and time
+
+175
+00:11:27,216 --> 00:11:30,409
+off, and sees the team's time and
+activity.
+
+176
+00:11:30,459 --> 00:11:36,491
+Here, Priya becomes the manager of the new
+Video Production team, and Kenji joins as
+
+177
+00:11:36,541 --> 00:11:37,301
+a member.
+
+178
+00:11:37,351 --> 00:11:40,950
+A person can belong to more than one team.
+
+179
+00:11:46,000 --> 00:11:49,950
+Work in WorkPulse is organized into
+clients, projects and tasks.
+
+180
+00:11:50,000 --> 00:11:51,550
+Start with the client.
+
+181
+00:11:51,600 --> 00:11:55,150
+Open Project Management, then Clients, and
+click New client.
+
+182
+00:11:55,200 --> 00:11:58,350
+Enter the company name and a contact
+person.
+
+183
+00:11:58,400 --> 00:12:01,550
+The contact email is where invoices are
+sent.
+
+184
+00:12:01,600 --> 00:12:07,150
+Choose the client's currency, and if you
+charge this client a standard hourly rate,
+
+185
+00:12:07,200 --> 00:12:08,350
+enter it here.
+
+186
+00:12:08,400 --> 00:12:14,750
+You can also add a logo, a colour and the
+language for documents such as invoices.
+
+187
+00:12:14,800 --> 00:12:15,950
+Click Create client.
+
+188
+00:12:18,000 --> 00:12:21,971
+Sometimes a client is created by mistake,
+for example twice.
+
+189
+00:12:22,021 --> 00:12:25,589
+A client that was never used can be
+deleted.
+
+190
+00:12:25,639 --> 00:12:28,404
+Open its actions menu and choose Delete.
+
+191
+00:12:28,454 --> 00:12:33,228
+WorkPulse explains what will be removed:
+the client with its projects, tasks,
+
+192
+00:12:33,278 --> 00:12:35,239
+rates, budgets and portal access.
+
+193
+00:12:35,289 --> 00:12:40,465
+Deleting only works for a client with no
+invoices, payments, expenses or tracked
+
+194
+00:12:40,515 --> 00:12:42,878
+time, and it cannot be undone.
+
+195
+00:12:42,928 --> 00:12:46,898
+For a client you have worked with, use
+Archive instead.
+
+196
+00:12:46,948 --> 00:12:52,125
+Archiving hides the client and its
+projects but keeps all its history, and
+
+197
+00:12:52,175 --> 00:12:54,136
+you can restore it later.
+
+198
+00:12:54,186 --> 00:12:56,950
+Tick Show archived to see archived
+clients.
+
+199
+00:12:59,000 --> 00:13:04,275
+Clients can follow the work you do for
+them in a client portal.
+
+200
+00:13:04,325 --> 00:13:07,143
+From the client's actions, open Client
+portal.
+
+201
+00:13:07,193 --> 00:13:13,287
+Switch the portal on and choose what the
+client sees: hours per person, task and
+
+202
+00:13:13,337 --> 00:13:17,793
+day, task progress and hour budgets,
+activity levels, and even screenshots
+
+203
+00:13:17,843 --> 00:13:19,432
+taken on their projects.
+
+204
+00:13:19,482 --> 00:13:21,480
+The portal never shows money.
+
+205
+00:13:21,530 --> 00:13:25,986
+Click Preview as client to see exactly
+what they will see.
+
+206
+00:13:26,036 --> 00:13:30,083
+To give someone access, enter their email
+and click Invite.
+
+207
+00:13:30,133 --> 00:13:32,950
+You can revoke access at any time.
+
+208
+00:13:35,000 --> 00:13:37,799
+Next, create a project for the client.
+
+209
+00:13:37,849 --> 00:13:40,241
+Open Projects and click New project.
+
+210
+00:13:40,291 --> 00:13:43,497
+Give it a name and choose the client.
+
+211
+00:13:43,547 --> 00:13:50,008
+Add start and end dates and an estimate of
+the hours, so WorkPulse can show progress
+
+212
+00:13:50,058 --> 00:13:51,229
+against the plan.
+
+213
+00:13:51,279 --> 00:13:56,113
+Then choose who works on it, either
+individual members or whole teams.
+
+214
+00:13:56,163 --> 00:14:00,590
+Members only see and track the projects
+they are assigned to.
+
+215
+00:14:00,640 --> 00:14:07,915
+In the finance section you can set pay and
+bill rates for this project, or mark it as
+
+216
+00:14:07,965 --> 00:14:08,729
+not billable.
+
+217
+00:14:08,779 --> 00:14:09,950
+Click Create project.
+
+218
+00:14:12,000 --> 00:14:16,046
+For projects with a regular rhythm, you
+can plan breaks.
+
+219
+00:14:16,096 --> 00:14:19,733
+Open the project and go to its Settings
+tab.
+
+220
+00:14:19,783 --> 00:14:26,287
+In the Breaks section, click Add break,
+choose a break type and, if you like, a
+
+221
+00:14:26,337 --> 00:14:27,926
+time and a length.
+
+222
+00:14:27,976 --> 00:14:34,890
+Here we plan a fifteen minute coffee break
+at ten thirty, and an hour for lunch at
+
+223
+00:14:34,940 --> 00:14:35,299
+twelve.
+
+224
+00:14:35,349 --> 00:14:36,528
+Click Save changes.
+
+225
+00:14:36,578 --> 00:14:42,263
+People on this project now see these
+breaks as one-tap buttons in the desktop
+
+226
+00:14:42,313 --> 00:14:45,950
+app, with a reminder when a break is due.
+
+227
+00:14:48,000 --> 00:14:51,213
+Tasks break a project into pieces of work.
+
+228
+00:14:51,263 --> 00:14:53,661
+Open Tasks and click New task.
+
+229
+00:14:53,711 --> 00:15:00,187
+Choose the project, give the task a title,
+and set its status, priority, due date and
+
+230
+00:15:00,237 --> 00:15:01,818
+an estimate in hours.
+
+231
+00:15:01,868 --> 00:15:04,674
+Assign it to one or more people.
+
+232
+00:15:04,724 --> 00:15:11,200
+When they track time, they can pick the
+task, so you see exactly where the hours
+
+233
+00:15:11,250 --> 00:15:11,608
+went.
+
+234
+00:15:11,658 --> 00:15:18,542
+Filter the list by project or status, or
+switch on Assigned to me to see your own
+
+235
+00:15:18,592 --> 00:15:18,950
+work.
+
+236
+00:15:24,000 --> 00:15:27,186
+Now let us switch to the worker's side.
+
+237
+00:15:27,236 --> 00:15:30,017
+Workers use WorkPulse through the desktop
+app.
+
+238
+00:15:30,067 --> 00:15:34,062
+After accepting an invitation, they land
+on this download page.
+
+239
+00:15:34,112 --> 00:15:39,321
+It offers the right installer for their
+computer: Windows, macOS, or Ubuntu and
+
+240
+00:15:39,371 --> 00:15:39,725
+Debian.
+
+241
+00:15:39,775 --> 00:15:41,343
+Click the download button.
+
+242
+00:15:41,393 --> 00:15:47,815
+A short guide opens with the install
+steps, and a link to the full setup guide
+
+243
+00:15:47,865 --> 00:15:50,242
+with a picture for each step.
+
+244
+00:15:50,292 --> 00:15:55,905
+On Windows, for example, if Windows
+protects your PC, click More info and then
+
+245
+00:15:55,955 --> 00:15:56,714
+Run anyway.
+
+246
+00:15:56,764 --> 00:15:59,950
+The app updates itself automatically from
+then on.
+
+247
+00:16:02,000 --> 00:16:07,950
+Open WorkPulse on your computer and sign
+in with the same email and password you
+
+248
+00:16:08,000 --> 00:16:09,150
+use for WorkPulse.
+
+249
+00:16:09,200 --> 00:16:12,750
+You can also sign in through your browser
+instead.
+
+250
+00:16:12,800 --> 00:16:16,750
+If your organization requires it, an
+administrator approves new computers
+
+251
+00:16:16,800 --> 00:16:18,750
+before they can track time.
+
+252
+00:16:18,800 --> 00:16:25,150
+Once you are signed in, the menu on the
+left takes you to everything you need:
+
+253
+00:16:25,200 --> 00:16:29,150
+Home, Track, Timesheet, Time off,
+Schedule, Pay stubs and Settings.
+
+254
+00:16:29,200 --> 00:16:31,950
+The app only shows your own data.
+
+255
+00:16:34,000 --> 00:16:35,156
+This is Home.
+
+256
+00:16:35,206 --> 00:16:37,567
+To start work, choose a project.
+
+257
+00:16:37,617 --> 00:16:42,389
+The timer starts right away and the status
+changes to Clocked in.
+
+258
+00:16:42,439 --> 00:16:48,417
+You can also choose a task, and change
+project at any time with the Change
+
+259
+00:16:48,467 --> 00:16:48,819
+button.
+
+260
+00:16:48,869 --> 00:16:55,249
+Below the timer are the breaks planned for
+this project, the ones we set up earlier,
+
+261
+00:16:55,299 --> 00:16:56,857
+ready as one-tap buttons.
+
+262
+00:16:56,907 --> 00:17:02,483
+Add a short work note so your manager
+knows what you are working on.
+
+263
+00:17:02,533 --> 00:17:08,511
+On the right, Today's summary shows your
+tracked time today and this week, how much
+
+264
+00:17:08,561 --> 00:17:10,520
+was active, and your shift.
+
+265
+00:17:10,570 --> 00:17:16,146
+If your organization records activity, it
+is shown here too, so nothing is hidden
+
+266
+00:17:16,196 --> 00:17:16,950
+from you.
+
+267
+00:17:19,000 --> 00:17:22,601
+When it is time for a break, tap it.
+
+268
+00:17:22,651 --> 00:17:26,658
+WorkPulse pauses your time and shows how
+long is left.
+
+269
+00:17:26,708 --> 00:17:33,554
+When a planned break is due, the app
+reminds you, and if a break runs long, it
+
+270
+00:17:33,604 --> 00:17:36,393
+tells you how far over you are.
+
+271
+00:17:36,443 --> 00:17:39,639
+When you are back, click Clock back in.
+
+272
+00:17:39,689 --> 00:17:45,318
+If you step away from the computer without
+taking a break, WorkPulse notices that
+
+273
+00:17:45,368 --> 00:17:48,158
+there was no keyboard or mouse activity.
+
+274
+00:17:48,208 --> 00:17:52,620
+When you return, it asks what to do with
+that time.
+
+275
+00:17:52,670 --> 00:17:58,299
+Keep it if you were working, for example
+in a meeting, or discard it.
+
+276
+00:17:58,349 --> 00:18:01,950
+If you do not answer, your organization's
+default applies.
+
+277
+00:18:04,000 --> 00:18:07,593
+At the end of the day, click Clock out.
+
+278
+00:18:07,643 --> 00:18:12,450
+WorkPulse asks for a short end-of-day
+report: what you completed, and whether
+
+279
+00:18:12,500 --> 00:18:14,069
+the work is finished.
+
+280
+00:18:14,119 --> 00:18:17,712
+Your manager reads these reports in the
+web app.
+
+281
+00:18:17,762 --> 00:18:24,188
+The report is saved on your computer
+first, so it is never lost, even when you
+
+282
+00:18:24,238 --> 00:18:24,998
+are offline.
+
+283
+00:18:25,048 --> 00:18:27,021
+Click Submit and clock out.
+
+284
+00:18:27,071 --> 00:18:33,093
+In fact, if your internet connection drops
+at any time, the app keeps tracking and
+
+285
+00:18:33,143 --> 00:18:35,926
+sends everything when you are back online.
+
+286
+00:18:35,976 --> 00:18:37,950
+No tracked time is lost.
+
+287
+00:18:40,000 --> 00:18:41,550
+Track holds your work.
+
+288
+00:18:41,600 --> 00:18:46,750
+Projects lists everything you are assigned
+to; click one to start tracking it.
+
+289
+00:18:46,800 --> 00:18:52,350
+Tasks shows your tasks, and you can start
+the timer straight from a task.
+
+290
+00:18:52,400 --> 00:18:56,350
+Sessions lists the time you tracked over
+the last days.
+
+291
+00:18:56,400 --> 00:19:01,550
+Forgot to start the timer, for example
+during a call on your phone?
+
+292
+00:19:01,600 --> 00:19:07,150
+Click Add manual time, choose the project
+and the time, and give a reason.
+
+293
+00:19:07,200 --> 00:19:12,350
+Depending on your organization, manual
+time is added straight away or sent to
+
+294
+00:19:12,400 --> 00:19:13,950
+your manager for approval.
+
+295
+00:19:16,000 --> 00:19:21,664
+Timesheet shows your time for the current
+period, with the hours for each day.
+
+296
+00:19:21,714 --> 00:19:25,338
+Use Previous and Next to look at other
+periods.
+
+297
+00:19:25,388 --> 00:19:31,460
+When the period is complete, click Submit
+to send it to your manager for approval.
+
+298
+00:19:31,510 --> 00:19:37,583
+If your manager asks for changes, the
+timesheet comes back to you and the Home
+
+299
+00:19:37,633 --> 00:19:40,032
+page tells you what needs attention.
+
+300
+00:19:40,082 --> 00:19:45,338
+Activity shows your own activity blocks
+and the apps and websites that were
+
+301
+00:19:45,388 --> 00:19:48,195
+recorded, exactly what your manager can
+see.
+
+302
+00:19:48,245 --> 00:19:55,134
+Reports gives you your worked hours by day
+and by project for this week, last week or
+
+303
+00:19:55,184 --> 00:19:55,950
+this month.
+
+304
+00:19:58,000 --> 00:20:03,241
+To ask for time off, open Time off and
+click Request time off.
+
+305
+00:20:03,291 --> 00:20:09,345
+Choose the type, the dates, and add a
+reason if you like, then click Send
+
+306
+00:20:09,395 --> 00:20:09,752
+request.
+
+307
+00:20:09,802 --> 00:20:14,229
+Your manager is notified, and you can
+follow the request here.
+
+308
+00:20:14,279 --> 00:20:18,299
+Schedule shows your working hours for this
+week and next.
+
+309
+00:20:18,349 --> 00:20:24,403
+Pay stubs lists your pay stubs once
+payroll is finalized, each one with a PDF
+
+310
+00:20:24,453 --> 00:20:25,217
+to download.
+
+311
+00:20:25,267 --> 00:20:30,915
+Finally, Settings shows who you are signed
+in as, your organization and this device,
+
+312
+00:20:30,965 --> 00:20:32,950
+and lets you sign out.
+
+313
+00:20:38,000 --> 00:20:43,231
+Back in the web app, let us see the work
+as it happens.
+
+314
+00:20:43,281 --> 00:20:45,263
+Open Time Tracking, then Live.
+
+315
+00:20:45,313 --> 00:20:50,138
+Who is working now shows everyone's
+status, updated live: working, idle or
+
+316
+00:20:50,188 --> 00:20:56,231
+paused, or offline, with the project they
+are on and how long they have been
+
+317
+00:20:56,281 --> 00:20:56,638
+working.
+
+318
+00:20:56,688 --> 00:20:59,888
+Filter by status to focus on one group.
+
+319
+00:20:59,938 --> 00:21:05,169
+From a member's actions you can open their
+activity or their current session.
+
+320
+00:21:05,219 --> 00:21:10,044
+And if someone forgot to stop their timer,
+choose Force stop timer.
+
+321
+00:21:10,094 --> 00:21:16,138
+The desktop app stops within about a
+minute, and the change is recorded in the
+
+322
+00:21:16,188 --> 00:21:16,950
+audit log.
+
+323
+00:21:19,000 --> 00:21:24,728
+Session history lists every work session:
+who, on which project and task, where it
+
+324
+00:21:24,778 --> 00:21:29,680
+was tracked from, when it started and
+ended, and why it ended.
+
+325
+00:21:29,730 --> 00:21:32,569
+Filter by date or member, or search.
+
+326
+00:21:32,619 --> 00:21:38,347
+Click a session to see its details: the
+time worked, each segment between pauses
+
+327
+00:21:38,397 --> 00:21:41,236
+and breaks, and every change of state.
+
+328
+00:21:41,286 --> 00:21:44,950
+From here you can jump to that day's
+activity.
+
+329
+00:21:47,000 --> 00:21:50,550
+Activity shows how a day went, in
+ten-minute blocks.
+
+330
+00:21:50,600 --> 00:21:52,950
+Choose a member and a day.
+
+331
+00:21:53,000 --> 00:21:58,950
+Each block shows the activity level, the
+share of time with keyboard or mouse use,
+
+332
+00:21:59,000 --> 00:22:02,550
+and the screenshots taken, if your policy
+records them.
+
+333
+00:22:02,600 --> 00:22:04,950
+Click a block for its details.
+
+334
+00:22:05,000 --> 00:22:08,550
+Use the activity filter to find quiet
+periods quickly.
+
+335
+00:22:08,600 --> 00:22:13,750
+The Apps and URLs tabs show which
+applications and websites were used, and
+
+336
+00:22:13,800 --> 00:22:14,950
+for how long.
+
+337
+00:22:15,000 --> 00:22:19,750
+Remember: keystrokes are only counted,
+never recorded, and members see the same
+
+338
+00:22:19,800 --> 00:22:20,950
+information about themselves.
+
+339
+00:22:23,000 --> 00:22:26,642
+Remember the report Ava wrote when she
+clocked out?
+
+340
+00:22:26,692 --> 00:22:29,104
+Managers read them under End-of-day
+reports.
+
+341
+00:22:29,154 --> 00:22:35,258
+The summary shows how many reports came
+in, from how many people, how many marked
+
+342
+00:22:35,308 --> 00:22:38,950
+their work as finished, and the time they
+cover.
+
+343
+00:22:39,000 --> 00:22:41,001
+Reports are grouped by day.
+
+344
+00:22:41,051 --> 00:22:45,104
+Click one to read it in full, with its
+session.
+
+345
+00:22:45,154 --> 00:22:50,847
+Previous and Next move through the
+reports, and Copy report puts the text on
+
+346
+00:22:50,897 --> 00:22:54,950
+your clipboard, for example to paste into
+a client update.
+
+347
+00:22:57,000 --> 00:23:00,236
+Monitoring works best when everyone knows
+the rules.
+
+348
+00:23:00,286 --> 00:23:04,754
+Every person can open What is monitored
+from their account menu.
+
+349
+00:23:04,804 --> 00:23:10,093
+It explains in plain language what is
+recorded while they track time, which
+
+350
+00:23:10,143 --> 00:23:14,611
+limits and time rules apply, and who can
+see their data.
+
+351
+00:23:14,661 --> 00:23:19,539
+Owners, administrators and managers are
+not tracked unless you choose to track
+
+352
+00:23:19,589 --> 00:23:19,950
+them.
+
+353
+00:23:25,000 --> 00:23:28,569
+Time entries is where you find and correct
+time.
+
+354
+00:23:28,619 --> 00:23:34,197
+Pick a date range, then filter by member,
+client, project or task, or search.
+
+355
+00:23:34,247 --> 00:23:39,826
+The totals at the bottom show the time
+logged, billable time, and the estimated
+
+356
+00:23:39,876 --> 00:23:41,032
+pay and billing.
+
+357
+00:23:41,082 --> 00:23:45,053
+To correct an entry, open its actions and
+choose Edit.
+
+358
+00:23:45,103 --> 00:23:49,476
+Change what you need, and give a reason
+for the change.
+
+359
+00:23:49,526 --> 00:23:55,105
+Every change is kept: View history shows
+each revision, who made it and why.
+
+360
+00:23:55,155 --> 00:24:01,136
+You can also split an entry in two,
+duplicate it, or select several entries to
+
+361
+00:24:01,186 --> 00:24:03,950
+mark them billable or delete them
+together.
+
+362
+00:24:06,000 --> 00:24:12,021
+Sometimes time needs to be added by hand,
+for example a meeting away from the
+
+363
+00:24:12,071 --> 00:24:12,426
+computer.
+
+364
+00:24:12,476 --> 00:24:18,902
+Click Add time, choose the member and the
+date, and enter either a duration or a
+
+365
+00:24:18,952 --> 00:24:20,521
+start and end time.
+
+366
+00:24:20,571 --> 00:24:25,379
+Choose the project and task, describe the
+work and give a reason.
+
+367
+00:24:25,429 --> 00:24:31,045
+Depending on your settings, the time goes
+straight onto the timesheet, or it becomes
+
+368
+00:24:31,095 --> 00:24:33,474
+a manual time request for approval.
+
+369
+00:24:33,524 --> 00:24:39,140
+Members can also import time from a CSV
+file on their timesheet, using the
+
+370
+00:24:39,190 --> 00:24:39,950
+template provided.
+
+371
+00:24:42,000 --> 00:24:45,588
+When members submit their timesheets, they
+arrive in Approvals.
+
+372
+00:24:45,638 --> 00:24:49,631
+Click a timesheet to review the days,
+projects and totals.
+
+373
+00:24:49,681 --> 00:24:52,056
+If everything is right, click Approve.
+
+374
+00:24:52,106 --> 00:24:57,312
+Approved time is final: it is what payroll
+pays and what invoices bill.
+
+375
+00:24:57,362 --> 00:25:02,163
+If something needs fixing, click Request
+changes and explain what is wrong.
+
+376
+00:25:02,213 --> 00:25:06,205
+The timesheet goes back to the member as a
+draft.
+
+377
+00:25:06,255 --> 00:25:08,227
+Reject works the same way.
+
+378
+00:25:08,277 --> 00:25:14,290
+To approve many at once, use the Approve
+button at the top of the list.
+
+379
+00:25:14,340 --> 00:25:19,950
+Below, manual time requests wait for the
+same decision: approve or reject each one.
+
+380
+00:25:22,000 --> 00:25:28,617
+Team week gives you the whole team at a
+glance: the hours each member worked on
+
+381
+00:25:28,667 --> 00:25:30,700
+each day of the week.
+
+382
+00:25:30,750 --> 00:25:35,700
+It is the quickest way to spot missing
+days before you approve.
+
+383
+00:25:35,750 --> 00:25:41,533
+Move between weeks with the arrows, and
+select a row to open that member's
+
+384
+00:25:41,583 --> 00:25:41,950
+timesheet.
+
+385
+00:25:47,000 --> 00:25:48,950
+Schedules hold everyone's working hours.
+
+386
+00:25:49,000 --> 00:25:53,350
+Open Workforce, then Schedules, to see the
+week for each member.
+
+387
+00:25:53,400 --> 00:25:56,150
+To change someone's hours, open their
+schedule.
+
+388
+00:25:56,200 --> 00:26:02,950
+Set the time zone, the date the new hours
+start, and the start and end for each
+
+389
+00:26:03,000 --> 00:26:03,750
+working day.
+
+390
+00:26:03,800 --> 00:26:08,950
+Saving creates a new version, so past
+attendance is still measured against the
+
+391
+00:26:09,000 --> 00:26:11,350
+hours that applied at the time.
+
+392
+00:26:11,400 --> 00:26:14,950
+Members see their own schedule in the
+desktop app.
+
+393
+00:26:17,000 --> 00:26:20,582
+Attendance compares the schedule with the
+time actually tracked.
+
+394
+00:26:20,632 --> 00:26:26,634
+For each person you see whether they are
+present, late, absent, on leave, on a
+
+395
+00:26:26,684 --> 00:26:28,652
+holiday, or not started yet.
+
+396
+00:26:28,702 --> 00:26:35,108
+Filter by status to follow up quickly, and
+switch between a single day and the whole
+
+397
+00:26:35,158 --> 00:26:35,511
+week.
+
+398
+00:26:35,561 --> 00:26:39,950
+WorkPulse can also alert managers about
+late starts and missed shifts.
+
+399
+00:26:42,000 --> 00:26:46,397
+Time off requests arrive under Time off,
+on the Requests tab.
+
+400
+00:26:46,447 --> 00:26:50,439
+Here is the request Ava sent from the
+desktop app.
+
+401
+00:26:50,489 --> 00:26:56,099
+Approve it, or reject it with a comment,
+and she is notified straight away.
+
+402
+00:26:56,149 --> 00:26:59,333
+The Calendar shows who is away and when.
+
+403
+00:26:59,383 --> 00:27:06,205
+On Policies and holidays you set up the
+kinds of time off, such as paid time off
+
+404
+00:27:06,255 --> 00:27:11,865
+or sick leave: whether they are paid,
+whether they need approval, and how much
+
+405
+00:27:11,915 --> 00:27:13,482
+is earned each month.
+
+406
+00:27:13,532 --> 00:27:19,546
+You can adjust a member's balance by hand,
+and add public holidays, which are paid
+
+407
+00:27:19,596 --> 00:27:19,950
+automatically.
+
+408
+00:27:25,000 --> 00:27:27,363
+Money in WorkPulse starts with rates.
+
+409
+00:27:27,413 --> 00:27:28,972
+Open Finance, then Rates.
+
+410
+00:27:29,022 --> 00:27:32,591
+Bill rates are what you charge clients per
+hour.
+
+411
+00:27:32,641 --> 00:27:36,211
+Pay rates are what you pay members per
+hour.
+
+412
+00:27:36,261 --> 00:27:41,439
+A rate can apply to the whole
+organization, a client, a project, a
+
+413
+00:27:41,489 --> 00:27:46,667
+member, or a member on one project, and
+the most specific one wins.
+
+414
+00:27:46,717 --> 00:27:52,298
+Rates are effective-dated: when a rate
+changes, set the date it starts, and past
+
+415
+00:27:52,348 --> 00:27:54,309
+time keeps its old rate.
+
+416
+00:27:54,359 --> 00:28:00,743
+Here we give the new Lumen project a bill
+rate of one hundred and twenty-five per
+
+417
+00:28:00,793 --> 00:28:01,950
+hour, from today.
+
+418
+00:28:04,000 --> 00:28:08,873
+Budgets warn you before a project or
+client costs more than planned.
+
+419
+00:28:08,923 --> 00:28:13,796
+Budgets shows how many are healthy, close
+to the limit, or exceeded.
+
+420
+00:28:13,846 --> 00:28:20,771
+Click Set budget, choose a project or a
+client, and set the budget in hours or in
+
+421
+00:28:20,821 --> 00:28:21,181
+money.
+
+422
+00:28:21,231 --> 00:28:25,694
+It can run for the whole project or reset
+every month.
+
+423
+00:28:25,744 --> 00:28:30,617
+Warn at sets when WorkPulse alerts you,
+for example at eighty percent.
+
+424
+00:28:30,667 --> 00:28:35,950
+The same progress bars appear on the
+Overview and in the client portal.
+
+425
+00:28:38,000 --> 00:28:43,950
+People can submit expenses with a receipt,
+such as travel or software, and mark them
+
+426
+00:28:44,000 --> 00:28:47,550
+as billable to the client or to be
+reimbursed.
+
+427
+00:28:47,600 --> 00:28:52,350
+Under Expenses, the Submitted tab holds
+the ones waiting for a decision.
+
+428
+00:28:52,400 --> 00:28:55,150
+Check the receipt, then approve or reject.
+
+429
+00:28:55,200 --> 00:28:58,350
+Once you have paid someone back, click
+Reimburse.
+
+430
+00:28:58,400 --> 00:29:02,750
+Approved billable expenses can be added to
+the client's next invoice.
+
+431
+00:29:02,800 --> 00:29:08,350
+Like every finance list, Expenses has a
+period filter and an Export button for
+
+432
+00:29:08,400 --> 00:29:09,950
+CSV, Excel or PDF.
+
+433
+00:29:12,000 --> 00:29:14,362
+Invoices turn billable time into money.
+
+434
+00:29:14,412 --> 00:29:19,187
+The Invoices page shows what is
+outstanding, what is overdue, your drafts,
+
+435
+00:29:19,237 --> 00:29:21,197
+and what has been collected.
+
+436
+00:29:21,247 --> 00:29:22,404
+Click New invoice.
+
+437
+00:29:22,454 --> 00:29:28,837
+Choose the client and the period to bill,
+and how to group the time: by project,
+
+438
+00:29:28,887 --> 00:29:30,043
+task or member.
+
+439
+00:29:30,093 --> 00:29:34,465
+You can include approved billable expenses
+and set a tax rate.
+
+440
+00:29:34,515 --> 00:29:35,672
+Click Preview lines.
+
+441
+00:29:35,722 --> 00:29:41,301
+WorkPulse builds the lines from the
+billable time and the bill rates, and you
+
+442
+00:29:41,351 --> 00:29:43,311
+can add custom lines too.
+
+443
+00:29:43,361 --> 00:29:50,146
+Then set the issue date, the due date and
+a note, review the totals, and create the
+
+444
+00:29:50,196 --> 00:29:50,950
+draft invoice.
+
+445
+00:29:53,000 --> 00:29:58,950
+On the invoice, Download PDF gives you the
+finished document with your logo and the
+
+446
+00:29:59,000 --> 00:29:59,750
+client's details.
+
+447
+00:29:59,800 --> 00:30:06,150
+Click Send to email it to the client's
+contact; if the client has no email, you
+
+448
+00:30:06,200 --> 00:30:09,750
+can mark it as sent and deliver it
+yourself.
+
+449
+00:30:09,800 --> 00:30:12,550
+When the client pays, click Record
+payment.
+
+450
+00:30:12,600 --> 00:30:18,550
+Enter the amount, the date, the method and
+a reference such as the transfer ID.
+
+451
+00:30:18,600 --> 00:30:22,550
+A payment can also be split across several
+open invoices.
+
+452
+00:30:22,600 --> 00:30:26,950
+The invoice is now paid, and Payments
+received lists every payment.
+
+453
+00:30:29,000 --> 00:30:31,750
+Payroll pays your people from approved
+time.
+
+454
+00:30:31,800 --> 00:30:36,950
+First, pay groups set who is paid
+together, how often, and in which
+
+455
+00:30:37,000 --> 00:30:37,350
+currency.
+
+456
+00:30:37,400 --> 00:30:42,950
+Then, on the Payrolls tab, click Run
+payroll, choose the pay group and the
+
+457
+00:30:43,000 --> 00:30:44,950
+period, and create a draft.
+
+458
+00:30:45,000 --> 00:30:49,350
+WorkPulse calculates each person's pay
+from their approved hours, overtime and
+
+459
+00:30:49,400 --> 00:30:50,550
+paid time off.
+
+460
+00:30:50,600 --> 00:30:53,350
+Each approved hour is paid exactly once.
+
+461
+00:30:53,400 --> 00:30:55,750
+Add bonuses or deductions with Adjust.
+
+462
+00:30:55,800 --> 00:30:58,150
+When everything is right, click Finalize.
+
+463
+00:30:58,200 --> 00:31:02,150
+Finalizing cannot be undone: corrections
+go on the next payroll.
+
+464
+00:31:02,200 --> 00:31:04,950
+Members can now see their pay stubs.
+
+465
+00:31:07,000 --> 00:31:09,771
+Each member's pay stub is a PDF.
+
+466
+00:31:09,821 --> 00:31:14,204
+Members also find it in the desktop app,
+under Pay stubs.
+
+467
+00:31:14,254 --> 00:31:18,234
+Once the money has gone out, click Mark as
+paid.
+
+468
+00:31:18,284 --> 00:31:24,681
+The Owed tab answers a different question:
+how much do you owe each member for a
+
+469
+00:31:24,731 --> 00:31:25,890
+period, right now?
+
+470
+00:31:25,940 --> 00:31:30,726
+It shows tracked and approved time, and
+the estimated and approved amounts.
+
+471
+00:31:30,776 --> 00:31:33,950
+Estimated becomes approved once the
+timesheets are approved.
+
+472
+00:31:39,000 --> 00:31:42,150
+For a quick answer, open Reports, then
+Summary.
+
+473
+00:31:42,200 --> 00:31:47,750
+It shows the time logged, estimated pay,
+billable time and estimated billing for a
+
+474
+00:31:47,800 --> 00:31:50,950
+period, together with average activity and
+days off.
+
+475
+00:31:51,000 --> 00:31:55,750
+Switch between daily, weekly, fortnightly
+and monthly periods, and step back with
+
+476
+00:31:55,800 --> 00:31:56,550
+the arrows.
+
+477
+00:31:56,600 --> 00:32:02,950
+Below are the hours per day, by client,
+and by project, and a table with every
+
+478
+00:32:03,000 --> 00:32:03,750
+person's totals.
+
+479
+00:32:03,800 --> 00:32:08,950
+Members who open Summary see only their
+own time, and never any money.
+
+480
+00:32:11,000 --> 00:32:16,613
+The Report library is organized by the
+question you want answered: where did time
+
+481
+00:32:16,663 --> 00:32:21,871
+go, who was late or absent, which
+timesheets are still pending, what is
+
+482
+00:32:21,921 --> 00:32:23,894
+billable per client, and more.
+
+483
+00:32:23,944 --> 00:32:27,130
+Open a report, for example Time and
+activity.
+
+484
+00:32:27,180 --> 00:32:33,197
+Filter by date, members, teams, projects
+or clients, and group the rows by up to
+
+485
+00:32:33,247 --> 00:32:36,433
+three things, such as member, project and
+client.
+
+486
+00:32:36,483 --> 00:32:40,074
+Export downloads the result as CSV, Excel
+or PDF.
+
+487
+00:32:40,124 --> 00:32:45,737
+Large reports can be prepared in the
+background, and you are notified when the
+
+488
+00:32:45,787 --> 00:32:46,950
+file is ready.
+
+489
+00:32:49,000 --> 00:32:52,642
+If you need the same report regularly,
+save it.
+
+490
+00:32:52,692 --> 00:32:55,924
+Click Save report and give it a name.
+
+491
+00:32:55,974 --> 00:33:02,078
+Choose a relative date range, such as last
+month, so it always shows fresh numbers,
+
+492
+00:33:02,128 --> 00:33:07,412
+and share it with everyone who can run the
+report if you like.
+
+493
+00:33:07,462 --> 00:33:13,976
+Switch on Email on a schedule, choose how
+often and in which format, and add the
+
+494
+00:33:14,026 --> 00:33:14,386
+recipients.
+
+495
+00:33:14,436 --> 00:33:16,847
+WorkPulse now sends the report
+automatically.
+
+496
+00:33:16,897 --> 00:33:20,950
+Saved reports appear at the top of the
+Report library.
+
+497
+00:33:26,000 --> 00:33:31,728
+Settings, Devices lists every computer
+signed in to the desktop app: whose it is,
+
+498
+00:33:31,778 --> 00:33:35,442
+the operating system, the app version and
+its status.
+
+499
+00:33:35,492 --> 00:33:40,394
+From a device's actions you can approve
+it, when your organization requires
+
+500
+00:33:40,444 --> 00:33:46,998
+approval for new computers, ask for a new
+sign-in, or revoke it, for example when a
+
+501
+00:33:47,048 --> 00:33:48,236
+laptop is lost.
+
+502
+00:33:48,286 --> 00:33:51,950
+A revoked device can no longer send any
+data.
+
+503
+00:33:54,000 --> 00:33:58,046
+Under Security and retention you decide
+how people sign in.
+
+504
+00:33:58,096 --> 00:34:02,962
+Require two-factor authentication for
+admins only or for everyone, set how long
+
+505
+00:34:03,012 --> 00:34:08,697
+a session lasts, require approval for new
+devices, and limit sign-in to your office
+
+506
+00:34:08,747 --> 00:34:10,745
+networks with an IP allowlist.
+
+507
+00:34:10,795 --> 00:34:14,842
+The data retention settings decide how
+long data is kept.
+
+508
+00:34:14,892 --> 00:34:20,986
+Access review then gives you a regular
+check of who can do what: every active
+
+509
+00:34:21,036 --> 00:34:25,902
+member, who still has no two-factor
+sign-in, your roles and their permissions,
+
+510
+00:34:25,952 --> 00:34:27,950
+and the active API keys.
+
+511
+00:34:30,000 --> 00:34:35,992
+Screenshots are kept for a set period,
+thirty days by default, and older ones are
+
+512
+00:34:36,042 --> 00:34:38,006
+deleted automatically on a schedule.
+
+513
+00:34:38,056 --> 00:34:42,839
+Nothing is ever deleted until an
+administrator previews what would go and
+
+514
+00:34:42,889 --> 00:34:43,644
+approves it.
+
+515
+00:34:43,694 --> 00:34:48,881
+Click Preview cleanup to see how many
+screenshots would be deleted, then approve
+
+516
+00:34:48,931 --> 00:34:49,686
+the cleanup.
+
+517
+00:34:49,736 --> 00:34:55,325
+If you shorten the period later, the
+approval is withdrawn and you are asked
+
+518
+00:34:55,375 --> 00:34:55,728
+again.
+
+519
+00:34:55,778 --> 00:34:58,950
+The history below shows every cleanup that
+ran.
+
+520
+00:35:01,000 --> 00:35:06,231
+To connect WorkPulse to other systems,
+such as accounting or HR software, create
+
+521
+00:35:06,281 --> 00:35:07,450
+an API key.
+
+522
+00:35:07,500 --> 00:35:13,138
+Give it a name, choose exactly what it may
+access, and when it expires.
+
+523
+00:35:13,188 --> 00:35:17,200
+The key is shown only once, so store it
+safely.
+
+524
+00:35:17,250 --> 00:35:22,075
+Webhooks work the other way around:
+WorkPulse calls your system when something
+
+525
+00:35:22,125 --> 00:35:25,325
+happens, for example when a timesheet is
+approved.
+
+526
+00:35:25,375 --> 00:35:28,575
+Add the endpoint address and choose the
+events.
+
+527
+00:35:28,625 --> 00:35:33,044
+You can leave it switched off until your
+system is ready.
+
+528
+00:35:33,094 --> 00:35:39,544
+Each delivery is signed with a secret, so
+your system can check it really comes from
+
+529
+00:35:39,594 --> 00:35:39,950
+WorkPulse.
+
+530
+00:35:42,000 --> 00:35:47,292
+Finally, the audit log records every
+important action: who did what, when, and
+
+531
+00:35:47,342 --> 00:35:48,114
+to what.
+
+532
+00:35:48,164 --> 00:35:51,813
+Earlier we deleted a client; here is that
+action.
+
+533
+00:35:51,863 --> 00:35:58,388
+Filter by action, by type, or by date, and
+open an entry to see the details.
+
+534
+00:35:58,438 --> 00:36:04,553
+The log cannot be changed, and you can
+export it to CSV for your records.
+
+535
+00:36:04,603 --> 00:36:09,895
+And for privacy requests, a member's
+profile lets you export all of their
+
+536
+00:36:09,945 --> 00:36:11,950
+personal data, or erase it.
+
+537
+00:36:17,000 --> 00:36:23,014
+Here is the same organization through the
+eyes of Maya, who manages the Design team.
+
+538
+00:36:23,064 --> 00:36:26,652
+Her Overview shows her team, not the whole
+company.
+
+539
+00:36:26,702 --> 00:36:32,312
+Her menu is shorter: she can approve her
+team's timesheets and time off, watch
+
+540
+00:36:32,362 --> 00:36:38,780
+their work, and manage the projects she is
+assigned to, but she does not see rates,
+
+541
+00:36:38,830 --> 00:36:40,801
+payroll or the organization settings.
+
+542
+00:36:40,851 --> 00:36:47,269
+That is why two people can see different
+menus, and why a page someone else talks
+
+543
+00:36:47,319 --> 00:36:49,695
+about may be missing for you.
+
+544
+00:36:49,745 --> 00:36:54,950
+If you need access to something, ask an
+administrator to change your role.
+
+545
+00:37:00,000 --> 00:37:05,977
+Let us finish with the questions people
+ask most, all answered in the Help Center.
+
+546
+00:37:06,027 --> 00:37:09,191
+Why are members sent to a download page?
+
+547
+00:37:09,241 --> 00:37:12,807
+Because workers use the desktop app, not
+the website.
+
+548
+00:37:12,857 --> 00:37:15,218
+Can approved time still be changed?
+
+549
+00:37:15,268 --> 00:37:19,236
+Yes: reopen the timesheet, correct it and
+approve it again.
+
+550
+00:37:19,286 --> 00:37:25,664
+Once its time is on an invoice, void the
+invoice first; once it has been paid,
+
+551
+00:37:25,714 --> 00:37:30,084
+correct it with a bonus or deduction on
+the next payroll.
+
+552
+00:37:30,134 --> 00:37:32,896
+What happens when a computer is offline?
+
+553
+00:37:32,946 --> 00:37:37,718
+The app keeps tracking and sends
+everything when it is back online.
+
+554
+00:37:37,768 --> 00:37:39,325
+And are keystrokes recorded?
+
+555
+00:37:39,375 --> 00:37:39,727
+No.
+
+556
+00:37:39,777 --> 00:37:42,539
+WorkPulse only counts keyboard and mouse
+activity.
+
+557
+00:37:42,589 --> 00:37:44,950
+It never records what you type.
+
+558
+00:37:47,000 --> 00:37:48,958
+Troubleshooting covers the usual problems.
+
+559
+00:37:49,008 --> 00:37:55,785
+A member forgot to stop their timer: force
+stop it from Live, then edit or split the
+
+560
+00:37:55,835 --> 00:37:57,391
+entry in Time entries.
+
+561
+00:37:57,441 --> 00:38:03,013
+A member's time is missing: check that
+their app is online, since offline time
+
+562
+00:38:03,063 --> 00:38:07,832
+arrives when they reconnect, and that
+their computer is approved under Devices.
+
+563
+00:38:07,882 --> 00:38:11,848
+For time they really did not track, add
+manual time.
+
+564
+00:38:11,898 --> 00:38:17,470
+The Approve button is greyed out: time was
+added after the timesheet was submitted,
+
+565
+00:38:17,520 --> 00:38:21,485
+so click Request changes and approve it
+once they resubmit.
+
+566
+00:38:21,535 --> 00:38:27,509
+And if a member does not have the latest
+desktop app: updates download in the
+
+567
+00:38:27,559 --> 00:38:33,533
+background and install when the member
+quits the app from its icon in the system
+
+568
+00:38:33,583 --> 00:38:33,934
+tray.
+
+569
+00:38:33,984 --> 00:38:37,950
+Each guide links straight to the page that
+fixes it.
+
+570
+00:38:43,000 --> 00:38:45,350
+Let us recap the whole journey.
+
+571
+00:38:45,400 --> 00:38:50,150
+You created your organization and set the
+rules for time and pay.
+
+572
+00:38:50,200 --> 00:38:55,350
+You invited your people, organized them
+into teams, and set up clients, projects
+
+573
+00:38:55,400 --> 00:38:56,150
+and tasks.
+
+574
+00:38:56,200 --> 00:39:01,350
+Workers tracked their time with the
+desktop app, with breaks, idle checks and
+
+575
+00:39:01,400 --> 00:39:02,150
+end-of-day reports.
+
+576
+00:39:02,200 --> 00:39:05,750
+Managers watched the work, corrected time
+and approved timesheets.
+
+577
+00:39:05,800 --> 00:39:11,350
+And approved time became invoices and
+payroll, with reports to tell you how it
+
+578
+00:39:11,400 --> 00:39:12,150
+all went.
+
+579
+00:39:12,200 --> 00:39:14,950
+Everything comes together here on the
+Overview.
+
+580
+00:39:17,000 --> 00:39:18,591
+Thank you for watching.
+
+581
+00:39:18,641 --> 00:39:23,924
+Whenever you need a reminder, open Help
+inside WorkPulse: every topic in this
+
+582
+00:39:23,974 --> 00:39:29,668
+video has a step-by-step guide there, and
+the product tour is one click away.
+
+583
+00:39:29,718 --> 00:39:31,719
+Now it is your turn.
+
+584
+00:39:31,769 --> 00:39:32,950
+Track, focus, achieve.

@@ -322,6 +322,10 @@ export interface TimeEntryDto {
   client_id?: string | null;
   client_name?: string | null;
   edited: boolean;
+  /** the time zone the entry's day and times are in (the member's when it was recorded) */
+  timezone: string;
+  /** increases with every change; send it back when editing (see timeEntryUpdateInput) */
+  revision: number;
   locked: boolean;
   activity_pct: number | null;
 }
@@ -370,6 +374,8 @@ export interface PayStubDto {
   adjustments: Array<{ label: string; amount_minor: number }>;
   net_minor: number;
   paid_at: string | null;
+  /** for the admin before paying, e.g. 'time_off_no_rate': paid time off with no worker or org pay rate */
+  warnings: string[];
 }
 
 export interface PayrollRunDto {
@@ -460,6 +466,8 @@ export interface TimesheetDto {
   version: number;
   /** time in the period added or changed after submission (not in the snapshot) */
   late_seconds: number;
+  /** the latest decision on this timesheet, which `comment` belongs to (null: none yet) */
+  last_decision: 'APPROVE' | 'REJECT' | 'REQUEST_CHANGES' | 'REOPEN' | null;
 }
 
 export interface ApprovalQueueItemDto {
@@ -738,4 +746,22 @@ export interface ScreenshotStorageDto {
   reclaimable_bytes: number;
   /** screenshots whose storage deletion keeps failing and needs attention */
   stuck: number;
+}
+
+/**
+ * The WorkPulse video tutorial shown in the Help Center (system admins only): one video per chapter.
+ * File names are fetched from /orgs/:orgId/help/tutorial/files/:name.
+ */
+export interface HelpTutorialDto {
+  title: string;
+  chapters: Array<{
+    n: number;
+    title: string;
+    seconds: number;
+    video: string;
+    /** WebVTT English captions */
+    captions: string | null;
+    /** a still for the player before it starts */
+    poster: string | null;
+  }>;
 }

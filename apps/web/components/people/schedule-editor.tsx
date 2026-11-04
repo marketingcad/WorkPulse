@@ -42,7 +42,7 @@ export function currentSchedule(list: ScheduleRow[], today: string): ScheduleRow
   return effective[effective.length - 1] ?? list.find((s) => !s.effective_to) ?? list[list.length - 1];
 }
 
-export function ScheduleEditor({ open, onOpenChange, member, schedules }: { open: boolean; onOpenChange: (o: boolean) => void; member: { id: string; name: string; timezone: string }; schedules: ScheduleRow[] }) {
+export function ScheduleEditor({ open, onOpenChange, member, schedules }: { open: boolean; onOpenChange: (o: boolean) => void; member: { id: string; name: string; timezone: string; tracking_enabled?: boolean }; schedules: ScheduleRow[] }) {
   const org = useOrg();
   const toast = useToast();
   const today = todayIn(member.timezone || org.organization.timezone);
@@ -117,6 +117,12 @@ export function ScheduleEditor({ open, onOpenChange, member, schedules }: { open
         }
       >
         <div className="flex flex-col gap-4">
+          {member.tracking_enabled === false && (
+            // Live, 28 Oct 2026: a schedule for someone who does not track time never showed in attendance, with no reason given.
+            <p role="note" className="rounded-md border border-border bg-surface-muted px-3 py-2 text-xs text-text-muted">
+              Time tracking is off for {member.name}, so attendance does not include them. Their schedule still sets the hours of their time off and paid holidays.
+            </p>
+          )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="Name" htmlFor="sch-name" error={error?.field('name')}>
               <Input id="sch-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />

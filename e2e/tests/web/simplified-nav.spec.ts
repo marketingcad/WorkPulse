@@ -23,7 +23,7 @@ test.describe('Admin navigation', () => {
     expect(cut).toEqual([]);
     // UX remediation (phase 3): the person's own pages are in the menu now, under My work.
     for (const own of ['My timesheet', 'My pay stubs', 'What is monitored']) await expect(nav.getByRole('link', { name: own, exact: true })).toBeVisible();
-    for (const gone of ['Pay stubs', 'Sessions', 'API keys', 'Webhooks', 'Teams', 'Attendance', 'Tracking policies', 'Approvals', 'Manual time', 'Team timesheets', 'Billing & rates']) {
+    for (const gone of ['Pay stubs', 'Sessions', 'API keys', 'Webhooks', 'Teams', 'Attendance', 'Tracking policies', 'Session history', 'Manual time', 'Team timesheets', 'Billing & rates']) {
       await expect(nav.getByRole('link', { name: gone, exact: true })).toHaveCount(0);
     }
     await expect(nav.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', `/o/${data.orgId}/settings`);
@@ -69,11 +69,12 @@ test.describe('Admin navigation', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Pay stubs' })).toBeVisible();
   });
 
-  test('Session history is reached from Live, which stays highlighted', async ({ page, data }) => {
+  // Audit 28 Oct 2026 (R4): Session history is a tab of Live, with the same access.
+  test('Session history is a tab of Live, which stays highlighted', async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}/tracking/live`);
-    await page.getByRole('button', { name: 'Session history' }).click();
+    await page.getByRole('navigation', { name: 'Live' }).getByRole('link', { name: 'Session history' }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/sessions$`));
-    await expect(page.getByRole('heading', { level: 1, name: 'Sessions' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Session history' })).toBeVisible();
     await expect(sidebar(page).getByRole('link', { name: 'Live' })).toHaveAttribute('aria-current', 'page');
   });
 

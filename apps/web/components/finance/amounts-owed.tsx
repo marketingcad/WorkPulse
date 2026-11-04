@@ -9,7 +9,7 @@ import { monthRange, type AmountOwedRow } from './types';
 /**
  * What the organization owes each member for a period: tracked time at today's pay rates
  * (estimate) and approved time at the rates snapshotted on approval (payroll-ready).
- * Shown on Payroll › Owed; the same numbers as the Amounts Owed report.
+ * Shown on Payroll › Owed; the same numbers as the Amounts owed report.
  */
 export function AmountsOwed() {
   const org = useOrg();

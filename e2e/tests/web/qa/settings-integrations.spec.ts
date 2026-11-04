@@ -99,8 +99,8 @@ test.describe('QA · Report runner (admin)', () => {
 
   test('runs a report, downloads it as CSV, and saves it on a schedule that emails the author', { tag: '@smoke' }, async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}/reports`);
-    await page.getByRole('link', { name: /Time & Activity/ }).first().click();
-    await expect(page.getByRole('heading', { level: 1, name: 'Time & Activity' })).toBeVisible();
+    await page.getByRole('link', { name: /Time & activity/ }).first().click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Time & activity' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Export' }).click();
     const download = page.waitForEvent('download');
@@ -123,6 +123,28 @@ test.describe('QA · Report runner (admin)', () => {
     await expect(dialog).toBeHidden();
     await page.goto(`/o/${data.orgId}/reports`);
     await expect(page.getByText(name)).toBeVisible();
+  });
+
+  // Audit 28 Oct 2026 (Q5): a scheduled report is computed with its owner's access, so a worker
+  // who can't open the payroll export can't be sent it either.
+  test('refuses to schedule the payroll export to a worker, with the reason under Recipients', async ({ page, data, adminApi }) => {
+    await page.goto(`/o/${data.orgId}/reports/payroll`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Payroll export' })).toBeVisible();
+    const name = `QA payroll to worker ${uid()}`;
+    await page.getByRole('button', { name: 'Save report' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Save report' });
+    await dialog.getByLabel('Name').fill(name);
+    await dialog.getByRole('switch', { name: /Email on a schedule/ }).click();
+    await expect(dialog.getByText('Members who can see everything in this report, up to 20.')).toBeVisible();
+    await dialog.getByRole('button', { name: /^Send to:/ }).click();
+    await page.getByRole('listbox', { name: 'Send to' }).getByRole('checkbox', { name: new RegExp(data.worker.name) }).check();
+    await page.keyboard.press('Escape');
+    await dialog.getByRole('button', { name: /^Save/ }).last().click();
+    await expect(dialog.getByText(/can’t see everything in this report/)).toBeVisible();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    const saved = await ok<Array<{ name: string }>>(await adminApi.api.get(adminApi.orgApi('/saved-reports')), 'saved reports');
+    expect(saved.map((s) => s.name)).not.toContain(name);
   });
 });
 

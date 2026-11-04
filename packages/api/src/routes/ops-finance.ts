@@ -21,6 +21,7 @@ import {
   bankDetailsInput,
   payAdjustmentsInput,
   payrollProfileInput,
+  payrollProfilePatchInput,
   payrollRunInput,
 } from '@tallywork/contracts';
 import type { AppEnv } from '../context';
@@ -117,7 +118,7 @@ export const opsRoutes = new Hono<AppEnv>()
   })
   // Sending `page` returns { data, total, page, page_size, summary }; without it, every row as before.
   .get('/attendance', requirePermission('attendance:read'), async (c) => {
-    const q = query(c, range.and(pageQuery).and(z.object({ status: z.enum(['PRESENT', 'LATE', 'ABSENT', 'ON_LEAVE', 'HOLIDAY', 'UNSCHEDULED']).optional() })));
+    const q = query(c, range.and(pageQuery).and(z.object({ status: z.enum(['PRESENT', 'LATE', 'ABSENT', 'ON_LEAVE', 'HOLIDAY', 'SCHEDULED', 'UNSCHEDULED']).optional() })));
     return c.json(q.page ? await pageAttendance(ctx(c), { from: q.from, to: q.to, membershipIds: q.membership_ids, status: q.status, search: q.q, page: q.page, pageSize: q.page_size }) : await listAttendance(ctx(c), q.from, q.to, q.membership_ids));
   })
   .get('/break-types', async (c) => c.json(await listBreakTypes(ctx(c))))
@@ -212,7 +213,7 @@ export const financeRoutes = new Hono<AppEnv>()
   // Payroll
   .get('/payroll/profiles', async (c) => c.json(await listPayrollProfiles(ctx(c), { includeArchived: c.req.query('include_archived') === 'true' })))
   .post('/payroll/profiles', async (c) => c.json(await upsertPayrollProfile(ctx(c), null, await body(c, payrollProfileInput)), 201))
-  .patch('/payroll/profiles/:id', async (c) => c.json(await upsertPayrollProfile(ctx(c), c.req.param('id'), await body(c, payrollProfileInput))))
+  .patch('/payroll/profiles/:id', async (c) => c.json(await upsertPayrollProfile(ctx(c), c.req.param('id'), await body(c, payrollProfilePatchInput))))
   .delete('/payroll/profiles/:id', async (c) => {
     await archivePayrollProfile(ctx(c), c.req.param('id'));
     return c.body(null, 204);

@@ -1,6 +1,6 @@
 {
-  "id": "91fd7304-e64d-44b1-8fee-90d97335c5f3",
-  "prevId": "0ba231f0-8437-401b-a851-1fe7a8232b52",
+  "id": "05048fe1-cd3d-4d92-b4fa-dbe04bd1f40b",
+  "prevId": "cf3e81ce-5679-41b1-9745-b1a1fd04577a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3762,189 +3762,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.refused_time": {
-      "name": "refused_time",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "membership_id": {
-          "name": "membership_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "device_id": {
-          "name": "device_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "session_id": {
-          "name": "session_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "task_id": {
-          "name": "task_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ended_at": {
-          "name": "ended_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "message": {
-          "name": "message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "event_count": {
-          "name": "event_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "manual_request_id": {
-          "name": "manual_request_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dismissed_at": {
-          "name": "dismissed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "refused_time_session_uq": {
-          "name": "refused_time_session_uq",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "membership_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "session_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "refused_time_organization_id_started_at_index": {
-          "name": "refused_time_organization_id_started_at_index",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "started_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "refused_time_organization_id_membership_id_memberships_organization_id_id_fk": {
-          "name": "refused_time_organization_id_membership_id_memberships_organization_id_id_fk",
-          "tableFrom": "refused_time",
-          "tableTo": "memberships",
-          "columnsFrom": [
-            "organization_id",
-            "membership_id"
-          ],
-          "columnsTo": [
-            "organization_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.rollup_app_day": {
       "name": "rollup_app_day",
       "schema": "",
@@ -4919,6 +4736,119 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.time_review_flags": {
+      "name": "time_review_flags",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "membership_id": {
+          "name": "membership_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "local_date": {
+          "name": "local_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "details": {
+          "name": "details",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "time_review_flags_day_reason_uq": {
+          "name": "time_review_flags_day_reason_uq",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "membership_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "local_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "reason",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "time_review_flags_organization_id_membership_id_memberships_organization_id_id_fk": {
+          "name": "time_review_flags_organization_id_membership_id_memberships_organization_id_id_fk",
+          "tableFrom": "time_review_flags",
+          "tableTo": "memberships",
+          "columnsFrom": [
+            "organization_id",
+            "membership_id"
+          ],
+          "columnsTo": [
+            "organization_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.time_segments": {
       "name": "time_segments",
       "schema": "",
@@ -5168,6 +5098,20 @@
           "primaryKey": false,
           "notNull": false
         },
+        "backfill": {
+          "name": "backfill",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "recorded_offline": {
+          "name": "recorded_offline",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -5201,7 +5145,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"tracking_sessions\".\"state\" in ('CREATED','ACTIVE','PAUSED','INTERRUPTED')",
+          "where": "\"tracking_sessions\".\"state\" in ('CREATED','ACTIVE','PAUSED','INTERRUPTED') and \"tracking_sessions\".\"backfill\" = false",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -7928,24 +7872,6 @@
         },
         "decided_at": {
           "name": "decided_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "rejection_reason": {
-          "name": "rejection_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "rejected_by": {
-          "name": "rejected_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "rejected_at": {
-          "name": "rejected_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

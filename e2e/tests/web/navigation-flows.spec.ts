@@ -2,7 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { randomUUID } from 'node:crypto';
 import { request, type Page } from '@playwright/test';
 import { expect, ok, test, uid } from '../../support/fixtures';
-import { ADMIN_STATE, VIEWER_STATE, WEB_URL, WORKER_STATE } from '../../support/env';
+import { ADMIN_STATE, PASSWORD, VIEWER_STATE, WEB_URL, WORKER_STATE } from '../../support/env';
 
 /**
  * UX remediation, phase 3: nobody finishes an important action wondering what to do next. Covers the
@@ -82,7 +82,7 @@ test.describe('filters survive refresh, Back and shared links', () => {
 
   test('a link with broken or outdated values opens with the defaults, not an error', async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}/sessions?range=next_century&from=2026-99-99&to=nope&member=not-an-id`);
-    await expect(page.getByRole('heading', { level: 1, name: 'Sessions' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Session history' })).toBeVisible();
     await expect(page.getByLabel('Date range')).toHaveValue('this_week');
     await expect(page.getByRole('alert').filter({ hasText: /error|invalid/i })).toHaveCount(0);
     await page.goto(`/o/${data.orgId}/timesheets/all?project=not-an-id&range=bogus`);
@@ -244,10 +244,23 @@ test.describe('confirmations say what will happen', () => {
 });
 
 test.describe('Time not added (managers)', () => {
-  test('lists refused offline time with why and where it stands, through to a correction', { tag: '@smoke' }, async ({ page, data, adminApi, workerDevice }) => {
-    // A project the worker is not on: their offline session on it is refused when it arrives.
+  test('lists refused offline time with why and where it stands, through to a correction', { tag: '@smoke' }, async ({ page, data, adminApi }) => {
+    // A member of its own: turning their tracking off (the one reason offline time is still refused)
+    // must not touch the shared worker other specs use.
+    const name = `Rita Refused ${uid()}`;
+    const email = `rita+${uid()}@e2e.test`;
     const project = await ok<{ id: string; name: string }>(await adminApi.api.post(adminApi.orgApi('/projects'), { data: { name: `Refused ${uid()}` } }), 'project');
-    const agent = await request.newContext({ baseURL: WEB_URL, storageState: { cookies: [], origins: [] }, extraHTTPHeaders: { Authorization: `Bearer ${workerDevice.token}` } });
+    const roles = await ok<Array<{ id: string; key: string }>>(await adminApi.api.get(adminApi.orgApi('/roles')), 'roles');
+    const inv = await ok<{ invite_url: string }>(await adminApi.api.post(adminApi.orgApi('/invitations'), { data: { email, name, role_id: roles.find((x) => x.key === 'WORKER')!.id, project_ids: [project.id] } }), 'invite');
+    const anon = await request.newContext({ baseURL: WEB_URL, storageState: { cookies: [], origins: [] }, extraHTTPHeaders: { Origin: WEB_URL } });
+    const member = await ok<{ membership_id: string }>(await anon.post('/api/v1/auth/invitations/accept', { data: { token: new URL(inv.invite_url).searchParams.get('token'), name, password: PASSWORD } }), 'accept');
+    await anon.dispose();
+    const device = await request.newContext({ baseURL: WEB_URL, storageState: { cookies: [], origins: [] } });
+    const login = await ok<{ access_token: string }>(await device.post('/api/v1/agent/login', { data: { email, password: PASSWORD, device: { name: 'E2E refused', platform: 'windows', agent_version: '0.1.9' } } }), 'device sign-in');
+    await device.dispose();
+    const agent = await request.newContext({ baseURL: WEB_URL, storageState: { cookies: [], origins: [] }, extraHTTPHeaders: { Authorization: `Bearer ${login.access_token}` } });
+
+    await ok(await adminApi.api.patch(adminApi.orgApi(`/workers/${member.membership_id}`), { data: { tracking_enabled: false } }), 'tracking off');
     const sid = randomUUID();
     const start = Date.now() - 3 * 3600_000;
     const at = (min: number) => new Date(start + min * 60_000).toISOString();
@@ -258,12 +271,13 @@ test.describe('Time not added (managers)', () => {
       'ingest',
     );
     expect(r.results.map((x) => x.status)).toEqual(['rejected', 'rejected']);
+    await ok(await adminApi.api.patch(adminApi.orgApi(`/workers/${member.membership_id}`), { data: { tracking_enabled: true } }), 'tracking on');
 
     await page.goto(`/o/${data.orgId}/timesheets/not-added`);
-    await expect(page.getByRole('navigation', { name: 'Timesheets' }).getByRole('link', { name: 'Time not added' })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('navigation', { name: 'Approvals' }).getByRole('link', { name: 'Time not added' })).toHaveAttribute('aria-current', 'page');
     const row = page.getByRole('row').filter({ hasText: project.name });
-    await expect(row).toContainText(data.worker.name);
-    await expect(row).toContainText('The member is no longer on this project.');
+    await expect(row).toContainText(name);
+    await expect(row).toContainText('Time tracking from the desktop app is turned off for this member.');
     await expect(row).toContainText('Not resolved');
     await expect(row).toContainText('45m');
     expect((await new AxeBuilder({ page }).include('main').withTags(['wcag2a', 'wcag2aa']).analyze()).violations).toEqual([]);
@@ -271,7 +285,7 @@ test.describe('Time not added (managers)', () => {
     // The worker asks for it as manual time (from the desktop app): it waits for approval, linked.
     const req = await ok<{ results: Array<{ status: string }> }>(
       await agent.post('/api/v1/agent/ingest/batch', {
-        data: { sent_at: new Date().toISOString(), events: [{ event_id: randomUUID(), type: 'manual_time.request', occurred_at: new Date().toISOString(), project_id: data.projects.website.id, started_at: at(0), ended_at: at(45), reason: `Offline, project was mine ${uid()}`, refused_session_id: sid }] },
+        data: { sent_at: new Date().toISOString(), events: [{ event_id: randomUUID(), type: 'manual_time.request', occurred_at: new Date().toISOString(), project_id: project.id, started_at: at(0), ended_at: at(45), reason: `Offline, tracking was off by mistake ${uid()}`, refused_session_id: sid }] },
       }),
       'correction',
     );

@@ -10,6 +10,8 @@ import {
   notificationPreferences,
   notifications,
   retentionPolicies,
+  teamMembers,
+  teams,
   trackingPolicies,
   users,
   webhookDeliveries,
@@ -17,7 +19,7 @@ import {
   type Tx,
   withSystem,
 } from '@tallywork/db';
-import { API_KEY_SCOPES, can, forbidden, newId, notFound, resolvePolicy, type DeepPartial, type TrackingPolicy } from '@tallywork/domain';
+import { API_KEY_SCOPES, can, forbidden, newId, notFound, resolvePolicy, validation, type DeepPartial, type TrackingPolicy } from '@tallywork/domain';
 import type { AuditLogDto, DeviceDto, EffectivePolicyDto, NotificationDto, OffsetPage, apiKeyInput, policyDocInput, retentionInput, webhookInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
@@ -28,7 +30,7 @@ import { memberNames } from './timer';
 import { decrypt, encrypt, hmac, randomToken } from '../lib/crypto';
 import { assertPublicUrl, postToPublicUrl } from '../lib/ssrf';
 import { iso } from '../lib/http';
-import { likePattern } from '../lib/search';
+import { isUuid, likePattern } from '../lib/search';
 
 // ─── Devices ─────────────────────────────────────────────────────────────────
 type DeviceQuery = { membershipId?: string; id?: string; status?: string; search?: string };
@@ -115,8 +117,40 @@ export async function getEffectivePolicy(x: Ctx, membershipId: string): Promise<
   return { policy, hash: policyHash(policy), layers: layers.map((l) => ({ scope: l.scope, scope_id: l.scopeId, doc: l.doc })) };
 }
 
+/**
+ * May the actor read or write this policy layer? Audit 28 Oct 2026 (A5, SEC-6): the grant's scope
+ * counts, not just the grant. The org layer is readable by every policy reader (it is part of
+ * everyone's effective policy) but only an org-wide grant may change it. A team layer is reachable
+ * with org scope, or for teams the actor manages (and, for reading, teams they belong to). A member
+ * layer follows can(); a narrow grant never covers the holder's own monitoring.
+ */
+async function assertPolicyLayerAccess(x: Ctx, perm: 'policies:read' | 'policies:manage', scopeType: 'ORG' | 'TEAM' | 'WORKER', scopeId: string) {
+  const scope = x.actor.grants[perm];
+  if (!scope) throw forbidden();
+  if (scopeType === 'ORG') {
+    if (scopeId !== x.org.id) throw notFound('policy');
+    if (perm === 'policies:manage' && scope !== 'org') throw forbidden('Only an organization-wide role can change the organization policy');
+    return;
+  }
+  if (scopeType === 'TEAM') {
+    const [team] = await x.tx.select({ id: teams.id }).from(teams).where(and(eq(teams.id, scopeId), eq(teams.organizationId, x.org.id)));
+    if (!team) throw notFound('team');
+    if (scope === 'org') return;
+    if (scope === 'team' && x.actor.managedTeamIds.includes(scopeId)) return;
+    if (perm === 'policies:read') {
+      const [mine] = await x.tx.select({ id: teamMembers.teamId }).from(teamMembers).where(and(eq(teamMembers.teamId, scopeId), eq(teamMembers.membershipId, x.actor.membershipId)));
+      if (mine) return;
+    }
+    throw forbidden();
+  }
+  const [member] = await x.tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.id, scopeId), eq(memberships.organizationId, x.org.id)));
+  if (!member) throw notFound('worker');
+  if (!can(x.actor, perm, { ownerMembershipId: scopeId })) throw forbidden();
+  if (perm === 'policies:manage' && scopeId === x.actor.membershipId && scope !== 'org') throw forbidden('Your role can’t change your own monitoring policy');
+}
+
 export async function getPolicyLayer(x: Ctx, scopeType: 'ORG' | 'TEAM' | 'WORKER', scopeId: string) {
-  if (!x.actor.grants['policies:read']) throw forbidden();
+  await assertPolicyLayerAccess(x, 'policies:read', scopeType, scopeId);
   const [row] = await x.tx.select().from(trackingPolicies).where(and(eq(trackingPolicies.scopeType, scopeType), eq(trackingPolicies.scopeId, scopeId)));
   // Inherited = everything above this layer (org for teams; org + the member's teams for members).
   const base = scopeType === 'ORG' ? resolvePolicy([]) : scopeType === 'TEAM' ? resolvePolicy((await x.tx.select().from(trackingPolicies).where(eq(trackingPolicies.scopeType, 'ORG'))).map((r) => ({ scope: 'ORG' as const, scopeId: r.scopeId, doc: r.doc }))) : resolvePolicy((await policyLayers(x.tx, x.org.id, scopeId)).filter((l) => l.scope !== 'WORKER'));
@@ -124,8 +158,7 @@ export async function getPolicyLayer(x: Ctx, scopeType: 'ORG' | 'TEAM' | 'WORKER
 }
 
 export async function putPolicyLayer(x: Ctx, scopeType: 'ORG' | 'TEAM' | 'WORKER', scopeId: string, doc: z.infer<typeof policyDocInput>) {
-  if (!x.actor.grants['policies:manage']) throw forbidden();
-  if (scopeType === 'ORG' && scopeId !== x.org.id) throw notFound('policy');
+  await assertPolicyLayerAccess(x, 'policies:manage', scopeType, scopeId);
   // Validate that the merged result is still a complete, valid policy.
   resolvePolicy([{ scope: scopeType, scopeId, doc: doc as DeepPartial<TrackingPolicy> }]);
   const [before] = await x.tx.select().from(trackingPolicies).where(and(eq(trackingPolicies.scopeType, scopeType), eq(trackingPolicies.scopeId, scopeId)));
@@ -154,6 +187,7 @@ export async function createApiKey(x: Ctx, input: z.infer<typeof apiKeyInput>) {
   if (!x.actor.grants['api_keys:manage']) throw forbidden();
   if (x.actor.principal.type !== 'user') throw forbidden('API keys can only be created by signed-in users');
   for (const s of input.scopes) if (!x.actor.grants[API_KEY_SCOPES[s]]) throw forbidden(`You cannot grant ${s}`);
+  if (input.expires_at && Date.parse(input.expires_at) <= x.deps.now().getTime()) throw validation('The expiry date must be in the future', { errors: [{ field: 'expires_at', message: 'Choose a date in the future' }] });
   const prefix = randomToken(6).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).padEnd(8, 'x');
   const secret = randomToken(32);
   const id = newId();
@@ -183,6 +217,7 @@ export const WEBHOOK_EVENTS = [
   'timesheet.approved',
   'timesheet.rejected',
   'timesheet.late_time',
+  'time.needs_review',
   'time_off.requested',
   'time_off.approved',
   'invoice.created',
@@ -205,7 +240,7 @@ export async function upsertWebhook(x: Ctx, id: string | null, input: z.infer<ty
   if (!x.actor.grants['webhooks:manage']) throw forbidden();
   await assertPublicUrl(input.url);
   const events = input.events.filter((e) => e === '*' || (WEBHOOK_EVENTS as readonly string[]).includes(e));
-  if (!events.length) throw forbidden('Choose at least one supported event');
+  if (!events.length) throw validation('Choose at least one supported event', { errors: [{ field: 'events', message: 'Choose at least one supported event' }] });
   let wid = id;
   let secret: string | null = null;
   if (wid) {
@@ -435,8 +470,9 @@ const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
 
 export async function uploadReceipt(x: Ctx, file: File) {
   if (!x.actor.grants['expenses:create']) throw forbidden();
-  if (!RECEIPT_TYPES.has(file.type)) throw forbidden('Receipts must be JPEG, PNG, WebP or PDF');
-  if (file.size > MAX_RECEIPT_BYTES) throw forbidden('Receipts are limited to 10 MB');
+  // The file is the problem, not the person's access: 400 with the field, so the form can say what to change.
+  if (!RECEIPT_TYPES.has(file.type)) throw validation('Receipts must be JPEG, PNG, WebP or PDF', { errors: [{ field: 'file', message: 'Use a JPEG, PNG, WebP or PDF file' }] });
+  if (file.size > MAX_RECEIPT_BYTES) throw validation('Receipts are limited to 10 MB', { errors: [{ field: 'file', message: 'Use a file of 10 MB or less' }] });
   const id = newId();
   const ext = file.type === 'application/pdf' ? 'pdf' : file.type.split('/')[1];
   const key = `org/${x.org.id}/receipts/${x.actor.membershipId}/${id}.${ext}`;
@@ -446,11 +482,13 @@ export async function uploadReceipt(x: Ctx, file: File) {
 }
 
 export async function fileForDownload(x: Ctx, id: string) {
-  const [f] = await x.tx.select().from(fileObjects).where(eq(fileObjects.id, id));
+  const [f] = isUuid(id) ? await x.tx.select().from(fileObjects).where(eq(fileObjects.id, id)) : [];
   if (!f) throw notFound('file');
   const owner = f.uploadedBy;
-  if (f.purpose === 'RECEIPT' && !(owner && can(x.actor, 'expenses:read', { ownerMembershipId: owner }))) throw notFound('file');
-  if (f.purpose === 'EXPORT' && owner !== x.actor.membershipId) throw notFound('file');
-  return f;
+  // Deny by default (SEC-5): only receipts and your own exports download here. Screenshots, project
+  // documents, invoice PDFs and avatars have their own routes with their own checks.
+  if (f.purpose === 'RECEIPT' && owner && can(x.actor, 'expenses:read', { ownerMembershipId: owner })) return f;
+  if (f.purpose === 'EXPORT' && owner === x.actor.membershipId) return f;
+  throw notFound('file');
 }
 

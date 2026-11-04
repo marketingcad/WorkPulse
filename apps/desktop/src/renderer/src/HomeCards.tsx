@@ -14,7 +14,7 @@ export function TodaySummaryCard({ s, now }: { s: AgentState; now: number }) {
         <h2 className="text-sm font-semibold">Today's summary</h2>
         {sum.error && !d && <span className="text-2xs text-warning">Offline</span>}
       </div>
-      {/* Each <dl> holds only term/value groups, so screen readers read them as pairs. */}
+      {/* Each <dl> holds only term/value groups, so labels and values are paired for screen readers (audit QA-07). */}
       <div className="flex flex-col gap-3 px-4 py-3">
         <dl className="flex flex-col gap-3">
           <Total label="Tracked today" seconds={s.todaySeconds} limit={limits.dailySeconds} />
@@ -52,6 +52,7 @@ function Mini({ label, value, warn }: { label: string; value: string; warn?: boo
 /** A total, with a progress bar toward the organization's limit when it has one. */
 export function Total({ label, seconds, limit }: { label: string; seconds: number; limit: number | null }) {
   const pct = limit ? Math.min(100, Math.round((seconds / limit) * 100)) : null;
+  // One term/value group; the progress bar is a second description of the same term.
   return (
     <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-2">
       <dt className="text-xs text-text-muted">{label}</dt>

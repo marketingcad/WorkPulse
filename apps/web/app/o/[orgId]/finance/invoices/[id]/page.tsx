@@ -24,7 +24,8 @@ import {
   fmtMoney,
   useToast,
 } from '@tallywork/ui';
-import { ApiError, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
+import { ApiError, errorMessage, invalidateOrg, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { RecordPaymentDialog } from '@/components/finance/record-payment-dialog';
 import { methodLabel, type InvoiceDetail } from '@/components/finance/types';
@@ -40,6 +41,7 @@ export default function InvoiceDetailPage() {
   const remind = useOrgMutation<Record<string, never>, { sent_to: string; overdue: boolean }>('POST', `/invoices/${id}/remind`);
   const [confirmRemind, setConfirmRemind] = useState(false);
   const del = useOrgMutation<undefined>('DELETE', `/invoices/${id}`, { invalidate: false });
+  const qc = useQueryClient();
   const removePay = useOrgMutation<{ id: string }>('DELETE', (b) => `/payments/${b.id}`);
   const router = useRouter();
   const [confirmVoid, setConfirmVoid] = useState(false);
@@ -181,7 +183,7 @@ export default function InvoiceDetailPage() {
             </dl>
           </header>
 
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <caption className="sr-only">Invoice lines</caption>
               <thead>
@@ -319,7 +321,11 @@ export default function InvoiceDetailPage() {
           try {
             await del.mutateAsync(undefined);
             toast.success(`Draft ${inv.number} deleted`);
+            // The list drops it straight away (FE-B2: it stayed for up to 15 s). The deleted draft's own
+            // page is forgotten, not refetched (it would be a 404).
             router.replace(`${org.base}/finance/invoices`);
+            qc.removeQueries({ queryKey: ['org', org.organization.id, `/invoices/${id}`] });
+            void invalidateOrg(qc, org.organization.id, ['/invoices?', '/dashboard']);
           } catch (e) {
             toast.error(errorMessage(e));
           }

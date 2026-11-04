@@ -38,9 +38,9 @@ function Form() {
       <Field label={t('auth.invite.choosePassword')} htmlFor="pw" hint={t('auth.passwordHint')} error={error?.field('password')}>
         <AuthInput icon={Lock} id="pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
       </Field>
-      {error && !error.errors && (
+      {error?.general(['password']) && (
         <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
-          {error.title}
+          {error.general(['password'])}
         </p>
       )}
       <Button type="submit" variant="primary" size="md" loading={loading}>

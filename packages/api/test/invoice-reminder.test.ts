@@ -13,11 +13,13 @@ const o = (p: string) => `/orgs/${orgId}${p}`;
 
 async function invoice(clientEmail: string | null, due: string, send = true) {
   const clientId = (await admin.post<{ id: string }>(o('/clients'), { name: `Client ${Math.random().toString(36).slice(2, 7)}`, ...(clientEmail ? { email: clientEmail } : {}) })).body.id;
+  // An invoice already overdue was issued before its due date (the due date cannot come first).
+  const overdue = due < '2026-09-01';
   const inv = await admin.post<{ id: string; number: string }>(o('/invoices'), {
     client_id: clientId,
-    period_start: '2026-08-01',
-    period_end: '2026-08-31',
-    issue_date: '2026-09-01',
+    period_start: overdue ? '2019-12-01' : '2026-08-01',
+    period_end: overdue ? '2019-12-31' : '2026-08-31',
+    issue_date: overdue ? '2019-12-31' : '2026-09-01',
     due_date: due,
     group_by: 'project',
     tax_rate_bps: 0,

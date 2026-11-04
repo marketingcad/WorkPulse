@@ -16,9 +16,9 @@ import {
   users,
   type PayAdjustment,
 } from '@tallywork/db';
-import { DEFAULT_OVERTIME, addDaysToDate, amountForSeconds, businessRule, conflict, forbidden, localDate, newId, notFound, periodFor, resolveRate } from '@tallywork/domain';
+import { DEFAULT_OVERTIME, addDaysToDate, amountForSeconds, businessRule, conflict, forbidden, localDate, newId, notFound, periodFor, resolveRate, validation } from '@tallywork/domain';
 import { overtimeInRange, paidHolidayHours } from './pay-figures';
-import type { BankDetailsDto, PayStubDto, PayrollProfileDto, PayrollRunDto, bankDetailsInput, payAdjustmentsInput, payrollProfileInput, payrollRunInput } from '@tallywork/contracts';
+import type { BankDetailsDto, PayStubDto, PayrollProfileDto, PayrollRunDto, bankDetailsInput, payAdjustmentsInput, payrollProfileInput, payrollProfilePatchInput, payrollRunInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { audit } from './events';
 import { loadRates } from './finance';
@@ -69,13 +69,22 @@ export async function listPayrollProfiles(x: Ctx, opts: { includeArchived?: bool
   }));
 }
 
-export async function upsertPayrollProfile(x: Ctx, id: string | null, input: z.infer<typeof payrollProfileInput>) {
+export async function upsertPayrollProfile(x: Ctx, id: string | null, sent: z.infer<typeof payrollProfileInput> | z.infer<typeof payrollProfilePatchInput>) {
   need(x, 'payroll:manage');
   const pid = id ?? newId();
+  let existing: typeof payrollProfiles.$inferSelect | undefined;
+  let currentIds: string[] = [];
   if (id) {
-    const [p] = await x.tx.select().from(payrollProfiles).where(eq(payrollProfiles.id, id));
-    if (!p) throw notFound('payroll_profile');
+    [existing] = await x.tx.select().from(payrollProfiles).where(eq(payrollProfiles.id, id));
+    if (!existing) throw notFound('payroll_profile');
+    currentIds = (await x.tx.select({ m: payrollProfileMembers.membershipId }).from(payrollProfileMembers).where(eq(payrollProfileMembers.profileId, id))).map((r) => r.m);
   }
+  // An update changes only what it sends: leaving out `member_ids` keeps the members and their bank details.
+  const name = sent.name ?? existing?.name;
+  const period = sent.period ?? existing?.period;
+  const currency = sent.currency ?? existing?.currency;
+  if (!name || !period || !currency) throw validation('Give the pay group a name, a pay period and a currency');
+  const input = { name, period, currency, is_default: sent.is_default ?? existing?.isDefault ?? false, member_ids: sent.member_ids ?? currentIds };
   // Only one payroll profile per currency for each member.
   if (input.member_ids.length) {
     const clash = await x.tx
@@ -88,16 +97,15 @@ export async function upsertPayrollProfile(x: Ctx, id: string | null, input: z.i
       throw businessRule('payroll_profile_currency', `${names.get(clash[0]!.m) ?? 'A member'} is already in ${clash[0]!.name}, which also pays in ${input.currency}. Only one payroll profile per currency is allowed.`);
     }
   }
-  const values = { name: input.name, period: input.period, currency: input.currency, isDefault: input.is_default ?? false };
+  const values = { name: input.name, period: input.period, currency: input.currency, isDefault: input.is_default };
   if (id) await x.tx.update(payrollProfiles).set({ ...values, updatedAt: new Date() }).where(eq(payrollProfiles.id, pid));
   else await x.tx.insert(payrollProfiles).values({ id: pid, organizationId: x.org.id, ...values });
   if (values.isDefault) await x.tx.update(payrollProfiles).set({ isDefault: false }).where(and(ne(payrollProfiles.id, pid), eq(payrollProfiles.isDefault, true)));
   // Members: keep bank details of members who stay.
-  const current = await x.tx.select({ m: payrollProfileMembers.membershipId }).from(payrollProfileMembers).where(eq(payrollProfileMembers.profileId, pid));
   const keep = new Set(input.member_ids);
-  const gone = current.map((c) => c.m).filter((m) => !keep.has(m));
+  const gone = currentIds.filter((m) => !keep.has(m));
   if (gone.length) await x.tx.delete(payrollProfileMembers).where(and(eq(payrollProfileMembers.profileId, pid), inArray(payrollProfileMembers.membershipId, gone)));
-  const added = input.member_ids.filter((m) => !current.some((c) => c.m === m));
+  const added = input.member_ids.filter((m) => !currentIds.includes(m));
   if (added.length) {
     const valid = await x.tx.select({ id: memberships.id }).from(memberships).where(inArray(memberships.id, added));
     if (valid.length !== new Set(added).size) throw notFound('worker');
@@ -227,6 +235,7 @@ function stubDto(l: typeof payrollRunLines.$inferSelect, r: typeof payrollRuns.$
     adjustments: l.adjustments,
     net_minor: l.netMinor,
     paid_at: r.paidAt?.toISOString() ?? null,
+    warnings: l.warnings,
   };
 }
 
@@ -289,7 +298,7 @@ async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect
   const rollups = await x.tx.select().from(rollupWorkerDay).where(and(inArray(rollupWorkerDay.membershipId, members), gte(rollupWorkerDay.localDate, from), lte(rollupWorkerDay.localDate, to)));
   const [ot] = await x.tx.select().from(overtimeRuleSets);
   const rules = ot?.rules ?? DEFAULT_OVERTIME;
-  const split = await overtimeInRange(x.tx, x.org.weekStart, rules, members, from, to);
+  const split = await overtimeInRange(x.tx, x.org.weekStart, rules, members, from, to, { approvedOnly: true });
   const off = await x.tx
     .select({ t: timeOffRequests, paid: timeOffPolicies.paid, hpd: timeOffPolicies.hoursPerDay })
     .from(timeOffRequests)
@@ -314,21 +323,27 @@ async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect
     const { regular, overtime } = split.get(m) ?? { regular: 0, overtime: 0 };
     let offHours = 0;
     let offPay = 0;
+    const warnings = new Set<string>();
+    // Paid at the member's own pay rate (worker, else organization) in effect on each day (F9), so a
+    // raise in the middle of a request is respected. No such rate: nothing is invented, the line is flagged.
+    const payOffDay = (d: string, h: number) => {
+      const rate = resolveRate(rates, 'PAY', { date: d, membershipId: m, projectId: null, clientId: null });
+      if (!rate) warnings.add('time_off_no_rate');
+      else if (rate.currency !== profile.currency) otherCurrency = true;
+      else offPay += amountForSeconds(Math.round(h * 3600), rate.amountMinor);
+    };
     for (const o of off.filter((r) => r.t.membershipId === m && r.paid)) {
       const h = timeOffHoursInRange(o.t, from, to, hols, o.hpd || 8);
       offHours += h;
-      const rate = resolveRate(rates, 'PAY', { date: o.t.startDate < from ? from : o.t.startDate, membershipId: m, projectId: null, clientId: null });
-      if (rate && rate.currency !== profile.currency) otherCurrency = true;
-      else if (rate) offPay += amountForSeconds(Math.round(h * 3600), rate.amountMinor);
+      if (o.t.dayHours) for (const [d, dh] of Object.entries(o.t.dayHours)) if (d >= from && d <= to) payOffDay(d, dh);
+      if (!o.t.dayHours) payOffDay(o.t.startDate < from ? from : o.t.startDate, h);
     }
     // Paid holidays are paid time off too: the hours the person would normally work that day.
     for (const { date: d, hours: h } of holidayPay.get(m) ?? []) {
       offHours += h;
-      const rate = resolveRate(rates, 'PAY', { date: d, membershipId: m, projectId: null, clientId: null });
-      if (rate && rate.currency !== profile.currency) otherCurrency = true;
-      else if (rate) offPay += amountForSeconds(Math.round(h * 3600), rate.amountMinor);
+      payOffDay(d, h);
     }
-    return { membershipId: m, approvedSeconds, carriedSeconds, unapprovedSeconds: Math.max(0, total - (approvedSeconds - carriedSeconds)), regularSeconds: regular, overtimeSeconds: overtime, timePayMinor: timePay, timeOffHours: Math.round(offHours * 100) / 100, timeOffPayMinor: offPay, grossMinor: timePay + offPay };
+    return { membershipId: m, approvedSeconds, carriedSeconds, unapprovedSeconds: Math.max(0, total - (approvedSeconds - carriedSeconds)), regularSeconds: regular, overtimeSeconds: overtime, timePayMinor: timePay, timeOffHours: Math.round(offHours * 100) / 100, timeOffPayMinor: offPay, grossMinor: timePay + offPay, warnings: [...warnings] };
   });
   return { lines, otherCurrency };
 }

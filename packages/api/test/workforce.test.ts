@@ -62,6 +62,23 @@ describe('attendance', () => {
     expect(rows.find((r) => r.date === '2026-09-22')!.late_seconds).toBe(30 * 60);
   });
 
+  it('lists someone whose shift has not started yet as scheduled, not as missing', async () => {
+    // Live, 28 Oct 2026: at 04:30 a member scheduled for 09:00 was left out and the roster said "Nobody was scheduled".
+    const { membershipId: id } = await member('Sami');
+    await schedule(id);
+    t.clock.set(new Date('2026-09-28T08:30:00Z')); // Monday 04:30 New York
+    const rows = (await admin.get(o(`/attendance?from=2026-09-28&to=2026-09-28&membership_ids=${id}`))).body as Array<{ status: string; scheduled_start: string }>;
+    expect(rows).toEqual([expect.objectContaining({ status: 'SCHEDULED', scheduled_start: '2026-09-28T13:00:00.000Z' })]);
+    const page = (await admin.get(o('/attendance?from=2026-09-28&to=2026-09-28&status=SCHEDULED&page=1&page_size=50'))).body as { data: Array<{ membership_id: string }> };
+    expect(page.data.map((r) => r.membership_id)).toContain(id);
+    // Once the shift and the grace period have passed with no time, they are absent.
+    t.clock.set(new Date('2026-09-28T13:30:00Z'));
+    expect((await admin.get(o(`/attendance?from=2026-09-28&to=2026-09-28&membership_ids=${id}`))).body[0].status).toBe('ABSENT');
+    t.clock.set(new Date('2026-09-28T13:00:00Z'));
+    // The shift-alert tests below expect Walt to be the only scheduled member not tracking on this Monday.
+    expect((await admin.del(o(`/workers/${id}`))).status).toBe(204);
+  });
+
   it('counts a timer that is running right now (no time entry yet)', async () => {
     const { client: w, membershipId: id } = await member('Rita');
     await schedule(id);
@@ -274,5 +291,27 @@ describe('breaks', () => {
       ['WORK', null],
       ['BREAK', null],
     ]);
+  });
+});
+
+describe('archiving a time-off policy', () => {
+  // Live, 28 Oct 2026: a policy could be created but never removed in the app. The Archive button
+  // promises: no new requests, gone from balances, earlier requests kept and still decidable.
+  it('stops new requests and leaves balances, keeps earlier requests decidable, and is for managers only', async () => {
+    const { client: w, membershipId: id } = await member('Paula');
+    const policy = (await admin.post(o('/time-off/policies'), { name: 'Mistake', accrual: { type: 'none', amountHours: 0, maxBalanceHours: null, carryOverHours: null }, applies_to_all: false, member_ids: [id] })).body.id as string;
+    const pending = await w.post(o('/time-off/requests'), { policy_id: policy, start_date: '2026-10-07', end_date: '2026-10-07' });
+    expect(pending.status).toBe(201);
+
+    expect((await w.post(o(`/time-off/policies/${policy}/archive`), {})).status).toBe(403);
+    expect((await admin.post(o(`/time-off/policies/${policy}/archive`), {})).status).toBe(204);
+
+    const listed = (await admin.get(o('/time-off/policies'))).body as Array<{ id: string }>;
+    expect(listed.some((p) => p.id === policy)).toBe(false);
+    const own = (await w.get(o('/time-off/balances'))).body as Array<{ policy_id: string }>;
+    expect(own.some((b) => b.policy_id === policy)).toBe(false);
+    const again = await w.post(o('/time-off/requests'), { policy_id: policy, start_date: '2026-10-08', end_date: '2026-10-08' });
+    expect(again.status).toBe(404);
+    expect((await admin.post(o(`/time-off/requests/${pending.body.id}/approve`), {})).status).toBe(204);
   });
 });

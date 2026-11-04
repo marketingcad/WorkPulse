@@ -23,7 +23,7 @@ import { budgetStatuses, redactBudgetMoney } from './finance';
 import { listAttendance } from './operations';
 import { effectivePolicy } from './policies';
 import { insights } from './insights';
-import { narrowMemberships } from './scope';
+import { clientFilter, narrowMemberships } from './scope';
 import { todayAndWeek, workerTimezone } from './tracking';
 import { currentTracking, liveWorkers, listSessions } from './timer';
 import { memberNames } from './timer';
@@ -232,7 +232,8 @@ export async function widgetData(x: Ctx, keys: string[], scope: 'ALL' | 'ME' | '
   }
 
   if (want.has('invoices') && g['invoices:read']) {
-    const rows = await x.tx.select().from(invoices).where(sql`${invoices.status} <> 'VOID'`);
+    // In the organization's currency, as the Invoices page totals it (F5): no amounts in two currencies added up.
+    const rows = await x.tx.select().from(invoices).where(and(sql`${invoices.status} <> 'VOID'`, eq(invoices.currency, x.org.currency), clientFilter(x, 'invoices:read', invoices.clientId)));
     const st = rows.map((i) => ({ i, s: deriveInvoiceStatus({ explicit: i.status, totalMinor: i.totalMinor, paidMinor: i.paidMinor, dueDate: i.dueDate, today }) }));
     out.invoices = {
       outstanding_minor: st.filter((r) => r.s !== 'DRAFT' && r.s !== 'PAID').reduce((s, r) => s + r.i.totalMinor - r.i.paidMinor, 0),

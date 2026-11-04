@@ -3,7 +3,7 @@ import path from 'node:path';
 import { after } from 'next/server';
 import { attachDatabasePool } from '@vercel/functions';
 import { createApp, createMailer, createStorage, loadConfig, type App, type Deps } from '@tallywork/api';
-import { createDb } from '@tallywork/db/client';
+import { createDb, type DbHandle } from '@tallywork/db/client';
 
 /**
  * One set of infrastructure per server instance (Fluid Compute reuses instances).
@@ -12,8 +12,32 @@ import { createDb } from '@tallywork/db/client';
  */
 let appPromise: Promise<{ app: App; deps: Deps }> | null = null;
 
+/**
+ * Database handles live on globalThis, not in this module: `next dev` re-runs the module on hot
+ * reload, and a second PGlite opened on the same folder while the first is alive corrupts it.
+ */
+const handles = ((globalThis as { __tallyworkDb?: Map<string, Promise<DbHandle>> }).__tallyworkDb ??= new Map());
+
 function localDataDir(): string {
   return path.resolve(process.cwd(), '.data');
+}
+
+function openDb(url: string): Promise<DbHandle> {
+  let p = handles.get(url);
+  if (!p) {
+    p = (async () => {
+      const handle = createDb(url);
+      if (handle.pool) attachDatabasePool(handle.pool);
+      // Local PGlite is migrated on boot; Neon is migrated during the Vercel build.
+      if (handle.kind === 'pglite') await handle.migrate();
+      return handle;
+    })().catch((e) => {
+      handles.delete(url);
+      throw e;
+    });
+    handles.set(url, p);
+  }
+  return p;
 }
 
 async function init() {
@@ -22,10 +46,7 @@ async function init() {
   }
   const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? `pglite://${localDataDir().replaceAll('\\', '/')}/pglite`;
   if (!process.env.BLOB_READ_WRITE_TOKEN && !process.env.LOCAL_STORAGE_DIR) process.env.LOCAL_STORAGE_DIR = `${localDataDir()}/blobs`;
-  const handle = createDb(url);
-  if (handle.pool) attachDatabasePool(handle.pool);
-  // Local PGlite is migrated on boot; Neon is migrated during the Vercel build.
-  if (handle.kind === 'pglite') await handle.migrate();
+  const handle = await openDb(url);
   const deps: Deps = {
     db: handle.db,
     config: loadConfig(),

@@ -75,9 +75,21 @@ export type Permission = (typeof PERMISSIONS)[number];
 
 /**
  * Permissions that only make sense for the whole organization. Payroll runs, pay stubs and bank
- * details are not narrowed to a team or to assigned work, so these are granted at org scope or not at all.
+ * details are not narrowed to a team or to assigned work, and neither are organization settings,
+ * roles, API keys, webhooks, retention or the audit log (whose rows carry rate amounts). These are
+ * granted at org scope or not at all; a narrower grant stored before this rule is ignored.
  */
-export const ORG_ONLY_PERMISSIONS: readonly Permission[] = ['payroll:read', 'payroll:manage'];
+export const ORG_ONLY_PERMISSIONS: readonly Permission[] = [
+  'payroll:read',
+  'payroll:manage',
+  'org:update',
+  'roles:manage',
+  'api_keys:manage',
+  'webhooks:manage',
+  'audit:read',
+  'settings:security',
+  'retention:manage',
+];
 
 export const BUILTIN_ROLES = ['SYSTEM_ADMIN', 'TEAM_MANAGER', 'WORKER', 'AGENT'] as const;
 export type BuiltinRole = (typeof BUILTIN_ROLES)[number];
@@ -222,22 +234,23 @@ export interface ActorContext {
 export function can(actor: ActorContext, permission: Permission, subject: SubjectContext = {}): boolean {
   const scope = actor.grants[permission];
   if (!scope) return false;
-  switch (scope) {
-    case 'org':
-      return true;
-    case 'team':
-      if (subject.ownerMembershipId === undefined) return true; // collection-level check
-      return (
-        subject.ownerMembershipId === actor.membershipId ||
-        (subject.ownerMembershipId !== null && actor.managedMembershipIds.has(subject.ownerMembershipId))
-      );
-    case 'assigned':
-      if (subject.projectId === undefined) return true;
-      return subject.projectId !== null && actor.assignedProjectIds.has(subject.projectId);
-    case 'own':
-      if (subject.ownerMembershipId === undefined) return true;
-      return subject.ownerMembershipId === actor.membershipId;
+  if (scope === 'org') return true;
+  // A subject is a person's data, a project, or neither (a collection-level check). A narrower scope
+  // never reaches a subject it doesn't cover (audit 29 Oct 2026, AUTHZ-001/005): before, a person checked
+  // against an `assigned` grant, or a project against a `team`/`own` grant, was always allowed.
+  const owner = subject.ownerMembershipId;
+  if (owner !== undefined) {
+    if (owner === null) return false;
+    if (owner === actor.membershipId) return true;
+    // Someone else's data: only a team grant over people the actor manages. `assigned` covers projects,
+    // so for people it means your own, as the lists show it (visibleMembershipIds).
+    return scope === 'team' && actor.managedMembershipIds.has(owner);
   }
+  if (subject.projectId !== undefined) {
+    // Any narrower scope reaches the projects the actor is assigned to (as canOnProject).
+    return subject.projectId !== null && actor.assignedProjectIds.has(subject.projectId);
+  }
+  return true; // collection-level check
 }
 
 /**

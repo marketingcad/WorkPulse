@@ -9,10 +9,55 @@ import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 export interface Storage {
   readonly kind: string;
   put(key: string, body: Buffer | ReadableStream | Blob, contentType: string): Promise<void>;
-  get(key: string): Promise<{ body: ReadableStream; contentType: string } | null>;
+  /**
+   * With `range`, a backend that can read part of an object returns only those bytes and says which
+   * (`range`); one that cannot returns the whole object without `range`. `size` is the whole object's.
+   */
+  get(key: string, range?: ByteRange): Promise<StoredObject | null>;
   delete(keys: string[]): Promise<void>;
   /** Token the desktop agent uses to upload one object directly. `url` is set when the upload goes to a pre-signed URL. */
   createUploadToken(key: string, contentType: string, maxBytes: number): Promise<UploadTarget>;
+}
+
+/**
+ * A storage key is a plain relative path: no `.` or `..` segment, no empty segment, no backslash or
+ * control character (audit 29 Oct 2026, AUTHZ-002). Some backends send keys inside URLs, where `..`
+ * would be resolved and could step out of the `org/{orgId}/` prefix every check relies on.
+ */
+export function isSafeKey(key: string): boolean {
+  if (!key || key.length > 512 || /[\\\x00-\x1f]/.test(key)) return false;
+  return key.split('/').every((seg) => seg !== '' && seg !== '.' && seg !== '..');
+}
+
+function safeKey(key: string): string {
+  if (!isSafeKey(key)) throw new Error('Unsafe storage key');
+  return key;
+}
+
+/** Bytes `start` to `end` inclusive; without `end`, to the end of the object (an HTTP Range header). */
+export interface ByteRange {
+  start: number;
+  end?: number;
+}
+
+export interface StoredObject {
+  body: ReadableStream;
+  contentType: string;
+  size?: number;
+  range?: { start: number; end: number; size: number };
+}
+
+/** The part of a `size`-byte object a range covers, or null when it starts past the end. */
+function clampRange(range: ByteRange, size: number): { start: number; end: number } | null {
+  if (range.start >= size) return null;
+  return { start: range.start, end: Math.min(range.end ?? size - 1, size - 1) };
+}
+
+/** Serves an in-memory object, whole or the part `range` asks for (a range past the end gets the whole object). */
+function fromBuffer(data: Buffer, contentType: string, range?: ByteRange): StoredObject {
+  const part = range && clampRange(range, data.length);
+  if (!part) return { body: new Response(new Uint8Array(data)).body!, contentType, size: data.length };
+  return { body: new Response(new Uint8Array(data.subarray(part.start, part.end + 1))).body!, contentType, size: data.length, range: { ...part, size: data.length } };
 }
 
 export interface UploadTarget {
@@ -26,21 +71,26 @@ export class VercelBlobStorage implements Storage {
   constructor(private readonly token: string) {}
 
   async put(key: string, body: Buffer | ReadableStream | Blob, contentType: string): Promise<void> {
+    safeKey(key);
     await put(key, body, { access: 'private', contentType, token: this.token, addRandomSuffix: false, allowOverwrite: true });
   }
 
-  async get(key: string) {
+  /** Always the whole object: ranges are not read from Vercel Blob. */
+  async get(key: string): Promise<StoredObject | null> {
+    safeKey(key);
     const res = await get(key, { access: 'private', token: this.token });
     if (!res || res.statusCode !== 200 || !res.stream) return null;
     return { body: res.stream, contentType: res.blob.contentType ?? 'application/octet-stream' };
   }
 
   async delete(keys: string[]): Promise<void> {
+    keys.forEach(safeKey);
     if (keys.length === 0) return;
     for (let i = 0; i < keys.length; i += 500) await del(keys.slice(i, i + 500), { token: this.token });
   }
 
   async createUploadToken(key: string, contentType: string, maxBytes: number) {
+    safeKey(key);
     const token = await generateClientTokenFromReadWriteToken({
       token: this.token,
       pathname: key,
@@ -88,23 +138,35 @@ export class SupabaseStorage implements Storage {
     throw new Error(`Supabase Storage ${op} failed (${res.status}): ${text.slice(0, 200)}`);
   }
 
-  /** Create the private bucket on first use; an existing bucket is left untouched. */
+  /**
+   * Create the private bucket on first use. An existing bucket gets the current settings, so a
+   * bucket created before a file type was added (JSON data exports) accepts it.
+   */
   private ensureBucket(): Promise<void> {
     this.bucketReady ??= (async () => {
+      const settings = {
+        public: false,
+        file_size_limit: 50 * 1024 * 1024,
+        // video/mp4 and text/vtt: the Help Center's video tutorial, one file per chapter (under the size limit).
+        allowed_mime_types: ['image/*', 'application/pdf', 'text/csv', 'application/json', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'video/mp4', 'text/vtt'],
+      };
       const res = await this.fetchImpl(`${this.base}/bucket`, {
         method: 'POST',
         headers: this.headers({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          id: this.bucket,
-          name: this.bucket,
-          public: false,
-          file_size_limit: 50 * 1024 * 1024,
-          allowed_mime_types: ['image/*', 'application/pdf', 'text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
-        }),
+        body: JSON.stringify({ id: this.bucket, name: this.bucket, ...settings }),
       });
       if (res.ok) return;
       const text = await res.text().catch(() => '');
-      if (res.status === 409 || /already exists|duplicate/i.test(text)) return;
+      if (res.status === 409 || /already exists|duplicate/i.test(text)) {
+        const upd = await this.fetchImpl(`${this.base}/bucket/${encodeURIComponent(this.bucket)}`, {
+          method: 'PUT',
+          headers: this.headers({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify(settings),
+        });
+        // A failed update must not block uploads the bucket already accepts (screenshots).
+        if (!upd.ok) console.warn(JSON.stringify({ level: 'warn', msg: 'supabase bucket update failed', status: upd.status, error: (await upd.text().catch(() => '')).slice(0, 200) }));
+        return;
+      }
       throw new Error(`Supabase Storage bucket setup failed (${res.status}): ${text.slice(0, 200)}`);
     })().catch((e) => {
       this.bucketReady = null;
@@ -114,6 +176,7 @@ export class SupabaseStorage implements Storage {
   }
 
   async put(key: string, body: Buffer | ReadableStream | Blob, contentType: string): Promise<void> {
+    safeKey(key);
     await this.ensureBucket();
     const data = Buffer.isBuffer(body) ? new Uint8Array(body) : body instanceof Blob ? body : new Uint8Array(await new Response(body).arrayBuffer());
     const res = await this.fetchImpl(`${this.base}/object/${this.objectPath(key)}`, {
@@ -124,15 +187,27 @@ export class SupabaseStorage implements Storage {
     if (!res.ok) await this.fail(res, 'upload');
   }
 
-  async get(key: string) {
-    const res = await this.fetchImpl(`${this.base}/object/authenticated/${this.objectPath(key)}`, { headers: this.headers() });
+  async get(key: string, range?: ByteRange): Promise<StoredObject | null> {
+    safeKey(key);
+    const url = `${this.base}/object/authenticated/${this.objectPath(key)}`;
+    let res = await this.fetchImpl(url, { headers: this.headers(range ? { Range: `bytes=${range.start}-${range.end ?? ''}` } : {}) });
+    // A range past the end: answer with the whole object instead.
+    if (range && res.status === 416) {
+      await res.body?.cancel();
+      res = await this.fetchImpl(url, { headers: this.headers() });
+    }
     // Supabase reports a missing object as 400 or 404.
     if (res.status === 400 || res.status === 404) return null;
     if (!res.ok || !res.body) return this.fail(res, 'download');
-    return { body: res.body, contentType: res.headers.get('content-type') ?? 'application/octet-stream' };
+    const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
+    const part = res.status === 206 ? /^bytes (\d+)-(\d+)\/(\d+)$/.exec(res.headers.get('content-range') ?? '') : null;
+    if (part) return { body: res.body, contentType, size: Number(part[3]), range: { start: Number(part[1]), end: Number(part[2]), size: Number(part[3]) } };
+    const length = Number(res.headers.get('content-length'));
+    return { body: res.body, contentType, ...(res.status === 200 && length > 0 ? { size: length } : {}) };
   }
 
   async delete(keys: string[]): Promise<void> {
+    keys.forEach(safeKey);
     for (let i = 0; i < keys.length; i += 1000) {
       const res = await this.fetchImpl(`${this.base}/object/${encodeURIComponent(this.bucket)}`, {
         method: 'DELETE',
@@ -144,6 +219,7 @@ export class SupabaseStorage implements Storage {
   }
 
   async createUploadToken(key: string): Promise<UploadTarget> {
+    safeKey(key);
     await this.ensureBucket();
     const res = await this.fetchImpl(`${this.base}/object/upload/sign/${this.objectPath(key)}`, {
       method: 'POST',
@@ -162,6 +238,7 @@ export class MemoryStorage implements Storage {
   readonly objects = new Map<string, { data: Buffer; contentType: string }>();
 
   async put(key: string, body: Buffer | ReadableStream | Blob, contentType: string): Promise<void> {
+    safeKey(key);
     let data: Buffer;
     if (Buffer.isBuffer(body)) data = body;
     else if (body instanceof Blob) data = Buffer.from(await body.arrayBuffer());
@@ -169,13 +246,15 @@ export class MemoryStorage implements Storage {
     this.objects.set(key, { data, contentType });
   }
 
-  async get(key: string) {
+  async get(key: string, range?: ByteRange): Promise<StoredObject | null> {
+    safeKey(key);
     const o = this.objects.get(key);
     if (!o) return null;
-    return { body: new Response(new Uint8Array(o.data)).body!, contentType: o.contentType };
+    return fromBuffer(o.data, o.contentType, range);
   }
 
   async delete(keys: string[]): Promise<void> {
+    keys.forEach(safeKey);
     for (const k of keys) this.objects.delete(k);
   }
 
@@ -196,6 +275,7 @@ export class FileStorage implements Storage {
   }
 
   async put(key: string, body: Buffer | ReadableStream | Blob, contentType: string): Promise<void> {
+    safeKey(key);
     const fs = await import('node:fs/promises');
     const p = this.path(key);
     await fs.mkdir(p.slice(0, p.lastIndexOf('/')), { recursive: true });
@@ -204,18 +284,20 @@ export class FileStorage implements Storage {
     await fs.writeFile(`${p}.type`, contentType);
   }
 
-  async get(key: string) {
+  async get(key: string, range?: ByteRange): Promise<StoredObject | null> {
+    safeKey(key);
     const fs = await import('node:fs/promises');
     try {
       const data = await fs.readFile(this.path(key));
       const contentType = await fs.readFile(`${this.path(key)}.type`, 'utf8').catch(() => 'application/octet-stream');
-      return { body: new Response(new Uint8Array(data)).body!, contentType };
+      return fromBuffer(data, contentType, range);
     } catch {
       return null;
     }
   }
 
   async delete(keys: string[]): Promise<void> {
+    keys.forEach(safeKey);
     const fs = await import('node:fs/promises');
     for (const k of keys) {
       await fs.rm(this.path(k), { force: true });

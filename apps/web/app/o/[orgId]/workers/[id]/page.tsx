@@ -42,6 +42,9 @@ import { MfaResetDialog } from '@/components/security/mfa-reset-dialog';
 import { fromMinor, toMinor } from '@/components/finance/types';
 import { useUrlValue } from '@/lib/url-state';
 
+/** Platform names as on the Devices page (the desktop app reports windows, macos or linux). */
+const PLATFORM: Record<string, string> = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
+
 export default function WorkerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const org = useOrg();
@@ -168,8 +171,8 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
             <Stat label="Expected per week" value={w.weekly_expected_seconds === null ? 'Not set' : org.fmtDuration(w.weekly_expected_seconds)} />
             <Stat label="Start date" value={w.start_date ? fmtDate(w.start_date) : 'Not set'} />
             {w.end_date && <Stat label="Date left" value={fmtDate(w.end_date)} />}
-            {w.pay_rate_minor !== undefined && <Stat label="Pay rate" value={w.pay_rate_minor === null ? 'Not set' : `${fmtMoney(w.pay_rate_minor, org.organization.currency)} / h`} />}
-            {w.bill_rate_minor !== undefined && <Stat label="Bill rate" value={w.bill_rate_minor === null ? 'Not set' : `${fmtMoney(w.bill_rate_minor, org.organization.currency)} / h`} />}
+            {w.pay_rate_minor !== undefined && <Stat label="Pay rate" value={w.pay_rate_minor === null ? 'Not set (project or client rates apply)' : `${fmtMoney(w.pay_rate_minor, org.organization.currency)} / h`} />}
+            {w.bill_rate_minor !== undefined && <Stat label="Bill rate" value={w.bill_rate_minor === null ? 'Not set (project or client rates apply)' : `${fmtMoney(w.bill_rate_minor, org.organization.currency)} / h`} />}
             <Stat
               label="Time tracking"
               value={
@@ -191,7 +194,7 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
       <div className="flex flex-col gap-4">
         <Panel title="Quick links">
           <ul className="divide-y divide-border text-sm">
-            {org.can('timesheets:read') && <QuickLink href={`${org.base}/timesheets?member=${w.id}`} icon={<Clock className="size-3.5" />} label="Timesheet" />}
+            {org.can('timesheets:read') && <QuickLink href={`${org.base}/timesheets/team?member=${w.id}`} icon={<Clock className="size-3.5" />} label="Timesheet" />}
             {org.can('activity:read') && <QuickLink href={`${org.base}/activity?member=${w.id}`} icon={<Activity className="size-3.5" />} label="Activity & screenshots" />}
           </ul>
         </Panel>
@@ -244,7 +247,7 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
         {(admin || isSelf) && (
           <Panel title="Personal data">
             <div className="flex flex-col gap-3 p-4">
-              <p className="text-sm text-text-muted">{isSelf ? 'Download everything this organization holds about you as a JSON file.' : 'Answer an access request: a JSON file with everything held about this member.'}</p>
+              <p className="text-sm text-text-muted">{isSelf ? 'Download a copy of everything this organization holds about you.' : 'When this member asks what data you hold about them, download a copy of all of it to send them.'}</p>
               <DataExportAction membershipId={w.id} label={isSelf ? 'Export my data' : 'Export their data'} />
               {admin && !isSelf && (
                 <div className="flex flex-col gap-2 border-t border-border pt-3">
@@ -421,10 +424,10 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
           </Field>
           {canRates && (
             <>
-              <Field label="Pay rate per hour" htmlFor="wk-pay" hint={`${org.organization.currency} / hour, what you pay this member`} error={err?.field('pay_rate_minor')}>
+              <Field label="Pay rate per hour" htmlFor="wk-pay" hint={`${org.organization.currency} / hour, what you pay this member, from today`} error={err?.field('pay_rate_minor')}>
                 <Input id="wk-pay" inputMode="decimal" className="tabular" placeholder="0.00" value={f.pay_rate} onChange={(e) => setF({ ...f, pay_rate: e.target.value })} />
               </Field>
-              <Field label="Bill rate per hour" htmlFor="wk-bill" hint={`${org.organization.currency} / hour, what you charge for their time`} error={err?.field('bill_rate_minor')}>
+              <Field label="Bill rate per hour" htmlFor="wk-bill" hint={`${org.organization.currency} / hour, what you charge for their time, from today`} error={err?.field('bill_rate_minor')}>
                 <Input id="wk-bill" inputMode="decimal" className="tabular" placeholder="0.00" value={f.bill_rate} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} />
               </Field>
               <RateNote scope="WORKER" className="sm:col-span-2" />
@@ -640,7 +643,7 @@ function TimeTab({ w }: { w: WorkerDto }) {
           </Button>
         )}
         {org.can('timesheets:read') && (
-          <Link href={`${org.base}/timesheets?member=${w.id}`} className="ml-auto text-sm font-medium text-interactive hover:underline">
+          <Link href={`${org.base}/timesheets/team?member=${w.id}`} className="ml-auto text-sm font-medium text-interactive hover:underline">
             Open timesheet →
           </Link>
         )}
@@ -784,7 +787,7 @@ function DevicesTab({ w }: { w: WorkerDto }) {
   const rows = q.data;
   const columns: Column<DeviceDto>[] = [
     { key: 'name', header: 'Device', priority: 'primary', value: (d) => d.name, cell: (d) => <span className="font-medium">{d.name}</span> },
-    { key: 'platform', header: 'Platform', value: (d) => d.platform, cell: (d) => <span className="text-text-muted">{[d.platform, d.os_version].filter(Boolean).join(' ')}</span> },
+    { key: 'platform', header: 'Platform', value: (d) => d.platform, cell: (d) => <span className="text-text-muted">{[PLATFORM[d.platform] ?? d.platform, d.os_version?.replace(/^Windows_NTs*/, '')].filter(Boolean).join(' ')}</span> },
     { key: 'agent', header: 'App version', value: (d) => d.agent_version ?? '', cell: (d) => <span className="tabular text-text-muted">{d.agent_version ?? '—'}</span> },
     { key: 'status', header: 'Status', priority: 'secondary', value: (d) => d.status, cell: (d) => <StatusBadge status={d.status} /> },
     { key: 'seen', header: 'Last seen', priority: 'secondary', value: (d) => d.last_seen_at ?? '', cell: (d) => <span className="text-text-muted" title={fmtDateTime(d.last_seen_at)}>{d.last_seen_at ? fmtRelative(d.last_seen_at) : 'Never'}</span> },

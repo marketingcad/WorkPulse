@@ -14,6 +14,7 @@ import {
   timeEntryRevisions,
   timeSegments,
   timesheetEntries,
+  timeReviewFlags,
   timesheets,
   users,
   workerProfiles,
@@ -23,6 +24,7 @@ import {
   addDaysToDate,
   amountForSeconds,
   businessRule,
+  conflict,
   DomainError,
   can,
   eachDate,
@@ -58,7 +60,7 @@ import { audit, emitFrom } from './events';
 import { effectivePolicy } from './policies';
 import { narrowMemberships } from './scope';
 import { likePattern } from '../lib/search';
-import { lockWorker, markTimeChanged, validateTrackTarget, workerTimezone, type ActorRef } from './tracking';
+import { flagMixedDays, lockWorker, markTimeChanged, validateTrackTarget, workerTimezone, type ActorRef } from './tracking';
 import { memberNames } from './timer';
 import { accrueForTimesheet } from './operations';
 import { checkTimeType, isNotBillableType, timeTypeCoefficients } from './time-types';
@@ -216,6 +218,8 @@ async function toTimeEntryDtos(x: Ctx, rows: Array<{ e: typeof timeEntries.$infe
       client_id: clientId,
       client_name: clientName,
       edited: e.edited,
+      timezone: e.timezone,
+      revision: e.revision,
       locked: !!e.lockedAt || isAgeLocked(x, cutoff, e.localDate, e.membershipId),
       activity_pct: tracked > 0 ? Math.round((active / tracked) * 100) : null,
     };
@@ -267,7 +271,11 @@ async function loadEntryForEdit(x: Ctx, entryId: string) {
   if (e.lockedAt) throw businessRule('time_locked', 'This entry is part of a submitted or approved timesheet');
   await assertNotAgeLocked(x, e.membershipId, [e.localDate]);
   await lockWorker(x.tx, e.membershipId);
-  return { e, policy, isSelf, isManager };
+  // Read again under the lock: an edit that landed meanwhile is seen (and its revision checked).
+  const [now] = await x.tx.select().from(timeEntries).where(and(eq(timeEntries.id, entryId), isNull(timeEntries.deletedAt)));
+  if (!now) throw notFound('time_entry');
+  if (now.lockedAt) throw businessRule('time_locked', 'This entry is part of a submitted or approved timesheet');
+  return { e: now, policy, isSelf, isManager };
 }
 
 async function assertNoOverlap(tx: Tx, membershipId: string, start: Date, end: Date, excludeIds: string[]) {
@@ -318,6 +326,9 @@ export async function assertPeriodsOpen(x: Ctx, membershipId: string, dates: str
 
 export async function updateTimeEntry(x: Ctx, entryId: string, input: z.infer<typeof timeEntryUpdateInput>) {
   const { e, policy, isSelf, isManager } = await loadEntryForEdit(x, entryId);
+  // U2: an edit is made against the revision the editor saw. A change saved meanwhile (another editor,
+  // a bulk change, an idle discard) is never silently overwritten.
+  if (input.revision !== undefined && input.revision !== e.revision) throw conflict('stale_revision', 'This entry was changed after you opened it. Close it and open it again to see the latest version.');
   if (policy.timeEdits.reasonRequired && !isManager && isSelf && !input.reason) throw validation('A reason is required to edit time');
   const start = input.started_at ? new Date(input.started_at) : e.startedAt;
   const end = input.ended_at ? new Date(input.ended_at) : e.endedAt;
@@ -432,6 +443,16 @@ async function freeSlot(x: Ctx, membershipId: string, tz: string, date: string, 
   return { start: new Date(t), end: new Date(t + seconds * 1000) };
 }
 
+/**
+ * What a bulk result tells the person about one item: a rule it broke, in its own words, or a
+ * neutral message. Anything else (a database or programming error) is logged, never returned.
+ */
+function bulkItemError(e: unknown, fallback: string): string {
+  if (e instanceof DomainError) return e.message;
+  console.error(JSON.stringify({ level: 'error', msg: 'bulk item failed', error: e instanceof Error ? e.message : String(e) }));
+  return fallback;
+}
+
 /** Bulk changes from the timesheet list; each entry goes through the normal checks. */
 export async function bulkTimeEntries(x: Ctx, input: { ids: string[]; action: 'delete' | 'set_billable' | 'set_non_billable'; reason?: string | null }) {
   const out: Array<{ id: string; ok: boolean; error?: string }> = [];
@@ -445,7 +466,7 @@ export async function bulkTimeEntries(x: Ctx, input: { ids: string[]; action: 'd
       });
       out.push({ id, ok: true });
     } catch (e) {
-      out.push({ id, ok: false, error: e instanceof Error ? e.message : 'Failed' });
+      out.push({ id, ok: false, error: bulkItemError(e, 'Could not update this entry') });
     }
   }
   return out;
@@ -493,6 +514,7 @@ async function insertManualEntry(x: Ctx, req: typeof manualTimeRequests.$inferSe
     dates.push(pc.localDate);
   }
   await x.tx.update(manualTimeRequests).set({ timeEntryId: firstId }).where(eq(manualTimeRequests.id, req.id));
+  if (req.durationOnly) await flagMixedDays(x.tx, { organizationId: x.org.id, membershipId: req.membershipId }, dates);
   await markTimeChanged(x.tx, x.org.id, req.membershipId, dates, ref(x));
   return dates;
 }
@@ -743,6 +765,7 @@ export async function getTimesheet(x: Ctx, membershipId: string, date: string): 
     avg_activity_pct: withAct.length ? Math.round(withAct.reduce((s, e) => s + (e.activity_pct ?? 0) * e.duration_seconds, 0) / Math.max(1, withAct.reduce((s, e) => s + e.duration_seconds, 0))) : null,
     version: row?.version ?? 0,
     late_seconds: row ? await lateSeconds(x.tx, row) : 0,
+    last_decision: row ? await lastDecision(x.tx, row.id) : null,
   };
 }
 
@@ -768,6 +791,19 @@ async function setEntriesLocked(tx: Tx, membershipId: string, from: string, to: 
           : sql`not exists (select 1 from ${timesheets} t where t.membership_id = ${membershipId} and t.status in ('SUBMITTED', 'APPROVED') and ${timeEntries.localDate} between t.period_start and t.period_end)`,
       ),
     );
+}
+
+const DECISIONS = ['APPROVE', 'REJECT', 'REQUEST_CHANGES', 'REOPEN'] as const;
+
+/** The latest decision on a timesheet: a draft's comment may come from "Request changes" or from "Reopen". */
+async function lastDecision(tx: Tx, timesheetId: string): Promise<TimesheetDto['last_decision']> {
+  const [a] = await tx
+    .select({ action: approvalActions.action })
+    .from(approvalActions)
+    .where(and(eq(approvalActions.subjectType, 'TIMESHEET'), eq(approvalActions.subjectId, timesheetId), inArray(approvalActions.action, [...DECISIONS])))
+    .orderBy(desc(approvalActions.createdAt), desc(approvalActions.id))
+    .limit(1);
+  return (a?.action as TimesheetDto['last_decision']) ?? null;
 }
 
 async function recordAction(x: Ctx, ts: typeof timesheets.$inferSelect, action: TimesheetAction, to: TimesheetStatus, comment: string | null) {
@@ -859,6 +895,9 @@ async function createBillingEntries(x: Ctx, ts: typeof timesheets.$inferSelect) 
         payRateId: pay?.id ?? null,
         billAmountMinor: bill ? amountForSeconds(Math.round(s.durationSeconds * k.bill), bill.amountMinor) : 0,
         payAmountMinor: pay ? amountForSeconds(Math.round(s.durationSeconds * k.pay), pay.amountMinor) : 0,
+        // The multipliers it was priced with (Q10): an invoice line reads these, not the time type today.
+        billCoefficient: k.bill,
+        payCoefficient: k.pay,
         currency: bill?.currency ?? pay?.currency ?? x.org.currency,
       })
       .onConflictDoNothing();
@@ -900,7 +939,7 @@ export async function bulkApprove(x: Ctx, ids: string[]) {
       await x.tx.transaction(async (sp) => decideTimesheet({ ...x, tx: sp }, id, 'APPROVE', null));
       results.push({ id, ok: true });
     } catch (e) {
-      results.push({ id, ok: false, error: e instanceof Error ? e.message : 'failed' });
+      results.push({ id, ok: false, error: bulkItemError(e, 'Could not approve this timesheet') });
     }
   }
   return results;
@@ -959,6 +998,9 @@ async function toApprovalItems(x: Ctx, rows: Array<typeof timesheets.$inferSelec
     if (avg !== null && avg < 20) flags.push('low_activity');
     const late = await lateSeconds(x.tx, r);
     if (late > 0) flags.push('late_time');
+    // Time kept but flagged (recorded offline over a limit or on an unavailable project, or mixed duration-only and tracked).
+    const [review] = await x.tx.select({ id: timeReviewFlags.id }).from(timeReviewFlags).where(and(eq(timeReviewFlags.membershipId, r.membershipId), gte(timeReviewFlags.localDate, r.periodStart), lte(timeReviewFlags.localDate, r.periodEnd))).limit(1);
+    if (review) flags.push('needs_review');
     out.push({
       timesheet_id: r.id,
       membership_id: r.membershipId,

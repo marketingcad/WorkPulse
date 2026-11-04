@@ -40,7 +40,7 @@ import { useClampPage, useServerPage } from '@/lib/paging';
 import { useUrlParams } from '@/components/timesheets/use-url-params';
 import { isId, useUrlSearch } from '@/lib/url-state';
 import { DeleteEntryDialog, EditEntryDialog, ManualTimeDialog, RevisionsDrawer, SplitEntryDialog } from '@/components/timesheets/entry-dialogs';
-import { TimeTypeBadge } from '@/components/settings/time-types-panel';
+import { TimeTypeBadge } from '@/components/settings/time-type-badge';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemberOptions } from '@/lib/members';
 
@@ -126,8 +126,9 @@ export default function AllTimeEntriesPage() {
   const [exporting, setExporting] = useState(false);
 
   const workersQ = useMemberOptions(org.can('members:read'));
-  const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients' : null);
-  const projectsQ = useOrgQuery<ProjectDto[]>('/projects');
+  // Archived ones too (U4): their time is still here to find, and the history drawer names them.
+  const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients?include_archived=true' : null);
+  const projectsQ = useOrgQuery<ProjectDto[]>('/projects?include_archived=true');
   const tasksQ = useOrgQuery<TaskDto[]>(project && org.can('tasks:read') ? `/projects/${project}/tasks` : null);
   const typesQ = useOrgQuery<TimeTypeDto[]>('/time-types?include_archived=true', { staleTime: 60_000 });
   const search = useUrlSearch();
@@ -137,6 +138,14 @@ export default function AllTimeEntriesPage() {
   const paging = useServerPage(JSON.stringify(filters), 100);
   const entriesQ = useOrgQuery<OffsetPage<TimeEntryDto> & { summary: TimeEntryPageSummary }>(org.can('time:read') ? `/time-entries${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
   useClampPage(paging, entriesQ.data, entriesQ.isPlaceholderData);
+  // Bulk actions act only on rows in view: any change of filter, search, dates, order or page clears the
+  // selection, so a hidden row is never deleted or re-marked (audit 28 Oct 2026, U1).
+  const viewKey = JSON.stringify({ ...filters, ...paging.params });
+  const [selectionView, setSelectionView] = useState(viewKey);
+  if (selectionView !== viewKey) {
+    setSelectionView(viewKey);
+    setSelected(new Set());
+  }
   const summary = entriesQ.data?.summary;
   // Money per day is only exact when the list is not narrowed below member level.
   const seesMoney = (org.can('rates:read') || org.can('billing:read')) && !client && !project && !task;
@@ -191,7 +200,7 @@ export default function AllTimeEntriesPage() {
     if (!bulk) return;
     setBulkBusy(true);
     try {
-      const res = await api<Array<{ id: string; ok: boolean; error?: string }>>(`/orgs/${orgId}/time-entries/bulk`, { method: 'POST', body: { ids: [...selected], action: bulk, reason: bulkReason.trim() || undefined } });
+      const res = await api<Array<{ id: string; ok: boolean; error?: string }>>(`/orgs/${orgId}/time-entries/bulk`, { method: 'POST', body: { ids: selectable.filter((e) => selected.has(e.id)).map((e) => e.id), action: bulk, reason: bulkReason.trim() || undefined } });
       await qc.invalidateQueries({ queryKey: ['org', orgId] });
       const failed = res.filter((r) => !r.ok);
       if (failed.length) toast.error(`${res.length - failed.length} updated, ${failed.length} could not be changed: ${failed[0]!.error}`);
@@ -233,8 +242,8 @@ export default function AllTimeEntriesPage() {
         e.project_name ?? '',
         e.task_title ?? '',
         e.note ?? '',
-        e.duration_only ? '' : fmtTime(e.started_at),
-        e.duration_only ? '' : fmtTime(e.ended_at),
+        e.duration_only ? '' : fmtTime(e.started_at, e.timezone),
+        e.duration_only ? '' : fmtTime(e.ended_at, e.timezone),
         (e.time_type_id && typeOf.get(e.time_type_id)?.name) || '',
         e.billable ? 'yes' : 'no',
         hours(e.duration_seconds),
@@ -306,7 +315,7 @@ export default function AllTimeEntriesPage() {
 
       <FilterBar>
         {org.can('members:read') && (
-          <Select aria-label="Member" value={member} onChange={(e) => (setMember(e.target.value), setSelected(new Set()))} className="h-8 w-48">
+          <Select aria-label="Member" value={member} onChange={(e) => setMember(e.target.value)} className="h-8 w-48">
             <option value="">All members</option>
             {(workersQ.data ?? [])
               .filter((w) => w.status !== 'REMOVED')
@@ -323,6 +332,7 @@ export default function AllTimeEntriesPage() {
             {(clientsQ.data ?? []).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
+                {c.archived_at ? ' (archived)' : ''}
               </option>
             ))}
           </Select>
@@ -332,6 +342,7 @@ export default function AllTimeEntriesPage() {
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
+              {p.archived_at ? ' (archived)' : ''}
             </option>
           ))}
         </Select>
@@ -385,7 +396,7 @@ export default function AllTimeEntriesPage() {
           <>
             <div className="flex items-center gap-3 border-b border-border px-4 py-2 text-xs text-text-muted">
               <Checkbox aria-label="Select all editable entries" checked={allSelected} onChange={() => setSelected(allSelected ? new Set() : new Set(selectable.map((e) => e.id)))} />
-              <span>{summary?.entries ?? 0} entries</span>
+              <span>{summary?.entries ?? 0} {summary?.entries === 1 ? 'entry' : 'entries'}</span>
             </div>
             {days.map(([date, list]) => {
               const day = dayTotals.get(date);
@@ -470,7 +481,7 @@ export default function AllTimeEntriesPage() {
                             </span>
                             {e.note && <span className="block truncate text-xs text-text-muted">{e.note}</span>}
                           </span>
-                          <span className="tabular shrink-0 whitespace-nowrap text-xs text-text-muted">{e.duration_only ? 'Duration entry' : `${fmtTime(e.started_at)} – ${fmtTime(e.ended_at)}`}</span>
+                          <span className="tabular shrink-0 whitespace-nowrap text-xs text-text-muted">{e.duration_only ? 'Duration entry' : `${fmtTime(e.started_at, e.timezone)} – ${fmtTime(e.ended_at, e.timezone)}`}</span>
                           <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                             {e.source === 'MANUAL' ? <StatusBadge status="MANUAL" label="Manual" /> : <StatusBadge status={e.tracking_source ?? 'TRACKED'} label="Tracked" />}
                             {e.time_type_id && typeOf.get(e.time_type_id) && <TimeTypeBadge type={typeOf.get(e.time_type_id)!} />}
@@ -633,7 +644,7 @@ function SaveAsReportDialog({ open, onClose, params, omitted }: { open: boolean;
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title="Save as report"
-      description={`Saves these dates and filters as a Time & Activity report, grouped by day, member and project.${omitted.length ? ` Not saved with it: ${omitted.join(' and ')} (reports do not filter by ${omitted.length > 1 ? 'these' : 'it'}), so its totals can be higher than this list.` : ''}`}
+      description={`Saves these dates and filters as a Time & activity report, grouped by day, member and project.${omitted.length ? ` Not saved with it: ${omitted.join(' and ')} (reports do not filter by ${omitted.length > 1 ? 'these' : 'it'}), so its totals can be higher than this list.` : ''}`}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>

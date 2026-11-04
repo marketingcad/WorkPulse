@@ -34,12 +34,13 @@ import {
   memberDetails,
   type Tx,
 } from '@tallywork/db';
-import { businessRule, can, forbidden, newId, notFound } from '@tallywork/domain';
+import { businessRule, can, forbidden, localDate, newId, notFound } from '@tallywork/domain';
 import type { Deps } from '../context';
 import { randomToken } from '../lib/crypto';
 import { hashPassword } from '../lib/crypto';
 import type { Ctx } from './ctx';
 import { audit } from './events';
+import { assertOutranks } from './org';
 
 export const DATA_EXPORT_KEY = 'data-export';
 
@@ -104,6 +105,7 @@ export async function anonymizeMember(x: Ctx, membershipId: string) {
   const [m] = await x.tx.select().from(memberships).where(eq(memberships.id, membershipId));
   if (!m || !can(x.actor, 'members:manage', { ownerMembershipId: membershipId })) throw notFound('worker');
   if (m.isOwner) throw businessRule('owner_protected', 'Transfer ownership before erasing the owner');
+  await assertOutranks(x, membershipId);
   const live = await x.tx.select({ id: trackingSessions.id }).from(trackingSessions).where(and(eq(trackingSessions.membershipId, membershipId), inArray(trackingSessions.state, ['ACTIVE', 'PAUSED', 'INTERRUPTED']))).limit(1);
   if (live.length) throw businessRule('member_tracking', 'Stop this member’s timer first');
 
@@ -124,7 +126,13 @@ export async function anonymizeMember(x: Ctx, membershipId: string) {
     await x.tx.delete(deviceCredentials).where(inArray(deviceCredentials.deviceId, deviceIds));
     await x.tx.update(devices).set({ name: 'Removed device', status: 'REVOKED' }).where(inArray(devices.id, deviceIds));
   }
-  await x.tx.update(workerProfiles).set({ title: null, updatedAt: new Date() }).where(eq(workerProfiles.membershipId, membershipId));
+  // They leave today, as removing them records; someone removed earlier keeps the date they left.
+  const [prof] = await x.tx.select({ endDate: workerProfiles.endDate, timezone: workerProfiles.timezone }).from(workerProfiles).where(eq(workerProfiles.membershipId, membershipId));
+  const endDate = prof?.endDate ?? localDate(x.deps.now(), x.org.timezone);
+  await x.tx
+    .insert(workerProfiles)
+    .values({ membershipId, organizationId: x.org.id, timezone: prof?.timezone ?? x.org.timezone, title: null, endDate })
+    .onConflictDoUpdate({ target: workerProfiles.membershipId, set: { title: null, endDate, updatedAt: new Date() } });
   await x.tx.delete(memberDetails).where(eq(memberDetails.membershipId, membershipId));
   await x.tx.delete(teamMembers).where(eq(teamMembers.membershipId, membershipId));
   await x.tx.delete(projectMembers).where(eq(projectMembers.membershipId, membershipId));

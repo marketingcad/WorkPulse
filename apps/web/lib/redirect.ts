@@ -12,5 +12,9 @@ export function sameOriginPath(next: string | null, origin = typeof window === '
     return null;
   }
   if (url.origin !== new URL(origin).origin) return null;
-  return url.pathname + url.search + url.hash;
+  const path = url.pathname + url.search + url.hash;
+  // Resolving drops dot segments, so `/.//evil.com` becomes `//evil.com`: another site to the browser
+  // (audit 29 Oct 2026, AUTH-003). A path must stay a path.
+  if (path.startsWith('//') || path.startsWith('/\\')) return null;
+  return path;
 }

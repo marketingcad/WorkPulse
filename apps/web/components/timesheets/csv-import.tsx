@@ -5,6 +5,7 @@ import type { ManualTimeDto, TimeTypeDto } from '@tallywork/contracts';
 import { Badge, Button, Dialog, Field, Input, cx, useToast } from '@tallywork/ui';
 import { api, errorMessage, useOrgId, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { useMemberOptions } from '@/lib/members';
 import { downloadText, parseCsv, toCsv } from '@/lib/csv';
 import { HEADER, MAX_ROWS, toRows } from '@/lib/csv-import';
 import { fromLocalInput, useAssignmentsFor } from './shared';
@@ -17,6 +18,9 @@ export function CsvImportDialog({ membershipId, onClose }: { membershipId: strin
   const toast = useToast();
   const isSelf = membershipId === org.membership.id;
   const { assignments } = useAssignmentsFor(membershipId);
+  // Rows are read on the member's clock, the zone their time is recorded and listed in (U7).
+  const membersQ = useMemberOptions(!isSelf && org.can('members:read'));
+  const tz = (isSelf ? org.membership.timezone : membersQ.data?.find((w) => w.id === membershipId)?.timezone) || org.organization.timezone;
   const input = useRef<HTMLInputElement>(null);
   const [cells, setCells] = useState<string[][] | null>(null);
   const [fileName, setFileName] = useState('');
@@ -45,8 +49,8 @@ export function CsvImportDialog({ membershipId, onClose }: { membershipId: strin
     setBusy(true);
     const next = new Map(results);
     for (const r of valid) {
-      const s = fromLocalInput(`${r.date}T${r.start}`);
-      const e = fromLocalInput(`${r.date}T${r.end}`);
+      const s = fromLocalInput(`${r.date}T${r.start}`, tz);
+      const e = fromLocalInput(`${r.date}T${r.end}`, tz);
       try {
         const res = await api<ManualTimeDto>(`/orgs/${orgId}/manual-time`, {
           method: 'POST',
@@ -73,7 +77,7 @@ export function CsvImportDialog({ membershipId, onClose }: { membershipId: strin
       open
       onOpenChange={(o) => !o && !busy && onClose()}
       title="Import time from CSV"
-      description={`Columns: ${HEADER.join(', ')}. Times are in your browser's timezone (${Intl.DateTimeFormat().resolvedOptions().timeZone}). Each row is added like manual time, so approval rules and limits apply.`}
+      description={`Columns: ${HEADER.join(', ')}. Times are in ${tz}. Each row is added like manual time, so approval rules and limits apply.`}
       width={760}
       footer={
         <>

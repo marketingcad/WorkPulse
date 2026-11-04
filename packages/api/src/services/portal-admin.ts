@@ -71,6 +71,8 @@ export async function updatePortalSettings(x: Ctx, clientId: string, input: z.in
   const widened = before.projectIds !== null && (projectIds === null || projectIds.some((id) => !before.projectIds!.includes(id)));
   if (widened) assertMonitoringGrants(x, sections, 'widen the projects of');
   const enabled = input.enabled ?? before.enabled;
+  // Switching a dashboard back on re-exposes the sections it still shares (A6).
+  if (enabled && !before.enabled) assertMonitoringGrants(x, sections, 'turn on');
   await x.tx
     .insert(clientPortalSettings)
     .values({ organizationId: x.org.id, clientId, enabled, sections, projectIds, updatedBy: x.actor.membershipId, updatedAt: new Date() })

@@ -27,6 +27,10 @@ beforeAll(async () => {
   ({ client: customer, orgId } = await signup(t, 'Cleo', 'cleo@acme.test', 'Acme Robotics'));
   ({ client: worker } = await addMember(t, customer, orgId, 'Walt', 'walt@acme.test'));
   ({ client: staff } = await signup(t, 'Sam', 'sam@tallywork.test', 'Tallywork Staff'));
+  // Staff prove the address by opening the link in the sign-up email (AUTH-005: matching the address is not enough).
+  const mail = t.mailer.sent.find((m) => m.to === 'sam@tallywork.test')!;
+  const token = /token=([A-Za-z0-9_-]+)/.exec(mail.text)![1];
+  expect((await staff.post('/auth/verify-email', { token })).status).toBe(200);
 });
 afterAll(() => t.close());
 

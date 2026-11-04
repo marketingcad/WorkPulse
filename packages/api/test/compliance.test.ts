@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { withTenant } from '@tallywork/db';
 import { newId } from '@tallywork/domain';
@@ -323,6 +323,23 @@ describe('personal data: export and erasure', () => {
     expect(data.time_entries.length).toBeGreaterThan(0);
     expect(data.screenshots.length).toBeGreaterThan(0);
     expect(JSON.stringify(data)).not.toContain('mona@sec.test');
+  });
+
+  it('a storage failure is shown as a plain message, not the storage provider’s error', async () => {
+    const put = vi.spyOn(t.deps.storage, 'put').mockRejectedValueOnce(new Error('Supabase Storage upload failed (400): {"error":"invalid_mime_type"}'));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      expect((await ben.post(o(`/workers/${benId}/data-export`))).status).toBe(202);
+      await processReportRuns(t.deps);
+      const [run] = (await ben.get(o('/report-runs'))).body;
+      expect(run).toMatchObject({ report_key: 'data-export', status: 'FAILED', download_url: null });
+      expect(run.error).toMatch(/could not be created\. Please try again/);
+      expect(run.error).not.toMatch(/Supabase|mime|400|\{/i);
+      expect(log.mock.calls.some((c) => String(c[0]).includes('invalid_mime_type'))).toBe(true);
+    } finally {
+      put.mockRestore();
+      log.mockRestore();
+    }
   });
 
   it('erasure removes monitoring data and the identity, keeps the records the law needs', async () => {

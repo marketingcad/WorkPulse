@@ -363,7 +363,7 @@ function MembersTab({ project, workers, teams, canManage }: { project: ProjectDt
           </Field>
           {teams && (
             <Field label="Teams" htmlFor="pm-teams" hint="Everyone in these teams can track time here.">
-              <MultiSelect id="pm-teams" options={teams.map((t) => ({ value: t.id, label: t.name, sub: `${t.members.length} members` }))} value={teamIds} onChange={setTeamIds} placeholder="No teams" />
+              <MultiSelect id="pm-teams" options={teams.map((t) => ({ value: t.id, label: t.name, sub: `${t.members.length} ${t.members.length === 1 ? 'member' : 'members'}` }))} value={teamIds} onChange={setTeamIds} placeholder="No teams" />
             </Field>
           )}
         </div>

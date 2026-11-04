@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { newId } from '@tallywork/domain';
 import { createDb, type DbHandle } from '../src/client';
-import { users, withSystem } from '../src/index';
+import { expenses, holidays, memberships, organizations, projectMembers, projects, roles, teamMembers, teams, timeOffPolicies, timeOffRequests, users, withSystem } from '../src/index';
 
 /**
  * Migrations must be safe to run again. Production once had the users.tour_done_at column before
@@ -62,6 +62,114 @@ describe('migrations', () => {
     await expect(h.migrate()).resolves.toBeUndefined();
 
     expect((await rows<{ d: number }>(sql`select retention_days as d from screenshot_cleanup_settings where organization_id = ${orgId}`))[0]!.d).toBe(14);
+    expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
+  });
+
+  it("0025 removes the project and team links of removed members, and keeps everyone else's", async () => {
+    // The production state: members removed before removal cleared their links still had them.
+    const org = newId();
+    const role = newId();
+    const [team, project] = [newId(), newId()];
+    await withSystem(h.db, async (tx) => {
+      await tx.insert(organizations).values({ id: org, name: 'Links', slug: `links-${org}`, timezone: 'UTC', settings: {} as never });
+      await tx.insert(roles).values({ id: role, organizationId: org, key: 'WORKER', name: 'Worker' });
+      await tx.insert(teams).values({ id: team, organizationId: org, name: 'Team' });
+      await tx.insert(projects).values({ id: project, organizationId: org, name: 'Project' });
+    });
+    const member = async (status: 'ACTIVE' | 'REMOVED') => {
+      const [user, m] = [newId(), newId()];
+      await withSystem(h.db, async (tx) => {
+        await tx.insert(users).values({ id: user, email: `${status}-${user}@example.test`, name: status, passwordHash: 'x' });
+        await tx.insert(memberships).values({ id: m, organizationId: org, userId: user, roleId: role, status });
+        await tx.insert(projectMembers).values({ organizationId: org, projectId: project, membershipId: m });
+        await tx.insert(teamMembers).values({ organizationId: org, teamId: team, membershipId: m });
+      });
+      return m;
+    };
+    const [active, removed] = [await member('ACTIVE'), await member('REMOVED')];
+    const when = journalWhen('0025_remove_former_member_links');
+    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at >= ${when}`);
+
+    await expect(h.migrate()).resolves.toBeUndefined();
+
+    const links = async (table: 'project_members' | 'team_members') => (await rows<{ m: string }>(sql`select membership_id as m from ${sql.identifier(table)} where organization_id = ${org}`)).map((r) => r.m);
+    expect(await links('project_members')).toEqual([active]);
+    expect(await links('team_members')).toEqual([active]);
+    expect(removed).not.toBe(active);
+  });
+
+  it('0026 (offline backfill) runs again cleanly, and the one-live rule still holds for sessions that are not backfill', async () => {
+    const when = journalWhen('0026_offline_backfill');
+    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at >= ${when}`);
+
+    await expect(h.migrate()).resolves.toBeUndefined();
+
+    const cols = await rows<{ c: string }>(sql`select column_name as c from information_schema.columns where table_name = 'tracking_sessions' and column_name in ('backfill', 'recorded_offline') order by 1`);
+    expect(cols.map((r) => r.c)).toEqual(['backfill', 'recorded_offline']);
+    const [idx] = await rows<{ d: string }>(sql`select indexdef as d from pg_indexes where indexname = 'tracking_sessions_one_live'`);
+    expect(idx?.d).toContain('backfill = false');
+    expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
+  });
+
+  it('0027 (money) gives existing time-off requests their per-day hours, adding up to the request, and runs again cleanly', async () => {
+    const [org, role, user, m, policy, req] = [newId(), newId(), newId(), newId(), newId(), newId()];
+    await withSystem(h.db, async (tx) => {
+      await tx.insert(organizations).values({ id: org, name: 'Leave', slug: `leave-${org}`, timezone: 'UTC', settings: {} as never });
+      await tx.insert(roles).values({ id: role, organizationId: org, key: 'WORKER', name: 'Worker' });
+      await tx.insert(users).values({ id: user, email: `leave-${user}@example.test`, name: 'Leave', passwordHash: 'x' });
+      await tx.insert(memberships).values({ id: m, organizationId: org, userId: user, roleId: role, status: 'ACTIVE' });
+      await tx.insert(timeOffPolicies).values({ id: policy, organizationId: org, name: 'PTO', accrual: { type: 'none', amountHours: 0, maxBalanceHours: null, carryOverHours: null } as never });
+      await tx.insert(holidays).values({ id: newId(), organizationId: org, date: '2026-10-14', name: 'Holiday' });
+      // Monday to Sunday, with a holiday on Wednesday: written before requests kept their days.
+      await tx.insert(timeOffRequests).values({ id: req, organizationId: org, policyId: policy, membershipId: m, startDate: '2026-10-12', endDate: '2026-10-18', hours: 30, status: 'APPROVED' });
+    });
+    const when = journalWhen('0027_money_integrity');
+    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at >= ${when}`);
+
+    await expect(h.migrate()).resolves.toBeUndefined();
+
+    const [row] = await rows<{ day_hours: Record<string, number> }>(sql`select day_hours from time_off_requests where id = ${req}`);
+    expect(Object.keys(row!.day_hours).sort()).toEqual(['2026-10-12', '2026-10-13', '2026-10-15', '2026-10-16']);
+    expect(Object.values(row!.day_hours).reduce((a, b) => a + Number(b), 0)).toBeCloseTo(30, 6);
+    expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
+  });
+
+  it('0028 (time not added) runs again cleanly when its table exists', async () => {
+    const when = journalWhen('0028_refused_time');
+    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at >= ${when}`);
+
+    await expect(h.migrate()).resolves.toBeUndefined();
+
+    const [t] = await rows<{ n: number }>(sql`select count(*)::int as n from information_schema.tables where table_name = 'refused_time'`);
+    expect(t!.n).toBe(1);
+    expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
+  });
+
+  it('0029 (expense rejection reasons) explains expenses rejected before reasons existed, keeps newer reasons, and runs again cleanly', async () => {
+    const [org, role, user, m, admin, oldRejected, withReason, approved] = [newId(), newId(), newId(), newId(), newId(), newId(), newId(), newId()];
+    const decidedAt = new Date('2026-10-01T10:00:00Z');
+    await withSystem(h.db, async (tx) => {
+      await tx.insert(organizations).values({ id: org, name: 'Costs', slug: `costs-${org}`, timezone: 'UTC', settings: {} as never });
+      await tx.insert(roles).values({ id: role, organizationId: org, key: 'WORKER', name: 'Worker' });
+      await tx.insert(users).values({ id: user, email: `costs-${user}@example.test`, name: 'Costs', passwordHash: 'x' });
+      await tx.insert(memberships).values({ id: m, organizationId: org, userId: user, roleId: role, status: 'ACTIVE' });
+      const base = { organizationId: org, membershipId: m, category: 'Travel', amountMinor: 1000, currency: 'USD', spentOn: '2026-09-30' };
+      await tx.insert(expenses).values([
+        { ...base, id: oldRejected, status: 'REJECTED', decidedBy: admin, decidedAt },
+        { ...base, id: withReason, status: 'REJECTED', decidedBy: admin, decidedAt, rejectionReason: 'No receipt', rejectedBy: admin, rejectedAt: decidedAt },
+        { ...base, id: approved, status: 'APPROVED', decidedBy: admin, decidedAt },
+      ]);
+    });
+    const when = journalWhen('0029_expense_rejection_reason');
+    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at >= ${when}`);
+
+    await expect(h.migrate()).resolves.toBeUndefined();
+
+    const got = await rows<{ id: string; rejection_reason: string | null; rejected_by: string | null }>(sql`select id, rejection_reason, rejected_by from expenses where organization_id = ${org}`);
+    const byId = Object.fromEntries(got.map((r) => [r.id, r]));
+    expect(byId[oldRejected]).toMatchObject({ rejection_reason: 'Rejected before reasons were recorded.', rejected_by: admin });
+    expect(byId[withReason]!.rejection_reason).toBe('No receipt');
+    expect(byId[approved]!.rejection_reason).toBeNull();
     expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
   });
 });

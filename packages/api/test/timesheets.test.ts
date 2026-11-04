@@ -55,7 +55,7 @@ afterAll(() => t.close());
 describe('timesheet lifecycle', () => {
   it('walks every allowed transition and rejects the invalid ones', async () => {
     const draft = await worker.get(o(`/timesheets?date=${LAST_WEEK}`));
-    expect(draft.body).toMatchObject({ status: 'DRAFT', period_start: LAST_WEEK, period_end: '2026-09-20', total_seconds: 7200 });
+    expect(draft.body).toMatchObject({ status: 'DRAFT', period_start: LAST_WEEK, period_end: '2026-09-20', total_seconds: 7200, last_decision: null });
 
     const sub = await worker.post(o('/timesheets/submit'), { date: LAST_WEEK });
     expect(sub.body.status).toBe('SUBMITTED');
@@ -68,12 +68,12 @@ describe('timesheet lifecycle', () => {
     expect((await act('reject')).status).toBe(400);
 
     const changes = await act('request-changes', 'Add the client name to Monday');
-    expect(changes.body.status).toBe('DRAFT');
+    expect(changes.body).toMatchObject({ status: 'DRAFT', last_decision: 'REQUEST_CHANGES' });
     expect((await entries(LAST_WEEK, '2026-09-20')).every((e) => !e.locked)).toBe(true);
 
     expect((await worker.post(o('/timesheets/submit'), { date: LAST_WEEK })).body.status).toBe('SUBMITTED');
     const rejected = await act('reject', 'Wrong project');
-    expect(rejected.body).toMatchObject({ status: 'REJECTED', comment: 'Wrong project' });
+    expect(rejected.body).toMatchObject({ status: 'REJECTED', comment: 'Wrong project', last_decision: 'REJECT' });
     expect((await entries(LAST_WEEK, '2026-09-20')).every((e) => !e.locked)).toBe(true);
 
     expect((await worker.post(o('/timesheets/submit'), { date: LAST_WEEK })).body.status).toBe('SUBMITTED');
@@ -171,7 +171,9 @@ describe('approval snapshot', () => {
     expect(await owed()).toEqual({ seconds: 7200, amount: 8000 });
 
     const reopen = await admin.post(o(`/timesheets/${lastWeekTs}/reopen`), { comment: 'Monday was one hour' });
-    expect(reopen.body.status).toBe('DRAFT');
+    // Live, 28 Oct 2026: a reopened draft was shown as "Changes requested". The timesheet says which decision it was.
+    expect(reopen.body).toMatchObject({ status: 'DRAFT', comment: 'Monday was one hour', last_decision: 'REOPEN' });
+    expect((await worker.get(o(`/timesheets?date=${LAST_WEEK}`))).body.last_decision).toBe('REOPEN');
     expect(await owed()).toEqual({ seconds: 0, amount: 0 }); // approved amounts are withdrawn, not rewritten
 
     const [e] = await entries(LAST_WEEK, '2026-09-20');

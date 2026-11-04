@@ -1,0 +1,137 @@
+import type { Chapter } from '../scenes';
+
+export const ch11: Chapter = {
+  n: 11,
+  title: 'Money: rates, budgets, expenses, invoices and payroll',
+  goal: 'Set rates and budgets, handle expenses, invoice a client and record the payment, and run payroll from approved time.',
+  scenes: [
+    {
+      id: '11.1',
+      title: 'Pay and bill rates',
+      persona: 'admin',
+      app: 'web',
+      screen: 'Finance › Rates: bill rates charged to clients and pay rates paid to members, and the "Set rate" dialog.',
+      actions: [
+        'Open Finance › Rates.',
+        'Point at "Bill rates (charged to clients)" and "Pay rates (paid to members)".',
+        'Click "Set bill rate"; choose "Project" in "Applies to" and "Lumen — Spring Campaign".',
+        'Type 125 in "Rate per hour", set "Effective from" to today, click "Save rate".',
+      ],
+      narration:
+        'Money in WorkPulse starts with rates. Open Finance, then Rates. Bill rates are what you charge clients per hour. Pay rates are what you pay members per hour. A rate can apply to the whole organization, a client, a project, a member, or a member on one project, and the most specific one wins. Rates are effective-dated: when a rate changes, set the date it starts, and past time keeps its old rate. Here we give the new Lumen project a bill rate of one hundred and twenty-five per hour, from today.',
+      overlays: ['Callout: "The most specific rate wins"', 'Callout: "Effective dates keep past time correct"'],
+      focus: ['Zoom to the Set rate dialog.'],
+      transition: 'Cut to Budgets.',
+    },
+    {
+      id: '11.2',
+      title: 'Budgets',
+      persona: 'admin',
+      app: 'web',
+      screen: 'Finance › Budgets: Healthy, Warning and Exceeded counts, the list of budgets, and the "Set budget" dialog.',
+      actions: [
+        'Open Finance › Budgets and point at the counts.',
+        'Click "Set budget"; choose the project "Lumen — Spring Campaign".',
+        'Choose "Hours", type 120, set "Warn at (%)" to 80.',
+        'Click "Save budget".',
+      ],
+      narration:
+        'Budgets warn you before a project or client costs more than planned. Budgets shows how many are healthy, close to the limit, or exceeded. Click Set budget, choose a project or a client, and set the budget in hours or in money. It can run for the whole project or reset every month. Warn at sets when WorkPulse alerts you, for example at eighty percent. The same progress bars appear on the Overview and in the client portal.',
+      overlays: ['Callout: "Alerts at your warning level"'],
+      focus: ['Zoom to the counts.', 'Zoom to the Set budget dialog.'],
+      transition: 'Cut to Expenses.',
+    },
+    {
+      id: '11.3',
+      title: 'Expenses',
+      persona: 'admin',
+      app: 'web',
+      screen: 'Finance › Expenses: submitted expenses with receipts, the Approve, Reject and Reimburse actions, and the Export button.',
+      actions: [
+        'Open Finance › Expenses and click the "Submitted" tab.',
+        'Point at an expense and its receipt; click "Approve".',
+        'Click the "Approved" tab and point at "Reimburse".',
+        'Point at "New expense" and "Export".',
+      ],
+      narration:
+        'People can submit expenses with a receipt, such as travel or software, and mark them as billable to the client or to be reimbursed. Under Expenses, the Submitted tab holds the ones waiting for a decision. Check the receipt, then approve or reject. Once you have paid someone back, click Reimburse. Approved billable expenses can be added to the client\'s next invoice. Like every finance list, Expenses has a period filter and an Export button for CSV, Excel or PDF.',
+      overlays: ['Callout: "Billable expenses can go on the invoice"'],
+      focus: ['Highlight the Approve button.', 'Highlight the Export button.'],
+      transition: 'Cut to Invoices.',
+    },
+    {
+      id: '11.4',
+      title: 'Create an invoice',
+      persona: 'admin',
+      app: 'web',
+      screen: 'Finance › Invoices, then the four-step "New invoice" wizard: Client & period, Lines, Dates & notes, Review & create.',
+      actions: [
+        'Open Finance › Invoices and point at Outstanding, Overdue, Drafts and Collected.',
+        'Click "New invoice"; choose "Wonka Confectionery" and the period; group time by Project.',
+        'Click "Preview lines" and point at the lines.',
+        'Click "Dates & notes", then "Review".',
+        'Click "Create draft invoice".',
+      ],
+      narration:
+        'Invoices turn billable time into money. The Invoices page shows what is outstanding, what is overdue, your drafts, and what has been collected. Click New invoice. Choose the client and the period to bill, and how to group the time: by project, task or member. You can include approved billable expenses and set a tax rate. Click Preview lines. WorkPulse builds the lines from the billable time and the bill rates, and you can add custom lines too. Then set the issue date, the due date and a note, review the totals, and create the draft invoice.',
+      overlays: ['Callout: "Lines are built from billable time × bill rates"'],
+      focus: ['Zoom to the invoice lines.', 'Zoom to the Review totals.'],
+      transition: 'Cut to the new invoice.',
+    },
+    {
+      id: '11.5',
+      title: 'Send the invoice and record the payment',
+      persona: 'admin',
+      app: 'web',
+      screen: 'The draft invoice with Download PDF, Send and Record payment; then Payments received.',
+      actions: [
+        'Point at "Download PDF".',
+        'Click "Send" and confirm.',
+        'Click "Record payment"; check the amount, choose "Bank transfer", type a reference, click "Record payment".',
+        'Click the "Payments received" tab.',
+      ],
+      narration:
+        'On the invoice, Download PDF gives you the finished document with your logo and the client\'s details. Click Send to email it to the client\'s contact; if the client has no email, you can mark it as sent and deliver it yourself. When the client pays, click Record payment. Enter the amount, the date, the method and a reference such as the transfer ID. A payment can also be split across several open invoices. The invoice is now paid, and Payments received lists every payment.',
+      overlays: ['Callout: "Partially paid and overdue are tracked automatically"'],
+      focus: ['Highlight the Send button.', 'Zoom to the Record payment dialog.'],
+      transition: 'Cut to Payroll.',
+    },
+    {
+      id: '11.6',
+      title: 'Run payroll',
+      persona: 'admin',
+      app: 'web',
+      screen: 'Finance › Payroll: the Pay groups tab, the "Run payroll" dialog, and the draft payroll with its pay stubs and the bonuses dialog.',
+      actions: [
+        'Open Finance › Payroll and click the "Pay groups" tab; point at the weekly pay group.',
+        'Click the "Payrolls" tab and "Run payroll"; choose the pay group and a day in the period.',
+        'Click "Create draft".',
+        'Point at Gross, Adjustments, Net pay and the pay stubs.',
+        'Click "Adjust" for one member; add a bonus "Performance bonus" of 150; click "Save".',
+        'Click "Finalize" and confirm.',
+      ],
+      narration:
+        'Payroll pays your people from approved time. First, pay groups set who is paid together, how often, and in which currency. Then, on the Payrolls tab, click Run payroll, choose the pay group and the period, and create a draft. WorkPulse calculates each person\'s pay from their approved hours, overtime and paid time off. Each approved hour is paid exactly once. Add bonuses or deductions with Adjust. When everything is right, click Finalize. Finalizing cannot be undone: corrections go on the next payroll. Members can now see their pay stubs.',
+      overlays: ['Callout: "Each approved hour is paid exactly once"', 'Callout: "Finalize cannot be undone"'],
+      focus: ['Zoom to the pay stubs table.', 'Zoom to the bonuses dialog.', 'Highlight the Finalize button.'],
+      transition: 'Cut (stay on the payroll).',
+    },
+    {
+      id: '11.7',
+      title: 'Pay stubs, paid and owed',
+      persona: 'admin',
+      app: 'web',
+      screen: 'The finalized payroll with the Stub links and "Mark as paid"; then the Owed tab.',
+      actions: [
+        'Point at a "Stub" link.',
+        'Click "Mark as paid" and confirm.',
+        'Go back to Payroll and click the "Owed" tab; point at Tracked, Approved, Estimated owed and Approved owed.',
+      ],
+      narration:
+        'Each member\'s pay stub is a PDF. Members also find it in the desktop app, under Pay stubs. Once the money has gone out, click Mark as paid. The Owed tab answers a different question: how much do you owe each member for a period, right now? It shows tracked and approved time, and the estimated and approved amounts. Estimated becomes approved once the timesheets are approved.',
+      overlays: ['Callout: "Workers see their stubs in the desktop app"'],
+      focus: ['Highlight the Stub link.', 'Zoom to the Owed totals.'],
+      transition: 'Wipe to a chapter card: "Chapter 12 — Reports".',
+    },
+  ],
+};

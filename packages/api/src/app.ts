@@ -1,11 +1,13 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { secureHeaders } from 'hono/secure-headers';
 import { and, eq, sql } from 'drizzle-orm';
-import { rateLimitBuckets } from '@tallywork/db';
+import { rateLimitBuckets, withQueryStats } from '@tallywork/db';
 import { DomainError, newId } from '@tallywork/domain';
 import type { AppEnv, Deps } from './context';
 import { fromDatabaseError, problemFromError } from './lib/http';
 import { safeEqual, verifyToken } from './lib/crypto';
+import { isSafeKey } from './lib/storage';
 import { authenticate } from './middleware/auth';
 import { tenant } from './middleware/tenant';
 import { supportRoutes } from './routes/support';
@@ -13,6 +15,9 @@ import { portalRoutes } from './routes/portal';
 import { rateLimit } from './middleware/rate-limit';
 
 export const API_KEY_REQUESTS_PER_MINUTE = 600;
+/** Largest JSON request body, in bytes; the desktop ingest batch has its own, larger limit. */
+export const JSON_BODY_LIMIT = 1024 * 1024;
+export const JSON_BODY_LIMIT_INGEST = 4 * 1024 * 1024;
 import { authRoutes, meRoutes } from './routes/auth';
 import { orgRoutes } from './routes/org';
 import { timeRoutes } from './routes/time';
@@ -31,15 +36,34 @@ export function createApp(deps: Deps) {
     c.set('requestId', rid);
     c.header('X-Request-Id', rid);
     const started = performance.now();
-    await next();
-    // One structured line per request for log drains: route pattern (no ids or query strings), status and latency.
-    if (deps.config.env !== 'test') console.info(JSON.stringify({ level: 'info', msg: 'request', request_id: rid, method: c.req.method, route: c.req.routePath, status: c.res.status, ms: Math.round(performance.now() - started) }));
+    const db = await withQueryStats(async (stats) => {
+      await next();
+      return { ...stats };
+    });
+    const dbMs = Math.round(db.ms);
+    // Signed-in requests only: on sign-in and other anonymous routes a query count could tell whether an account exists.
+    if (c.var.principal) c.header('Server-Timing', `db;dur=${dbMs};desc="${db.queries} queries, ${db.connects} new connections"`);
+    // One structured line per request for log drains: route pattern (no ids or query strings), status, latency and database work.
+    if (deps.config.env !== 'test') console.info(JSON.stringify({ level: 'info', msg: 'request', request_id: rid, method: c.req.method, route: c.req.routePath, status: c.res.status, ms: Math.round(performance.now() - started), db_queries: db.queries, db_ms: dbMs, db_connects: db.connects }));
     // Deliver outbox events right after successful mutations (near-real-time without a worker),
     // and run the minute tick opportunistically (lease-guarded) in case cron is unavailable.
     if (c.req.method !== 'GET' && c.res.status < 400) afterMutation(deps);
     deps.defer(() => maybeTick(deps));
   });
   app.use(secureHeaders({ crossOriginResourcePolicy: 'same-origin', referrerPolicy: 'strict-origin-when-cross-origin' }));
+  // JSON bodies are refused past a size limit before they are read (audit 30 Oct 2026, VF-08). File
+  // uploads are not JSON and keep their own limits; a desktop ingest batch (up to 500 events) gets more room.
+  const jsonLimit = (maxSize: number) =>
+    bodyLimit({
+      maxSize,
+      onError: (c) => c.json({ type: 'https://docs.tallywork.app/errors/payload_too_large', title: 'This request is too large. Send less data at once.', status: 413, code: 'payload_too_large', request_id: c.var.requestId }, 413, { 'Content-Type': 'application/problem+json' }),
+    });
+  const ingestLimit = jsonLimit(JSON_BODY_LIMIT_INGEST);
+  const defaultLimit = jsonLimit(JSON_BODY_LIMIT);
+  app.use(async (c, next) => {
+    if (!/json/i.test(c.req.header('content-type') ?? '')) return next();
+    return (c.req.path.endsWith('/agent/ingest/batch') ? ingestLimit : defaultLimit)(c, next);
+  });
   app.use(async (c, next) => {
     await next();
     if (!c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store');
@@ -47,7 +71,10 @@ export function createApp(deps: Deps) {
 
   app.onError((err, c) => {
     const rid = c.var.requestId ?? 'unknown';
-    if (!(err instanceof DomainError) && !fromDatabaseError(err)) console.error(JSON.stringify({ level: 'error', request_id: rid, path: c.req.path, msg: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack?.split('\n').slice(0, 6) : undefined }));
+    // A bad id or a duplicate is routine; any other database rule that fired means validation missed it, so it is still logged.
+    const fromDb = err instanceof DomainError ? null : fromDatabaseError(err);
+    if (!(err instanceof DomainError) && (!fromDb || (fromDb.code !== 'resource_not_found' && fromDb.code !== 'duplicate')))
+      console.error(JSON.stringify({ level: fromDb ? 'warn' : 'error', request_id: rid, path: c.req.path, msg: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack?.split('\n').slice(0, 6) : undefined }));
     const p = problemFromError(err, rid);
     return c.json(p, p.status as 400, { 'Content-Type': 'application/problem+json', ...(p.status === 503 ? { 'Retry-After': '5' } : {}) });
   });
@@ -63,7 +90,7 @@ export function createApp(deps: Deps) {
   // Signed, short-lived media URLs (screenshots). Authorization happened when the URL was minted.
   app.get('/media/:token', async (c) => {
     const data = verifyToken<{ k: string; o: string; v: string; n?: string }>(deps.config.appSecret, 'media', c.req.param('token'));
-    if (!data || !data.k.startsWith(`org/${data.o}/`)) return c.json({ title: 'Link expired', status: 404, code: 'media_expired' }, 404);
+    if (!data || !data.k.startsWith(`org/${data.o}/`) || !isSafeKey(data.k)) return c.json({ title: 'Link expired', status: 404, code: 'media_expired' }, 404);
     let obj = data.v === 'thumb' ? await deps.storage.get(`${data.k}.thumb`) : null;
     obj ??= await deps.storage.get(data.k);
     if (!obj) return c.json({ title: 'Not found', status: 404, code: 'media_not_found' }, 404);

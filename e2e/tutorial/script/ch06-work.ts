@@ -1,0 +1,122 @@
+import type { Chapter } from '../scenes';
+
+export const ch06: Chapter = {
+  n: 6,
+  title: 'Clients, projects and tasks',
+  goal: 'Add clients, delete or archive them, share a client portal, create projects with planned breaks, and add tasks.',
+  scenes: [
+    {
+      id: '06.1',
+      title: 'Add a client',
+      persona: 'admin',
+      app: 'web',
+      screen: 'Project Management › Clients and the "New client" dialog.',
+      actions: [
+        'Open Project Management › Clients and click "New client".',
+        'Type "Lumen Outdoor Co." in "Company / client name".',
+        'Type "Rosa Diaz" in "Contact person" and "billing@lumen.example" in "Contact email".',
+        'Point at Currency, then type 120 in "Bill rate per hour".',
+        'Click "Create client".',
+      ],
+      narration:
+        'Work in WorkPulse is organized into clients, projects and tasks. Start with the client. Open Project Management, then Clients, and click New client. Enter the company name and a contact person. The contact email is where invoices are sent. Choose the client\'s currency, and if you charge this client a standard hourly rate, enter it here. You can also add a logo, a colour and the language for documents such as invoices. Click Create client.',
+      overlays: ['Callout: "Invoices are sent to the contact email"'],
+      focus: ['Zoom to the New client dialog.'],
+      transition: 'Cut (stay on Clients).',
+    },
+    {
+      id: '06.2',
+      title: 'Delete a client created by mistake, or archive one',
+      persona: 'admin',
+      app: 'web',
+      screen: 'The Clients list: the actions menu of a duplicate client, the "Delete … ?" confirmation, then the Archive option of an existing client.',
+      actions: [
+        'Type "Lumen" in the search box: two clients appear, one created twice by mistake.',
+        'Click "Actions for Lumen Outdoor" and choose "Delete".',
+        'Read the confirmation and click "Delete client".',
+        'Open the actions of "Vandelay Imports" and point at "Archive"; press Escape.',
+        'Point at "Show archived".',
+      ],
+      narration:
+        'Sometimes a client is created by mistake, for example twice. A client that was never used can be deleted. Open its actions menu and choose Delete. WorkPulse explains what will be removed: the client with its projects, tasks, rates, budgets and portal access. Deleting only works for a client with no invoices, payments, expenses or tracked time, and it cannot be undone. For a client you have worked with, use Archive instead. Archiving hides the client and its projects but keeps all its history, and you can restore it later. Tick Show archived to see archived clients.',
+      overlays: ['Callout: "Delete = never used · Archive = keep the history"'],
+      focus: ['Zoom to the delete confirmation text.', 'Highlight "Archive" in the menu.'],
+      transition: 'Cut to the client portal page.',
+    },
+    {
+      id: '06.3',
+      title: 'Share a client portal',
+      persona: 'admin',
+      app: 'web',
+      screen: 'The client portal settings for Globex Retail, the client preview, and the "People with access" panel.',
+      actions: [
+        'Open the actions of "Globex Retail" and choose "Client portal".',
+        'Point at "Portal on" and the "What the client sees" options.',
+        'Click "Preview as client", look at the preview, then click it again.',
+        'Type "cto@globex.example" in Email and click "Invite".',
+      ],
+      narration:
+        'Clients can follow the work you do for them in a client portal. From the client\'s actions, open Client portal. Switch the portal on and choose what the client sees: hours per person, task and day, task progress and hour budgets, activity levels, and even screenshots taken on their projects. The portal never shows money. Click Preview as client to see exactly what they will see. To give someone access, enter their email and click Invite. You can revoke access at any time.',
+      overlays: ['Callout: "The portal never shows money"'],
+      focus: ['Zoom to "What the client sees".', 'Zoom to the preview.'],
+      transition: 'Cut to Projects.',
+    },
+    {
+      id: '06.4',
+      title: 'Create a project',
+      persona: 'admin',
+      app: 'web',
+      screen: 'Project Management › Projects and the "New project" dialog.',
+      actions: [
+        'Open Projects and click "New project".',
+        'Type "Lumen — Spring Campaign" in Name and choose the client "Lumen Outdoor Co.".',
+        'Fill in Start date, End date and Estimated hours (120).',
+        'Open "Teams" and tick "Design".',
+        'Scroll to the finance fields and point at the rates.',
+        'Click "Create project".',
+      ],
+      narration:
+        'Next, create a project for the client. Open Projects and click New project. Give it a name and choose the client. Add start and end dates and an estimate of the hours, so WorkPulse can show progress against the plan. Then choose who works on it, either individual members or whole teams. Members only see and track the projects they are assigned to. In the finance section you can set pay and bill rates for this project, or mark it as not billable. Click Create project.',
+      overlays: ['Callout: "People only track projects they are assigned to"'],
+      focus: ['Zoom to the New project dialog.'],
+      transition: 'Cut to an existing project\'s Settings tab.',
+    },
+    {
+      id: '06.5',
+      title: 'Plan breaks for a project',
+      persona: 'admin',
+      app: 'web',
+      screen: 'The project "Globex — Website Redesign", Settings tab, Breaks section with a coffee break and a lunch break.',
+      actions: [
+        'Open the project "Globex — Website Redesign" and click the "Settings" tab.',
+        'In "Breaks", click "Add break": type Coffee, time 10:30, 15 minutes.',
+        'Click "Add break" again: Lunch, 12:00, 60 minutes.',
+        'Click "Save changes".',
+      ],
+      narration:
+        'For projects with a regular rhythm, you can plan breaks. Open the project and go to its Settings tab. In the Breaks section, click Add break, choose a break type and, if you like, a time and a length. Here we plan a fifteen minute coffee break at ten thirty, and an hour for lunch at twelve. Click Save changes. People on this project now see these breaks as one-tap buttons in the desktop app, with a reminder when a break is due.',
+      overlays: ['Callout: "Planned breaks become one-tap buttons in the desktop app"'],
+      focus: ['Zoom to the Breaks section.'],
+      transition: 'Cut to Tasks.',
+    },
+    {
+      id: '06.6',
+      title: 'Add tasks',
+      persona: 'admin',
+      app: 'web',
+      screen: 'Project Management › Tasks and the "New task" dialog.',
+      actions: [
+        'Open Tasks and click "New task".',
+        'Choose the project "Lumen — Spring Campaign" and type "Campaign moodboard" as the Title.',
+        'Choose Priority "High", a Due date and an Estimate of 6 hours.',
+        'Open "Assignees" and tick "Ava Okafor".',
+        'Click "Create task".',
+      ],
+      narration:
+        'Tasks break a project into pieces of work. Open Tasks and click New task. Choose the project, give the task a title, and set its status, priority, due date and an estimate in hours. Assign it to one or more people. When they track time, they can pick the task, so you see exactly where the hours went. Filter the list by project or status, or switch on Assigned to me to see your own work.',
+      overlays: [],
+      focus: ['Zoom to the New task dialog.'],
+      transition: 'Wipe to a chapter card: "Chapter 7 — The desktop app for workers".',
+    },
+  ],
+};

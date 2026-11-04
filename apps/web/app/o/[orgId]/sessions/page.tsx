@@ -16,7 +16,8 @@ export default function SessionsPage() {
   const [range, setRange] = useUrlRange('this_week');
   const [member, setMember] = useUrlId('member');
   const [open, setOpen] = useState<string | null>(null);
-  const allowed = org.can('tracking:read');
+  // The same access as Live, whose tab this is (R4).
+  const allowed = org.can('tracking:read', 'team');
   const search = useUrlSearch();
   // The server pages every session in the range and adds up the time worked across all of them.
   const filters = { from: range.from, to: range.to, membership_ids: member || undefined, q: search.term || undefined };
@@ -52,7 +53,7 @@ export default function SessionsPage() {
 
   return (
     <>
-      <PageHeader title="Sessions" description="Every tracking session with its source, state and how it ended. Open one to see its full state history." />
+      <PageHeader title="Session history" description="Every tracking session with its source, state and how it ended. Open one to see its full state history." />
       <FilterBar>
         <DateRangeFilter value={range} onChange={setRange} />
         <MemberFilter value={member} onChange={setMember} />

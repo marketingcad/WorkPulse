@@ -42,55 +42,64 @@ export async function runMissingTimeReminders(
 ): Promise<number> {
   const s = org.settings;
   if (!s.missingTimeReminder || (!s.minDailySeconds && !s.minWeeklySeconds)) return 0;
-  const p = zonedParts(now, org.timezone);
-  const clock = `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
-  if (clock < (s.missingTimeCheckAt ?? DEFAULT_CHECK_AT)) return 0;
-  const today = localDate(now, org.timezone);
-  const [holiday] = await tx.select({ d: holidays.date }).from(holidays).where(eq(holidays.date, today)).limit(1);
-  if (holiday) return 0;
+  const checkAt = s.missingTimeCheckAt ?? DEFAULT_CHECK_AT;
 
-  const members = await tx
-    .select({ id: memberships.id, email: users.email })
+  // Each member on their own clock (T5): the check time, "today" and the week are theirs, not the
+  // organization's, so someone eight hours ahead isn't told at 2 a.m. that today has no time.
+  const all = await tx
+    .select({ id: memberships.id, email: users.email, tz: workerProfiles.timezone })
     .from(memberships)
     .innerJoin(workerProfiles, eq(workerProfiles.membershipId, memberships.id))
     .innerJoin(users, eq(users.id, memberships.userId))
     .where(and(eq(memberships.status, 'ACTIVE'), eq(workerProfiles.trackingEnabled, true)));
+  const members = all
+    .map((m) => {
+      const tz = m.tz ?? org.timezone;
+      const p = zonedParts(now, tz);
+      return { ...m, today: localDate(now, tz), clock: `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}` };
+    })
+    .filter((m) => m.clock >= checkAt);
   if (!members.length) return 0;
   const ids = members.map((m) => m.id);
+  const todays = [...new Set(members.map((m) => m.today))];
+  const holidayDays = new Set((await tx.select({ d: holidays.date }).from(holidays).where(inArray(holidays.date, todays))).map((h) => h.d));
 
   const already = new Set(
-    (await tx.select({ m: reminderSends.membershipId }).from(reminderSends).where(and(eq(reminderSends.kind, MISSING_TIME), eq(reminderSends.reminderDate, today), inArray(reminderSends.membershipId, ids)))).map((r) => r.m),
+    (await tx.select({ m: reminderSends.membershipId, d: reminderSends.reminderDate }).from(reminderSends).where(and(eq(reminderSends.kind, MISSING_TIME), inArray(reminderSends.reminderDate, todays), inArray(reminderSends.membershipId, ids)))).map((r) => `${r.m}|${r.d}`),
   );
-  const pending = ids.filter((id) => !already.has(id));
+  const pendingMembers = members.filter((m) => !already.has(`${m.id}|${m.today}`) && !holidayDays.has(m.today));
+  const pending = pendingMembers.map((m) => m.id);
   if (!pending.length) return 0;
 
-  const weekStart = startOfWeek(today, org.weekStart);
-  const weekEnd = addDaysToDate(weekStart, 6);
+  const earliest = todays.map((d) => startOfWeek(d, org.weekStart)).sort()[0]!;
+  const latest = [...todays].sort().at(-1)!;
   const [schedules, off, running, logged] = await Promise.all([
-    tx.select().from(workSchedules).where(and(inArray(workSchedules.membershipId, pending), lte(workSchedules.effectiveFrom, today), sql`(${workSchedules.effectiveTo} is null or ${workSchedules.effectiveTo} >= ${today})`)),
-    tx.select({ m: timeOffRequests.membershipId }).from(timeOffRequests).where(and(inArray(timeOffRequests.membershipId, pending), eq(timeOffRequests.status, 'APPROVED'), lte(timeOffRequests.startDate, today), gte(timeOffRequests.endDate, today))),
+    tx.select().from(workSchedules).where(and(inArray(workSchedules.membershipId, pending), lte(workSchedules.effectiveFrom, latest))),
+    tx.select({ m: timeOffRequests.membershipId, start: timeOffRequests.startDate, end: timeOffRequests.endDate }).from(timeOffRequests).where(and(inArray(timeOffRequests.membershipId, pending), eq(timeOffRequests.status, 'APPROVED'), lte(timeOffRequests.startDate, latest), gte(timeOffRequests.endDate, earliest))),
     tx.select({ m: trackingSessions.membershipId }).from(trackingSessions).where(and(inArray(trackingSessions.membershipId, pending), inArray(trackingSessions.state, ['ACTIVE', 'PAUSED']))),
     tx
       .select({ m: rollupWorkerDay.membershipId, d: rollupWorkerDay.localDate, s: sql<number>`sum(${rollupWorkerDay.trackedSeconds} + ${rollupWorkerDay.manualSeconds})::int` })
       .from(rollupWorkerDay)
-      .where(and(inArray(rollupWorkerDay.membershipId, pending), gte(rollupWorkerDay.localDate, weekStart), lte(rollupWorkerDay.localDate, today)))
+      .where(and(inArray(rollupWorkerDay.membershipId, pending), gte(rollupWorkerDay.localDate, earliest), lte(rollupWorkerDay.localDate, latest)))
       .groupBy(rollupWorkerDay.membershipId, rollupWorkerDay.localDate),
   ]);
-  const onLeave = new Set(off.map((o) => o.m));
   const working = new Set(running.map((r) => r.m));
-  const workDays = (m: string) => {
-    const sch = schedules.filter((x) => x.membershipId === m).sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1))[0];
+  const workDays = (m: string, today: string) => {
+    const sch = schedules.filter((x) => x.membershipId === m && x.effectiveFrom <= today && (!x.effectiveTo || x.effectiveTo >= today)).sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1))[0];
     return sch ? [...new Set(sch.days.map((d) => d.dow))] : MON_FRI;
   };
 
   let sent = 0;
   const prefs = await tx.select().from(notificationPreferences).where(and(eq(notificationPreferences.type, MISSING_TIME), inArray(notificationPreferences.membershipId, pending)));
-  for (const m of members) {
-    if (already.has(m.id) || onLeave.has(m.id) || working.has(m.id)) continue;
-    const days = workDays(m.id);
+  for (const m of pendingMembers) {
+    const today = m.today;
+    if (working.has(m.id) || off.some((o) => o.m === m.id && o.start <= today && today <= o.end)) continue;
+    const days = workDays(m.id, today);
     if (!days.includes(dayOfWeek(today))) continue;
+    const weekStart = startOfWeek(today, org.weekStart);
+    const weekEnd = addDaysToDate(weekStart, 6);
     const todaySecs = logged.find((l) => l.m === m.id && l.d === today)?.s ?? 0;
-    const weekSecs = logged.filter((l) => l.m === m.id).reduce((a, l) => a + l.s, 0);
+    const weekSecs = logged.filter((l) => l.m === m.id && l.d >= weekStart && l.d <= today).reduce((a, l) => a + l.s, 0);
     // The last working day of the week that is still ahead of or equal to today.
     let lastWorkDay = weekStart;
     for (let d = weekStart; d <= weekEnd; d = addDaysToDate(d, 1)) if (days.includes(dayOfWeek(d))) lastWorkDay = d;

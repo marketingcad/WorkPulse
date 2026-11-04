@@ -77,9 +77,9 @@ export default function SignupPage() {
         <Field label={t('auth.signup.orgName')} htmlFor="org" hint={t('auth.signup.orgHint')}>
           <AuthInput icon={Building2} id="org" value={form.organization_name} onChange={set('organization_name')} placeholder={t('auth.signup.orgPlaceholder')} />
         </Field>
-        {err && !err.errors && (
+        {err?.general(['name', 'email', 'password']) && (
           <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
-            {err.title}
+            {err.general(['name', 'email', 'password'])}
           </p>
         )}
         <Button type="submit" variant="primary" size="md" loading={loading} className="w-full">

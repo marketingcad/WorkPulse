@@ -99,7 +99,7 @@ export function PortalDashboard({
           {s.workers.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-text-muted">{t('portal.dash.noTime')}</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface-muted/60">

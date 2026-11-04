@@ -22,7 +22,7 @@ describe('admin sidebar', () => {
   it('groups the pages by topic, with the person’s own pages under My work, and no Sessions or Developer in the tree', () => {
     expect(labels(nav)).toEqual([
       [null, ['nav.item.overview']],
-      ['nav.group.time', ['nav.item.timeEntries', 'nav.item.timesheets', 'nav.item.live', 'nav.item.activity', 'nav.item.eodReports']],
+      ['nav.group.time', ['nav.item.timeEntries', 'nav.item.approvals', 'nav.item.live', 'nav.item.activity', 'nav.item.eodReports']],
       ['nav.group.people', ['nav.item.members', 'nav.item.schedulesAttendance', 'nav.item.timeOff']],
       ['nav.group.work', ['nav.item.clients', 'nav.item.projects', 'nav.item.tasks']],
       ['nav.group.money', ['nav.item.rates', 'nav.item.budgets', 'nav.item.expenses', 'nav.item.invoices', 'nav.item.payroll']],
@@ -42,8 +42,9 @@ describe('admin sidebar', () => {
     expect([...new Set(settings.tabs!.map((t) => t.group))]).toEqual(['nav.settings.general', 'nav.settings.time', 'nav.settings.people', 'nav.settings.data', 'nav.settings.integrations']);
   });
 
-  it('Timesheets carries Approvals and Team week; Members carries Teams; Schedules carries Attendance; Invoices carries Payments received', () => {
-    expect(item(nav, 'nav.item.timesheets')!.tabs!.map((t) => t.href)).toEqual(['/timesheets/approvals', '/timesheets/team', '/timesheets/not-added']);
+  it('Approvals carries Team week and Time not added; Live carries Session history; Members carries Teams; Schedules carries Attendance; Invoices carries Payments received', () => {
+    expect(item(nav, 'nav.item.approvals')!.tabs!.map((t) => t.href)).toEqual(['/timesheets/approvals', '/timesheets/team', '/timesheets/not-added']);
+    expect(item(nav, 'nav.item.live')!.tabs!.map((t) => t.href)).toEqual(['/tracking/live', '/sessions']);
     expect(item(nav, 'nav.item.members')!.tabs!.map((t) => t.href)).toEqual(['/workers', '/teams']);
     expect(item(nav, 'nav.item.schedulesAttendance')!.tabs!.map((t) => t.href)).toEqual(['/schedules', '/attendance']);
     expect(item(nav, 'nav.item.invoices')!.tabs!.map((t) => t.href)).toEqual(['/finance/invoices', '/finance/invoices/payments']);
@@ -60,7 +61,7 @@ describe('who sees what', () => {
   it('someone who only requests manual time gets Approvals (their requests), not Team week', () => {
     const nav = navFor({ 'org:read': 'org', 'manual_time:request': 'own', 'tracking:read': 'team' });
     // Time not added follows tracking:read (team), like Session history.
-    expect(item(nav, 'nav.item.timesheets')!.tabs!.map((t) => t.href)).toEqual(['/timesheets/approvals', '/timesheets/not-added']);
+    expect(item(nav, 'nav.item.approvals')!.tabs!.map((t) => t.href)).toEqual(['/timesheets/approvals', '/timesheets/not-added']);
   });
 
   it('a team manager sees no money pages but Budgets and Expenses, and lands on Tracking policies in Settings', () => {
@@ -107,9 +108,9 @@ describe('the highlighted page', () => {
   it('keeps the parent highlighted on detail pages, and related pages under their item', () => {
     expect(at('/workers/0190a000-0000-7000-8000-000000000001')).toEqual(['nav.item.members', '/workers']);
     expect(at('/finance/invoices/new')).toEqual(['nav.item.invoices', '/finance/invoices']);
-    expect(at('/sessions')).toEqual(['nav.item.live', null]);
-    expect(at('/timesheets/approvals')).toEqual(['nav.item.timesheets', '/timesheets/approvals']);
-    expect(at('/timesheets/manual')).toEqual(['nav.item.timesheets', null]);
+    expect(at('/sessions')).toEqual(['nav.item.live', '/sessions']);
+    expect(at('/timesheets/approvals')).toEqual(['nav.item.approvals', '/timesheets/approvals']);
+    expect(at('/timesheets/manual')).toEqual(['nav.item.approvals', null]);
     expect(at('/settings/time')).toEqual(['nav.item.settings', '/settings/time']);
   });
 
@@ -117,7 +118,7 @@ describe('the highlighted page', () => {
     expect(at('/timesheets')).toEqual(['nav.item.myTimesheet', null]);
     expect(at('/pay-stubs')).toEqual(['nav.item.myPayStubs', null]);
     expect(at('/me/monitoring')).toEqual(['nav.item.whatIsMonitored', null]);
-    expect(at('/timesheets/not-added')).toEqual(['nav.item.timesheets', '/timesheets/not-added']);
+    expect(at('/timesheets/not-added')).toEqual(['nav.item.approvals', '/timesheets/not-added']);
   });
 });
 

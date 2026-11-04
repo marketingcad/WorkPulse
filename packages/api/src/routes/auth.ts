@@ -11,16 +11,16 @@ import {
   resetPasswordInput,
   signupInput,
 } from '@tallywork/contracts';
-import { DomainError, businessRule, validation } from '@tallywork/domain';
+import { DomainError, validation } from '@tallywork/domain';
 import { z } from 'zod';
 import { cancelTotpSetup, confirmTotpSetup, disableTotp, hasMfa, recoveryCodesLeft, regenerateRecoveryCodes, startTotpSetup, verifyLoginCode } from '../services/mfa';
 import type { AppEnv, Deps } from '../context';
 import { body } from '../lib/http';
-import { hashPassword, verifyPassword } from '../lib/crypto';
 import { rateLimit } from '../middleware/rate-limit';
 import { SESSION_COOKIE, requireUser, sessionId, userId } from '../middleware/auth';
 import {
   acceptInvitation,
+  changePassword,
   consumeEmailToken,
   createOrganization,
   createSession,
@@ -34,9 +34,11 @@ import {
   revokeSession,
 } from '../services/identity';
 import { renderEmail } from '../lib/email';
+import { clientIp } from '../lib/cidr';
 
 function meta(c: Context<AppEnv>) {
-  return { ip: c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? null, userAgent: c.req.header('user-agent') ?? null };
+  // The address the platform saw, not one the client wrote (AUTH-008; see clientIp).
+  return { ip: clientIp((n) => c.req.header(n)), userAgent: c.req.header('user-agent') ?? null };
 }
 
 /**
@@ -159,13 +161,10 @@ export const authRoutes = new Hono<AppEnv>()
     return c.json({ ok: true });
   })
 
-  .post('/password/change', requireUser, async (c) => {
+  .post('/password/change', requireUser, rateLimit('password-change', 10, 900), async (c) => {
     const input = await body(c, changePasswordInput);
-    const uid = userId(c);
-    const db = c.var.deps.db;
-    const [u] = await db.select().from(users).where(eq(users.id, uid));
-    if (!u || !(await verifyPassword(u.passwordHash, input.current_password))) throw businessRule('invalid_password', 'Current password is incorrect');
-    await db.update(users).set({ passwordHash: await hashPassword(input.new_password), updatedAt: new Date() }).where(eq(users.id, uid));
+    // Keeps this session; signs out every other one and every desktop device (AUTH-001).
+    await changePassword(c.var.deps, userId(c), sessionId(c), input.current_password, input.new_password);
     return c.json({ ok: true });
   })
 

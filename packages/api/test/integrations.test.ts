@@ -108,7 +108,8 @@ describe('API keys', () => {
     expect((await c.get(o('/billing/amounts-owed?from=2026-09-01&to=2026-09-30'))).status).toBe(200);
     const roles = (await admin.get(o('/roles'))).body as Array<{ id: string; key: string }>;
     await admin.patch(o(`/workers/${sysId}`), { role_id: roles.find((r) => r.key === 'WORKER')!.id });
-    expect((await c.get(o('/billing/amounts-owed?from=2026-09-01&to=2026-09-30'))).status).toBe(403);
+    // Losing api_keys:manage revokes the keys they created (audit 29 Oct 2026, AUTHZ-007): 401, not just narrowed.
+    expect((await c.get(o('/billing/amounts-owed?from=2026-09-01&to=2026-09-30'))).status).toBe(401);
     // A creator cannot grant what they do not have.
     expect((await worker.post(o('/api-keys'), { name: 'x', scopes: ['read:time'] })).status).toBe(403);
   });

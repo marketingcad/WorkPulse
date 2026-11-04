@@ -1,6 +1,6 @@
 import { and, eq, gte, lte } from 'drizzle-orm';
-import { idleEvents, projects, rollupWorkerDay, trackingSessions } from '@tallywork/db';
-import { addDaysToDate, forbidden, localDate, startOfLocalDay, startOfWeek, type Grants, type Permission, type Scope } from '@tallywork/domain';
+import { idleEvents, projects, rollupWorkerDay, trackingSessions, timeOffRequests } from '@tallywork/db';
+import { addDaysToDate, forbidden, localDate, notFound, startOfLocalDay, startOfWeek, type Grants, type Permission, type Scope } from '@tallywork/domain';
 import type { timeOffRequestInput } from '@tallywork/contracts';
 import type { z } from 'zod';
 import type { AgentCtx } from './agent';
@@ -8,7 +8,7 @@ import { memberCtx } from './agent';
 import type { Ctx } from './ctx';
 import { activityDay, idleEndFromActivity } from './activity';
 import { companyProfile } from './finance';
-import { balances, listShifts, listTimeOffRequests, requestTimeOff } from './operations';
+import { balances, decideTimeOff, listShifts, listTimeOffRequests, requestTimeOff } from './operations';
 import { getPayStub, myPayStubs as ownPayStubs } from './payroll';
 import { listNotifications, markNotificationsRead } from './platform';
 import { clientVisibilityFor } from './portal';
@@ -196,6 +196,15 @@ export async function requestMyTimeOff(a: AgentCtx, input: z.infer<typeof timeOf
   const x = await ownCtx(a);
   need(x, 'time_off:request');
   return requestTimeOff(x, input);
+}
+
+/** Cancel one of the worker's own requests (the same rules as on the web; hours go back to the balance). */
+export async function cancelMyTimeOff(a: AgentCtx, id: string) {
+  const x = await ownCtx(a);
+  const [r] = await x.tx.select({ membershipId: timeOffRequests.membershipId }).from(timeOffRequests).where(eq(timeOffRequests.id, id));
+  // Only the worker's own: even a manager's device cannot cancel someone else's request from here.
+  if (!r || r.membershipId !== a.membershipId) throw notFound('time_off_request');
+  return decideTimeOff(x, id, 'CANCEL', null);
 }
 
 export async function readMyNotifications(a: AgentCtx, ids: string[] | 'all') {

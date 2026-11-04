@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { request, type APIRequestContext } from '@playwright/test';
 import { ADMIN_STATE, AUTH_DIR, DATA_FILE, PASSWORD, VIEWER_STATE, WEB_URL, WORKER_STATE } from './env';
 
@@ -106,6 +107,8 @@ export default async function globalSetup(): Promise<void> {
   for (const ctx of [admin, worker.ctx, newcomer.ctx, viewer.ctx]) await json(await ctx.patch('/api/v1/me', { data: { tour: 'done' } }), 'tour seen');
 
   mkdirSync(AUTH_DIR, { recursive: true });
+  // Device sign-ins cached by an earlier run (support/fixtures.ts) belong to accounts that no longer exist.
+  for (const f of readdirSync(AUTH_DIR)) if (f.startsWith('device-')) rmSync(path.join(AUTH_DIR, f), { force: true });
   // The admin starts each web test signed in on the web, and remembers this org as the last one used.
   const state = await admin.storageState();
   state.origins = [{ origin: WEB_URL, localStorage: [{ name: 'tw.lastOrg', value: orgId }] }];

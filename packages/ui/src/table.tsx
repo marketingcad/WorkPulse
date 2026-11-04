@@ -1,5 +1,5 @@
 'use client';
-import { useId, useMemo, useState, type ReactNode } from 'react';
+import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { cx } from './primitives';
 import { EmptyState, SkeletonRows } from './display';
@@ -15,9 +15,41 @@ export interface Column<T> {
   width?: string;
   /** hidden below this breakpoint on stacked mobile layout: 'primary' fields always show */
   priority?: 'primary' | 'secondary' | 'low';
+  /**
+   * Row actions (buttons, a ⋯ menu, a download link). The stacked mobile layout always shows them,
+   * apart from the row's own click. Defaults to true for the column keyed `actions`.
+   */
+  actions?: boolean;
   sortable?: boolean;
   className?: string;
 }
+
+/**
+ * The columns a stacked mobile row shows: the primary fields (or the first column), a line of
+ * secondary fields (or the next two), and the row's actions, which are never dropped.
+ */
+/** Whether a column holds row actions (see Column.actions). */
+export const isActionColumn = <T,>(c: Column<T>): boolean => c.actions ?? c.key === 'actions';
+
+export function mobileColumns<T>(columns: Column<T>[]): { shown: Column<T>[]; meta: Column<T>[]; actions: Column<T>[] } {
+  const isAction = isActionColumn<T>;
+  const actions = columns.filter(isAction);
+  const fields = columns.filter((c) => !isAction(c));
+  const primary = fields.filter((c) => c.priority === 'primary');
+  const secondary = fields.filter((c) => c.priority === 'secondary');
+  return { shown: primary.length ? primary : fields.slice(0, 1), meta: secondary.length ? secondary : fields.slice(1, 3), actions };
+}
+
+/** Enter or Space on the row itself (not on a button or link inside it) opens the row. */
+function rowKeyHandler(open: () => void) {
+  return (e: KeyboardEvent) => {
+    if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    open();
+  };
+}
+
+const ROW_FOCUS = 'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus';
 
 export interface DataTableProps<T> {
   rows: T[] | undefined;
@@ -159,6 +191,7 @@ export function DataTable<T>({
     onSelectedChange?.(next);
   };
   const rowH = density === 'compact' ? 'h-10' : 'h-12';
+  const { shown, meta, actions } = mobileColumns(columns);
 
   return (
     <div className="flex min-w-0 flex-col">
@@ -243,9 +276,9 @@ export function DataTable<T>({
                     <tr
                       key={k}
                       onClick={onRowClick ? () => onRowClick(row) : undefined}
-                      onKeyDown={onRowClick ? (e) => e.key === 'Enter' && onRowClick(row) : undefined}
+                      onKeyDown={onRowClick ? rowKeyHandler(() => onRowClick(row)) : undefined}
                       tabIndex={onRowClick ? 0 : undefined}
-                      className={cx(rowH, 'group transition-colors', onRowClick && 'cursor-pointer hover:bg-surface-muted/60 focus:bg-surface-muted/60 focus:outline-none', sel.has(k) && 'bg-interactive-soft/40', rowClassName?.(row))}
+                      className={cx(rowH, 'group transition-colors', onRowClick && cx('cursor-pointer hover:bg-surface-muted/60 focus:bg-surface-muted/60', ROW_FOCUS), sel.has(k) && 'bg-interactive-soft/40', rowClassName?.(row))}
                     >
                       {selectable && (
                         <td className="px-3" onClick={(e) => e.stopPropagation()}>
@@ -253,7 +286,7 @@ export function DataTable<T>({
                         </td>
                       )}
                       {columns.map((c) => (
-                        <td key={c.key} className={cx('px-3 py-1.5', c.align === 'right' ? 'text-right tabular' : c.align === 'center' ? 'text-center' : '', c.className)}>
+                        <td key={c.key} data-row-actions={isActionColumn(c) || undefined} className={cx('px-3 py-1.5', c.align === 'right' ? 'text-right tabular' : c.align === 'center' ? 'text-center' : '', c.className)}>
                           {c.cell(row)}
                         </td>
                       ))}
@@ -264,16 +297,26 @@ export function DataTable<T>({
               {footer && <tfoot className="border-t border-border bg-surface-muted/40 font-semibold">{footer}</tfoot>}
             </table>
           </div>
-          {/* Mobile stacked list */}
+          {/* Mobile stacked list: the same rows as cards, keeping selection and row actions. */}
+          {selectable && (
+            <label className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs text-text-muted md:hidden">
+              <input type="checkbox" checked={allOnPage} onChange={toggleAll} className="size-4 accent-[var(--color-interactive)]" />
+              {t('table.selectAll')}
+            </label>
+          )}
           <ul className="divide-y divide-border md:hidden">
             {pageRows.map((row) => {
-              const primary = columns.filter((c) => c.priority === 'primary');
-              const secondary = columns.filter((c) => c.priority === 'secondary');
-              const shown = primary.length ? primary : columns.slice(0, 1);
-              const meta = secondary.length ? secondary : columns.slice(1, 3);
+              const k = rowKey(row);
               return (
-                <li key={rowKey(row)}>
-                  <div role={onRowClick ? 'button' : undefined} tabIndex={onRowClick ? 0 : undefined} onClick={onRowClick ? () => onRowClick(row) : undefined} className="flex items-center gap-3 px-4 py-3">
+                <li key={k} className={cx('flex items-center gap-3 px-4 py-3', sel.has(k) && 'bg-interactive-soft/40', rowClassName?.(row))}>
+                  {selectable && <input type="checkbox" aria-label={t('table.selectRow')} checked={sel.has(k)} onChange={() => toggle(k)} className="size-4 shrink-0 accent-[var(--color-interactive)]" />}
+                  <div
+                    role={onRowClick ? 'button' : undefined}
+                    tabIndex={onRowClick ? 0 : undefined}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    onKeyDown={onRowClick ? rowKeyHandler(() => onRowClick(row)) : undefined}
+                    className={cx('flex min-w-0 flex-1 items-center gap-3 rounded-sm', onRowClick && cx('cursor-pointer', ROW_FOCUS))}
+                  >
                     <div className="min-w-0 flex-1">
                       {shown.map((c) => (
                         <div key={c.key} className="min-w-0 text-sm">
@@ -288,8 +331,15 @@ export function DataTable<T>({
                         ))}
                       </div>
                     </div>
-                    {onRowClick && <ChevronRight className="size-4 shrink-0 text-text-faint" />}
+                    {onRowClick && !actions.length && <ChevronRight className="size-4 shrink-0 text-text-faint" aria-hidden />}
                   </div>
+                  {actions.length > 0 && (
+                    <div data-row-actions className="flex max-w-[55%] shrink-0 flex-wrap items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      {actions.map((c) => (
+                        <div key={c.key}>{c.cell(row)}</div>
+                      ))}
+                    </div>
+                  )}
                 </li>
               );
             })}

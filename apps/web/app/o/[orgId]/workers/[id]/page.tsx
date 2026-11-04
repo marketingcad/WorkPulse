@@ -40,6 +40,7 @@ import { AnonymizeDialog } from '@/components/security/anonymize-dialog';
 import { DataExportAction } from '@/components/security/data-export';
 import { MfaResetDialog } from '@/components/security/mfa-reset-dialog';
 import { fromMinor, toMinor } from '@/components/finance/types';
+import { useUrlValue } from '@/lib/url-state';
 
 /** Platform names as on the Devices page (the desktop app reports windows, macos or linux). */
 const PLATFORM: Record<string, string> = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
@@ -47,7 +48,8 @@ const PLATFORM: Record<string, string> = { windows: 'Windows', macos: 'macOS', l
 export default function WorkerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const org = useOrg();
-  const [tab, setTab] = useState('overview');
+  // The tab is in the address, so links ("See what they experience" after saving a policy) open it.
+  const [tab, setTab] = useUrlValue<string>('tab', 'overview', ['overview', 'personal', 'time', 'activity', 'projects', 'devices', 'policy']);
   const workerQ = useOrgQuery<WorkerDto>(`/workers/${id}`);
   const teamsQ = useOrgQuery<TeamDto[]>(org.can('teams:read') ? '/teams' : null);
   const w = workerQ.data;
@@ -718,8 +720,48 @@ function ProjectsTab({ w, teams }: { w: WorkerDto; teams: TeamDto[] }) {
     { key: 'via', header: 'Access', priority: 'secondary', cell: (r) => <span className="text-text-muted">{[r.direct ? 'Direct member' : null, ...r.via.map((t) => `via ${t}`)].filter(Boolean).join(', ')}</span> },
     { key: 'status', header: 'Status', cell: (r) => <ProjectStatusBadge project={r.p} /> },
   ];
+  // The next step the empty state asks for, here instead of on every project's own page.
+  const canAssign = org.can('projects:manage');
+  const run = useOrgAction();
+  const toast = useToast();
+  const [adding, setAdding] = useState('');
+  const [busy, setBusy] = useState(false);
+  const addable = (q.data ?? []).filter((p) => !p.archived_at && !p.member_ids.includes(w.id));
+  const add = async () => {
+    const p = addable.find((x) => x.id === adding);
+    if (!p) return;
+    setBusy(true);
+    try {
+      await run('PATCH', `/projects/${p.id}`, { member_ids: [...p.member_ids, w.id] });
+      toast.success(`${w.name} was added to ${p.name} and can track time to it.`);
+      setAdding('');
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <Panel title="Projects this member can track to">
+    <Panel
+      title="Projects this member can track to"
+      actions={
+        canAssign && addable.length > 0 ? (
+          <span className="flex items-center gap-2">
+            <Select aria-label="Project to add this member to" value={adding} onChange={(e) => setAdding(e.target.value)} className="h-8 w-48">
+              <option value="">Choose a project…</option>
+              {addable.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+            <Button size="sm" disabled={!adding} loading={busy} onClick={() => void add()}>
+              Add to project
+            </Button>
+          </span>
+        ) : undefined
+      }
+    >
       {q.error ? (
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
       ) : (
@@ -730,7 +772,7 @@ function ProjectsTab({ w, teams }: { w: WorkerDto; teams: TeamDto[] }) {
           rowKey={(r) => r.p.id}
           onRowClick={(r) => router.push(`${org.base}/projects/${r.p.id}`)}
           caption="Assigned projects"
-          empty={<EmptyState title="Not on any project" description="Add this member to a project, or to a team that works on one, so they can track time." />}
+          empty={<EmptyState title="Not on any project" description={canAssign ? 'Choose a project above to add this member, or add them to a team that works on one, so they can track time.' : 'Ask someone who manages projects to add this member to a project, so they can track time.'} />}
         />
       )}
     </Panel>
@@ -739,6 +781,7 @@ function ProjectsTab({ w, teams }: { w: WorkerDto; teams: TeamDto[] }) {
 
 // ─── Devices ─────────────────────────────────────────────────────────────────
 function DevicesTab({ w }: { w: WorkerDto }) {
+  const org = useOrg();
   // Only this member's devices, filtered by the server.
   const q = useOrgQuery<DeviceDto[]>(`/devices?membership_id=${w.id}`);
   const rows = q.data;
@@ -750,11 +793,21 @@ function DevicesTab({ w }: { w: WorkerDto }) {
     { key: 'seen', header: 'Last seen', priority: 'secondary', value: (d) => d.last_seen_at ?? '', cell: (d) => <span className="text-text-muted" title={fmtDateTime(d.last_seen_at)}>{d.last_seen_at ? fmtRelative(d.last_seen_at) : 'Never'}</span> },
   ];
   return (
-    <Panel title="Devices">
+    <Panel
+      title="Devices"
+      actions={
+        // Approving, signing out or revoking a device happens on Devices: link there instead of a dead end.
+        org.can('devices:read') ? (
+          <Link href={`${org.base}/devices`} className="text-sm font-medium text-interactive hover:underline">
+            Manage on Devices
+          </Link>
+        ) : undefined
+      }
+    >
       {q.error ? (
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
       ) : (
-        <DataTable rows={rows} loading={q.isLoading} columns={columns} rowKey={(d) => d.id} caption="Devices" empty={<EmptyState title="No devices" description="Devices appear once this member signs in to the desktop app." />} />
+        <DataTable rows={rows} loading={q.isLoading} columns={columns} rowKey={(d) => d.id} caption="Devices" empty={<EmptyState title="No devices" description="Devices appear once this member installs the desktop app and signs in. They can get it from the download page, linked in their invitation." />} />
       )}
     </Panel>
   );
@@ -776,7 +829,7 @@ function PolicyTab({ w }: { w: WorkerDto }) {
   const p = q.data.policy;
   const hm = (s: number | null) => (s === null ? 'No limit' : org.fmtDuration(s));
   const monitored: Array<{ label: string; on: boolean; detail?: string }> = [
-    { label: 'Activity levels', on: p.activity.enabled, detail: 'Keyboard and mouse activity per 10 minutes (counts only, never keystrokes).' },
+    { label: 'Activity levels', on: p.activity.enabled, detail: 'Counts keyboard and mouse use every minute, shown in 10-minute blocks. Which keys are pressed, and what is typed, are never recorded.' },
     { label: 'Screenshots', on: p.screenshots.enabled && p.screenshots.perTenMinutes > 0, detail: p.screenshots.enabled ? `${p.screenshots.perTenMinutes} per 10 minutes${p.screenshots.blur ? ', blurred' : ''}${p.screenshots.notify ? ', with notification' : ''}` : undefined },
     { label: 'Apps used', on: p.apps.enabled },
     { label: 'URLs visited', on: p.urls.enabled, detail: p.urls.enabled ? (p.urls.mode === 'domain' ? 'Domain only' : 'Full URL') + (p.urls.excludedDomains.length ? `, ${p.urls.excludedDomains.length} excluded domains` : '') : undefined },

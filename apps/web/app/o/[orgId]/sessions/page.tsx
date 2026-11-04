@@ -1,22 +1,24 @@
 'use client';
 import { useState } from 'react';
 import type { OffsetPage, SessionDto } from '@tallywork/contracts';
-import { DataTable, EmptyState, ErrorState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, StatusBadge, fmtDateTime, fmtTime, humanize, type Column } from '@tallywork/ui';
+import { DataTable, EmptyState, ErrorState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, StatusBadge, fmtDateTime, fmtTime, type Column } from '@tallywork/ui';
 import { qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
-import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
-import { DateRangeFilter, MemberFilter, useDefaultRange } from '@/components/tracking/filters';
+import { useClampPage, useServerPage } from '@/lib/paging';
+import { useUrlId, useUrlRange, useUrlSearch } from '@/lib/url-state';
+import { DateRangeFilter, MemberFilter } from '@/components/tracking/filters';
 import { SessionDrawer } from '@/components/tracking/session-drawer';
-import type { DateRange } from '@/components/tracking/time';
+import { endReasonLabel } from '@/components/tracking/session-words';
 
 export default function SessionsPage() {
   const org = useOrg();
-  const [range, setRange] = useState<DateRange>(useDefaultRange('this_week'));
-  const [member, setMember] = useState('');
+  // Filters live in the address: refresh, Back and shared links keep them.
+  const [range, setRange] = useUrlRange('this_week');
+  const [member, setMember] = useUrlId('member');
   const [open, setOpen] = useState<string | null>(null);
   // The same access as Live, whose tab this is (R4).
   const allowed = org.can('tracking:read', 'team');
-  const search = useSearch();
+  const search = useUrlSearch();
   // The server pages every session in the range and adds up the time worked across all of them.
   const filters = { from: range.from, to: range.to, membership_ids: member || undefined, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
@@ -46,7 +48,7 @@ export default function SessionsPage() {
     { key: 'start', header: 'Start', cell: (s) => <span className="tabular whitespace-nowrap">{fmtDateTime(s.started_at)}</span>, sortable: false, priority: 'secondary' },
     { key: 'end', header: 'End', cell: (s) => <span className="tabular whitespace-nowrap text-text-muted">{s.ended_at ? (sameDay(s.started_at, s.ended_at) ? fmtTime(s.ended_at) : fmtDateTime(s.ended_at)) : 'Running'}</span>, sortable: false },
     { key: 'worked', header: 'Worked', cell: (s) => org.fmtDuration(s.worked_seconds), sortable: false, align: 'right', priority: 'secondary' },
-    { key: 'reason', header: 'End reason', cell: (s) => <span className="text-xs text-text-muted">{s.end_reason ? humanize(s.end_reason) : '—'}</span>, sortable: false },
+    { key: 'reason', header: 'End reason', cell: (s) => <span className="text-xs text-text-muted">{endReasonLabel(s.end_reason)}</span>, sortable: false },
   ];
 
   return (

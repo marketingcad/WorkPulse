@@ -13,12 +13,17 @@ const sidebar = (page: import('@playwright/test').Page) => page.getByRole('compl
 test.describe('Admin navigation', () => {
   test.use({ storageState: ADMIN_STATE });
 
-  test('the sidebar has the new groups; personal pages, Sessions and Developer are not in it', { tag: '@smoke' }, async ({ page, data }) => {
+  test('the sidebar has the topic groups and My work; Sessions and Developer are not in it', { tag: '@smoke' }, async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}`);
     const nav = sidebar(page);
     // The collapsible group headings (the organization switcher above them is not one).
-    await expect(nav.getByRole('navigation').getByRole('button')).toHaveText(['Time Tracking', 'Workforce', 'Project Management', 'Finance', 'Reports']);
-    for (const gone of ['My timesheet', 'Pay stubs', 'Sessions', 'API keys', 'Webhooks', 'Teams', 'Attendance', 'Tracking policies', 'What is monitored', 'Session history', 'Manual time', 'Team timesheets', 'Billing & rates']) {
+    await expect(nav.getByRole('navigation').getByRole('button')).toHaveText(['Time Tracking', 'Workforce', 'Project Management', 'Finance', 'Reports', 'My work']);
+    // Each heading fits the sidebar in full (labels truncate, so a long one would be cut off silently).
+    const cut = await nav.getByRole('navigation').getByRole('button').locator('span.truncate').evaluateAll((els) => els.filter((e) => e.scrollWidth > e.clientWidth).map((e) => e.textContent));
+    expect(cut).toEqual([]);
+    // UX remediation (phase 3): the person's own pages are in the menu now, under My work.
+    for (const own of ['My timesheet', 'My pay stubs', 'What is monitored']) await expect(nav.getByRole('link', { name: own, exact: true })).toBeVisible();
+    for (const gone of ['Pay stubs', 'Sessions', 'API keys', 'Webhooks', 'Teams', 'Attendance', 'Tracking policies', 'Session history', 'Manual time', 'Team timesheets', 'Billing & rates']) {
       await expect(nav.getByRole('link', { name: gone, exact: true })).toHaveCount(0);
     }
     await expect(nav.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', `/o/${data.orgId}/settings`);
@@ -29,7 +34,8 @@ test.describe('Admin navigation', () => {
     await sidebar(page).getByRole('link', { name: 'Settings' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Organization' })).toBeVisible();
     const tabs = page.getByRole('navigation', { name: 'Settings' });
-    await expect(tabs.getByRole('link')).toHaveText(['Organization', 'Time & pay', 'Tracking policies', 'Devices', 'Roles & permissions', 'Access review', 'Security & retention', 'Screenshot retention', 'API keys', 'Webhooks', 'Audit log']);
+    // Grouped by topic (phase 3): General · Time and attendance · People and access · Data and privacy · Integrations.
+    await expect(tabs.getByRole('link')).toHaveText(['Organization', 'Time & pay', 'Tracking policies', 'Roles & permissions', 'Access review', 'Devices', 'Security & retention', 'Screenshot retention', 'Audit log', 'API keys', 'Webhooks']);
     await expect(tabs.getByRole('link', { name: 'Organization' })).toHaveAttribute('aria-current', 'page');
 
     await tabs.getByRole('link', { name: 'Webhooks' }).click();

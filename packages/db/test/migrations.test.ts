@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { newId } from '@tallywork/domain';
 import { createDb, type DbHandle } from '../src/client';
-import { holidays, memberships, organizations, projectMembers, projects, roles, teamMembers, teams, timeOffPolicies, timeOffRequests, users, withSystem } from '../src/index';
+import { expenses, holidays, memberships, organizations, projectMembers, projects, roles, teamMembers, teams, timeOffPolicies, timeOffRequests, users, withSystem } from '../src/index';
 
 /**
  * Migrations must be safe to run again. Production once had the users.tour_done_at column before
@@ -131,6 +131,45 @@ describe('migrations', () => {
     const [row] = await rows<{ day_hours: Record<string, number> }>(sql`select day_hours from time_off_requests where id = ${req}`);
     expect(Object.keys(row!.day_hours).sort()).toEqual(['2026-10-12', '2026-10-13', '2026-10-15', '2026-10-16']);
     expect(Object.values(row!.day_hours).reduce((a, b) => a + Number(b), 0)).toBeCloseTo(30, 6);
+    expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
+  });
+
+  it('0028 (time not added) runs again cleanly when its table exists', async () => {
+    const when = journalWhen('0028_refused_time');
+    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at >= ${when}`);
+
+    await expect(h.migrate()).resolves.toBeUndefined();
+
+    const [t] = await rows<{ n: number }>(sql`select count(*)::int as n from information_schema.tables where table_name = 'refused_time'`);
+    expect(t!.n).toBe(1);
+    expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
+  });
+
+  it('0029 (expense rejection reasons) explains expenses rejected before reasons existed, keeps newer reasons, and runs again cleanly', async () => {
+    const [org, role, user, m, admin, oldRejected, withReason, approved] = [newId(), newId(), newId(), newId(), newId(), newId(), newId(), newId()];
+    const decidedAt = new Date('2026-10-01T10:00:00Z');
+    await withSystem(h.db, async (tx) => {
+      await tx.insert(organizations).values({ id: org, name: 'Costs', slug: `costs-${org}`, timezone: 'UTC', settings: {} as never });
+      await tx.insert(roles).values({ id: role, organizationId: org, key: 'WORKER', name: 'Worker' });
+      await tx.insert(users).values({ id: user, email: `costs-${user}@example.test`, name: 'Costs', passwordHash: 'x' });
+      await tx.insert(memberships).values({ id: m, organizationId: org, userId: user, roleId: role, status: 'ACTIVE' });
+      const base = { organizationId: org, membershipId: m, category: 'Travel', amountMinor: 1000, currency: 'USD', spentOn: '2026-09-30' };
+      await tx.insert(expenses).values([
+        { ...base, id: oldRejected, status: 'REJECTED', decidedBy: admin, decidedAt },
+        { ...base, id: withReason, status: 'REJECTED', decidedBy: admin, decidedAt, rejectionReason: 'No receipt', rejectedBy: admin, rejectedAt: decidedAt },
+        { ...base, id: approved, status: 'APPROVED', decidedBy: admin, decidedAt },
+      ]);
+    });
+    const when = journalWhen('0029_expense_rejection_reason');
+    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at >= ${when}`);
+
+    await expect(h.migrate()).resolves.toBeUndefined();
+
+    const got = await rows<{ id: string; rejection_reason: string | null; rejected_by: string | null }>(sql`select id, rejection_reason, rejected_by from expenses where organization_id = ${org}`);
+    const byId = Object.fromEntries(got.map((r) => [r.id, r]));
+    expect(byId[oldRejected]).toMatchObject({ rejection_reason: 'Rejected before reasons were recorded.', rejected_by: admin });
+    expect(byId[withReason]!.rejection_reason).toBe('No receipt');
+    expect(byId[approved]!.rejection_reason).toBeNull();
     expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
   });
 });

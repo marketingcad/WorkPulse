@@ -1,5 +1,6 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Info, RotateCcw } from 'lucide-react';
 import { fieldLabel, type TeamDto } from '@tallywork/contracts';
 import type { TrackingPolicy } from '@tallywork/domain';
@@ -8,7 +9,7 @@ import { ApiError, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { POLICY_SECTIONS, displayPolicyValue, type PolicyField } from '@/components/settings/policy-fields';
 import { useMemberOptions } from '@/lib/members';
-import { HelpLink } from '@/components/help/help-link';
+import { useUnsavedChanges } from '@/lib/unsaved';
 
 type ScopeType = 'ORG' | 'TEAM' | 'WORKER';
 type Doc = Record<string, Record<string, unknown>>;
@@ -30,19 +31,24 @@ function setIn(d: Doc, s: string, k: string, v: unknown): Doc {
   } else next[s]![k] = v;
   return next;
 }
-/** Number fields report whether their text is out of range; Save waits until none is (audit 30 Oct 2026, VF-22). */
-const InvalidFields = createContext<(id: string, bad: boolean) => void>(() => undefined);
 
 const countOverrides = (d: Doc) => Object.values(d).reduce((n, s) => n + Object.keys(s ?? {}).length, 0);
 
 export default function PoliciesPage() {
   const org = useOrg();
   const toast = useToast();
+  const router = useRouter();
   const canRead = org.can('policies:read');
   const canEdit = org.can('policies:manage');
   const [scopeType, setScopeType] = useState<ScopeType>('ORG');
-  // A scope change waiting for "discard unsaved changes?" to be confirmed.
-  const [pendingScope, setPendingScope] = useState<ScopeType | null>(null);
+  // A change of what is edited (scope, team, member) waiting for "discard unsaved changes?". The team
+  // and member pickers used to replace unsaved edits without a word.
+  const [pendingSwitch, setPendingSwitch] = useState<(() => void) | null>(null);
+  const guard = (apply: () => void) => (dirty ? setPendingSwitch(() => apply) : apply());
+  // Fields whose typed value is not valid yet: Save waits for them instead of saving the old value.
+  const [invalid, setInvalid] = useState<ReadonlySet<string>>(new Set());
+  const markInvalid = useCallback((id: string, bad: boolean) => setInvalid((s) => (s.has(id) === bad ? s : bad ? new Set(s).add(id) : new Set([...s].filter((x) => x !== id)))), []);
+  const [confirming, setConfirming] = useState(false);
   const [teamId, setTeamId] = useState('');
   const [workerId, setWorkerId] = useState('');
   const teamsQ = useOrgQuery<TeamDto[]>(canRead && scopeType === 'TEAM' ? '/teams' : null);
@@ -54,10 +60,20 @@ export default function PoliciesPage() {
     if (layerQ.data) setDoc((layerQ.data.doc ?? {}) as Doc);
   }, [layerQ.data]);
   const dirty = !!layerQ.data && JSON.stringify(doc) !== JSON.stringify(layerQ.data.doc ?? {});
-  const [invalid, setInvalid] = useState<string[]>([]);
-  const reportInvalid = useCallback((id: string, bad: boolean) => setInvalid((xs) => (bad ? (xs.includes(id) ? xs : [...xs, id]) : xs.filter((x) => x !== id))), []);
+  // Leaving the page with unsaved changes asks first: closing the tab, reloading, or a link in the app.
+  useUnsavedChanges(dirty);
+  const saved = (layerQ.data?.doc ?? {}) as Doc;
+  const changes = POLICY_SECTIONS.flatMap((sec) => sec.fields)
+    .filter((f) => JSON.stringify(saved[f.section]?.[f.key as never]) !== JSON.stringify(doc[f.section]?.[f.key as never]))
+    .map((f) => `${f.label}: ${displayPolicyValue(f, saved[f.section]?.[f.key as never])} → ${displayPolicyValue(f, doc[f.section]?.[f.key as never])}`);
 
-  const save = useOrgMutation<Doc, Layer>('PUT', `/policies/${scopeType}/${scopeId}`, { onSuccess: () => toast.success('Policy saved. Affected members have been notified.') });
+  const save = useOrgMutation<Doc, Layer>('PUT', `/policies/${scopeType}/${scopeId}`, {
+    onSuccess: () =>
+      // What happens now, and where to see it from a member's side.
+      scopeType === 'WORKER'
+        ? toast.success('Policy saved. The member was notified; their desktop app uses it the next time it connects.', { label: 'See what they experience', onClick: () => router.push(`${org.base}/workers/${workerId}?tab=policy`) })
+        : toast.success('Policy saved. Affected members were notified; their desktop apps use it the next time they connect. A member’s profile › Policy shows what they experience.'),
+  });
   const err = save.error instanceof ApiError ? save.error : null;
 
   const scopeName = scopeType === 'ORG' ? 'Organization default' : scopeType === 'TEAM' ? (teamsQ.data?.find((t) => t.id === teamId)?.name ?? 'Team') : (workersQ.data?.find((w) => w.id === workerId)?.name ?? 'Member');
@@ -66,19 +82,18 @@ export default function PoliciesPage() {
   if (!canRead) return <PermissionState />;
 
   return (
-    <InvalidFields.Provider value={reportInvalid}>
+    <>
       <PageHeader
         title="Tracking policies"
         description="Decide what is monitored. Settings flow from the organization default to teams, then to individual members; the most specific override wins."
         actions={
           <>
-            <HelpLink article="tracking-policies" />
             {canEdit && layerQ.data && (
               <>
                 <Button disabled={!dirty || save.isPending} onClick={() => setDoc((layerQ.data?.doc ?? {}) as Doc)}>
                   Discard
                 </Button>
-                <Button variant="primary" disabled={!dirty || invalid.length > 0} loading={save.isPending} onClick={() => save.mutate(doc)}>
+                <Button variant="primary" disabled={!dirty || invalid.size > 0} loading={save.isPending} onClick={() => setConfirming(true)}>
                   Save policy
                 </Button>
               </>
@@ -95,22 +110,47 @@ export default function PoliciesPage() {
       </div>
 
       <ConfirmDialog
-        open={pendingScope !== null}
-        onOpenChange={(o) => !o && setPendingScope(null)}
+        open={pendingSwitch !== null}
+        onOpenChange={(o) => !o && setPendingSwitch(null)}
         title="Discard unsaved policy changes?"
-        description="Your changes to this policy have not been saved. Switching to another scope discards them."
+        description={`Your changes to the ${scopeName} policy have not been saved. Switching discards them.`}
         confirmLabel="Discard changes"
         danger
         onConfirm={() => {
-          if (pendingScope) setScopeType(pendingScope);
-          setPendingScope(null);
+          pendingSwitch?.();
+          setPendingSwitch(null);
         }}
       />
+      {/* Saving notifies people and changes what their app records: say exactly what changes, for whom. */}
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={`Save the ${scopeName} policy?`}
+        description={
+          <span className="flex flex-col gap-2">
+            <span>
+              {scopeType === 'ORG' ? 'Everyone in the organization is affected, except where a team or member has their own setting.' : scopeType === 'TEAM' ? `Everyone in ${scopeName} is affected, except members with their own setting.` : `Only ${scopeName} is affected.`} They are notified, and their desktop app follows it the next time it connects. You can change it again at any time.
+            </span>
+            <span className="font-medium">What changes:</span>
+            <ul className="list-disc pl-5">
+              {changes.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          </span>
+        }
+        confirmLabel="Save and notify"
+        onConfirm={() => {
+          setConfirming(false);
+          save.mutate(doc);
+        }}
+      />
+      <InvalidContext.Provider value={markInvalid}>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SegmentedControl
           label="Policy scope"
           value={scopeType}
-          onChange={(v) => (dirty ? setPendingScope(v) : setScopeType(v))}
+          onChange={(v) => guard(() => setScopeType(v))}
           options={[
             { value: 'ORG', label: 'Organization default' },
             { value: 'TEAM', label: 'Team' },
@@ -118,7 +158,10 @@ export default function PoliciesPage() {
           ]}
         />
         {scopeType === 'TEAM' && (
-          <Select aria-label="Team" className="w-56" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+          <Select aria-label="Team" className="w-56" value={teamId} onChange={(e) => {
+            const v = e.target.value;
+            guard(() => setTeamId(v));
+          }}>
             <option value="">Choose a team…</option>
             {teamsQ.data
               ?.filter((t) => !t.archived_at)
@@ -130,7 +173,10 @@ export default function PoliciesPage() {
           </Select>
         )}
         {scopeType === 'WORKER' && (
-          <Select aria-label="Member" className="w-56" value={workerId} onChange={(e) => setWorkerId(e.target.value)}>
+          <Select aria-label="Member" className="w-56" value={workerId} onChange={(e) => {
+            const v = e.target.value;
+            guard(() => setWorkerId(v));
+          }}>
             <option value="">Choose a member…</option>
             {workersQ.data?.map((w) => (
               <option key={w.id} value={w.id}>
@@ -148,9 +194,9 @@ export default function PoliciesPage() {
         )}
       </div>
 
-      {invalid.length > 0 && (
+      {invalid.size > 0 && (
         <p role="status" className="mb-4 rounded-sm bg-warning-soft px-3 py-2 text-sm text-warning">
-          {invalid.length === 1 ? 'A value is' : `${invalid.length} values are`} out of range. Correct the highlighted {invalid.length === 1 ? 'field' : 'fields'} to save.
+          {invalid.size === 1 ? 'A value is' : `${invalid.size} values are`} out of range. Correct the highlighted {invalid.size === 1 ? 'field' : 'fields'} to save.
         </p>
       )}
       {err && (
@@ -202,7 +248,8 @@ export default function PoliciesPage() {
         </div>
       )}
       {layerQ.data && scopeType !== 'ORG' && <p className="mt-3 text-xs text-text-faint">Editing: {scopeName}. Fields without an override follow the {inheritedFrom.toLowerCase()}.</p>}
-    </InvalidFields.Provider>
+      </InvalidContext.Provider>
+    </>
   );
 }
 
@@ -289,11 +336,7 @@ function NumberControl({ id, value, min, max, unit, readOnly, onChange }: { id: 
   useEffect(() => setText(String(value)), [value]);
   const n = Number(text);
   const bad = text === '' || !Number.isInteger(n) || n < min || n > max;
-  const reportInvalid = useContext(InvalidFields);
-  useEffect(() => {
-    reportInvalid(id, bad && !readOnly);
-    return () => reportInvalid(id, false);
-  }, [id, bad, readOnly, reportInvalid]);
+  useReportInvalid(id, bad && !readOnly);
   return (
     <span className="inline-flex flex-col items-end gap-0.5">
       <span className="inline-flex items-center gap-1.5">
@@ -328,9 +371,15 @@ function HoursControl({ id, value, max, readOnly, onChange }: { id: string; valu
   const toText = (v: number | null) => (v === null || v === undefined ? '' : String(Math.round((v / 3600) * 100) / 100));
   const [text, setText] = useState(toText(value));
   useEffect(() => setText(toText(value)), [value]);
+  // Out of range used to stay on screen while the old value was saved: now it is marked and blocks Save.
+  const h = Number(text);
+  const bad = text !== '' && (!Number.isFinite(h) || h < 0 || h > max);
+  useReportInvalid(id, bad && !readOnly);
   return (
+    <span className="inline-flex flex-col items-end gap-0.5">
     <span className="inline-flex items-center gap-1.5">
       <Input
+        aria-invalid={bad}
         id={id}
         type="number"
         min={0}
@@ -349,7 +398,18 @@ function HoursControl({ id, value, max, readOnly, onChange }: { id: string; valu
       />
       <span className="w-7 text-left text-xs text-text-muted">h</span>
     </span>
+      {bad && !readOnly && <span className="text-2xs text-danger">0–{max} h</span>}
+    </span>
   );
+}
+
+const InvalidContext = createContext<(id: string, bad: boolean) => void>(() => undefined);
+function useReportInvalid(id: string, bad: boolean) {
+  const mark = useContext(InvalidContext);
+  useEffect(() => {
+    mark(id, bad);
+    return () => mark(id, false);
+  }, [mark, id, bad]);
 }
 
 function DomainsControl({ id, value, readOnly, onChange }: { id: string; value: string[]; readOnly: boolean; onChange: (v: unknown) => void }) {

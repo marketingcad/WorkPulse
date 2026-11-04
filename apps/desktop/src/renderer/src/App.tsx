@@ -5,15 +5,18 @@ import { Dashboard } from './Dashboard';
 import { ActivityPage, PayStubsPage, ProjectsPage, ReportsPage, SchedulePage, TasksPage, TimeOffPage, TimesheetPage, TrackingPage } from './Pages';
 import { Mark } from './brand';
 import { Shell } from './Shell';
-import { bridge, errorText, fmtHm, isView, localDateInput, onClockOut, useAgentState, type View } from './lib';
+import { TrackingDisclosure } from './Disclosure';
+import type { ManualPrefill } from './HomeStatus';
+import { bridge, errorText, fmtHm, isView, leave, localDateInput, onClockOut, useAgentState, useDialogFocus, type ClockOutThen, type View } from './lib';
 
 export function App() {
   const s = useAgentState();
   const [view, setView] = useState<View>('home');
-  const [clockOut, setClockOut] = useState(false);
-  // The tray's "Clock out…" asks for the end-of-day report here.
-  useEffect(() => bridge.onNavigate((v) => (v === 'clockout' ? setClockOut(true) : isView(v) && setView(v))), []);
-  useEffect(() => onClockOut(() => setClockOut(true)), []);
+  const [clockOut, setClockOut] = useState<ClockOutThen | null>(null);
+  const [prefill, setPrefill] = useState<ManualPrefill | null>(null);
+  // The tray's "Clock out…" (and Quit while clocked in) asks for the end-of-day report here.
+  useEffect(() => bridge.onNavigate((v) => (v === 'clockout' ? setClockOut('stay') : v === 'clockout-quit' ? setClockOut('quit') : isView(v) && setView(v))), []);
+  useEffect(() => onClockOut(setClockOut), []);
   if (!s) return <div className="h-full bg-nav" />;
   if (s.phase === 'signed_out' || s.phase === 'signing_in')
     return (
@@ -21,7 +24,7 @@ export function App() {
         <SignIn s={s} />
       </div>
     );
-  if (!s.account) return <Loading />;
+  if (!s.account) return <Connecting s={s} />;
   if (s.recoveryPrompt)
     return (
       <div className="h-full bg-surface">
@@ -53,11 +56,11 @@ export function App() {
         return <PayStubsPage />;
       case 'settings':
         return narrow(<SettingsView s={s} onBack={() => setView('home')} />);
-      
+
       case 'manual':
-        return narrow(<ManualTime s={s} onBack={() => setView('tracking')} />);
+        return narrow(<ManualTime key={prefill?.notAddedId ?? 'new'} s={s} prefill={prefill} onBack={() => (setPrefill(null), setView(prefill ? 'home' : 'tracking'))} />);
       default:
-        return <Dashboard s={s} go={setView} />;
+        return <Dashboard s={s} go={setView} onRequestTime={(p) => (setPrefill(p), setView('manual'))} />;
     }
   })();
   return (
@@ -66,13 +69,13 @@ export function App() {
         {page}
       </Shell>
       {s.idlePrompt && <IdleSheet s={s} />}
-      {clockOut && s.tracking.state !== 'stopped' && <ClockOutSheet s={s} onClose={() => setClockOut(false)} />}
+      {clockOut && s.tracking.state !== 'stopped' && <ClockOutSheet s={s} then={clockOut} onClose={() => setClockOut(null)} />}
     </>
   );
 }
 
 /** Clock out with an end-of-day report: what was completed, and whether the work is finished. */
-function ClockOutSheet({ s, onClose }: { s: AgentState; onClose: () => void }) {
+function ClockOutSheet({ s, then, onClose }: { s: AgentState; then: ClockOutThen; onClose: () => void }) {
   const [text, setText] = useState('');
   const [finished, setFinished] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -82,32 +85,28 @@ function ClockOutSheet({ s, onClose }: { s: AgentState; onClose: () => void }) {
   const project = s.assignments.find((a) => a.project_id === t.projectId);
   const task = project?.tasks.find((x) => x.id === t.taskId);
   const worked = t.baseSeconds + (t.segmentStartedAt ? (Date.now() - Date.parse(t.segmentStartedAt)) / 1000 : 0);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !busy && onClose();
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [busy, onClose]);
+  const dialog = useDialogFocus<HTMLDivElement>(busy ? undefined : onClose);
   const submit = async () => {
     setBusy(true);
     setError(null);
     try {
       await bridge.stop({ text: text.trim(), finished });
       onClose();
+      if (then === 'logout') await bridge.logout();
+      else if (then === 'quit') await bridge.quit();
     } catch (e) {
       setError(errorText(e, 'Could not clock out'));
       setBusy(false);
     }
   };
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/40 sm:items-center sm:justify-center sm:p-6" role="dialog" aria-modal="true" aria-labelledby={`${ids}-title`}>
-      <form
-        onSubmit={(e) => (e.preventDefault(), text.trim() && void submit())}
-        className="flex w-full flex-col gap-3 rounded-t-lg bg-surface p-5 shadow-overlay sm:max-w-lg sm:rounded-lg"
-      >
+    <div ref={dialog} tabIndex={-1} className="fixed inset-0 z-50 flex items-end bg-black/40 sm:items-center sm:justify-center sm:p-6" role="dialog" aria-modal="true" aria-labelledby={`${ids}-title`}>
+      <form onSubmit={(e) => (e.preventDefault(), text.trim() && void submit())} className="flex w-full flex-col gap-3 rounded-t-lg bg-surface p-5 shadow-overlay sm:max-w-lg sm:rounded-lg">
         <div>
           <h2 id={`${ids}-title`} className="text-base font-semibold">
-            Clock out
+            {then === 'logout' ? 'Clock out before signing out' : then === 'quit' ? 'Clock out before quitting' : 'Clock out'}
           </h2>
+          {then !== 'stay' && <p className="mt-0.5 text-sm">You are still clocked in. Write your end-of-day report to clock out, then WorkPulse {then === 'logout' ? 'signs you out' : 'closes'}. Or keep working.</p>}
           <p className="mt-0.5 text-sm text-text-muted">
             {project?.project_name ?? 'Your session'}
             {task ? ` · ${task.title}` : ''} · {fmtHm(worked)} this session · {fmtHm(s.todaySeconds)} today
@@ -140,7 +139,7 @@ function ClockOutSheet({ s, onClose }: { s: AgentState; onClose: () => void }) {
             Keep working
           </button>
           <button type="submit" disabled={busy || !text.trim()} className="h-10 rounded-sm bg-danger px-4 text-sm font-semibold text-on-accent hover:opacity-90 disabled:opacity-50">
-            {busy ? 'Clocking out…' : 'Submit and clock out'}
+            {busy ? 'Clocking out…' : then === 'logout' ? 'Clock out and sign out' : then === 'quit' ? 'Clock out and quit' : 'Submit and clock out'}
           </button>
         </div>
       </form>
@@ -148,18 +147,56 @@ function ClockOutSheet({ s, onClose }: { s: AgentState; onClose: () => void }) {
   );
 }
 
-function Loading() {
+/**
+ * Signed in, but the account (projects, tracking settings) has not loaded from the server yet.
+ * While it loads this says so; when it cannot (offline, server trouble) it says why, what to do,
+ * and that the app keeps trying on its own.
+ */
+function Connecting({ s }: { s: AgentState }) {
+  const [busy, setBusy] = useState(false);
+  const failed = !s.sync.online || !!s.connectError;
+  const retry = async () => {
+    setBusy(true);
+    try {
+      await bridge.reconnect();
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 bg-nav text-nav-muted">
+    <div className="flex h-full flex-col items-center justify-center gap-3 bg-nav px-6 text-center text-nav-muted">
       <Mark />
-      <RefreshCw className="size-4 animate-spin" />
+      {failed ? (
+        <div role="alert" className="flex max-w-sm flex-col items-center gap-3">
+          <h1 className="text-base font-semibold text-nav-fg">Can’t connect to WorkPulse</h1>
+          <p className="text-sm">{s.connectError ?? 'Check your internet connection.'}</p>
+          <p className="text-xs">WorkPulse needs to connect once after it starts, to load your projects and your organization’s tracking settings. It keeps trying on its own, and you can clock in as soon as it connects.</p>
+          <button onClick={() => void retry()} disabled={busy} className="inline-flex h-9 items-center gap-2 rounded-sm bg-interactive px-4 text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-60">
+            <RefreshCw className={busy ? 'size-4 animate-spin' : 'size-4'} aria-hidden />
+            {busy ? 'Trying…' : 'Try again'}
+          </button>
+        </div>
+      ) : (
+        <p role="status" className="flex items-center gap-2 text-sm">
+          <RefreshCw className="size-4 animate-spin" aria-hidden />
+          Connecting to WorkPulse…
+        </p>
+      )}
     </div>
   );
 }
 
-
 /** A tall sign-in field with a leading icon (and an optional trailing control). */
-function SignInField({ label, icon: Icon, trailing, ...rest }: React.InputHTMLAttributes<HTMLInputElement> & { label: string; icon: LucideIcon; trailing?: React.ReactNode }) {
+function SignInField({
+  label,
+  icon: Icon,
+  trailing,
+  ...rest
+}: React.InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+  icon: LucideIcon;
+  trailing?: React.ReactNode;
+}) {
   const id = useId();
   return (
     <div>
@@ -179,17 +216,40 @@ function SignInField({ label, icon: Icon, trailing, ...rest }: React.InputHTMLAt
   );
 }
 
-const PILLARS: Array<{ icon: LucideIcon; tone: string; title: string; body: string }> = [
-  { icon: Clock3, tone: 'bg-[#1766ff]', title: 'Time Tracking', body: 'Accurate. Automatic. Effortless.' },
-  { icon: BarChart3, tone: 'bg-[#6d4cf5]', title: 'Productivity Insights', body: 'Understand. Improve. Grow.' },
-  { icon: Users, tone: 'bg-[#0f9f6e]', title: 'Team Focus', body: 'Better collaboration. Greater results.' },
+const PILLARS: Array<{
+  icon: LucideIcon;
+  tone: string;
+  title: string;
+  body: string;
+}> = [
+  {
+    icon: Clock3,
+    tone: 'bg-[#1766ff]',
+    title: 'Time Tracking',
+    body: 'Accurate. Automatic. Effortless.',
+  },
+  {
+    icon: BarChart3,
+    tone: 'bg-[#6d4cf5]',
+    title: 'Productivity Insights',
+    body: 'Understand. Improve. Grow.',
+  },
+  {
+    icon: Users,
+    tone: 'bg-[#0f9f6e]',
+    title: 'Team Focus',
+    body: 'Better collaboration. Greater results.',
+  },
 ];
 
 /** The brand side of the sign-in window (wide windows only), as on the website's sign-in page. */
 function SignInBrand() {
   return (
     <aside className="relative hidden w-[46%] shrink-0 flex-col overflow-hidden bg-[#060d22] px-10 py-9 text-white min-[900px]:flex">
-      <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_55%_at_70%_90%,rgba(37,84,255,0.55),transparent_70%),radial-gradient(45%_40%_at_100%_30%,rgba(91,61,245,0.35),transparent_70%),radial-gradient(60%_50%_at_0%_100%,rgba(23,102,255,0.45),transparent_70%)]" />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_55%_at_70%_90%,rgba(37,84,255,0.55),transparent_70%),radial-gradient(45%_40%_at_100%_30%,rgba(91,61,245,0.35),transparent_70%),radial-gradient(60%_50%_at_0%_100%,rgba(23,102,255,0.45),transparent_70%)]"
+      />
       <svg aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 w-full" viewBox="0 0 800 500" preserveAspectRatio="none">
         <path d="M0 330 C 160 250, 260 420, 430 330 S 700 160, 800 120" fill="none" stroke="rgba(77,140,255,0.55)" strokeWidth="2" />
         <path d="M0 500 L0 380 C 180 300, 330 470, 520 400 S 760 300, 800 330 L800 500 Z" fill="rgba(23,102,255,0.28)" />
@@ -320,7 +380,17 @@ function SignIn({ s }: { s: AgentState }) {
                 }
               />
               {step === 'mfa' && (
-                <SignInField label="Authentication code (or a recovery code)" icon={ShieldCheck} inputMode="numeric" autoComplete="one-time-code" autoFocus value={mfaCode} maxLength={20} onChange={(e) => setMfaCode(e.target.value)} className="tabular tracking-[0.2em]" />
+                <SignInField
+                  label="Authentication code (or a recovery code)"
+                  icon={ShieldCheck}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  value={mfaCode}
+                  maxLength={20}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  className="tabular tracking-[0.2em]"
+                />
               )}
               {step === 'organization' && (
                 <fieldset className="flex flex-col gap-1.5">
@@ -392,9 +462,15 @@ function SignIn({ s }: { s: AgentState }) {
 function IdleSheet({ s }: { s: AgentState }) {
   const i = s.idlePrompt!;
   const minutes = Math.max(1, Math.round((Date.parse(i.endedAt ?? new Date().toISOString()) - Date.parse(i.startedAt)) / 60000));
-  const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const time = (iso: string) =>
+    new Date(iso).toLocaleTimeString([], {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  // No Escape: keeping or discarding the time is the worker's decision, not a dismissal.
+  const dialog = useDialogFocus<HTMLDivElement>();
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/40 sm:items-center sm:justify-center sm:p-6" role="dialog" aria-modal="true" aria-label="Idle time">
+    <div ref={dialog} tabIndex={-1} className="fixed inset-0 z-50 flex items-end bg-black/40 sm:items-center sm:justify-center sm:p-6" role="dialog" aria-modal="true" aria-label="Idle time">
       <div className="w-full rounded-t-lg bg-surface p-5 shadow-overlay sm:max-w-md sm:rounded-lg">
         <h2 className="text-base font-semibold">You were idle for {minutes} minutes</h2>
         <p className="mt-1 text-sm text-text-muted">
@@ -419,7 +495,12 @@ function Recovery({ s }: { s: AgentState }) {
     <div className="mx-auto flex h-full max-w-md flex-col justify-center gap-4 bg-surface p-6">
       <h1 className="text-lg font-semibold">WorkPulse closed unexpectedly</h1>
       <p className="text-sm text-text-muted">
-        Your timer{r.projectName ? ` on ${r.projectName}` : ''} was running. Time until {new Date(r.lastEvidenceAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} is saved; the gap since then is not counted.
+        Your timer{r.projectName ? ` on ${r.projectName}` : ''} was running. Time until{' '}
+        {new Date(r.lastEvidenceAt).toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+        })}{' '}
+        is saved; the gap since then is not counted.
       </p>
       <button onClick={() => void bridge.resolveRecovery(true)} className="h-10 rounded-sm bg-interactive text-sm font-semibold text-on-accent">
         Resume tracking
@@ -434,13 +515,23 @@ function Recovery({ s }: { s: AgentState }) {
 const field = 'mt-1 h-8 w-full rounded-sm border border-border bg-surface px-2 text-sm focus:border-interactive focus:outline-none';
 
 /** Manual time request. Saved on this computer first, so it can be filed offline and is sent on reconnect. */
-function ManualTime({ s, onBack }: { s: AgentState; onBack: () => void }) {
+/** Local "HH:MM" of an ISO time, for the time inputs. */
+const hhmm = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+function ManualTime({ s, prefill, onBack }: { s: AgentState; prefill: ManualPrefill | null; onBack: () => void }) {
   const policy = s.policy!.manualTime;
-  const [projectId, setProjectId] = useState(s.lastProject?.projectId ?? s.assignments[0]?.project_id ?? '');
-  const [taskId, setTaskId] = useState<string>('');
-  const [date, setDate] = useState(localDateInput());
-  const [from, setFrom] = useState('09:00');
-  const [to, setTo] = useState('10:00');
+  // Asking for time the server did not add: start from that time, on its project when still assigned.
+  const assigned = (id: string | null | undefined) => (id && s.assignments.some((a) => a.project_id === id) ? id : null);
+  const [projectId, setProjectId] = useState(assigned(prefill?.projectId) ?? s.lastProject?.projectId ?? s.assignments[0]?.project_id ?? '');
+  const [taskId, setTaskId] = useState<string>(prefill && assigned(prefill.projectId) ? (prefill.taskId ?? '') : '');
+  const [date, setDate] = useState(prefill ? localDateInput(new Date(prefill.from)) : localDateInput());
+  const [from, setFrom] = useState(prefill ? hhmm(prefill.from) : '09:00');
+  const [to, setTo] = useState(prefill ? hhmm(prefill.to) : '10:00');
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -449,13 +540,27 @@ function ManualTime({ s, onBack }: { s: AgentState; onBack: () => void }) {
   const endedAt = new Date(`${date}T${to}`);
   const seconds = (endedAt.getTime() - startedAt.getTime()) / 1000;
   const name = (id: string) => s.assignments.find((a) => a.project_id === id)?.project_name ?? 'Project';
-  const time = (iso: string) => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const time = (iso: string) =>
+    new Date(iso).toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
 
   const submit = async () => {
     setError(null);
     setSaved(false);
     try {
-      await bridge.requestManualTime({ projectId, taskId: taskId || null, startedAt: startedAt.toISOString(), endedAt: endedAt.toISOString(), reason });
+      // Asking for refused time links the request to it, so managers see it corrected (and the note goes).
+      await bridge.requestManualTime({
+        projectId,
+        taskId: taskId || null,
+        startedAt: startedAt.toISOString(),
+        endedAt: endedAt.toISOString(),
+        reason,
+        ...(prefill ? { refusedSessionId: prefill.notAddedId } : {}),
+      });
       setReason('');
       setSaved(true);
     } catch (e) {
@@ -519,7 +624,11 @@ function ManualTime({ s, onBack }: { s: AgentState; onBack: () => void }) {
         </p>
         {error && <p className="mt-2 rounded-sm bg-danger-soft px-2.5 py-1.5 text-xs text-danger">{error}</p>}
         {saved && <p className="mt-2 rounded-sm bg-success-soft px-2.5 py-1.5 text-xs text-success">{s.sync.online ? 'Request sent.' : 'Saved on this computer. It will be sent when you are back online.'}</p>}
-        <button disabled={!projectId || seconds <= 0} onClick={() => void submit()} className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-50">
+        <button
+          disabled={!projectId || seconds <= 0}
+          onClick={() => void submit()}
+          className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-50"
+        >
           <Check className="size-4" /> {policy.requiresApproval ? 'Request time' : 'Add time'}
         </button>
 
@@ -536,7 +645,11 @@ function ManualTime({ s, onBack }: { s: AgentState; onBack: () => void }) {
                     </span>
                   </div>
                   <div className="text-xs text-text-muted">
-                    {time(r.startedAt)} – {new Date(r.endedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                    {time(r.startedAt)} –{' '}
+                    {new Date(r.endedAt).toLocaleTimeString([], {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
                   </div>
                   {r.message && <div className="text-xs text-danger">{r.message}</div>}
                 </li>
@@ -551,7 +664,11 @@ function ManualTime({ s, onBack }: { s: AgentState; onBack: () => void }) {
 
 /** Device status in plain words a worker understands, rather than the raw enum. */
 function deviceStatusLabel(status: string): string {
-  const map: Record<string, string> = { ACTIVE: 'Active', PENDING: 'Waiting for your administrator to approve it', REVOKED: 'Removed by your administrator' };
+  const map: Record<string, string> = {
+    ACTIVE: 'Active',
+    PENDING: 'Waiting for your administrator to approve it',
+    REVOKED: 'Removed by your administrator',
+  };
   return map[status.toUpperCase()] ?? status;
 }
 
@@ -564,25 +681,30 @@ function SettingsView({ s, onBack }: { s: AgentState; onBack: () => void }) {
         </button>
         <h1 className="text-sm font-semibold">Settings</h1>
       </header>
-      <dl className="divide-y divide-border px-4 text-sm">
-        {[
-          ['Signed in as', `${s.account?.name} (${s.account?.email})`],
-          ['Organization', s.account?.organization ?? ''],
-          ['This device', s.device ? deviceStatusLabel(s.device.status) : '—'],
-          ['Version', s.version],
-        ].map(([k, v]) => (
-          <div key={k} className="py-2.5">
-            <dt className="text-xs text-text-muted">{k}</dt>
-            <dd className="wrap-break-word">{v}</dd>
-          </div>
-        ))}
-      </dl>
-      {s.sync.error && <p className="mx-4 mt-2 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">{s.sync.error}</p>}
-      <div className="mt-auto flex flex-col gap-2 border-t border-border p-4">
-        <button onClick={() => void bridge.logout()} className="flex h-9 items-center justify-center gap-2 rounded-sm border border-border text-sm text-danger hover:bg-danger-soft">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <dl className="divide-y divide-border px-4 text-sm">
+          {[
+            ['Signed in as', `${s.account?.name} (${s.account?.email})`],
+            ['Organization', s.account?.organization ?? ''],
+            ['This device', s.device ? deviceStatusLabel(s.device.status) : '—'],
+            ['Version', s.version],
+          ].map(([k, v]) => (
+            <div key={k} className="py-2.5">
+              <dt className="text-xs text-text-muted">{k}</dt>
+              <dd className="wrap-break-word">{v}</dd>
+            </div>
+          ))}
+        </dl>
+        {s.sync.error && <p className="mx-4 mt-2 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">{s.sync.error}</p>}
+        <div className="p-4">
+          <TrackingDisclosure s={s} compact />
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-col gap-2 border-t border-border p-4">
+        <button onClick={() => leave(s, 'logout')} className="flex h-9 items-center justify-center gap-2 rounded-sm border border-border text-sm text-danger hover:bg-danger-soft">
           <LogOut className="size-4" /> Sign out
         </button>
-        <button onClick={() => void bridge.quit()} className="h-9 rounded-sm text-sm text-text-muted hover:bg-surface-muted">
+        <button onClick={() => leave(s, 'quit')} className="h-9 rounded-sm text-sm text-text-muted hover:bg-surface-muted">
           Quit WorkPulse
         </button>
       </div>

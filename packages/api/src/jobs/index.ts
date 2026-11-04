@@ -145,6 +145,11 @@ async function handleEvent(tx: Tx, deps: Deps, e: Envelope): Promise<void> {
       await notify(tx, deps, org, await approversFor(tx, org, worker, 'expenses:approve'), { type: 'expense.submitted', title: 'New expense to review', link: `/finance/expenses` });
       break;
     }
+    case 'expense.rejected': {
+      // The member is told why, so they know what to correct.
+      await notify(tx, deps, org, [p.membership_id as string], { type: 'expense.rejected', title: 'Your expense was rejected', body: typeof p.reason === 'string' ? `“${p.reason}”` : undefined, link: '/finance/expenses' });
+      break;
+    }
     case 'policy.changed': {
       // Transparency: tell every tracking member that monitoring settings changed.
       const ids = (await tx.execute<{ id: string }>(sql`select m.id from memberships m join worker_profiles w on w.membership_id = m.id where m.status = 'ACTIVE' and w.tracking_enabled`)) as unknown as { rows: Array<{ id: string }> };

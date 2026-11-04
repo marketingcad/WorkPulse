@@ -94,6 +94,8 @@ function ReportRunner() {
   const [preset, setPreset] = useState<Preset>('this_week');
   const [params, setParams] = useState<Params>(() => ({ ...rangeFor('this_week', tz, ws), membership_ids: [], team_ids: [], project_ids: [], client_ids: [], group_by: [], billable: 'all' }));
   const [savedName, setSavedName] = useState<string | null>(null);
+  // The saved report in the link was deleted: say so on the page (a toast was easy to miss).
+  const [savedMissing, setSavedMissing] = useState(false);
   const applied = useRef(false);
   const [ready, setReady] = useState(!savedId);
 
@@ -125,7 +127,7 @@ function ReportRunner() {
         billable: p.billable === 'billable' || p.billable === 'non_billable' ? p.billable : 'all',
       });
       setSavedName(s.name);
-    } else toast.error('That saved report no longer exists');
+    } else setSavedMissing(true);
     setReady(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedId, savedQ.data]);
@@ -212,7 +214,31 @@ function ReportRunner() {
       </Panel>
     );
   if (catalogQ.error) return <ErrorState error={catalogQ.error} onRetry={() => catalogQ.refetch()} />;
-  if (!item) return <PermissionState message="This report does not exist or your role cannot run it." />;
+  // A broken or outdated link, or a report this role cannot run: say which page to go to instead.
+  if (!item)
+    return (
+      <>
+        <PageHeader
+          breadcrumbs={
+            <Link href={`${org.base}/reports`} className="hover:underline">
+              Reports
+            </Link>
+          }
+          title="Report not available"
+        />
+        <Panel>
+          <EmptyState
+            title="This report is not available"
+            description="The link may be out of date, or your role cannot run this report. The Report library lists every report you can run."
+            action={
+              <Link href={`${org.base}/reports`} className="inline-flex h-8 items-center rounded-sm bg-interactive px-3 text-sm font-medium text-on-accent hover:bg-interactive-hover">
+                Open the Report library
+              </Link>
+            }
+          />
+        </Panel>
+      </>
+    );
 
   const chart = result?.chart;
   const chartType: ColumnType = chart ? (result!.columns.find((c) => c.key === chart.series[0]?.key)?.type ?? (result!.columns.some((c) => c.type === 'duration') ? 'duration' : result!.columns.some((c) => c.type === 'money') ? 'money' : 'number')) : 'number';
@@ -273,6 +299,11 @@ function ReportRunner() {
           </>
         }
       />
+      {savedMissing && (
+        <p role="status" className="mb-4 rounded-sm bg-warning-soft px-3 py-2 text-sm text-warning">
+          The saved report in this link was deleted. This is the standard {item.title} report: choose filters and save it again if you need it.
+        </p>
+      )}
 
       <FilterBar>
         {has('dates') && (

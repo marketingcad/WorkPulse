@@ -57,7 +57,8 @@ export default function DevicesPage() {
     if (!pending) return;
     try {
       await m.mutateAsync({ id: pending.device.id, action: pending.action });
-      toast.success(ACTION_COPY[pending.action].done);
+      // Approving: say what it means for the member (they can send their time now).
+      toast.success(pending.action === 'approve' ? `Device approved. ${pending.device.worker_name} can track time, and the time saved on that computer is sent now.` : ACTION_COPY[pending.action].done);
       setPending(null);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -191,7 +192,11 @@ export default function DevicesPage() {
               <li>Choose “Sign in”. Your browser opens so you can sign in to WorkPulse securely; the app never sees your password.</li>
               <li>Pick a project and press start. The device appears in this list after its first sync.</li>
             </ol>
-            <p className="text-xs text-text-faint">Ask your administrator for the installer for your organization. Activity and screenshots are captured only while the timer is running.</p>
+            {/* The installer link to share (this panel used to tell admins to ask their administrator). */}
+            <a href="/download" target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center justify-center gap-1.5 self-start rounded-sm bg-interactive px-3 text-sm font-medium text-on-accent hover:bg-interactive-hover">
+              Open the download page
+            </a>
+            <p className="text-xs text-text-faint">Share {typeof window === 'undefined' ? 'the download page' : `${window.location.origin}/download`} with members. On their computer the app is called “Tallywork”. Activity and screenshots are captured only while the timer is running.</p>
           </div>
         </Panel>
       </div>

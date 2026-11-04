@@ -49,6 +49,38 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🆕 New updates
 
+- **4 November 2026 (UX remediation, phases 1–2):** from a usability audit of the web and desktop apps. The rule: workers never have to guess whether their time is being recorded, whether their computer is approved, or whether their work has synced.
+  - **Lists on phones:** every table keeps its row actions (approve, reject, edit, download…) and its selection checkboxes on phones; rows open with Enter or Space and show a focus ring. A test guards all 37 pages built on the shared table.
+  - **Desktop app offline:**
+    - It starts without internet: it uses the account, projects and tracking settings it last loaded (encrypted on the computer) and says so ("Using … saved on …").
+    - Offline tracking stops being offered after the organization's **Max offline hours**, the same window the server applies.
+    - Records the server refuses (time recorded while tracking was turned off, data from a monitor turned off) are kept on the computer and shown with the reason until the worker asks for it as manual time or removes it; it was dropped silently before.
+    - Signing out removes the saved account and settings; unsent time stays queued. A revoked computer says it was revoked (it said "session expired").
+  - **Desktop app, everyday:**
+    - Choosing a project only selects it; **Clock in** or **Switch** starts tracking (arrow keys in the list used to start sessions).
+    - Clear states for a computer waiting for approval, for no projects assigned, and for missing macOS permissions (with a button to the right setting).
+    - Signing out or quitting while clocked in asks for the end-of-day report first.
+    - **What WorkPulse records** on Home and in Settings, from the organization's policy.
+    - Errors in plain words instead of network codes.
+  - **Web:** the Overview tells a failed load ("Try again") from missing access; the download page tells phones to use a computer and explains that the app is called "Tallywork" on the computer.
+- **4 November 2026 (UX remediation, phase 3):** nobody finishes an important action wondering what to do next.
+  - **Offline expiry while clocked in:** the desktop app pauses tracking at the moment offline tracking runs out, shows that time, keeps everything recorded before it, and does not restart on its own: the worker clocks back in once online.
+  - **Time not added** (Approvals › Time not added, migration 0028): managers see offline time the server refused (since the 29 October offline-sync rules, only time recorded while tracking was turned off; time whose project changed meanwhile is kept and flagged Needs review), for the members they may see: who, when, how long, why, and where it stands. It is never added on its own; the worker asks for it as manual time from the desktop app, which goes through the usual approval (linked, so the status follows it), or removes it (recorded in the audit log).
+  - **Navigation:** sidebar groups start open; a **My work** group holds My timesheet, My pay stubs and What is monitored; Settings shows its 11 pages under five topics (a list on phones); a **Help** link in the top bar opens the guide for the page.
+  - **Filters in the address:** Time entries, Sessions, Attendance, End-of-day reports, Time off, a member's profile tab and Time not added keep their filters on refresh, Back and shared links; broken links fall back to the defaults.
+  - **Next steps:** a new client offers "Add a project"; an invitation says what happens next (download page, device approval); a member's profile adds them to a project and links to Devices; attendance rows open that day; Devices links to the download page; an outdated report link leads back to the library.
+  - **Confirmations that say what will happen:** removing someone from a team, archiving a client with its projects, saving a tracking policy (what changes, for whom), requiring two-factor (who is not ready), rejecting or reimbursing an expense, sharing activity or screenshots with a client portal. A role still held cannot be deleted, and the screen says so.
+  - **Plain words:** session history, permission descriptions on Roles, time-entry history (time type names, who changed it), approval history ("approved it"), policy settings ("Treat a silent app as stopped after"), one description of activity everywhere, "Create pay group", "Billable by default".
+- **4 November 2026 (UX remediation, phase 4):** accessibility, phones and tablets, and forms that never fail silently.
+  - **Accessibility:** no serious or critical axe violation (WCAG 2.1 A/AA) on 45 web pages at desktop and phone width, the sign-in pages, and every desktop screen (`e2e/tests/web/a11y-sweep.spec.ts`, `e2e/tests/desktop/accessibility.spec.ts`). Fixed: secondary badge contrast, a link told apart by colour only, a scrollable secret not reachable by keyboard, pending time off shown by transparency. Every dialog returns focus to the button that opened it (it dropped to the page). The desktop idle sheet, clock-out sheet and navigation drawer keep Tab inside, close on Escape where that is safe, and return focus.
+  - **Phones and tablets:** every table's row actions are on screen at 390, 768 and 1024 px, without sideways scrolling; the main create dialogs fit a phone. Dialogs no longer slide in from the left.
+  - **Forms:** custom invoice lines, budget warning levels and payroll bonus lines say what is wrong; buttons that are unavailable say why on the page; currencies are picked from a list; recording a payment says when no invoice balance will go down; leaving a settings page or a new invoice with unsaved changes asks first.
+  - **Expense rejection reasons** (migration 0029): required to reject, shown to the member with who and when, sent as a notification, kept after a later approval, and audited.
+  - **Invoices:** Send reminder (at most 3 a day per invoice); Export matches the client and search shown.
+  - **Payroll:** Run payroll explains pay groups and creates one in place when there is none; finalizing lists unapproved hours and other currencies first.
+  - **Time off:** approvers see the balance after approval and who else is away; bulk approval names who failed and why; members cancel their own requests from the desktop app.
+- **4 November 2026 (sidebar names):** the web sidebar groups are now **Time Tracking** (was Time), **Workforce** (People), **Project Management** (Work) and **Finance** (Money). Same pages, same order; the product tour uses the new names.
+
 - **27 October 2026 (PRs #63–#72):**
   - **Two-factor sign-in hardening** (PR #63):
     - Setup shows a QR code drawn on our own server; the secret never goes to an outside service. An unfinished setup expires after 15 minutes.
@@ -131,7 +163,7 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
     - **Force stop works:** when an admin force-stops a timer, the app stops within about a minute (before, it kept running).
     - Clicking the project that is already running no longer restarts the timer.
   - **Breaks per project:** on a project (new or Settings tab), admins plan breaks from the organization's break types, with an optional time and length.
-  - **End-of-day reports page** (Time › End-of-day reports): a summary (reports, people reporting, finished, time covered), reports grouped by day, search, and a dialog with the full report, its session, Previous/Next and Copy.
+  - **End-of-day reports page** (Time Tracking › End-of-day reports): a summary (reports, people reporting, finished, time covered), reports grouped by day, search, and a dialog with the full report, its session, Previous/Next and Copy.
   - **A simpler admin menu**, from 36 items in 9 groups to 21 in 7 (Overview; Time; People; Work; Money; Reports; Settings and Help), with no page or permission removed and every old address still working:
     - Related pages are tabs under one item: **Timesheets** (Approvals and Team week), **Members** (Members and Teams), **Schedules & attendance**, **Invoices** (Invoices and Payments received), **Payroll** (Payrolls, Owed and Pay groups) and **Settings** (Organization, Time & pay, Tracking policies, Devices, Roles, Access review, Security, API keys, Webhooks, Audit log; Screenshot retention was added on 21 October).
     - **Approvals** shows submitted timesheets and manual time requests on one page.

@@ -1,5 +1,5 @@
 'use client';
-
+import { useState } from 'react';
 import { Input, Select } from '@tallywork/ui';
 import { useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
@@ -14,7 +14,8 @@ const PRESETS: Array<{ value: RangePreset; label: string }> = [
   { value: 'custom', label: 'Custom range' },
 ];
 
-export const MAX_RANGE_DAYS = 400;
+import { MAX_RANGE_DAYS } from '@/lib/url-range';
+export { MAX_RANGE_DAYS };
 
 /** Viewer timezone for "today" style presets. */
 export function useViewerTz(): string {
@@ -31,9 +32,12 @@ export function useDefaultRange(preset: Exclude<RangePreset, 'custom'>): DateRan
 export function DateRangeFilter({ value, onChange }: { value: DateRange; onChange: (r: DateRange) => void }) {
   const org = useOrg();
   const tz = useViewerTz();
+  // A range that is too long is refused with a reason (it used to be ignored without a word).
+  const [tooLong, setTooLong] = useState(false);
   const setCustom = (from: string, to: string) => {
     if (!from || !to) return;
     if (from > to) [from, to] = [to, from];
+    setTooLong(daySpan(from, to) > MAX_RANGE_DAYS);
     if (daySpan(from, to) > MAX_RANGE_DAYS) return;
     onChange({ preset: 'custom', from, to });
   };
@@ -60,6 +64,11 @@ export function DateRangeFilter({ value, onChange }: { value: DateRange; onChang
         –
       </span>
       <Input type="date" aria-label="To date" className="w-36" value={value.to} min={value.from} onChange={(e) => setCustom(value.from, e.target.value)} />
+      {tooLong && (
+        <span role="alert" className="text-xs text-danger">
+          Choose at most {MAX_RANGE_DAYS} days.
+        </span>
+      )}
     </div>
   );
 }

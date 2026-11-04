@@ -84,7 +84,7 @@ test.describe('Help Center', () => {
       ['/reports', 'Run, save and schedule a report'],
     ] as const) {
       await page.goto(`/o/${data.orgId}${path}`);
-      await page.getByRole('link', { name: 'Help: how to use this page' }).click();
+      await page.getByRole('link', { name: 'Help for this page' }).click();
       await expect(page.getByRole('button', { name: new RegExp(guide) })).toHaveAttribute('aria-expanded', 'true');
     }
   });

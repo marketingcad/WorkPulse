@@ -9,6 +9,7 @@ import {
   BudgetProgress,
   Button,
   EmptyState,
+  ErrorState,
   IconTile,
   KpiStrip,
   PageHeader,
@@ -198,6 +199,11 @@ export default function OverviewPage() {
         <Panel>
           <EmptyState title="Pick a member" description="See one person's dashboard exactly as their manager would." />
         </Panel>
+      ) : layoutQ.isError && !layoutQ.data ? (
+        // A failed load says so and offers a retry, instead of an empty page.
+        <Panel>
+          <ErrorState error={layoutQ.error} onRetry={() => void layoutQ.refetch()} />
+        </Panel>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
           {widgets.map((w, i) => (
@@ -226,6 +232,9 @@ export default function OverviewPage() {
                   <div className="flex h-28 items-center justify-center">
                     <Spinner />
                   </div>
+                ) : dataQ.isError && !dataQ.data ? (
+                  // The data could not be loaded: not the same as having no access to it.
+                  <ErrorState error={dataQ.error} onRetry={() => void dataQ.refetch()} />
                 ) : (
                   <Widget k={w.key} data={dataQ.data?.[w.key]} />
                 )}

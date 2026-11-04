@@ -45,7 +45,8 @@ export function SecretReveal({ label, secret, warning }: { label: string; secret
 export function CodeBlock({ children, className, copy }: { children: string; className?: string; copy?: boolean }) {
   return (
     <div className={cx('relative', className)}>
-      <pre className="overflow-x-auto rounded-sm border border-border bg-surface-muted p-3 font-mono text-xs leading-relaxed">{children}</pre>
+      {/* Focusable so a keyboard can scroll a long secret into view. */}
+      <pre tabIndex={0} aria-label="Secret" className="overflow-x-auto rounded-sm border border-border bg-surface-muted p-3 font-mono text-xs leading-relaxed">{children}</pre>
       {copy && <CopyButton value={children} className="absolute right-2 top-2" />}
     </div>
   );

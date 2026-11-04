@@ -28,6 +28,8 @@ import {
 import { ApiError, api, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg } from '@/lib/org';
 import { Stepper } from '@/components/finance/stepper';
+import { extraLineErrors } from '@/components/finance/extra-lines';
+import { useUnsavedChanges } from '@/lib/unsaved';
 import { monthRange, toMinor, type InvoiceDetail, type InvoicePreview } from '@/components/finance/types';
 
 type GroupBy = 'project' | 'task' | 'worker';
@@ -83,12 +85,15 @@ function Composer() {
 
   const clientsQ = useOrgQuery<ClientDto[]>('/clients');
   const client = clientsQ.data?.find((c) => c.id === clientId);
+  // Past the first step, or with custom lines or notes written, a stray link click asks before the draft is lost.
+  useUnsavedChanges(step > 0 || extras.length > 0 || notes.trim() !== '');
 
   const taxNum = Number(taxPct);
   const taxValid = taxPct.trim() !== '' && Number.isFinite(taxNum) && taxNum >= 0 && taxNum <= 100;
   const taxBps = taxValid ? Math.round(taxNum * 100) : 0;
   const extraParsed = extras.map((l) => ({ l, qty: Number(l.quantity), price: toMinor(l.unitPrice) }));
-  const extrasValid = extraParsed.every(({ l, qty, price }) => l.description.trim() && l.quantity.trim() !== '' && Number.isFinite(qty) && qty >= 0 && price !== null);
+  const extraErrors = extras.map(extraLineErrors);
+  const extrasValid = extraErrors.every((e) => Object.keys(e).length === 0);
 
   const body: Body = {
     client_id: clientId,
@@ -253,22 +258,23 @@ function Composer() {
             }
           >
             {extras.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-text-muted">Add fixed fees, discounts or other items that are not tracked time.</p>
+              <p className="px-4 py-3 text-sm text-text-muted">Add fixed fees or other items that are not tracked time.</p>
             ) : (
               <ul className="divide-y divide-border">
                 {extras.map((l, idx) => {
                   const upd = (patch: Partial<ExtraLine>) => setExtras(extras.map((x) => (x.key === l.key ? { ...x, ...patch } : x)));
-                  const p = extraParsed[idx]!;
+                  // A field's message shows once something is typed there; the note under the list covers blanks.
+                  const err = extraErrors[idx]!;
                   return (
                     <li key={l.key} className="grid grid-cols-[1fr_auto] gap-2 px-4 py-2.5 sm:grid-cols-[1fr_96px_128px_auto] sm:items-end">
                       <Field label="Description" htmlFor={`xl-d-${l.key}`} className="col-span-2 sm:col-span-1">
-                        <Input id={`xl-d-${l.key}`} value={l.description} maxLength={300} onChange={(e) => upd({ description: e.target.value })} aria-invalid={!l.description.trim()} />
+                        <Input id={`xl-d-${l.key}`} value={l.description} maxLength={300} onChange={(e) => upd({ description: e.target.value })} aria-invalid={!!err.description} />
                       </Field>
-                      <Field label="Quantity" htmlFor={`xl-q-${l.key}`}>
-                        <Input id={`xl-q-${l.key}`} inputMode="decimal" className="tabular text-right" value={l.quantity} onChange={(e) => upd({ quantity: e.target.value })} aria-invalid={!Number.isFinite(p.qty) || p.qty < 0} />
+                      <Field label="Quantity" htmlFor={`xl-q-${l.key}`} error={l.quantity.trim() ? err.quantity : undefined}>
+                        <Input id={`xl-q-${l.key}`} inputMode="decimal" className="tabular text-right" value={l.quantity} onChange={(e) => upd({ quantity: e.target.value })} aria-invalid={!!err.quantity} />
                       </Field>
-                      <Field label={`Unit price (${currency})`} htmlFor={`xl-p-${l.key}`}>
-                        <Input id={`xl-p-${l.key}`} inputMode="decimal" className="tabular text-right" placeholder="0.00" value={l.unitPrice} onChange={(e) => upd({ unitPrice: e.target.value })} aria-invalid={p.price === null && l.unitPrice !== ''} />
+                      <Field label={`Unit price (${currency})`} htmlFor={`xl-p-${l.key}`} error={l.unitPrice.trim() ? err.unitPrice : undefined}>
+                        <Input id={`xl-p-${l.key}`} inputMode="decimal" className="tabular text-right" placeholder="0.00" value={l.unitPrice} onChange={(e) => upd({ unitPrice: e.target.value })} aria-invalid={!!err.unitPrice && l.unitPrice !== ''} />
                       </Field>
                       <IconButton label="Remove line" className="mb-0.5" onClick={() => setExtras(extras.filter((x) => x.key !== l.key))}>
                         <Trash2 className="size-3.5" />
@@ -277,6 +283,11 @@ function Composer() {
                   );
                 })}
               </ul>
+            )}
+            {!extrasValid && (
+              <p role="status" className="border-t border-border px-4 py-2.5 text-sm text-danger">
+                Each custom line needs a description, a quantity and a price. Fill them in, or remove the line, to continue.
+              </p>
             )}
           </Panel>
 

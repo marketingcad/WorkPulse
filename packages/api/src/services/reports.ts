@@ -521,8 +521,9 @@ async function billingReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
 }
 
 async function invoicesReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
-  // The whole date range, not only the newest 1000 invoices.
-  const rows = await listInvoices(x, { status: p.status, from: p.from, to: p.to }, null);
+  // The whole date range, not only the newest 1000 invoices; and the same client and search as the
+  // list it was exported from (the file used to hold every client's invoices).
+  const rows = await listInvoices(x, { status: p.status, from: p.from, to: p.to, clientIds: p.client_ids, search: p.q || undefined }, null);
   // Drafts are listed but not invoiced yet, and a void invoice owes nothing: neither is in a total (F5),
   // as on the Invoices page.
   const counted = rows.filter((r) => r.status !== 'DRAFT' && r.status !== 'VOID');

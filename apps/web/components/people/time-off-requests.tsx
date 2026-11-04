@@ -6,8 +6,9 @@ import { Button, ConfirmDialog, DataTable, Dialog, EmptyState, ErrorState, Field
 import { api, errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
-import { useQueryClient } from '@tanstack/react-query';
-import { dateRangeLabel, fmtHours, type TimeOffRequest, type TimeOffStatus } from './shared';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { overlappingNames } from './overlap';
+import { dateRangeLabel, fmtHours, type TimeOffBalance, type TimeOffRequest, type TimeOffStatus } from './shared';
 
 type Decision = { id: string; action: 'approve' | 'reject' | 'cancel'; comment?: string | null };
 
@@ -29,6 +30,16 @@ export function TimeOffRequests() {
   const q = useOrgQuery<OffsetPage<TimeOffRequest>>(`/time-off/requests${qs({ ...filters, ...paging.params })}`, { placeholderData: (p) => p });
   useClampPage(paging, q.data, q.isPlaceholderData);
   const decide = useOrgMutation<Decision>('POST', (b) => `/time-off/requests/${b.id}/${b.action}`);
+  // What an approver needs to decide without leaving the queue: the balance after approving, and
+  // who else is away on those days (approved absences and other requests waiting).
+  const pending = status === 'PENDING' ? (q.data?.data ?? []) : [];
+  const approvedQ = useOrgQuery<OffsetPage<TimeOffRequest>>(status === 'PENDING' ? `/time-off/requests${qs({ status: 'APPROVED', page: 1, page_size: 200 })}` : null);
+  const memberIds = [...new Set(pending.map((r) => r.membership_id))];
+  const balances = useQueries({
+    queries: memberIds.map((m) => ({ queryKey: ['org', org.organization.id, '/time-off/balances', m], queryFn: () => api<TimeOffBalance[]>(`/orgs/${org.organization.id}/time-off/balances${qs({ membership_id: m })}`), staleTime: 30_000 })),
+  });
+  const balanceOf = (r: TimeOffRequest) => balances[memberIds.indexOf(r.membership_id)]?.data?.find((b) => b.policy_id === r.policy_id);
+  const awayOf = (r: TimeOffRequest) => overlappingNames(r, [...(approvedQ.data?.data ?? []), ...pending]);
 
   const run = async (b: Decision, msg: string) => {
     try {
@@ -44,27 +55,49 @@ export function TimeOffRequests() {
   const bulkApprove = async (ids: string[]) => {
     setBulkBusy(true);
     let ok = 0;
-    let failed = 0;
+    // Who could not be approved, and why (it used to say only how many).
+    const failed: string[] = [];
     for (const id of ids) {
       try {
         await api(`/orgs/${org.organization.id}/time-off/requests/${id}/approve`, { method: 'POST', body: {} });
         ok++;
-      } catch {
-        failed++;
+      } catch (e) {
+        const r = q.data?.data.find((x) => x.id === id);
+        failed.push(`${r?.worker_name ?? 'A member'} (${r ? dateRangeLabel(r.start_date, r.end_date) : 'request'}): ${errorMessage(e)}`);
       }
     }
     setBulkBusy(false);
     setSelected(new Set());
     void qc.invalidateQueries({ queryKey: ['org', org.organization.id] });
     if (ok) toast.success(`${ok} request${ok === 1 ? '' : 's'} approved`);
-    if (failed) toast.error(`${failed} request${failed === 1 ? '' : 's'} could not be approved`);
+    if (failed.length) toast.error(`Not approved: ${failed.join('; ')}`);
   };
 
   const columns: Column<TimeOffRequest>[] = [
     { key: 'member', header: 'Member', cell: (r) => <PersonCell name={r.worker_name} sub={r.policy_name} />, value: (r) => r.worker_name, priority: 'primary' },
     { key: 'dates', header: 'Dates', cell: (r) => <span className="tabular whitespace-nowrap">{dateRangeLabel(r.start_date, r.end_date)}</span>, value: (r) => r.start_date, priority: 'secondary' },
     { key: 'hours', header: 'Hours', align: 'right', cell: (r) => `${fmtHours(r.hours)}${r.half_day ? ' (½)' : ''}`, value: (r) => r.hours, priority: 'secondary' },
-    { key: 'reason', header: 'Reason', cell: (r) => <span className="line-clamp-2 max-w-64 text-xs text-text-muted" title={r.reason ?? undefined}>{r.reason || '—'}</span>, value: (r) => r.reason },
+    ...(status === 'PENDING'
+      ? [
+          {
+            key: 'context',
+            header: 'Before you decide',
+            cell: (r: TimeOffRequest) => {
+              const b = balanceOf(r);
+              const o = awayOf(r);
+              const after = b && b.balance_hours !== null ? b.balance_hours - r.hours : null;
+              return (
+                <span className="block max-w-64 text-xs text-text-muted">
+                  {b && (b.balance_hours === null ? 'Balance not tracked' : <span className={after !== null && after < 0 ? 'font-medium text-danger' : undefined}>{fmtHours(after ?? 0)} left after approval{after !== null && after < 0 ? ' (more than the balance)' : ''}</span>)}
+                  <span className="block">{o.away.length ? `Also away: ${o.away.join(', ')}` : 'Nobody else away'}{o.requested.length ? ` · also requested: ${o.requested.join(', ')}` : ''}</span>
+                </span>
+              );
+            },
+            priority: 'secondary' as const,
+          },
+        ]
+      : []),
+    { key: 'reason', header: 'Reason', cell: (r) => <span className="line-clamp-2 max-w-64 text-xs text-text-muted" title={r.reason ?? undefined}>{r.reason || '—'}</span>, value: (r) => r.reason, priority: 'secondary' },
     { key: 'requested', header: 'Requested', cell: (r) => <span className="text-xs text-text-muted">{fmtRelative(r.created_at)}</span>, value: (r) => r.created_at },
     ...(status === 'PENDING'
       ? []

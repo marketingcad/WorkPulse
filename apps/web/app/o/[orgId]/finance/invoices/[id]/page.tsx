@@ -38,6 +38,8 @@ export default function InvoiceDetailPage() {
   const q = useOrgQuery<InvoiceDetail>(allowed ? `/invoices/${id}` : null);
   const send = useOrgMutation<Record<string, never>, InvoiceDetail>('POST', `/invoices/${id}/send`);
   const voidM = useOrgMutation<Record<string, never>, InvoiceDetail>('POST', `/invoices/${id}/void`);
+  const remind = useOrgMutation<Record<string, never>, { sent_to: string; overdue: boolean }>('POST', `/invoices/${id}/remind`);
+  const [confirmRemind, setConfirmRemind] = useState(false);
   const del = useOrgMutation<undefined>('DELETE', `/invoices/${id}`, { invalidate: false });
   const qc = useQueryClient();
   const removePay = useOrgMutation<{ id: string }>('DELETE', (b) => `/payments/${b.id}`);
@@ -130,6 +132,12 @@ export default function InvoiceDetailPage() {
                 Delete draft
               </Button>
             )}
+            {/* Chasing payment from here (it had to happen outside the app). */}
+            {canManage && ['SENT', 'PARTIALLY_PAID', 'OVERDUE'].includes(inv.status) && (
+              <Button icon={<Send className="size-3.5" />} onClick={() => setConfirmRemind(true)} disabled={!inv.client.email}>
+                Send reminder
+              </Button>
+            )}
             {canManage && inv.status !== 'VOID' && inv.status !== 'DRAFT' && (
               <Button variant="ghost" icon={<Ban className="size-3.5" />} onClick={() => setConfirmVoid(true)} disabled={inv.paid_minor > 0} title={inv.paid_minor > 0 ? 'Remove the payments applied to this invoice before voiding it' : undefined}>
                 Void
@@ -139,6 +147,13 @@ export default function InvoiceDetailPage() {
         }
       />
 
+      {/* Why an action is unavailable, on the page (it was only a hover tooltip), next to the buttons. */}
+      {canManage && (['SENT', 'PARTIALLY_PAID', 'OVERDUE'].includes(inv.status) && !inv.client.email) && (
+        <p role="note" className="mb-3 rounded-sm bg-surface-sunken px-3 py-2 text-sm text-text-muted">To send reminders, add an email address to {inv.client.name} in Clients.</p>
+      )}
+      {canManage && inv.status !== 'VOID' && inv.status !== 'DRAFT' && inv.paid_minor > 0 && (
+        <p role="note" className="mb-3 rounded-sm bg-surface-sunken px-3 py-2 text-sm text-text-muted">To void this invoice, first remove the payments applied to it (below).</p>
+      )}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         {/* Document */}
         <article className="rounded-md border border-border bg-surface" aria-label={`Invoice ${inv.number}`}>
@@ -259,6 +274,26 @@ export default function InvoiceDetailPage() {
         </Panel>
       </div>
 
+      <ConfirmDialog
+        open={confirmRemind}
+        onOpenChange={setConfirmRemind}
+        title={`Send a reminder about ${inv.number}?`}
+        description={`We email ${inv.client.email ?? 'the client'} the amount still due (${money(inv.balance_minor)}) and the due date (${inv.due_date})${inv.status === 'OVERDUE' ? ', saying it is overdue' : ''}. The invoice does not change.`}
+        confirmLabel="Send reminder"
+        loading={remind.isPending}
+        onConfirm={() =>
+          remind.mutate(
+            {},
+            {
+              onSuccess: (r) => {
+                setConfirmRemind(false);
+                toast.success(`Reminder sent to ${r.sent_to}`);
+              },
+              onError: (e) => toast.error(errorMessage(e)),
+            },
+          )
+        }
+      />
       <RecordPaymentDialog open={paying} onOpenChange={setPaying} invoice={inv} />
       {editing && <EditDraftDialog invoice={inv} onClose={() => setEditing(false)} />}
       <ConfirmDialog

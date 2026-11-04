@@ -7,7 +7,7 @@ import { useOrg } from '@/lib/org';
 export function HelpLink({ article, label = 'Help' }: { article: string; label?: string }) {
   const org = useOrg();
   return (
-    <Link href={`${org.base}/help#${article}`} className="inline-flex h-8 items-center gap-1.5 rounded-sm px-2 text-sm font-medium text-text-muted hover:bg-surface-muted hover:text-text" aria-label={`${label}: how to use this page`}>
+    <Link href={`${org.base}/help#${article}`} className="inline-flex h-8 items-center gap-1.5 rounded-sm px-2 text-sm font-medium text-text-muted hover:bg-surface-muted hover:text-text" aria-label={`${label} for this page`}>
       <LifeBuoy className="size-3.5" aria-hidden />
       {label}
     </Link>

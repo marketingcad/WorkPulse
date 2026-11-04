@@ -106,6 +106,8 @@ export const agentEvent = z.discriminatedUnion('type', [
     ended_at: isoDateTime,
     reason: z.string().trim().min(1).max(500).optional(),
     note: z.string().max(1000).optional(),
+    /** asking for time the server refused earlier (that refused session), so managers see it corrected */
+    refused_session_id: id.optional(),
   }),
 ]);
 export type AgentEvent = z.infer<typeof agentEvent>;

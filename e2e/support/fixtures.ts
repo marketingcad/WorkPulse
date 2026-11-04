@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { test as base, expect, request, type APIRequestContext, type Page } from '@playwright/test';
 import type { AgentBootstrapDto } from '@tallywork/contracts';
 import type { AgentState, MeResource } from '../../apps/desktop/src/shared/ipc';
-import { ADMIN_STATE, DATA_FILE, PASSWORD, WEB_URL } from './env';
+import { ADMIN_STATE, AUTH_DIR, DATA_FILE, PASSWORD, WEB_URL } from './env';
 import type { E2EData } from './global-setup';
 
 /** A desktop-app sign-in: a real device registered through POST /agent/login (email + password). */
@@ -28,12 +29,44 @@ export interface DesktopHandle {
   calls: Array<{ op: string; args: unknown[] }>;
 }
 
-async function signInDevice(email: string): Promise<Device> {
+/**
+ * One device sign-in per account and parallel slot per run. Playwright starts a new worker process
+ * after any failure, and device sign-in is rate-limited (20 per 15 minutes, as in production), so
+ * signing in again in every new process turned one failure into a cascade of HTTP 429s. A restarted
+ * worker reuses its slot's device. Slots do not share one: the agent API's request limit is per
+ * device (240 a minute), and parallel workers on a single device ran past it.
+ */
+function cachedToken(email: string, slot: number): { file: string; token: string | null } {
+  const file = path.join(AUTH_DIR, `device-${email.replace(/[^a-z0-9]/gi, '_')}-${slot}.json`);
+  try {
+    const c = JSON.parse(readFileSync(file, 'utf8')) as { token: string; expiresAt: number };
+    // Keep a margin so a token never expires in the middle of a test.
+    return { file, token: c.expiresAt - Date.now() > 5 * 60_000 ? c.token : null };
+  } catch {
+    return { file, token: null };
+  }
+}
+
+async function signInDevice(email: string, slot: number): Promise<Device> {
   // A device has no browser cookies (a web project's signed-in state would make this a CSRF-checked browser request).
   const api = await request.newContext({ baseURL: WEB_URL, storageState: { cookies: [], origins: [] } });
-  const login = await api.post('/api/v1/agent/login', { data: { email, password: PASSWORD, device: { name: `E2E ${email}`, platform: 'windows', agent_version: '0.1.5' } } });
-  if (login.status() !== 201) throw new Error(`device sign-in for ${email}: HTTP ${login.status()} ${await login.text()}`);
-  const token = (await login.json()).access_token as string;
+  const cached = cachedToken(email, slot);
+  let token = cached.token;
+  if (!token) {
+    const login = await api.post('/api/v1/agent/login', { data: { email, password: PASSWORD, device: { name: `E2E ${email}`, platform: 'windows', agent_version: '0.1.5' } } });
+    if (login.status() !== 201) throw new Error(`device sign-in for ${email}: HTTP ${login.status()} ${await login.text()}`);
+    const r = (await login.json()) as { access_token: string; expires_in: number };
+    token = r.access_token;
+    // Best effort: on Windows the rename fails while another worker writes the same file at once,
+    // and that worker's sign-in serves just as well.
+    const tmp = `${cached.file}.${process.pid}.tmp`;
+    try {
+      writeFileSync(tmp, JSON.stringify({ token, expiresAt: Date.now() + r.expires_in * 1000 }));
+      renameSync(tmp, cached.file);
+    } catch {
+      rmSync(tmp, { force: true });
+    }
+  }
   const boot = await api.get('/api/v1/agent/bootstrap', { headers: { Authorization: `Bearer ${token}` } });
   if (!boot.ok()) throw new Error(`bootstrap: HTTP ${boot.status()}`);
   const device = { token, boot: (await boot.json()) as AgentBootstrapDto };
@@ -63,6 +96,10 @@ function readyState(d: Device): AgentState {
     idlePrompt: null,
     recoveryPrompt: null,
     sync: { queued: 0, lastSyncAt: new Date().toISOString(), online: true, error: null },
+    connectError: null,
+    offline: { mode: 'online', settingsSavedAt: null, allowedUntil: null, totalsPartial: false },
+    notAdded: [],
+    permissions: null,
     capabilities: {},
     browserExtension: [],
     lastProject: null,
@@ -84,7 +121,11 @@ function readyState(d: Device): AgentState {
 async function openDesktop(page: Page, device: Device, opts: DesktopOptions = {}): Promise<DesktopHandle> {
   const handle: DesktopHandle = { savedPdfs: [], calls: [] };
   const call = async (method: string, path: string, body?: unknown) => {
-    const res = await fetch(`${WEB_URL}/api/v1${path}`, { method, headers: { Authorization: `Bearer ${device.token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    // A bounded wait: a request the test server never answers (seen rarely under full-suite load)
+    // fails here with its path, instead of hanging the test until its context times out.
+    const res = await fetch(`${WEB_URL}/api/v1${path}`, { method, headers: { Authorization: `Bearer ${device.token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15_000) }).catch((e: unknown) => {
+      throw new Error(`E2E desktop bridge: ${method} ${path} got no answer from the test server (${e instanceof Error ? e.message : String(e)})`);
+    });
     if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { title?: string }).title ?? `Request failed (${res.status})`);
     return res;
   };
@@ -104,6 +145,9 @@ async function openDesktop(page: Page, device: Device, opts: DesktopOptions = {}
         handle.savedPdfs.push({ id: args.id, bytes: Buffer.from(await res.arrayBuffer()) });
         return { saved: true };
       }
+      case 'cancelTimeOff':
+        await call('POST', `/agent/me/time-off/${args.id}/cancel`);
+        return undefined;
       case 'readNotifications':
         await call('POST', '/agent/me/notifications/read', { ids: args.ids });
         return undefined;
@@ -125,7 +169,8 @@ async function openDesktop(page: Page, device: Device, opts: DesktopOptions = {}
       me: (resource: string, params = {}) => b('me', { resource, params }),
       savePayStub: (id: string) => b('savePayStub', { id }),
       readNotifications: (ids: string[] | 'all') => b('readNotifications', { ids }),
-      ...Object.fromEntries(['login', 'loginWithPassword', 'logout', 'start', 'switchTask', 'stop', 'pause', 'resume', 'takeBreak', 'setNote', 'resolveIdle', 'resolveRecovery', 'requestManualTime', 'submitTimesheet', 'requestTimeOff', 'quit'].map((op) => [op, unavailable(op)])),
+      cancelTimeOff: (id: string) => b('cancelTimeOff', { id }),
+      ...Object.fromEntries(['login', 'loginWithPassword', 'logout', 'start', 'switchTask', 'stop', 'pause', 'resume', 'takeBreak', 'setNote', 'resolveIdle', 'resolveRecovery', 'requestManualTime', 'submitTimesheet', 'requestTimeOff', 'reconnect', 'dismissNotAdded', 'openPermissionSettings', 'quit'].map((op) => [op, unavailable(op)])),
     };
   });
   await page.goto('/');
@@ -150,8 +195,8 @@ interface TestFixtures {
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   data: [async ({}, use) => use(JSON.parse(readFileSync(DATA_FILE, 'utf8')) as E2EData), { scope: 'worker' }],
   // One device sign-in per worker process (device sign-in is rate-limited, like in production).
-  workerDevice: [async ({ data }, use) => use(await signInDevice(data.worker.email)), { scope: 'worker' }],
-  newcomerDevice: [async ({ data }, use) => use(await signInDevice(data.newcomer.email)), { scope: 'worker' }],
+  workerDevice: [async ({ data }, use, info) => use(await signInDevice(data.worker.email, info.parallelIndex)), { scope: 'worker' }],
+  newcomerDevice: [async ({ data }, use, info) => use(await signInDevice(data.newcomer.email, info.parallelIndex)), { scope: 'worker' }],
   openDesktop: async ({ page }, use) => use((device, opts) => openDesktop(page, device, opts)),
   adminApi: async ({ data }, use) => {
     const api = await request.newContext({ baseURL: WEB_URL, storageState: ADMIN_STATE, extraHTTPHeaders: { Origin: WEB_URL } });

@@ -17,6 +17,7 @@ import {
   pauseInput,
 } from '@tallywork/contracts';
 import { localDate } from '@tallywork/domain';
+import { listRefusedTime } from '../services/refused-time';
 import type { AppEnv } from '../context';
 import { body, idList, query } from '../lib/http';
 import { requirePermission } from '../middleware/tenant';
@@ -71,6 +72,11 @@ export const timeRoutes = new Hono<AppEnv>()
     const q = query(c, rangeWithMembers.and(pageQuery));
     const filters = { from: q.from, to: q.to, membershipIds: q.membership_ids };
     return c.json(q.page ? await pageSessions(ctx(c), { ...filters, search: q.q, page: q.page, pageSize: q.page_size }) : await listSessions(ctx(c), filters));
+  })
+  // Time not added: refused offline time of the people this person may see.
+  .get('/time-not-added', requirePermission('tracking:read'), async (c) => {
+    const q = query(c, dateRangeQuery.and(z.object({ status: z.enum(['open', 'all']).optional() })));
+    return c.json(await listRefusedTime(ctx(c), { from: q.from, to: q.to, status: q.status }));
   })
   .get('/eod-reports', requirePermission('tracking:read'), async (c) => {
     const q = query(c, rangeWithMembers);

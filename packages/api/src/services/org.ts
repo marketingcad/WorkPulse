@@ -113,6 +113,12 @@ export async function updateOrg(x: Ctx, input: z.infer<typeof updateOrgInput>) {
 export async function listRoles(x: Ctx) {
   const rs = await x.tx.select().from(roles).where(eq(roles.organizationId, x.org.id)).orderBy(asc(roles.createdAt));
   const perms = await x.tx.select().from(rolePermissions).where(eq(rolePermissions.organizationId, x.org.id));
+  // Who holds each role: current members to show, and any membership at all (a role in use cannot be deleted).
+  const held = await x.tx
+    .select({ roleId: memberships.roleId, current: sql<number>`count(*) filter (where ${memberships.status} <> 'REMOVED')`.mapWith(Number), all: sql<number>`count(*)`.mapWith(Number) })
+    .from(memberships)
+    .where(eq(memberships.organizationId, x.org.id))
+    .groupBy(memberships.roleId);
   return rs
     .filter((r) => r.key !== 'AGENT')
     .map((r) => ({
@@ -122,6 +128,8 @@ export async function listRoles(x: Ctx) {
       description: r.description,
       builtin: r.builtin,
       grants: Object.fromEntries(perms.filter((p) => p.roleId === r.id).map((p) => [p.permission, p.scope])) as Grants,
+      member_count: held.find((h) => h.roleId === r.id)?.current ?? 0,
+      in_use: (held.find((h) => h.roleId === r.id)?.all ?? 0) > 0,
     }));
 }
 

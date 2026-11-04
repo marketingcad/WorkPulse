@@ -28,6 +28,8 @@
   --color-interactive-soft: var(--tw-interactive-soft);
   --color-secondary: var(--tw-secondary);
   --color-secondary-soft: var(--tw-secondary-soft);
+  /* secondary text on its soft background (badges): 4.5:1 or more in both themes */
+  --color-secondary-strong: var(--tw-secondary-strong);
   --color-success: var(--tw-success);
   --color-success-soft: var(--tw-success-soft);
   --color-warning: var(--tw-warning);
@@ -88,6 +90,7 @@
   --tw-interactive-soft: #ecf2ff;
   --tw-secondary: #6845ee; /* 4.9:1 on secondary-soft (was #6d4cf5, 4.49:1; audit QA-06) */
   --tw-secondary-soft: #efebff;
+  --tw-secondary-strong: #5a38e6;
   --tw-success: #13774c;
   --tw-success-soft: #e2f5eb;
   --tw-warning: #975800;
@@ -132,6 +135,7 @@
   --tw-interactive-soft: #13244d;
   --tw-secondary: #9a85ff;
   --tw-secondary-soft: #221b4d;
+  --tw-secondary-strong: #9a85ff;
   --tw-success: #3fbf88;
   --tw-success-soft: #0f2a20;
   --tw-warning: #eaa83e;
@@ -175,6 +179,7 @@
   --tw-interactive-soft: #13244d;
   --tw-secondary: #9a85ff;
   --tw-secondary-soft: #221b4d;
+  --tw-secondary-strong: #9a85ff;
   --tw-success: #3fbf88;
   --tw-success-soft: #0f2a20;
   --tw-warning: #eaa83e;

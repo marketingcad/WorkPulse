@@ -88,7 +88,7 @@ function InvoicesInner() {
         description="Invoices built from approved billable time and expenses."
         actions={
           <>
-            {org.can('reports:finance') && <ExportMenu reportKey="invoices" from={period.from} to={period.to} status={status === 'ALL' ? undefined : status} />}
+            {org.can('reports:finance') && <ExportMenu reportKey="invoices" from={period.from} to={period.to} status={status === 'ALL' ? undefined : status} filters={{ ...(clientId ? { client_ids: [clientId] } : {}), ...(search.term ? { q: search.term } : {}) }} />}
             {org.can('invoices:manage') && (
               <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => router.push(`${org.base}/finance/invoices/new`)}>
                 New invoice

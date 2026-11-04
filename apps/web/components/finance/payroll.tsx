@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type { BankDetailsDto, PayStubDto, PayrollProfileDto, PayrollRunDto } from '@tallywork/contracts';
-import { Button, Dialog, Field, IconButton, Input, Select, Switch, Textarea, fmtMoney, useToast } from '@tallywork/ui';
+import { Button, Dialog, Field, IconButton, Input, Select, Switch, Textarea, fmtDate, fmtMoney, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
@@ -61,7 +61,7 @@ export function PayrollProfileDialog({ profile, open, onOpenChange }: { profile:
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button type="submit" form="pp-form" variant="primary" disabled={invalid} loading={m.isPending}>
-            {profile ? 'Save' : 'Create profile'}
+            {profile ? 'Save pay group' : 'Create pay group'}
           </Button>
         </>
       }
@@ -196,6 +196,8 @@ export function RunPayrollDialog({ open, onOpenChange, onCreated }: { open: bool
   const [profileId, setProfileId] = useState('');
   const [date, setDate] = useState('');
   const [notes, setNotes] = useState('');
+  // No pay group yet: create one right here instead of a dead end (people who may manage payroll).
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const m = useOrgMutation<Record<string, unknown>, PayrollRunDto>('POST', '/payroll/runs');
   const err = m.error instanceof ApiError ? m.error : null;
   useEffect(() => {
@@ -210,7 +212,7 @@ export function RunPayrollDialog({ open, onOpenChange, onCreated }: { open: bool
   const run = async () => {
     try {
       const r = await m.mutateAsync({ profile_id: chosen, date: date || undefined, notes: notes.trim() || undefined });
-      toast.success(`Draft payroll for ${r.period_start} – ${r.period_end} created`);
+      toast.success(`Draft payroll for ${fmtDate(r.period_start)} – ${fmtDate(r.period_end)} created. Review it, then finalize.`);
       onCreated(r);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -233,7 +235,13 @@ export function RunPayrollDialog({ open, onOpenChange, onCreated }: { open: bool
       }
     >
       {profilesQ.data && !profiles.length ? (
-        <p className="text-sm text-text-muted">Create a pay group first: it sets the pay period, the currency and who is paid.</p>
+        <div className="flex flex-col items-start gap-3 text-sm text-text-muted">
+          <p>Payroll runs for a pay group: it sets the pay period, the currency and who is paid. There is none yet.</p>
+          <Button variant="primary" onClick={() => setCreatingGroup(true)}>
+            Create a pay group
+          </Button>
+          <PayrollProfileDialog profile={null} open={creatingGroup} onOpenChange={setCreatingGroup} />
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
           {err && (
@@ -297,25 +305,31 @@ export function AdjustmentsDialog({ runId, line, onClose }: { runId: string; lin
       }
     >
       <div className="flex flex-col gap-2">
+        {/* Column labels show once; every row's fields still have their own name for screen readers. */}
         {rows.map((r, i) => (
-          <div key={i} className="grid grid-cols-[110px_1fr_110px_auto] items-end gap-2">
+          <div key={i} role="group" aria-label={`Line ${i + 1}`} className="grid grid-cols-[110px_1fr_110px_auto] items-end gap-2">
             <Field label={i === 0 ? 'Kind' : ''} htmlFor={`adj-s-${i}`}>
-              <Select id={`adj-s-${i}`} value={r.sign} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, sign: Number(e.target.value) } : x)))}>
+              <Select id={`adj-s-${i}`} aria-label={i === 0 ? undefined : `Kind, line ${i + 1}`} value={r.sign} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, sign: Number(e.target.value) } : x)))}>
                 <option value={1}>Bonus</option>
                 <option value={-1}>Deduction</option>
               </Select>
             </Field>
             <Field label={i === 0 ? 'Label' : ''} htmlFor={`adj-l-${i}`}>
-              <Input id={`adj-l-${i}`} value={r.label} maxLength={100} placeholder="e.g. Performance bonus" onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} />
+              <Input id={`adj-l-${i}`} aria-label={i === 0 ? undefined : `Label, line ${i + 1}`} value={r.label} maxLength={100} placeholder="e.g. Performance bonus" onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} />
             </Field>
             <Field label={i === 0 ? `Amount (${line.currency})` : ''} htmlFor={`adj-a-${i}`}>
-              <Input id={`adj-a-${i}`} inputMode="decimal" className="tabular" value={r.amount} placeholder="0.00" onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
+              <Input id={`adj-a-${i}`} aria-label={i === 0 ? undefined : `Amount, line ${i + 1}`} inputMode="decimal" className="tabular" value={r.amount} placeholder="0.00" onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
             </Field>
-            <IconButton label="Remove" onClick={() => setRows(rows.filter((_, j) => j !== i))}>
+            <IconButton label={`Remove line ${i + 1}`} onClick={() => setRows(rows.filter((_, j) => j !== i))}>
               <Trash2 className="size-3.5" />
             </IconButton>
           </div>
         ))}
+        {invalid && (
+          <p role="status" className="text-sm text-danger">
+            Each line needs a label and an amount, e.g. 150.00, before you can save. Remove lines you do not need.
+          </p>
+        )}
         <div className="flex items-center justify-between pt-1">
           <Button size="sm" icon={<Plus className="size-3.5" />} onClick={() => setRows([...rows, { label: '', amount: '', sign: 1 }])} disabled={rows.length >= 20}>
             Add line

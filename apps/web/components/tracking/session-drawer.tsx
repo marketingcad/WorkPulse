@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { Square } from 'lucide-react';
 import type { SessionDto } from '@tallywork/contracts';
 import { isLive, type SessionState } from '@tallywork/domain';
-import { Button, ConfirmDialog, Drawer, ErrorState, Kbd, SkeletonRows, Stat, StatusBadge, cx, fmtDateTime, fmtTime, humanize, useToast } from '@tallywork/ui';
+import { Button, ConfirmDialog, Drawer, ErrorState, SkeletonRows, Stat, StatusBadge, cx, fmtDateTime, fmtTime, humanize, useToast } from '@tallywork/ui';
 import { errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { localDateOf } from './time';
+import { actorLabel, causeLabel, endReasonLabel, triggerLabel } from './session-words';
 
 export interface SessionDetail extends SessionDto {
   transitions: Array<{ from: string | null; to: string; trigger: string; cause: string | null; actor_type: string; occurred_at: string }>;
@@ -60,7 +61,7 @@ export function SessionDrawer({ sessionId, onClose }: { sessionId: string | null
             <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
               <StatusBadge status={s.state === 'ACTIVE' ? 'TRACKING' : s.state} />
               <StatusBadge status={s.source} />
-              {s.end_reason && <span className="text-xs text-text-muted">Ended: {humanize(s.end_reason)}</span>}
+              {s.end_reason && <span className="text-xs text-text-muted">Ended: {endReasonLabel(s.end_reason)}</span>}
               {running && org.can('tracking:force_stop') && (
                 <Button size="sm" variant="danger" className="ml-auto" icon={<Square className="size-3" />} onClick={() => setConfirmStop(true)}>
                   Force stop
@@ -110,14 +111,14 @@ export function SessionDrawer({ sessionId, onClose }: { sessionId: string | null
                       <span className="absolute -left-[5px] top-1.5 size-2.5 rounded-full border-2 border-surface bg-border-strong" aria-hidden />
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                         <span className="tabular text-xs text-text-muted">{fmtDateTime(t.occurred_at)}</span>
-                        <Kbd>{t.trigger}</Kbd>
+                        <span className="text-xs font-medium">{triggerLabel(t.trigger)}</span>
                         <span className="text-xs">
                           {t.from ? humanize(t.from) : 'New'} → <span className="font-medium">{humanize(t.to)}</span>
                         </span>
                       </div>
                       <div className="text-xs text-text-faint">
-                        by {humanize(t.actor_type)}
-                        {t.cause && ` · ${humanize(t.cause)}`}
+                        by {actorLabel(t.actor_type)}
+                        {t.cause && ` · ${causeLabel(t.cause)}`}
                       </div>
                     </li>
                   ))}

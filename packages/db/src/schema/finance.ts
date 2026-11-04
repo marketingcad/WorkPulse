@@ -203,6 +203,10 @@ export const expenses = pgTable(
     status: text().$type<'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'REIMBURSED'>().notNull().default('SUBMITTED'),
     decidedBy: uuid(),
     decidedAt: tstz(),
+    /** why it was last rejected, by whom and when (kept if it is approved later; the audit log has every decision) */
+    rejectionReason: text(),
+    rejectedBy: uuid(),
+    rejectedAt: tstz(),
     reimbursedAt: tstz(),
     invoiceLineId: uuid(),
     ...timestamps,

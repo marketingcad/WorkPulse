@@ -5,6 +5,7 @@ import { ORG_ONLY_PERMISSIONS, PERMISSIONS, SCOPES, type Grants, type Permission
 import { Badge, Button, ConfirmDialog, Dialog, EmptyState, ErrorState, Field, IconButton, Input, PageHeader, Panel, PermissionState, Select, SkeletonRows, Textarea, cx, humanize, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { PERMISSION_DESCRIPTIONS } from '@/components/settings/permission-labels';
 
 interface Role {
   id: string;
@@ -13,6 +14,9 @@ interface Role {
   description: string | null;
   builtin: boolean;
   grants: Grants;
+  member_count?: number;
+  /** held by any membership, current or former: the server refuses to delete it */
+  in_use?: boolean;
 }
 
 const EDITABLE = PERMISSIONS.filter((p) => p !== 'agent:ingest');
@@ -30,7 +34,8 @@ function groups(): Array<{ resource: string; perms: Permission[] }> {
 }
 const GROUPS = groups();
 const resourceLabel = (r: string) => RESOURCE_LABEL[r] ?? humanize(r);
-const actionLabel = (p: Permission) => humanize(p.split(':')[1] ?? p);
+// What the permission lets someone do, in plain words; the key stays in the tooltip for API users.
+const actionLabel = (p: Permission) => PERMISSION_DESCRIPTIONS[p as keyof typeof PERMISSION_DESCRIPTIONS] ?? humanize(p.split(':')[1] ?? p);
 
 export default function RolesPage() {
   const org = useOrg();
@@ -89,13 +94,17 @@ export default function RolesPage() {
                             <IconButton label={`Edit ${r.name}`} size="xs" onClick={() => setEditing(r)}>
                               <Pencil className="size-3" />
                             </IconButton>
-                            <IconButton label={`Delete ${r.name}`} size="xs" onClick={() => setDeleting(r)}>
+                            {/* A role people still hold cannot be deleted (the server refuses): say so instead of offering it. */}
+                            <IconButton label={r.in_use ? `${r.name} cannot be deleted while members (current or former) hold it` : `Delete ${r.name}`} size="xs" disabled={!!r.in_use} onClick={() => setDeleting(r)}>
                               <Trash2 className="size-3" />
                             </IconButton>
                           </>
                         )}
                       </div>
-                      <div className="text-2xs font-normal text-text-faint">{r.builtin ? 'Built-in' : 'Custom'}</div>
+                      <div className="text-2xs font-normal text-text-faint">
+                        {r.builtin ? 'Built-in' : 'Custom'}
+                        {r.member_count !== undefined && ` · ${r.member_count} ${r.member_count === 1 ? 'member' : 'members'}`}
+                      </div>
                     </th>
                   ))}
                 </tr>
@@ -111,8 +120,8 @@ export default function RolesPage() {
                     {g.perms.map((p) => (
                       <tr key={p} className="border-b border-border last:border-0 hover:bg-surface-muted/40">
                         <th scope="row" className="sticky left-0 bg-surface px-3 py-1.5 text-left font-normal">
-                          <span className="block">{actionLabel(p)}</span>
-                          <span className="block font-mono text-2xs text-text-faint">{p}</span>
+                          <span className="block" title={p}>{actionLabel(p)}</span>
+                          
                         </th>
                         {roles.map((r) => {
                           const s = r.grants[p];
@@ -244,7 +253,7 @@ function RoleDialog({ open, role, roles, onOpenChange }: { open: boolean; role: 
                     <li key={p} className={cx('flex items-center justify-between gap-3 px-3 py-1.5', !opts.length && 'opacity-50')}>
                       <label htmlFor={`g-${p}`} className="min-w-0">
                         <span className="block text-sm">{actionLabel(p)}</span>
-                        <span className="block font-mono text-2xs text-text-faint">{p}</span>
+                        
                       </label>
                       <Select
                         id={`g-${p}`}

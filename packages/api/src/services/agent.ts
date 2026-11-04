@@ -58,6 +58,7 @@ import { loadActor, loadOrg } from '../middleware/tenant';
 import type { Ctx } from './ctx';
 import { requestManualTime, timesheetDue } from './timesheets';
 import { assertBreakType, listBreakTypes, nextShift } from './operations';
+import { linkCorrection, recordRefused } from './refused-time';
 
 const ACCESS_TTL_SECONDS = 10 * 60;
 const REFRESH_TTL_DAYS = 30;
@@ -519,6 +520,7 @@ async function processEvent(a: AgentCtx, ev: AgentEvent, correct: (iso: string) 
     case 'manual_time.request': {
       // Same rules as the web: policy, reason, overlap, locked periods, approval.
       await requestManualTime(await memberCtx(a), { project_id: ev.project_id, task_id: ev.task_id ?? null, started_at: ev.started_at, ended_at: ev.ended_at, reason: ev.reason, note: ev.note }, { id: ev.event_id });
+      if (ev.refused_session_id) await linkCorrection(a, ev.refused_session_id, ev.event_id);
       return;
     }
   }
@@ -573,6 +575,8 @@ export async function ingestBatch(a: AgentCtx, batch: IngestBatchInput): Promise
       }
       if (!(e instanceof DomainError)) throw e;
       await a.tx.update(ingestReceipts).set({ status: 'rejected', reason: e.code }).where(and(eq(ingestReceipts.deviceId, a.deviceId), eq(ingestReceipts.clientEventId, ev.event_id)));
+      // Kept for the worker's and their managers' "Time not added" (services/refused-time.ts).
+      await recordRefused(a, ev, e);
       results.push({ event_id: ev.event_id, status: 'rejected', code: e.code, message: e.message });
     }
   }

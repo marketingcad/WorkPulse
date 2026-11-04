@@ -524,6 +524,8 @@ function EntriesList({ ts, entriesQ, money, day, onClearDay, onAdd }: { ts: Time
 }
 
 // ─── Approval history ────────────────────────────────────────────────────────
+/** "Ada approved", not "Ada approve" (the raw action name, lowercased). */
+const HISTORY_VERB: Record<string, string> = { SUBMIT: 'submitted it', APPROVE: 'approved it', REJECT: 'rejected it', REQUEST_CHANGES: 'asked for changes', REOPEN: 'reopened it', RECALL: 'took it back', SUBMIT_FOR: 'submitted it for the member', AUTO_APPROVE: 'approved it automatically' };
 function HistoryPanel({ timesheetId }: { timesheetId: string }) {
   const [open, setOpen] = useState(false);
   const q = useOrgQuery<TimesheetHistoryItem[]>(open ? `/timesheets/${timesheetId}/history` : null);
@@ -549,7 +551,7 @@ function HistoryPanel({ timesheetId }: { timesheetId: string }) {
               <li key={`${h.created_at}-${i}`} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
                 <span className="w-32 shrink-0 text-xs text-text-muted">{fmtDateTime(h.created_at)}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="font-medium">{h.actor_name || 'System'}</span> <span className="text-text-muted">{humanize(h.action).toLowerCase()}</span>
+                  <span className="font-medium">{h.actor_name || 'System'}</span> <span className="text-text-muted">{HISTORY_VERB[h.action] ?? humanize(h.action).toLowerCase()}</span>
                   {h.comment && <span className="mt-0.5 block text-text-muted">“{h.comment}”</span>}
                 </span>
                 <span className="flex items-center gap-1 text-xs">

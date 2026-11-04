@@ -2,11 +2,12 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { BookOpen, Download } from 'lucide-react';
+import { BookOpen, Copy, Download, Smartphone } from 'lucide-react';
 import { Button, Dialog } from '@tallywork/ui';
 import { AuthShell } from '@/components/auth-shell';
 import { GUIDES } from '@/components/download/guides';
 import { t } from '@/lib/i18n';
+import { detectPlatform, type Platform } from '@/components/download/platform';
 
 // Matches the md Button, for links that start a download.
 const LINK_BUTTON = 'inline-flex h-9 w-full items-center justify-center gap-2 rounded-sm border px-3.5 text-sm font-medium transition-colors';
@@ -20,17 +21,9 @@ export interface DownloadLinks {
   linuxAppImage: string | null;
 }
 
-type Platform = 'windows' | 'macos' | 'linux';
 const PLATFORMS: Platform[] = ['windows', 'macos', 'linux'];
 const LABELS: Record<Platform, string> = { windows: 'Windows', macos: 'macOS', linux: 'Ubuntu / Debian (.deb)' };
 
-function detectPlatform(): Platform | null {
-  const ua = navigator.userAgent;
-  if (/Windows/i.test(ua)) return 'windows';
-  if (/Mac OS X|Macintosh/i.test(ua)) return 'macos';
-  if (/Linux/i.test(ua) && !/Android/i.test(ua)) return 'linux';
-  return null;
-}
 
 /** Shown once the installer download starts: what to do with the file, first install or update. */
 const AFTER_DOWNLOAD = {
@@ -80,8 +73,9 @@ function GuideLink({ platform }: { platform: keyof typeof AFTER_DOWNLOAD }) {
 /** Workers use Tallywork through the desktop app only: this page is where they get it. */
 export function DesktopDownload({ links }: { links: DownloadLinks }) {
   const welcome = useSearchParams().get('welcome') === '1';
-  const [platform, setPlatform] = useState<Platform | null>(null);
-  useEffect(() => setPlatform(detectPlatform()), []);
+  const [platform, setPlatform] = useState<Platform | 'mobile' | null>(null);
+  useEffect(() => setPlatform(detectPlatform(navigator.userAgent, navigator.maxTouchPoints)), []);
+  const [copied, setCopied] = useState(false);
   // The installer the person clicked, so the steps match the file they got.
   const [downloaded, setDownloaded] = useState<Platform | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -91,12 +85,39 @@ export function DesktopDownload({ links }: { links: DownloadLinks }) {
   };
 
   const available = PLATFORMS.filter((p) => links[p]);
-  const primary = platform && links[platform] ? platform : null;
+  const primary = platform && platform !== 'mobile' && links[platform] ? platform : null;
   const others = available.filter((p) => p !== primary);
 
   return (
     <AuthShell title={t('download.title')} subtitle={welcome ? t('download.welcome') : t('download.subtitle')}>
       <div className="flex flex-col gap-5">
+        {platform === 'mobile' && (
+          <section aria-labelledby="mobile-title" className="flex flex-col gap-2 rounded-sm border border-warning/40 bg-warning-soft px-4 py-3">
+            <h2 id="mobile-title" className="flex items-center gap-2 text-sm font-semibold text-text">
+              <Smartphone className="size-4 text-warning" aria-hidden />
+              {t('download.mobileTitle')}
+            </h2>
+            <p className="text-sm text-text-muted">{t('download.mobile')}</p>
+            <Button
+              size="md"
+              icon={<Copy className="size-4" />}
+              onClick={() =>
+                void navigator.clipboard
+                  ?.writeText(window.location.href)
+                  .then(() => setCopied(true))
+                  .catch(() => undefined)
+              }
+            >
+              {t('download.copyLink')}
+            </Button>
+            {copied && (
+              <p role="status" className="text-xs text-success">
+                {t('download.linkCopied')}
+              </p>
+            )}
+            {available.length > 0 && <p className="text-xs text-text-muted">{t('download.mobileOthers')}</p>}
+          </section>
+        )}
         {available.length === 0 ? (
           <p className="rounded-sm bg-surface-sunken px-3 py-2 text-sm text-text-muted">{t('download.notConfigured')}</p>
         ) : (
@@ -136,6 +157,7 @@ export function DesktopDownload({ links }: { links: DownloadLinks }) {
             ))}
           </ol>
         )}
+        <p className="text-xs text-text-muted">{t('download.nameNote')}</p>
         {/* The Mac build is not notarized yet, and AppImages must be marked executable. */}
         {platform === 'macos' && links.macos && downloaded !== 'macos' && <p className="rounded-sm bg-surface-sunken px-3 py-2 text-xs text-text-muted">{t('download.macNote')}</p>}
         {platform === 'linux' && (links.linux || links.linuxAppImage) && (

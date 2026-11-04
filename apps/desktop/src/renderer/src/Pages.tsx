@@ -601,6 +601,47 @@ export function ReportsPage() {
 
 // ─── Time Off ────────────────────────────────────────────────────────────────
 
+/** Cancel a request, after saying what happens (it could not be withdrawn from the app before). */
+function CancelRequest({ id, approved, hours, onDone }: { id: string; approved: boolean; hours: number; onDone: () => void }) {
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!asking)
+    return (
+      <button onClick={() => setAsking(true)} className="shrink-0 rounded-sm border border-border px-2 py-1 text-2xs hover:bg-surface-muted">
+        Cancel request
+      </button>
+    );
+  return (
+    <span role="group" aria-label="Cancel this request?" className="flex shrink-0 flex-col items-end gap-1 text-2xs">
+      <span className="text-text-muted">{approved ? `Cancel this approved time off? ${fmtHours(hours)} h go back to your balance.` : 'Withdraw this request?'}</span>
+      <span className="flex gap-1">
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              await bridge.cancelTimeOff(id);
+              onDone();
+            } catch (e) {
+              setError(errorText(e, 'Could not cancel the request'));
+              setBusy(false);
+            }
+          }}
+          className="rounded-sm bg-danger px-2 py-1 font-semibold text-on-accent disabled:opacity-60"
+        >
+          {busy ? 'Cancelling…' : 'Yes, cancel'}
+        </button>
+        <button onClick={() => setAsking(false)} className="rounded-sm border border-border px-2 py-1 hover:bg-surface-muted">
+          Keep it
+        </button>
+      </span>
+      {error && <span className="text-danger">{error}</span>}
+    </span>
+  );
+}
+
 const TO_TONE: Record<TimeOffDto['requests'][number]['status'], 'success' | 'warning' | 'danger' | 'neutral'> = { APPROVED: 'success', PENDING: 'warning', REJECTED: 'danger', CANCELLED: 'neutral' };
 
 export function TimeOffPage() {
@@ -657,6 +698,7 @@ export function TimeOffPage() {
                         </span>
                       </span>
                       <Badge tone={TO_TONE[r.status]}>{r.status.charAt(0) + r.status.slice(1).toLowerCase()}</Badge>
+                      {(r.status === 'PENDING' || (r.status === 'APPROVED' && r.start_date >= localDateInput())) && <CancelRequest id={r.id} approved={r.status === 'APPROVED'} hours={r.hours} onDone={q.reload} />}
                     </li>
                   ))}
                 </ul>

@@ -15,13 +15,21 @@ import { t } from './i18n';
  * Gives focus back to what opened a dialog when it closes (audit QA-03). These dialogs are controlled
  * and have no Radix Trigger, so Radix would otherwise drop focus on <body>. The opener is read while
  * rendering the open dialog: by the time effects run, an autoFocus field inside may already have focus.
+ * A dialog loaded on demand (next/dynamic) renders after its button has already lost focus to <body>,
+ * so the last element that had focus stands in for it.
  */
+let lastFocused: HTMLElement | null = null;
+if (typeof document !== 'undefined') document.addEventListener('focusin', (e) => (lastFocused = e.target instanceof HTMLElement ? e.target : null), true);
+
 function useReturnFocus(open: boolean) {
   const opener = useRef<HTMLElement | null>(null);
   const wasOpen = useRef(false);
   if (open !== wasOpen.current) {
     wasOpen.current = open;
-    if (open && typeof document !== 'undefined') opener.current = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+    if (open && typeof document !== 'undefined') {
+      const active = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+      opener.current = active ?? (lastFocused?.isConnected ? lastFocused : null);
+    }
   }
   return {
     onCloseAutoFocus: (e: Event) => {
@@ -57,7 +65,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
             </D.Close>
           </div>
           <div className="overflow-y-auto px-5 py-4">{children}</div>
-          {footer && <div className="flex justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>}
+          {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>}
         </D.Content>
       </D.Portal>
     </D.Root>

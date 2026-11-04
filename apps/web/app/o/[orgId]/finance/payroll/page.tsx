@@ -8,7 +8,6 @@ import { errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { BankDetailsDialog, PayrollProfileDialog, RunPayrollDialog, periodLabel } from '@/components/finance/payroll';
 import { AmountsOwed } from '@/components/finance/amounts-owed';
-import { HelpLink } from '@/components/help/help-link';
 
 type PayrollTab = 'runs' | 'owed' | 'profiles';
 
@@ -33,7 +32,7 @@ function Payroll() {
   const canManage = org.can('payroll:manage');
   return (
     <>
-      <PageHeader title="Payroll" description="What members are owed, paying them for approved time and paid time off, and publishing their pay stubs." actions={<HelpLink article="payroll" />} />
+      <PageHeader title="Payroll" description="What members are owed, paying them for approved time and paid time off, and publishing their pay stubs." />
       {tabs.length > 1 && <Tabs value={current} onValueChange={(v) => setTab(v as PayrollTab)} items={tabs} className="mb-4" />}
       {current === 'runs' ? <Runs canManage={canManage} /> : current === 'owed' ? <AmountsOwed /> : <Profiles canManage={canManage} />}
     </>
@@ -174,7 +173,7 @@ function Profiles({ canManage }: { canManage: boolean }) {
               )
             }
           >
-            <DataTable rows={p.members} columns={columns} rowKey={(m) => m.membership_id} caption={`Members of ${p.name}`} empty={<EmptyState title="No members" description="Edit the profile to add the people it pays." />} />
+            <DataTable rows={p.members} columns={columns} rowKey={(m) => m.membership_id} caption={`Members of ${p.name}`} empty={<EmptyState title="No members" description="Edit the pay group to add the people it pays." />} />
           </Panel>
         );
       })}

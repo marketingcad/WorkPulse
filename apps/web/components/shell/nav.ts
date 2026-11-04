@@ -9,6 +9,8 @@ import {
   CalendarOff,
   CheckSquare,
   ClipboardCheck,
+  Clock,
+  Eye,
   FileText,
   FolderKanban,
   LayoutDashboard,
@@ -21,6 +23,7 @@ import {
   Receipt,
   Settings,
   Users,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -35,6 +38,8 @@ export interface NavTab extends Gate {
   /** message key */
   label: string;
   href: string; // relative to /o/:orgId
+  /** message key of the section this tab is listed under (Settings groups its many pages) */
+  group?: string;
 }
 
 export interface NavItem extends Gate {
@@ -76,6 +81,8 @@ export const NAV: NavGroup[] = [
           // Submitted timesheets and manual time requests, each part shown by its own permission.
           { label: 'nav.item.approvals', href: '/timesheets/approvals', perms: ['timesheets:approve', 'manual_time:request', 'manual_time:approve'] },
           { label: 'nav.item.teamWeek', href: '/timesheets/team', perms: ['timesheets:read'], minScope: 'team_or_org' },
+          // Offline time the server refused: who, when, why, and whether a correction was asked for.
+          { label: 'nav.item.timeNotAdded', href: '/timesheets/not-added', perms: ['tracking:read'], minScope: 'team_or_org' },
         ],
         also: ['/timesheets/manual'],
       },
@@ -153,24 +160,34 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
+    // The person's own pages, in the menu too (the audit found them only behind the avatar).
+    label: 'nav.group.me',
+    items: [
+      { label: 'nav.item.myTimesheet', href: '/timesheets', icon: Clock, perms: ['timesheets:read'] },
+      { label: 'nav.item.myPayStubs', href: '/pay-stubs', icon: Wallet, perms: ['timesheets:read'] },
+      { label: 'nav.item.whatIsMonitored', href: '/me/monitoring', icon: Eye },
+    ],
+  },
+  {
     label: null,
     items: [
       {
         label: 'nav.item.settings',
         href: '/settings',
         icon: Settings,
+        // Grouped by topic (the audit found 11 tabs in one scrolling row); every page keeps its address and its check.
         tabs: [
-          { label: 'nav.item.organization', href: '/settings', perms: ['org:update'] },
-          { label: 'nav.item.timePay', href: '/settings/time', perms: ['org:update'] },
-          { label: 'nav.item.trackingPolicies', href: '/settings/policies', perms: ['policies:read'], minScope: 'team_or_org' },
-          { label: 'nav.item.devices', href: '/devices', perms: ['devices:read'] },
-          { label: 'nav.item.roles', href: '/settings/roles', perms: ['roles:manage'] },
-          { label: 'nav.item.accessReview', href: '/settings/access-review', perms: ['members:manage', 'settings:security'] },
-          { label: 'nav.item.security', href: '/settings/security', perms: ['retention:manage', 'settings:security'] },
-          { label: 'nav.item.screenshotRetention', href: '/settings/screenshot-retention', perms: ['retention:manage', 'settings:security'] },
-          { label: 'nav.item.apiKeys', href: '/developer/api-keys', perms: ['api_keys:manage'] },
-          { label: 'nav.item.webhooks', href: '/developer/webhooks', perms: ['webhooks:manage'] },
-          { label: 'nav.item.auditLog', href: '/settings/audit', perms: ['audit:read'] },
+          { label: 'nav.item.organization', href: '/settings', perms: ['org:update'], group: 'nav.settings.general' },
+          { label: 'nav.item.timePay', href: '/settings/time', perms: ['org:update'], group: 'nav.settings.time' },
+          { label: 'nav.item.trackingPolicies', href: '/settings/policies', perms: ['policies:read'], minScope: 'team_or_org', group: 'nav.settings.time' },
+          { label: 'nav.item.roles', href: '/settings/roles', perms: ['roles:manage'], group: 'nav.settings.people' },
+          { label: 'nav.item.accessReview', href: '/settings/access-review', perms: ['members:manage', 'settings:security'], group: 'nav.settings.people' },
+          { label: 'nav.item.devices', href: '/devices', perms: ['devices:read'], group: 'nav.settings.people' },
+          { label: 'nav.item.security', href: '/settings/security', perms: ['retention:manage', 'settings:security'], group: 'nav.settings.data' },
+          { label: 'nav.item.screenshotRetention', href: '/settings/screenshot-retention', perms: ['retention:manage', 'settings:security'], group: 'nav.settings.data' },
+          { label: 'nav.item.auditLog', href: '/settings/audit', perms: ['audit:read'], group: 'nav.settings.data' },
+          { label: 'nav.item.apiKeys', href: '/developer/api-keys', perms: ['api_keys:manage'], group: 'nav.settings.integrations' },
+          { label: 'nav.item.webhooks', href: '/developer/webhooks', perms: ['webhooks:manage'], group: 'nav.settings.integrations' },
         ],
       },
       // The user manual and the product tour, for everyone.

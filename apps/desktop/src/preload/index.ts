@@ -28,12 +28,14 @@ const api = {
   setNote: (note: string) => call('notes:set', { note }),
   resolveIdle: (choice: 'KEPT' | 'DISCARDED' | 'REASSIGNED', projectId?: string, taskId?: string | null) => call('idle:resolve', { choice, projectId, taskId }),
   resolveRecovery: (resume: boolean) => call('recovery:resolve', { resume }),
-  requestManualTime: (r: { projectId: string; taskId: string | null; startedAt: string; endedAt: string; reason: string; note?: string }) => call('manualTime:request', r),
+  requestManualTime: (r: { projectId: string; taskId: string | null; startedAt: string; endedAt: string; reason: string; note?: string; refusedSessionId?: string }) => call('manualTime:request', r),
   /** The signed-in worker's own data (read-only). */
   me: <T>(resource: MeResource, params: { from?: string; to?: string; date?: string } = {}): Promise<T> => call('me:get', { resource, ...params }),
   submitTimesheet: (date: string, version?: number) => call('me:submitTimesheet', { date, version }),
   requestTimeOff: (r: { policy_id: string; start_date: string; end_date: string; half_day?: boolean; reason?: string }) => call('me:requestTimeOff', r),
   readNotifications: (ids: string[] | 'all') => call('me:readNotifications', { ids }),
+  /** Cancel one of the worker's own time-off requests. */
+  cancelTimeOff: (id: string) => call('me:cancelTimeOff', { id }),
   /** Save one own pay stub as a PDF (main shows a save dialog); `saved` is false when cancelled. */
   savePayStub: (id: string): Promise<{ saved: boolean }> => call('me:savePayStub', { id }),
   /** Main asks to show a page, e.g. after a desktop notification is clicked. */
@@ -42,6 +44,12 @@ const api = {
     ipcRenderer.on('app:navigate', listener);
     return () => ipcRenderer.removeListener('app:navigate', listener);
   },
+  /** Try to connect to the server again now. */
+  reconnect: () => call('agent:reconnect'),
+  /** Remove an item of time the server did not add, once the worker has seen it. */
+  dismissNotAdded: (id: string) => call('notAdded:dismiss', { id }),
+  /** macOS: open System Settings where the app is given Screen Recording or Accessibility. */
+  openPermissionSettings: (kind: 'screen' | 'accessibility') => call('system:openPermissionSettings', { kind }),
   quit: () => call('app:quit'),
 };
 

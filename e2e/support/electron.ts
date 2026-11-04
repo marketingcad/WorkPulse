@@ -23,9 +23,13 @@ export interface DesktopApp {
   userData: string;
 }
 
-async function launch(): Promise<DesktopApp> {
-  const userData = mkdtempSync(path.join(os.tmpdir(), 'workpulse-e2e-'));
-  const env: Record<string, string> = { ...(process.env as Record<string, string>), TALLYWORK_SERVER: WEB_URL };
+/**
+ * Launch the app. `server` points it somewhere other than the test server (a test proxy that can
+ * go offline), and `userData` reopens an earlier launch's folder (a restart of the same install).
+ */
+export async function launch(opts: { server?: string; userData?: string } = {}): Promise<DesktopApp> {
+  const userData = opts.userData ?? mkdtempSync(path.join(os.tmpdir(), 'workpulse-e2e-'));
+  const env: Record<string, string> = { ...(process.env as Record<string, string>), TALLYWORK_SERVER: opts.server ?? WEB_URL };
   // VS Code terminals set this, which makes Electron run as plain Node; dev-server URLs must not leak in either.
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.ELECTRON_RENDERER_URL;
@@ -36,13 +40,24 @@ async function launch(): Promise<DesktopApp> {
   return { app, window, userData };
 }
 
+/**
+ * Quit the app. While clocked in, quitting asks for the end-of-day report first (the app stays open),
+ * so a test that ends clocked in is ended with app.exit instead of waiting for it.
+ */
+export async function closeApp(app: ElectronApplication): Promise<void> {
+  const closed = app.close().then(() => true, () => true);
+  if (await Promise.race([closed, new Promise<false>((r) => setTimeout(() => r(false), 10_000))])) return;
+  await app.evaluate(({ app: a }) => a.exit(0)).catch(() => undefined);
+  await closed;
+}
+
 export const test = base.extend<{ desktopApp: DesktopApp }>({
   desktopApp: async ({}, use, testInfo) => {
     test.skip(process.platform === 'linux' && !process.env.DISPLAY, 'Electron needs a display: run under xvfb-run on Linux');
     const d = await launch();
     await use(d);
     if (testInfo.status !== testInfo.expectedStatus) await testInfo.attach('app-window', { body: await d.window.screenshot().catch(() => Buffer.alloc(0)), contentType: 'image/png' });
-    await d.app.close().catch(() => undefined);
+    await closeApp(d.app);
     rmSync(d.userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   },
 });

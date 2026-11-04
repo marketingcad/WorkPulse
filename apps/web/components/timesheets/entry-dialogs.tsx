@@ -262,15 +262,21 @@ export function DeleteEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onC
 }
 
 // ─── Revision history ────────────────────────────────────────────────────────
-const FIELD_LABEL: Record<string, string> = { started_at: 'Start', ended_at: 'End', project_id: 'Project', task_id: 'Task', billable: 'Billable', note: 'Note', deleted: 'Deleted', split_from: 'Split from', manual_request_id: 'Manual request' };
+const FIELD_LABEL: Record<string, string> = { started_at: 'Start', ended_at: 'End', project_id: 'Project', task_id: 'Task', billable: 'Billable', note: 'Note', deleted: 'Deleted', split_from: 'Split from', manual_request_id: 'Manual request', time_type_id: 'Time type', billable_seconds: 'Billable time', duration_only: 'Entered as a duration' };
+/** Who made a change, when it was not a named person (the history said only "User" or "Agent"). */
+const ACTOR_LABEL: Record<string, string> = { user: 'A person', agent: 'The desktop app', system: 'WorkPulse, automatically', api: 'An integration' };
 
 export function RevisionsDrawer({ entry, onClose, names }: { entry: TimeEntryDto; onClose: () => void; names: Map<string, string> }) {
   const org = useOrg();
   const q = useOrgQuery<EntryRevision[]>(`/time-entries/${entry.id}/revisions`);
-  const fmt = (v: unknown): string => {
+  // Time types by name, not by id.
+  const typesQ = useOrgQuery<Array<{ id: string; name: string }>>('/time-types?include_archived=true', { staleTime: 60_000 });
+  const fmt = (v: unknown, key?: string): string => {
     if (v === null || v === undefined || v === '') return '—';
     if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+    if (key === 'billable_seconds' && typeof v === 'number') return org.fmtDuration(v);
     if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return fmtDateTime(v);
+    if (typeof v === 'string' && key === 'time_type_id') return typesQ.data?.find((t) => t.id === v)?.name ?? 'A time type that was removed';
     if (typeof v === 'string') return names.get(v) ?? v;
     return JSON.stringify(v);
   };
@@ -292,7 +298,7 @@ export function RevisionsDrawer({ entry, onClose, names }: { entry: TimeEntryDto
                   <Badge tone={r.action === 'DELETE' ? 'danger' : r.action === 'CREATE' ? 'success' : 'info'}>{humanize(r.action)}</Badge>
                   <span className="tabular text-xs text-text-muted">Rev. {r.revision}</span>
                   <span className="ml-auto text-xs text-text-muted">
-                    {fmtDateTime(r.created_at)} · {r.actor_id === org.membership.id ? 'you' : humanize(r.actor_type)}
+                    {fmtDateTime(r.created_at)} · {r.actor_id === org.membership.id ? 'you' : ((r.actor_id && names.get(r.actor_id)) ?? ACTOR_LABEL[r.actor_type.toLowerCase()] ?? humanize(r.actor_type))}
                   </span>
                 </div>
                 {r.reason && <p className="mt-1.5 text-sm">“{r.reason}”</p>}
@@ -309,8 +315,8 @@ export function RevisionsDrawer({ entry, onClose, names }: { entry: TimeEntryDto
                       {keys.map((k) => (
                         <tr key={k} className="align-top">
                           <td className="py-0.5 pr-2 text-text-muted">{FIELD_LABEL[k] ?? humanize(k)}</td>
-                          <td className="tabular py-0.5 pr-2 text-text-muted line-through decoration-text-faint">{r.before ? fmt(r.before[k]) : '—'}</td>
-                          <td className="tabular py-0.5">{r.after ? fmt(r.after[k]) : '—'}</td>
+                          <td className="tabular py-0.5 pr-2 text-text-muted line-through decoration-text-faint">{r.before ? fmt(r.before[k], k) : '—'}</td>
+                          <td className="tabular py-0.5">{r.after ? fmt(r.after[k], k) : '—'}</td>
                         </tr>
                       ))}
                     </tbody>

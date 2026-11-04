@@ -193,7 +193,8 @@ export default function PayrollRunPage() {
         title={confirm === 'finalize' ? 'Finalize payroll?' : confirm === 'paid' ? 'Mark payroll as paid?' : 'Delete draft payroll?'}
         description={
           confirm === 'finalize'
-            ? 'This cannot be undone. Amounts are locked and every member gets their pay stub. Time approved later goes into the next payroll; to correct an amount, add a bonus or deduction on the next payroll.'
+            ? // The warnings on the page, repeated where the decision is made.
+              `${unapproved > 0 ? `${h(unapproved)} in this period is not approved yet and is not paid by this payroll. ` : ''}${r.other_currency ? 'Some time is priced in another currency and is not part of it. ' : ''}This cannot be undone. Amounts are locked and every member gets their pay stub. Time approved later goes into the next payroll; to correct an amount, add a bonus or deduction on the next payroll.`
             : confirm === 'paid'
               ? 'Record that everyone in this payroll has been paid. This cannot be undone.'
               : 'The draft and its adjustments are removed. You can run it again.'

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Bell, CalendarClock, CalendarDays, CalendarOff, ChevronDown, Clock, CloudOff, Home, LogOut, Menu, Receipt, RefreshCw, Settings, X } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
-import { bridge, fmtTime, initials, useMe, useTick, viewForLink, type View } from './lib';
+import { bridge, fmtTime, initials, leave, useDialogFocus, useMe, useTick, viewForLink, type View } from './lib';
 import { GROUP_OF, NAV_GROUPS, groupFor } from './nav';
 import type { NotificationsDto } from './types';
 import { Mark } from './brand';
@@ -72,6 +72,8 @@ export function Shell({ s, view, go, children }: { s: AgentState; view: View; go
   const now = useTick(true);
   const [drawer, setDrawer] = useState(false);
   const synced = s.sync.lastSyncAt ? Math.max(0, Math.round((now - Date.parse(s.sync.lastSyncAt)) / 60_000)) : null;
+  // A computer waiting for approval cannot send yet: say that instead of "Syncing…" forever.
+  const pending = s.device?.status.toUpperCase() === 'PENDING';
   return (
     <div className="flex h-full flex-col bg-bg">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/[0.06] bg-nav px-2 text-nav-fg md:gap-3 md:px-4">
@@ -84,11 +86,22 @@ export function Shell({ s, view, go, children }: { s: AgentState; view: View; go
         </div>
         <span className={`inline-flex items-center gap-1.5 text-xs ${s.sync.online ? 'text-nav-muted' : 'text-[#e3a33b]'}`} title={s.sync.online ? 'Connected' : 'Offline: your time is saved on this computer and syncs when you are back online'}>
           {s.sync.online ? <span className="size-1.5 rounded-full bg-[#3fb27f]" /> : <CloudOff className="size-3.5" />}
-          <span className="hidden sm:inline">{s.sync.online ? 'Online' : 'Offline'}</span>
+          {/* Always readable, also in a narrow window: the worker must never guess which mode they are in. */}
+          <span>{s.sync.online ? 'Online' : s.offline.mode === 'expired' ? 'Offline too long' : 'Offline'}</span>
         </span>
         <span className="hidden items-center gap-1.5 text-xs text-nav-muted md:inline-flex" title={s.sync.lastSyncAt ? `Last synced ${fmtTime(s.sync.lastSyncAt)}` : undefined}>
-          <RefreshCw className={`size-3.5 ${s.sync.queued > 0 && s.sync.online ? 'animate-spin' : ''}`} />
-          {s.sync.queued > 0 ? (s.sync.online ? 'Syncing…' : `${s.sync.queued} saved`) : synced === null ? 'Not synced yet' : synced < 1 ? 'Synced just now' : `Synced ${synced}m ago`}
+          <RefreshCw className={`size-3.5 ${s.sync.queued > 0 && s.sync.online && !pending ? 'animate-spin' : ''}`} />
+          {pending && s.sync.queued > 0
+            ? `${s.sync.queued} saved · waiting for approval`
+            : s.sync.queued > 0
+              ? s.sync.online
+                ? 'Syncing…'
+                : `${s.sync.queued} saved`
+              : synced === null
+                ? 'Not synced yet'
+                : synced < 1
+                  ? 'Synced just now'
+                  : `Synced ${synced}m ago`}
         </span>
         <Notifications s={s} go={go} />
         <ProfileMenu s={s} />
@@ -102,20 +115,27 @@ export function Shell({ s, view, go, children }: { s: AgentState; view: View; go
           {children}
         </main>
       </div>
-      {drawer && (
-        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
-          <button className="absolute inset-0 bg-black/40" aria-label="Close navigation" onClick={() => setDrawer(false)} />
-          <nav className="absolute inset-y-0 left-0 flex w-64 flex-col gap-0.5 overflow-y-auto bg-nav bg-[radial-gradient(140%_55%_at_0%_100%,rgba(23,102,255,0.20),transparent_65%)] px-2 py-3 text-nav-fg shadow-overlay">
-            <div className="mb-2 flex items-center justify-between px-2.5">
-              <span className="truncate text-sm font-semibold">{s.account!.name}</span>
-              <button onClick={() => setDrawer(false)} aria-label="Close navigation" className="rounded-sm p-1 text-nav-muted hover:bg-white/10">
-                <X className="size-4" />
-              </button>
-            </div>
-            <NavList view={view} go={go} onPick={() => setDrawer(false)} />
-          </nav>
+      {drawer && <NavDrawer s={s} view={view} go={go} close={() => setDrawer(false)} />}
+    </div>
+  );
+}
+
+/** The navigation drawer below 1024px: focus moves in, Tab stays in, Escape closes, focus returns to the menu button. */
+function NavDrawer({ s, view, go, close }: { s: AgentState; view: View; go: (v: View) => void; close: () => void }) {
+  const dialog = useDialogFocus<HTMLDivElement>(close);
+  return (
+    <div ref={dialog} tabIndex={-1} className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
+      {/* Pointer-only backdrop: the close button inside the drawer is the keyboard way out. */}
+      <button tabIndex={-1} className="absolute inset-0 bg-black/40" aria-hidden onClick={close} />
+      <nav className="absolute inset-y-0 left-0 flex w-64 flex-col gap-0.5 overflow-y-auto bg-nav bg-[radial-gradient(140%_55%_at_0%_100%,rgba(23,102,255,0.20),transparent_65%)] px-2 py-3 text-nav-fg shadow-overlay">
+        <div className="mb-2 flex items-center justify-between px-2.5">
+          <span className="truncate text-sm font-semibold">{s.account!.name}</span>
+          <button onClick={close} aria-label="Close navigation" className="rounded-sm p-1 text-nav-muted hover:bg-white/10">
+            <X className="size-4" />
+          </button>
         </div>
-      )}
+        <NavList view={view} go={go} onPick={close} />
+      </nav>
     </div>
   );
 }
@@ -184,7 +204,14 @@ function Notifications({ s, go }: { s: AgentState; go: (v: View) => void }) {
                   <span className="min-w-0">
                     <span className="block text-sm font-medium">{n.title}</span>
                     {n.body && <span className="block text-xs text-text-muted">{n.body}</span>}
-                    <span className="mt-0.5 block text-2xs text-text-faint">{new Date(n.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                    <span className="mt-0.5 block text-2xs text-text-faint">
+                      {new Date(n.created_at).toLocaleString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })}
+                    </span>
                   </span>
                 </button>
               </li>
@@ -217,7 +244,7 @@ function ProfileMenu({ s }: { s: AgentState }) {
             <div className="truncate text-xs text-text-muted">{s.account!.email}</div>
             <div className="truncate text-2xs text-text-faint">{s.account!.organization}</div>
           </div>
-          <button role="menuitem" className={`${item} text-danger`} onClick={pick(() => void bridge.logout())}>
+          <button role="menuitem" className={`${item} text-danger`} onClick={pick(() => leave(s, 'logout'))}>
             <LogOut className="size-4" /> Sign out
           </button>
         </div>

@@ -243,6 +243,8 @@ function TeamDrawer({ team, onClose, projects, canManage }: { team: TeamDto | nu
 
   const candidates = useMemo(() => (workersQ.data ?? []).filter((w) => w.status === 'ACTIVE' && !team?.members.some((m) => m.membership_id === w.id)), [workersQ.data, team]);
   const teamProjects = projects.filter((p) => team?.project_ids.includes(p.id));
+  // Removing someone also removes the project access they had through this team: ask first.
+  const [removing, setRemoving] = useState<{ id: string; name: string } | null>(null);
 
   const setMember = async (membershipId: string, role: 'MANAGER' | 'MEMBER' | null) => {
     if (!team) return;
@@ -310,7 +312,7 @@ function TeamDrawer({ team, onClose, projects, canManage }: { team: TeamDto | nu
                         <option value="MEMBER">Member</option>
                         <option value="MANAGER">Manager</option>
                       </Select>
-                      <IconButton label={`Remove ${m.name} from team`} size="xs" disabled={busy === m.membership_id} onClick={() => setMember(m.membership_id, null)}>
+                      <IconButton label={`Remove ${m.name} from team`} size="xs" disabled={busy === m.membership_id} onClick={() => setRemoving({ id: m.membership_id, name: m.name })}>
                         <Trash2 className="size-3.5" />
                       </IconButton>
                     </>
@@ -321,6 +323,23 @@ function TeamDrawer({ team, onClose, projects, canManage }: { team: TeamDto | nu
               ))}
             </ul>
           )}
+
+          <ConfirmDialog
+            open={!!removing}
+            onOpenChange={(o) => !o && setRemoving(null)}
+            title={`Remove ${removing?.name ?? 'this member'} from ${team.name}?`}
+            description={
+              teamProjects.length
+                ? `They stop seeing this team's work and lose access to its ${teamProjects.length === 1 ? 'project' : `${teamProjects.length} projects`} (${teamProjects.map((p) => p.name).join(', ')}), unless they are on ${teamProjects.length === 1 ? 'it' : 'them'} directly. Their tracked time is kept. You can add them back at any time.`
+                : 'They stop seeing this team’s work. Their tracked time is kept. You can add them back at any time.'
+            }
+            confirmLabel="Remove from team"
+            danger
+            onConfirm={() => {
+              if (removing) void setMember(removing.id, null);
+              setRemoving(null);
+            }}
+          />
 
           <h3 className="border-t border-border px-5 pb-1 pt-4 text-2xs font-semibold uppercase tracking-wide text-text-muted">Projects</h3>
           {teamProjects.length === 0 ? (

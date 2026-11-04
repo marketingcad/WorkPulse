@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import type { TrackingPolicy } from '@tallywork/domain';
+import type { OfflineStatus } from './offline';
+import type { NotAddedItem } from './not-added';
+import type { MacPermissions } from './permissions';
 
 /** Own-data resources the renderer may read (GET /api/v1/agent/me/<resource>). */
 export const ME_RESOURCES = ['summary', 'sessions', 'timesheet', 'activity', 'tasks', 'schedule', 'time-off', 'notifications', 'pay-stubs'] as const;
@@ -37,6 +40,8 @@ export const IPC = {
     endedAt: z.iso.datetime({ offset: true }),
     reason: z.string().trim().max(500),
     note: z.string().max(1000).optional(),
+    /** asking for time the server refused (that session): links the request so managers see it corrected */
+    refusedSessionId: z.uuid().optional(),
   }),
   /** Own-data reads (the signed-in worker only). The path is built in main from this allowlist. */
   'me:get': z.object({
@@ -47,9 +52,16 @@ export const IPC = {
   }),
   'me:submitTimesheet': z.object({ date: z.iso.date(), version: z.number().int().positive().optional() }),
   'me:requestTimeOff': z.object({ policy_id: z.uuid(), start_date: z.iso.date(), end_date: z.iso.date(), half_day: z.boolean().optional(), reason: z.string().trim().max(1000).optional() }),
+  'me:cancelTimeOff': z.object({ id: z.uuid() }),
   'me:readNotifications': z.object({ ids: z.union([z.literal('all'), z.array(z.uuid()).max(200)]) }),
   /** Download one own pay stub as a PDF; main asks where to save it and opens it. */
   'me:savePayStub': z.object({ id: z.uuid() }),
+  /** Try loading the account from the server again now (after starting offline). */
+  'agent:reconnect': z.void(),
+  /** The worker has seen time the server did not add (or asked for it as manual time). */
+  'notAdded:dismiss': z.object({ id: z.string().min(1).max(100) }),
+  /** Open the macOS System Settings pane where the app is given a permission. */
+  'system:openPermissionSettings': z.object({ kind: z.enum(['screen', 'accessibility']) }),
   'app:quit': z.void(),
 } as const;
 
@@ -118,6 +130,14 @@ export interface AgentState {
   idlePrompt: { idleId: string; startedAt: string; endedAt: string | null } | null;
   recoveryPrompt: { sessionId: string; lastEvidenceAt: string; projectName: string } | null;
   sync: { queued: number; lastSyncAt: string | null; online: boolean; error: string | null };
+  /** Why the account could not be loaded from the server (null while it loads or once it has). */
+  connectError: string | null;
+  /** Online, offline (tracking from saved settings) or offline for too long (shared/offline.ts). */
+  offline: OfflineStatus;
+  /** Time and data the server refused, with why (shared/not-added.ts). */
+  notAdded: NotAddedItem[];
+  /** macOS privacy permissions (null on other systems). */
+  permissions: MacPermissions | null;
   capabilities: Record<string, boolean>;
   /** Browsers whose Tallywork extension is connected (Windows); others fall back to reading the address bar. */
   browserExtension: string[];

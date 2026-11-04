@@ -329,6 +329,45 @@ export const ingestReceipts = pgTable(
   (t) => [primaryKey({ columns: [t.deviceId, t.clientEventId] }), index().on(t.organizationId, t.receivedAt)],
 );
 
+/**
+ * Time (or monitoring data) a desktop app recorded but the server refused when it arrived, usually
+ * tracked offline under settings that changed meanwhile. One row per refused session, merged as its
+ * records arrive. It is never added to anyone's time on its own: the worker asks for it as manual time,
+ * which goes through the usual approval (`manualRequestId`), or removes the note (`dismissedAt`).
+ */
+export const refusedTime = pgTable(
+  'refused_time',
+  {
+    id: pk(),
+    organizationId: orgId(),
+    membershipId: uuid().notNull(),
+    deviceId: uuid().notNull(),
+    /** the refused session; null for a refused record that belongs to none */
+    sessionId: uuid(),
+    /** 'time' once any of the session's own events was refused; 'data' when only monitoring data was */
+    kind: text().$type<'time' | 'data'>().notNull(),
+    projectId: uuid(),
+    taskId: uuid(),
+    /** the span of the refused records (device times) */
+    startedAt: tstz().notNull(),
+    endedAt: tstz().notNull(),
+    /** why, from the first refused session event (or record) */
+    code: text().notNull(),
+    message: text().notNull(),
+    eventCount: integer().notNull().default(1),
+    /** the worker's manual time request for this time, once sent */
+    manualRequestId: uuid(),
+    /** the worker removed the note without asking for the time */
+    dismissedAt: tstz(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('refused_time_session_uq').on(t.organizationId, t.membershipId, t.sessionId),
+    foreignKey({ columns: [t.organizationId, t.membershipId], foreignColumns: [memberships.organizationId, memberships.id] }).onDelete('cascade'),
+    index().on(t.organizationId, t.startedAt),
+  ],
+);
+
 /** Daily rollup per worker × project × task (reporting layer L2). */
 export const rollupWorkerDay = pgTable(
   'rollup_worker_day',

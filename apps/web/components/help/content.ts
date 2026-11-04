@@ -202,6 +202,23 @@ export const HELP_ARTICLES: HelpArticle[] = [
     links: [{ label: 'Open End-of-day reports', href: '/tracking/reports' }],
     keywords: ['eod', 'end of day', 'daily report', 'clock out', 'finished'],
   },
+  {
+    id: 'time-not-added',
+    category: 'time',
+    title: 'Handle time that was not added',
+    summary: 'Time a desktop app recorded that the server could not add, and what happens to it.',
+    steps: [
+      'Open Approvals › Time not added. It lists, for the members you manage, time their desktop app recorded but the server could not add: who, when, how long, the project, and why.',
+      'Time recorded offline is kept even if, meanwhile, its project was archived, the member was taken off it or a limit was reached: it is added and flagged Needs review in Approvals. What is not added is time recorded while tracking was turned off for the member. The app keeps that time and shows it to the member with the same reason.',
+      'Nothing is added on its own. The member can ask for the time as manual time from the desktop app; it then waits for you in Approvals like any manual time, with the same overlap and lock checks, so it is never counted twice.',
+      'The status shows where each one stands: Not resolved, Waiting for approval, Added after approval, Request rejected, or Removed by the member. Use Show › All to see the ones already dealt with.',
+    ],
+    links: [
+      { label: 'Open Time not added', href: '/timesheets/not-added' },
+      { label: 'Open Approvals', href: '/timesheets/approvals' },
+    ],
+    keywords: ['refused', 'rejected', 'not added', 'offline', 'missing time', 'sync'],
+  },
 
   // ─── People ────────────────────────────────────────────────────────────────
   {
@@ -260,11 +277,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
     summary: 'Requests, approvals, leave policies and holidays.',
     steps: [
       'Open Time off. To ask for time off, click Request time off, choose the policy and dates, and click Send request.',
-      'To decide on requests, open the Requests tab and click Approve or Reject (you can tick several and approve them together).',
+      'To decide on requests, open the Requests tab and click Approve or Reject (you can tick several and approve them together). Before you decide shows the balance left after approving and who else is away or has asked for those days. If some cannot be approved, the message names them and says why.',
       'On Policies & holidays, click New policy to create a kind of leave (hours per day, paid or not, approval needed or not), add holidays, or adjust someone’s balance. To stop offering a policy, open it and click Archive policy: requests already made are kept.',
       'Payroll pays a paid holiday as the hours the person is scheduled to work that day (8 hours on a weekday if they have no schedule). It appears with paid time off.',
     ],
-    points: ['A day is never paid twice: a paid holiday that falls inside someone’s paid time off is paid once.'],
+    points: [
+      'A day is never paid twice: a paid holiday that falls inside someone’s paid time off is paid once.',
+      'Members can cancel their own request in the desktop app (Time off › Cancel request): a pending one, or an approved one that has not started yet. Its hours go back to their balance.',
+    ],
     links: [{ label: 'Open Time off', href: '/time-off' }],
     keywords: ['leave', 'vacation', 'holiday', 'sick', 'pto', 'balance', 'time off'],
   },
@@ -279,7 +299,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'Open Projects and click New project.',
       'Enter a name. Optionally pick a client, dates, an estimate and a colour.',
       'Under Members and Teams, choose who can track time to it.',
-      'Under Finance, set pay or bill rates for this project, or tick “Not billable project”.',
+      'Under Finance, set pay or bill rates for this project, or untick “Billable by default” for internal work.',
       'Click Create project. The project page opens, where you can add tasks, a budget and documents.',
     ],
     points: [
@@ -376,13 +396,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
     summary: 'Costs such as travel or software, with receipts.',
     steps: [
       'Open Expenses and click New expense. Enter the category, date and amount, attach a receipt if you have one, and click Submit expense.',
-      'To decide, click Approve or Reject on a submitted expense.',
+      'To decide, click Approve or Reject on a submitted expense. Rejecting needs a reason (at least 3 characters): the member sees it, with who rejected it and when, and is notified.',
       'Once you have paid someone back, click Reimburse.',
     ],
     points: [
       'A receipt belongs to one expense: upload it for the expense you are submitting. The same receipt cannot back a second claim.',
       'An expense submitted as not reimbursable can be approved (for example to bill it to a client) but not reimbursed.',
       'You cannot approve your own expense.',
+      'A rejection reason stays in the expense’s history, also if it is approved later.',
     ],
     links: [{ label: 'Open Expenses', href: '/finance/expenses' }],
     keywords: ['expense', 'receipt', 'reimburse', 'travel', 'cost', 'not reimbursable'],
@@ -399,9 +420,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'Click Review, then Create draft invoice.',
       'On the invoice, click Send invoice (or Mark as sent if the client has no email). Download PDF gives you a copy.',
     ],
+    points: [
+      'Extra lines cannot have a negative price: to give a discount, lower the client’s rate or explain it in the notes.',
+      'To chase payment, open a sent, partly paid or overdue invoice and click Send reminder. The client is emailed the amount still due and the due date; the invoice does not change. At most 3 reminders a day per invoice, and the client needs an email address.',
+      'Export on Invoices gives the invoices the list shows: the period, status, client and search you chose.',
+    ],
     tip: 'Only approved, billable time is invoiced, so approve timesheets first.',
     links: [{ label: 'Open Invoices', href: '/finance/invoices' }],
-    keywords: ['invoice', 'bill', 'billing', 'client', 'pdf', 'send'],
+    keywords: ['invoice', 'bill', 'billing', 'client', 'pdf', 'send', 'reminder', 'overdue', 'chase', 'export'],
     perms: ['invoices:manage'],
   },
   {
@@ -410,7 +436,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: 'Record a payment',
     summary: 'Mark an invoice as paid when the money comes in.',
     steps: ['Open the invoice and click Record payment (or use Invoices › Payments received).', 'Enter the amount and the date it was received, and optionally the method and a reference.', 'Save it. The invoice’s balance goes down, and it shows as paid once nothing is left.'],
-    points: ['An invoice with payments cannot be voided: remove its payments first. A void invoice takes no payments.'],
+    points: [
+      'An invoice with payments cannot be voided: remove its payments first. A void invoice takes no payments.',
+      'From Payments received, choose the client and apply the payment to their open invoices (Oldest first does it for you). Money not applied to an invoice lowers no balance, and a payment cannot be applied later: delete it and record it again.',
+    ],
     links: [{ label: 'Payments received', href: '/finance/invoices/payments' }],
     keywords: ['payment', 'paid', 'received', 'balance'],
     perms: ['payments:manage'],
@@ -610,9 +639,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
     id: 'faq-offline',
     category: 'faq',
     title: 'What happens if a member’s computer is offline?',
-    summary: 'Nothing is lost.',
-    points: ['The desktop app keeps tracking and saves the time on the computer, then sends it as soon as it is back online.', 'On Live they may show as offline in the meantime.'],
-    keywords: ['offline', 'internet', 'lost time', 'sync'],
+    summary: 'Nothing is lost, for as long as your organization allows offline tracking.',
+    points: [
+      'The desktop app keeps tracking and saves the time on the computer (encrypted), then sends it as soon as it is back online. Sending the same time twice never adds it twice.',
+      'It also works when the computer starts without internet: it uses the projects and tracking settings it last loaded, and tells the member so, with the date they were saved.',
+      'Offline tracking is allowed for the Max offline hours in Settings › Tracking policies (24 hours by default). After that the app no longer starts new sessions until it reconnects, and says why.',
+      'If something changed meanwhile (a project archived, the member taken off it, a monitor turned off), the time that cannot be added is shown to the member with the reason, and kept until they deal with it: they can ask for it as manual time, which comes to you for approval.',
+      'Signing out removes the saved account and settings from the computer. Time not sent yet stays there, encrypted, and is sent when the member signs in again.',
+      'On Live they may show as offline in the meantime.',
+    ],
+    keywords: ['offline', 'internet', 'lost time', 'sync', 'not added', 'max offline hours', 'saved settings'],
   },
   {
     id: 'faq-screenshots-privacy',
@@ -714,5 +750,8 @@ export const NAV_GUIDE: Record<string, string> = {
   'nav.item.summary': 'Totals of time and money for any period.',
   'nav.item.reportLibrary': 'Reports you can filter, save, schedule and download.',
   'nav.item.settings': 'Organization, time & pay, tracking, devices, roles, security, integrations and the audit log.',
+  'nav.item.myTimesheet': 'Your own timesheet: your time this period, and submitting it.',
+  'nav.item.myPayStubs': 'Your own pay stubs, to read or download.',
+  'nav.item.whatIsMonitored': 'What the desktop app records about your own work, set by your organization.',
   'nav.item.help': 'This guide, and the product tour.',
 };

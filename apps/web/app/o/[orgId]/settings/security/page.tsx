@@ -2,11 +2,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { Badge, Button, EmptyState, ErrorState, Field, Input, PageHeader, Panel, PermissionState, Select, SkeletonRows, Stat, StatusBadge, Switch, Textarea, cx, fmtDate, useToast } from '@tallywork/ui';
+import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, PageHeader, Panel, PermissionState, Select, SkeletonRows, Stat, StatusBadge, Switch, Textarea, cx, fmtDate, useToast } from '@tallywork/ui';
 import type { OrgContextDto } from '@tallywork/contracts';
 import { ApiError, api, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { SupportAccessPanel } from '@/components/security/support-access-panel';
+import { useUnsavedChanges } from '@/lib/unsaved';
 
 interface Retention {
   data_class: string;
@@ -119,6 +120,7 @@ function SecuritySettingsPanel() {
   useEffect(() => setF(initial), [initial]);
   const set = <K extends keyof SecurityForm>(k: K, v: SecurityForm[K]) => setF((x) => ({ ...x, [k]: v }));
   const dirty = JSON.stringify(f) !== JSON.stringify(initial);
+  useUnsavedChanges(dirty);
   const list = ranges(f.ipAllowlist);
   const ttlBad = !Number.isInteger(f.sessionTtlHours) || f.sessionTtlHours < 1 || f.sessionTtlHours > 2160;
   const tooMany = list.length > 50;
@@ -133,12 +135,53 @@ function SecuritySettingsPanel() {
   const ttlErr = err?.field('settings.sessionTtlHours');
   const otherErr = err && !mfaErr && !ipErr && !ttlErr ? err.title : null;
 
+  // Changes that lock people out until they act are confirmed, with who is affected.
+  const mfaTightened = f.enforceMfa !== initial.enforceMfa && (f.enforceMfa === 'all' || (f.enforceMfa === 'admins' && initial.enforceMfa === 'none'));
+  const approvalOn = f.requireDeviceApproval && !initial.requireDeviceApproval;
+  const reviewQ = useOrgQuery<{ members: Array<{ mfa_enabled: boolean }> }>(mfaTightened && (org.can('settings:security') || org.can('members:manage')) ? '/permissions/review' : null);
+  const withoutMfa = reviewQ.data?.members.filter((x) => !x.mfa_enabled).length;
+  const [confirming, setConfirming] = useState(false);
+  const send = () => m.mutate({ settings: { enforceMfa: f.enforceMfa, sessionTtlHours: f.sessionTtlHours, requireDeviceApproval: f.requireDeviceApproval, ipAllowlist: list } });
   const save = () => {
     if (ttlBad || tooMany) return;
-    m.mutate({ settings: { enforceMfa: f.enforceMfa, sessionTtlHours: f.sessionTtlHours, requireDeviceApproval: f.requireDeviceApproval, ipAllowlist: list } });
+    if (mfaTightened || approvalOn) setConfirming(true);
+    else send();
   };
 
   return (
+    <>
+    <ConfirmDialog
+      open={confirming}
+      onOpenChange={setConfirming}
+      title="Save these sign-in rules?"
+      description={
+        <span className="flex flex-col gap-2">
+          {mfaTightened && (
+            <span>
+              {f.enforceMfa === 'all' ? 'Everyone' : 'Admins and people who manage members'} must use two-factor. Anyone without it sees a setup screen on their next request and cannot use the organization until it is on.
+              {withoutMfa !== undefined && (
+                <>
+                  {' '}
+                  {withoutMfa === 0 ? 'Every member already uses two-factor.' : `${withoutMfa} ${withoutMfa === 1 ? 'member does' : 'members do'} not use two-factor yet${f.enforceMfa === 'admins' ? ' (some may not be admins)' : ''}: `}
+                  {withoutMfa > 0 && (
+                    <Link href={`${org.base}/settings/access-review`} className="font-medium text-interactive hover:underline">
+                      see who in Access review
+                    </Link>
+                  )}
+                </>
+              )}
+            </span>
+          )}
+          {approvalOn && <span>New computers wait for an administrator to approve them under Settings › Devices before they can send time. Computers already in use keep working.</span>}
+          <span>You can change this again at any time.</span>
+        </span>
+      }
+      confirmLabel="Save rules"
+      onConfirm={() => {
+        setConfirming(false);
+        send();
+      }}
+    />
     <Panel
       title="Sign-in & access"
       actions={
@@ -221,6 +264,7 @@ function SecuritySettingsPanel() {
         <p className="-mt-3 text-xs text-text-faint">One IPv4 or IPv6 address or CIDR range per line.</p>
       </form>
     </Panel>
+    </>
   );
 }
 
@@ -285,7 +329,7 @@ function RetentionPanel() {
       footer={
         <>
           A daily cleanup permanently deletes activity, application and website usage and audit entries older than their period. A shorter period is scheduled and applies after 7 days, so a mistake can be undone before anything is deleted; a longer one applies at once. Timesheets, invoices, sessions and location are never deleted automatically. Screenshots have their own schedule under{" "}
-          <Link href={`${org.base}/settings/screenshot-retention`} className="text-interactive hover:underline">
+          <Link href={`${org.base}/settings/screenshot-retention`} className="text-interactive underline">
             Screenshot retention
           </Link>
           .

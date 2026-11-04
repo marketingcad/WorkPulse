@@ -45,6 +45,10 @@ export interface ExpenseRow {
   status: ExpenseStatus;
   invoiced: boolean;
   created_at: string;
+  /** why it was last rejected, by whom and when (kept after a later approval) */
+  rejection_reason?: string | null;
+  rejected_by_name?: string | null;
+  rejected_at?: string | null;
 }
 
 export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE' | 'VOID';

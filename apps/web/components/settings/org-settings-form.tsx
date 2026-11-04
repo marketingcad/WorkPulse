@@ -7,6 +7,7 @@ import { useOrg } from '@/lib/org';
 import { CURRENCIES, WEEKDAYS, timeZones } from '@/components/settings/options';
 import { LANGUAGES, LogoEditor } from '@/components/workspace/logo-editor';
 import { hoursToSeconds, secondsToHours } from '@/components/workspace/shared';
+import { useUnsavedChanges } from '@/lib/unsaved';
 
 type DurationFormat = 'hm' | 'clock' | 'decimal';
 type PayType = 'weekly' | 'biweekly' | 'semimonthly' | 'monthly';
@@ -121,6 +122,7 @@ export function OrgSettingsForm({ part, title, description }: { part: OrgSetting
   const [f, setF] = useState<Form>(initial);
   useEffect(() => setF(initial), [initial]);
   const dirty = FIELDS[part].some((k) => f[k] !== initial[k]);
+  useUnsavedChanges(dirty);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((x) => ({ ...x, [k]: v }));
   const zones = useMemo(() => timeZones(f.timezone), [f.timezone]);
 

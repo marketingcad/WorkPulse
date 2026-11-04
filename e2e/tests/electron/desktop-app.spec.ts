@@ -126,7 +126,9 @@ test('a running timer stops on the desktop when an admin force-stops it', { tag:
   const { api, orgApi } = adminApi;
   await signIn(window, data.worker.email);
   const timer = window.getByLabel('Timer');
+  // Choosing a project only selects it; Clock in starts tracking.
   await timer.getByLabel('Project').selectOption(data.projects.website.id);
+  await timer.getByRole('button', { name: `Clock in to ${data.projects.website.name}` }).click();
   await expect(timer.getByText('Clocked in', { exact: true })).toBeVisible();
 
   // The admin sees the session once the app has synced it (every 10 s), and force-stops it.
@@ -144,7 +146,7 @@ test('a running timer stops on the desktop when an admin force-stops it', { tag:
   expect((await ok<{ state: string }>(await api.post(orgApi(`/sessions/${sessionId}/force-stop`), { data: {} }), 'force stop')).state).toBe('STOPPED');
 
   await expect(timer.getByText('Not clocked in', { exact: true })).toBeVisible({ timeout: 120_000 });
-  await expect(timer.getByRole('button', { name: 'Clock in' })).toBeVisible();
+  await expect(timer.getByRole('button', { name: /^Clock in/ })).toBeVisible();
   await attachScreen(window, 'force-stopped');
   // The app does not restart it: the server still has no session for the worker.
   const after = await ok<Array<{ membership_id: string; session_id: string | null }>>(await api.get(orgApi('/tracking/live')), 'live');
@@ -162,6 +164,7 @@ test('clicking the running project in Track › Projects keeps the Home timer ru
   };
   await signIn(window, data.worker.email);
   await window.getByLabel('Timer').getByLabel('Project').selectOption(data.projects.website.id);
+  await window.getByLabel('Timer').getByRole('button', { name: `Clock in to ${data.projects.website.name}` }).click();
   await expect(window.getByLabel('Timer').getByText('Clocked in', { exact: true })).toBeVisible();
   await expect.poll(liveSession, { timeout: 30_000 }).not.toBe('');
   const sessionId = await liveSession();
@@ -220,8 +223,9 @@ test('a worker clocks in, takes the project’s planned breaks and clocks out wi
 
   await signIn(window, data.worker.email);
   const timer = window.getByLabel('Timer');
-  await expect(timer.getByRole('button', { name: 'Pick a project to clock in' })).toBeDisabled();
+  await expect(timer.getByRole('button', { name: 'Choose a project to clock in' })).toBeDisabled();
   await timer.getByLabel('Project').selectOption(project.id);
+  await timer.getByRole('button', { name: `Clock in to ${project.name}` }).click();
   await expect(timer.getByText('Clocked in', { exact: true })).toBeVisible();
 
   // The project's breaks are one-tap buttons, with their time and length.

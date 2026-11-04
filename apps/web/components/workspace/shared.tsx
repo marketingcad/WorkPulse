@@ -559,7 +559,7 @@ export function ProjectFields({
             <RateNote scope="PROJECT" />
           </>
         )}
-        <Checkbox label="Not billable project" checked={!f.billable_default} onChange={(e) => setF({ ...f, billable_default: !e.target.checked })} />
+        <Checkbox label="Billable by default" checked={f.billable_default} onChange={(e) => setF({ ...f, billable_default: e.target.checked })} />
       </section>
 
       <ClientDialog
@@ -653,10 +653,13 @@ export function ProjectDialog({
   workers,
   teams,
   onSaved,
+  defaultClientId,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   project?: ProjectDto | null;
+  /** a new project starts on this client ("Add a project" right after creating the client) */
+  defaultClientId?: string;
   clients?: ClientDto[];
   workers?: MemberOptionDto[];
   teams?: TeamDto[];
@@ -671,10 +674,10 @@ export function ProjectDialog({
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (open) {
-      setF(projectToForm(project, hoursPerDay));
+      setF({ ...projectToForm(project, hoursPerDay), ...(!project && defaultClientId ? { client_id: defaultClientId } : {}) });
       setErr(null);
     }
-  }, [open, project, hoursPerDay]);
+  }, [open, project, hoursPerDay, defaultClientId]);
 
   const save = async () => {
     setBusy(true);

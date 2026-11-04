@@ -40,7 +40,7 @@ test.describe('Payroll (admin)', () => {
     await groupDialog.getByLabel('Members').click();
     await page.getByRole('option', { name: person }).getByRole('checkbox').check();
     await page.keyboard.press('Escape');
-    await groupDialog.getByRole('button', { name: 'Create profile' }).click();
+    await groupDialog.getByRole('button', { name: 'Create pay group' }).click();
     await expect(page.getByText('Pay group created')).toBeVisible();
 
     await page.getByRole('button', { name: 'Payrolls' }).click();
@@ -59,9 +59,17 @@ test.describe('Payroll (admin)', () => {
     await adjust.getByRole('button', { name: 'Add line' }).click();
     // A line needs a label and an amount before it can be saved.
     await expect(adjust.getByRole('button', { name: 'Save' })).toBeDisabled();
+    // ...and says so next to the button (it used to go grey without a word).
+    await expect(adjust.getByRole('status')).toHaveText(/Each line needs a label and an amount/);
     await adjust.getByLabel('Label').fill('Signing bonus');
     await adjust.getByLabel('Amount (USD)').fill('150');
     await expect(adjust.getByRole('button', { name: 'Save' })).toBeEnabled();
+    await expect(adjust.getByRole('status')).toHaveCount(0);
+    // Later lines have no visible column labels, but every field still has a name.
+    await adjust.getByRole('button', { name: 'Add line' }).click();
+    for (const name of ['Kind, line 2', 'Label, line 2', 'Amount, line 2']) await expect(adjust.getByLabel(name, { exact: true })).toBeVisible();
+    await adjust.getByRole('button', { name: 'Remove line 2' }).click();
+    await expect(adjust.getByRole('group', { name: 'Line 2' })).toHaveCount(0);
     await adjust.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('Adjustments saved')).toBeVisible();
     await expect(line).toContainText(usd(15000));

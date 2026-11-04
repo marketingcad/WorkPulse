@@ -6,7 +6,7 @@ import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, Kpi
 import { ApiError, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { timeZones } from '@/components/settings/options';
-import { HelpLink } from '@/components/help/help-link';
+import { useUnsavedChanges } from '@/lib/unsaved';
 
 const PRESETS = [7, 14, 30, 60, 90];
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -67,7 +67,7 @@ export default function ScreenshotRetentionPage() {
   if (!canRead) return <PermissionState />;
   return (
     <>
-      <PageHeader title="Screenshot retention" description="How long screenshots are kept. Expired screenshots and their files are deleted automatically on a schedule you set." actions={<HelpLink article="screenshot-retention" />} />
+      <PageHeader title="Screenshot retention" description="How long screenshots are kept. Expired screenshots and their files are deleted automatically on a schedule you set." />
       {q.error ? (
         <ErrorState error={q.error} onRetry={() => void q.refetch()} />
       ) : !q.data ? (
@@ -112,6 +112,7 @@ function PolicyPanel({ s }: { s: ScreenshotCleanupSettingsDto }) {
   const days = f.retention === 'custom' ? Number(f.custom) : Number(f.retention);
   const daysError = !Number.isInteger(days) || days < 1 || days > 3650 ? 'Enter a whole number of days from 1 to 3650' : undefined;
   const dirty = JSON.stringify(f) !== JSON.stringify(toForm(s));
+  useUnsavedChanges(dirty);
   const shorter = !daysError && days < s.retention_days;
   const m = useOrgMutation<unknown, ScreenshotCleanupSettingsDto>('PUT', '/screenshot-cleanup', { onSuccess: () => toast.success('Screenshot retention saved') });
   const readOnly = !s.can_manage;

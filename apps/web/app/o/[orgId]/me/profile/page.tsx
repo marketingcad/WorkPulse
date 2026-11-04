@@ -11,6 +11,7 @@ import { applyAccountLocale, t } from '@/lib/i18n';
 import { browserTimeZone, timeZones } from '@/components/settings/options';
 import { DataExportAction } from '@/components/security/data-export';
 import { TwoFactorPanel } from '@/components/security/two-factor-panel';
+import { useUnsavedChanges } from '@/lib/unsaved';
 
 interface Pref {
   type: string;
@@ -342,6 +343,7 @@ function NotificationsPanel() {
   }, [q.data]);
   useEffect(() => setPrefs(base), [base]);
   const dirty = JSON.stringify(prefs) !== JSON.stringify(base);
+  useUnsavedChanges(dirty);
   const m = useOrgMutation<{ preferences: Pref[] }, Pref[]>('PUT', '/notification-preferences', { onSuccess: () => toast.success('Notification preferences saved') });
   const types = NOTIFICATION_TYPES.filter((t) => !t.manager || org.can('budgets:read'));
   const toggle = (type: string, k: 'in_app' | 'email') => setPrefs((p) => ({ ...p, [type]: { ...p[type]!, [k]: !p[type]![k] } }));

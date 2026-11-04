@@ -5,10 +5,11 @@ import { DomainError, forbidden, notFound } from '@tallywork/domain';
 import type { AppEnv } from '../context';
 import { body, query } from '../lib/http';
 import { renderPayStubPdf } from '../lib/pay-stub-pdf';
+import { dismissRefused } from '../services/refused-time';
 import { rateLimit } from '../middleware/rate-limit';
 import { requireUser, userId } from '../middleware/auth';
 import { runInTenantTx } from '../middleware/tenant';
-import { myActivity, myClientVisibility, myNotifications, myPayStub, myPayStubs, mySchedule, mySessions, mySummary, myTasks, myTimeOff, myTimesheet, readMyNotifications, requestMyTimeOff, submitMyTimesheet } from '../services/agent-me';
+import { cancelMyTimeOff, myActivity, myClientVisibility, myNotifications, myPayStub, myPayStubs, mySchedule, mySessions, mySummary, myTasks, myTimeOff, myTimesheet, readMyNotifications, requestMyTimeOff, submitMyTimesheet } from '../services/agent-me';
 import { acknowledgePolicy, bootstrap, createDeviceAuthCode, heartbeat, ingestBatch, loadAgentCtx, loginDevice, refreshDeviceToken, registerDevice, isOwnScreenshotKey, screenshotKeyPrefix, type AgentCtx } from '../services/agent';
 
 type AgentEnv = AppEnv & { Variables: AppEnv['Variables'] & { agent: AgentCtx } };
@@ -81,9 +82,22 @@ agentOnly
   .get('/me/schedule', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await mySchedule(c.var.agent, query(c, rangeQuery))))
   .get('/me/time-off', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myTimeOff(c.var.agent)))
   .post('/me/time-off', rateLimit('agent-me-write', 30, 60), tenant, async (c) => c.json(await requestMyTimeOff(c.var.agent, await body(c, timeOffRequestInput)), 201))
+  .post('/me/time-off/:id/cancel', rateLimit('agent-me-write', 30, 60), tenant, async (c) => {
+    const id = z.uuid().safeParse(c.req.param('id'));
+    if (!id.success) throw notFound('time_off_request');
+    await cancelMyTimeOff(c.var.agent, id.data);
+    return c.body(null, 204);
+  })
   .get('/me/notifications', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myNotifications(c.var.agent)))
   .get('/me/client-visibility', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myClientVisibility(c.var.agent)))
   .get('/me/pay-stubs', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myPayStubs(c.var.agent)))
+  // The worker removed a "not added" note without asking for the time (their managers see it as decided).
+  .post('/me/refused/:sessionId/dismiss', rateLimit('agent-me-write', 30, 60), tenant, async (c) => {
+    const id = z.uuid().safeParse(c.req.param('sessionId'));
+    if (!id.success) throw notFound('refused_time');
+    await dismissRefused(c.var.agent, id.data);
+    return c.body(null, 204);
+  })
   .get('/me/pay-stubs/:id/pdf', rateLimit('agent-me', 240, 60), tenant, async (c) => {
     const id = z.uuid().safeParse(c.req.param('id'));
     if (!id.success) throw notFound('pay_stub');

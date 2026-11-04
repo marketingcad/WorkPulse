@@ -3,13 +3,15 @@ import { ChevronDown, ChevronRight, CircleAlert, ClipboardCheck, ClockPlus, Coff
 import type { AgentState, Assignment } from '../../shared/ipc';
 import { bridge, card, errorText, fmtClock, fmtHhmm, fmtHm, fmtMs, fmtRange, fmtTime, initials, openClockOut, useTick, type View } from './lib';
 import { CurrentSessionCard, RecentSessionsCard, TodaySummaryCard } from './HomeCards';
+import { NotAddedCard, StatusBanners, type ManualPrefill } from './HomeStatus';
+import { TrackingDisclosure } from './Disclosure';
 
 
 /**
  * The worker's home: timer, what they are working on, their own activity, and today's totals.
  * One responsive layout: a single column in a narrow window, main + side column from 768px.
  */
-export function Dashboard({ s, go }: { s: AgentState; go: (v: View) => void }) {
+export function Dashboard({ s, go, onRequestTime }: { s: AgentState; go: (v: View) => void; onRequestTime: (p: ManualPrefill) => void }) {
   const t = s.tracking;
   const now = useTick(t.state !== 'stopped' || s.sync.lastSyncAt !== null);
   const [error, setError] = useState<string | null>(null);
@@ -26,8 +28,10 @@ export function Dashboard({ s, go }: { s: AgentState; go: (v: View) => void }) {
     <div className="mx-auto grid w-full max-w-350 gap-3 p-3 md:grid-cols-[minmax(0,1fr)_300px] md:gap-4 md:p-4 xl:grid-cols-[minmax(0,1fr)_340px]">
       <div className="flex min-w-0 flex-col gap-3 md:gap-4">
         <Greeting s={s} now={now} />
+        <StatusBanners s={s} />
         {/* Primary workspace */}
         <TimerCard s={s} now={now} run={run} error={error} />
+        <NotAddedCard s={s} onRequest={onRequestTime} />
         <NeedsAttention s={s} go={go} />
         <QuickActions s={s} go={go} />
         {/* Worker information */}
@@ -39,6 +43,7 @@ export function Dashboard({ s, go }: { s: AgentState; go: (v: View) => void }) {
       <aside className="flex min-w-0 flex-col gap-3 md:gap-4 md:pt-13">
         <TodaySummaryCard s={s} now={now} />
         <ActivityCard s={s} />
+        <TrackingDisclosure s={s} />
       </aside>
     </div>
   );
@@ -67,20 +72,26 @@ function TimerCard({ s, now, run, error }: { s: AgentState; now: number; run: (f
   // While tracking, the pickers stay out of the way behind "Change"; when stopped they're always shown.
   const [editing, setEditing] = useState(false);
   const currentBreak = s.breakTypes.find((b) => b.id === s.breakTypeId);
-  // What Start will track: the running project, else the last one used.
-  const target = tracking && t.projectId ? { projectId: t.projectId, taskId: t.taskId } : s.lastProject;
+  // Choosing a project or task only selects it: Clock in (or Switch, while tracking) is the action.
+  // A select fires on every arrow key, so starting on change would start and stop sessions by accident.
+  const running = tracking && t.projectId ? { projectId: t.projectId, taskId: t.taskId } : null;
+  const [choice, setChoice] = useState<{ projectId: string; taskId: string | null } | null>(null);
+  const target = (editing || !tracking ? choice : null) ?? running ?? s.lastProject;
   const project = s.assignments.find((a) => a.project_id === target?.projectId);
   const task = project?.tasks.find((x) => x.id === target?.taskId);
+  const changed = tracking && !!project && (project.project_id !== running?.projectId || (task?.id ?? null) !== running?.taskId);
 
   const status = t.state === 'active' ? { cls: 'bg-success-soft text-success', dot: 'animate-pulse bg-success', label: 'Clocked in' } : t.state === 'paused' ? { cls: 'bg-warning-soft text-warning', dot: 'bg-warning', label: currentBreak ? `On break · ${currentBreak.name}` : 'Paused' } : { cls: 'bg-surface-muted text-text-muted', dot: 'bg-text-faint', label: 'Not clocked in' };
 
-  const chooseTask = (taskId: string) => {
-    if (!project) return;
-    const id = taskId || null;
-    void run(() => (tracking ? bridge.switchTask(project.project_id, id) : bridge.start(project.project_id, id)));
-  };
-  // Picking a project starts (or switches) tracking on it, like clicking it in Projects.
-  const chooseProject = (projectId: string) => projectId && void run(() => (tracking ? bridge.switchTask(projectId, null) : bridge.start(projectId, null)));
+  const chooseTask = (taskId: string) => project && setChoice({ projectId: project.project_id, taskId: taskId || null });
+  const chooseProject = (projectId: string) => setChoice(projectId ? { projectId, taskId: null } : null);
+  const switchNow = () =>
+    project &&
+    void run(async () => {
+      await bridge.switchTask(project.project_id, task?.id ?? null);
+      setEditing(false);
+      setChoice(null);
+    });
 
   const showPickers = s.assignments.length > 0 && (!tracking || editing);
   return (
@@ -95,11 +106,11 @@ function TimerCard({ s, now, run, error }: { s: AgentState; now: number; run: (f
             <div className="min-w-0 flex-1">
               <div className="text-2xs text-text-muted">Working on</div>
               <div className="truncate text-base font-semibold">{project?.project_name ?? 'No project selected'}</div>
-              <div className="truncate text-xs text-text-muted">{project ? `${project.client_name ?? 'Internal'}${task ? ` · ${task.title}` : ''}` : 'Pick a project to start'}</div>
+              <div className="truncate text-xs text-text-muted">{project ? `${project.client_name ?? 'Internal'}${task ? ` · ${task.title}` : ''}` : s.assignments.length ? 'Choose a project below, then clock in' : 'No projects assigned yet'}</div>
             </div>
             {tracking && s.assignments.length > 0 && (
-              <button onClick={() => setEditing((e) => !e)} className="shrink-0 rounded-sm border border-border px-2 py-1 text-2xs text-text-muted hover:bg-surface-muted">
-                {editing ? 'Done' : 'Change'}
+              <button onClick={() => (setEditing((e) => !e), setChoice(null))} aria-expanded={editing} className="shrink-0 rounded-sm border border-border px-2 py-1 text-2xs text-text-muted hover:bg-surface-muted">
+                {editing ? 'Cancel' : 'Change'}
               </button>
             )}
           </div>
@@ -129,6 +140,16 @@ function TimerCard({ s, now, run, error }: { s: AgentState; now: number; run: (f
                 ))}
               </select>
             </label>
+          )}
+          {tracking && editing && (
+            <button onClick={switchNow} disabled={!changed} className="h-9 rounded-sm bg-interactive px-3 text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-50">
+              {changed ? `Switch to ${project!.project_name}${task ? ` · ${task.title}` : ''}` : 'Choose another project or task'}
+            </button>
+          )}
+          {s.assignments.length === 0 && (
+            <p role="status" className="rounded-sm bg-surface-muted px-3 py-2 text-xs text-text-muted">
+              You are not on any project yet, so there is nothing to clock in to. Ask your manager to add you to a project; it appears here on its own, with no need to restart.
+            </p>
           )}
         </div>
 
@@ -166,7 +187,7 @@ function TimerCard({ s, now, run, error }: { s: AgentState; now: number; run: (f
                     <Play className="size-4 fill-current" /> Clock back in
                   </button>
                 )}
-                <button onClick={openClockOut} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-sm bg-danger text-sm font-semibold text-on-accent hover:opacity-90">
+                <button onClick={() => openClockOut()} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-sm bg-danger text-sm font-semibold text-on-accent hover:opacity-90">
                   <Square className="size-3.5 fill-current" /> Clock out
                 </button>
               </>
@@ -176,7 +197,7 @@ function TimerCard({ s, now, run, error }: { s: AgentState; now: number; run: (f
                 onClick={() => project && void run(() => bridge.start(project.project_id, task?.id ?? null))}
                 className="flex h-10 w-full items-center justify-center gap-2 rounded-sm bg-interactive text-sm font-semibold text-on-accent hover:bg-interactive-hover disabled:opacity-50"
               >
-                <Play className="size-4 fill-current" /> {project ? 'Clock in' : 'Pick a project to clock in'}
+                <Play className="size-4 fill-current" /> {project ? `Clock in to ${project.project_name}` : s.assignments.length ? 'Choose a project to clock in' : 'No project to clock in to'}
               </button>
             )}
           </div>

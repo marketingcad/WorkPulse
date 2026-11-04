@@ -29,7 +29,7 @@ import { toMinor, type RateKind, type RateRow, type RateScope } from '@/componen
 import { useMemberOptions } from '@/lib/members';
 import { SCOPE_LABEL } from '@/components/finance/rate-precedence';
 import { RATE_PRECEDENCE } from '@tallywork/domain';
-import { HelpLink } from '@/components/help/help-link';
+import { CURRENCIES } from '@/components/settings/options';
 
 // The order the billing engine applies (most specific first).
 const PRECEDENCE: Record<RateKind, RateScope[]> = RATE_PRECEDENCE;
@@ -48,7 +48,7 @@ export default function RatesPage() {
   if (!canRates) return <PermissionState />;
   return (
     <>
-      <PageHeader title="Rates" description="Hourly bill and pay rates: what you charge clients and what you pay members. What you owe members is on Payroll › Owed." actions={<HelpLink article="rates" />} />
+      <PageHeader title="Rates" description="Hourly bill and pay rates: what you charge clients and what you pay members. What you owe members is on Payroll › Owed." />
       <RatesTab />
     </>
   );
@@ -331,7 +331,13 @@ function SetRateDialog({ kind, onClose, targets }: { kind: RateKind | null; onCl
           <Input id="rate-amount" inputMode="decimal" className="tabular" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         <Field label="Currency" htmlFor="rate-currency" error={err?.field('currency')}>
-          <Input id="rate-currency" value={currency} maxLength={3} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
+          <Select id="rate-currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            {[...new Set([currency, ...CURRENCIES])].filter(Boolean).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </Select>
         </Field>
         <Field label="Effective from" htmlFor="rate-from" required error={err?.field('effective_from')}>
           <Input id="rate-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />

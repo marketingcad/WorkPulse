@@ -17,7 +17,9 @@ That one command builds the web app, starts isolated test servers, creates test 
 | Desktop window | [scripts/serve-desktop.mjs](scripts/serve-desktop.mjs) | Builds the Electron renderer and serves it on **:3101** |
 | Test data | [support/global-setup.ts](support/global-setup.ts) | Creates this run's org, team, projects, workers and a finalized payroll through the API |
 | Fixtures | [support/fixtures.ts](support/fixtures.ts) | `data`, desktop sign-ins (`workerDevice`, `newcomerDevice`), `openDesktop()` |
-| Electron | [support/electron.ts](support/electron.ts) | Launches the real desktop app (built by `serve-desktop.mjs`) with its own temporary user-data folder |
+| Electron | [support/electron.ts](support/electron.ts) | Launches the real desktop app (built by `serve-desktop.mjs`) with its own temporary user-data folder; `launch({ server, userData })` restarts the same install or points it at a proxy |
+| Poor connectivity | [support/proxy.ts](support/proxy.ts) | A proxy between the real app and the test server that can go down, come back, or cut a sync off before its answer ([tests/electron/offline.spec.ts](tests/electron/offline.spec.ts)) |
+| Phones | [tests/web/mobile-sweep.spec.ts](tests/web/mobile-sweep.spec.ts) | Every page on the shared table at 390 px: no sideways scroll, row actions on the cards match the table |
 | Tests | [tests/web](tests/web), [tests/desktop](tests/desktop), [tests/electron](tests/electron) | One spec per feature |
 
 **Isolation and safety.** The test server never uses your data:
@@ -107,6 +109,7 @@ There are no credentials to configure. Every account is created per run with a t
 - Specs read that data through the `data` fixture, and add their own records with unique names (for example `unique('mia')` emails).
 - So tests are independent of order and of each other, and can run in parallel.
 - Nothing needs cleaning up: the database disappears when the server stops.
+- Desktop sign-ins (`workerDevice`, `newcomerDevice`) are made once per account and parallel slot, and cached in `e2e/.auth/device-*.json` for the run. Device sign-in is rate-limited (20 per 15 minutes) and Playwright starts a new worker process after a failure, so signing in again each time turned one failure into a cascade of HTTP 429s. Slots keep separate devices because the agent API's request limit is per device (240 a minute).
 
 Available data:
 

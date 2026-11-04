@@ -81,8 +81,9 @@ test.describe('QA · Responsive navigation shell (admin)', () => {
     await page.getByRole('button', { name: 'Open navigation' }).click();
     const drawer = page.locator('div.fixed.inset-0').filter({ has: page.getByRole('button', { name: 'Close navigation' }) });
     await expect(drawer).toBeVisible();
-    // Pages sit in collapsible groups.
-    await drawer.getByRole('button', { name: /project management/i }).click();
+    // Pages sit in collapsible groups, open unless the person closed them (UX remediation, phase 3).
+    const group = drawer.getByRole('button', { name: /project management/i });
+    await expect(group).toHaveAttribute('aria-expanded', 'true');
     await drawer.getByRole('link', { name: 'Projects', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/projects`));
     await expect(page.getByRole('heading', { level: 1, name: 'Projects' })).toBeVisible();

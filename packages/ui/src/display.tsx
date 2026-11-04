@@ -13,7 +13,7 @@ const TONE: Record<Tone, string> = {
   danger: 'bg-danger-soft text-danger',
   info: 'bg-info-soft text-info',
   brand: 'bg-interactive-soft text-interactive',
-  secondary: 'bg-secondary-soft text-secondary',
+  secondary: 'bg-secondary-soft text-secondary-strong',
 };
 
 /** Status always pairs colour with an icon and text. `label` is a message key. */

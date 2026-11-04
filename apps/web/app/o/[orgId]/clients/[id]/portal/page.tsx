@@ -51,6 +51,7 @@ export default function ClientPortalSettingsPage() {
   });
 
   const [preview, setPreview] = useState(false);
+  const [sharing, setSharing] = useState<Section | null>(null);
   const [range, setRange] = useState(() => ({ from: iso(new Date(Date.now() - 29 * 86_400_000)), to: iso(new Date()) }));
   const previewQ = useOrgQuery<PortalSummaryDto>(preview ? `/clients/${id}/portal/preview${qs(range)}` : null);
   const shotsQ = useOrgQuery<PortalScreenshotDto[]>(preview && previewQ.data?.sections.screenshots ? `/clients/${id}/portal/preview/screenshots${qs(range)}` : null);
@@ -71,10 +72,23 @@ export default function ClientPortalSettingsPage() {
   // second click cannot build its change on stale settings and undo the first.
   const saving = save.isPending;
   const toggleSection = (k: Section) => save.mutate({ sections: { [k]: !s.sections[k] } });
+  // Sharing members' activity or screenshots with an outside party is confirmed when turned on.
+  const askOrToggle = (k: Section) => ((k === 'activity' || k === 'screenshots') && !s.sections[k] ? setSharing(k) : toggleSection(k));
   const disabledSection = (k: Section) => (k === 'activity' && !s.can_enable.activity && !s.sections.activity) || (k === 'screenshots' && !s.can_enable.screenshots && !s.sections.screenshots);
 
   return (
     <div className="flex flex-col gap-6">
+      <ConfirmDialog
+        open={!!sharing}
+        onOpenChange={(o) => !o && setSharing(null)}
+        title={sharing === 'screenshots' ? 'Share screenshots with this client?' : 'Share activity levels with this client?'}
+        description={'Everyone with access to ' + (clientName ?? 'this client') + '’s portal will see ' + (sharing === 'screenshots' ? 'the screenshots taken while members work on its projects' : 'each member’s activity level on its projects') + '. The members working on these projects are told it is shared. You can turn it off at any time.'}
+        confirmLabel={sharing === 'screenshots' ? 'Share screenshots' : 'Share activity'}
+        onConfirm={() => {
+          if (sharing) toggleSection(sharing);
+          setSharing(null);
+        }}
+      />
       <PageHeader
         breadcrumbs={
           <Link href={`${org.base}/clients`} className="hover:text-text hover:underline">
@@ -102,7 +116,7 @@ export default function ClientPortalSettingsPage() {
         <fieldset className="flex flex-col gap-2 border-t border-border pt-4">
           <legend className="mb-1 text-sm font-semibold">{t('portal.admin.sections')}</legend>
           {SECTIONS.map((k) => (
-            <Checkbox key={k} label={t(`portal.admin.${k}`)} checked={s.sections[k]} disabled={saving || disabledSection(k)} onChange={() => toggleSection(k)} />
+            <Checkbox key={k} label={t(`portal.admin.${k}`)} checked={s.sections[k]} disabled={saving || disabledSection(k)} onChange={() => askOrToggle(k)} />
           ))}
           <p className="mt-1 text-xs text-text-muted">{t('portal.admin.monitoringNote')}</p>
         </fieldset>

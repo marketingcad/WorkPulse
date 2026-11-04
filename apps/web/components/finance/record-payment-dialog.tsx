@@ -207,6 +207,13 @@ export function RecordPaymentDialog({ open, onOpenChange, invoice }: { open: boo
           )}
         </div>
       )}
+      {/* Said before saving: nothing is allocated by default, and a recorded payment cannot be allocated later. */}
+      {!invoice && amountMinor !== null && amountMinor > 0 && !overAllocated && allocated < amountMinor && (clientId === '' || payable.length > 0) && (
+        <p role="status" className="mt-3 rounded-sm bg-warning-soft px-3 py-2 text-sm text-warning">
+          {fmtMoney(amountMinor - allocated, currency)} will not be applied to any invoice{clientId === '' ? ' (no client is chosen)' : ''}, so no invoice balance goes down. A payment cannot be allocated after it is recorded: you would have to delete it and record it again.
+          {clientId !== '' && ' Use “Oldest first” or enter amounts above to apply it.'}
+        </p>
+      )}
       {err && !err.errors?.length && (
         <p role="alert" className="mt-3 text-sm text-danger">
           {err.title}

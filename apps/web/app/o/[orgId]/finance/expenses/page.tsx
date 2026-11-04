@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, Paperclip, Plus, Receipt, Wallet, X } from 'lucide-react';
 import type { ExpensePageSummary, OffsetPage, ProjectDto } from '@tallywork/contracts';
 import {
+  ConfirmDialog,
   Badge,
   Button,
   Checkbox,
@@ -32,6 +33,7 @@ import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { toMinor, type ExpenseRow, type ExpenseStatus } from '@/components/finance/types';
 import { useListPeriod } from '@/components/finance/list-period';
 import { ExportMenu } from '@/components/reports/export-menu';
+import { CURRENCIES } from '@/components/settings/options';
 
 const STATUSES: Array<{ value: 'ALL' | ExpenseStatus; label: string }> = [
   { value: 'ALL', label: 'All' },
@@ -56,8 +58,10 @@ export default function ExpensesPage() {
   const paging = useServerPage(JSON.stringify(filters));
   const q = useOrgQuery<OffsetPage<ExpenseRow> & { summary: ExpensePageSummary }>(org.can('expenses:read') ? `/expenses${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
   useClampPage(paging, q.data, q.isPlaceholderData);
-  const decide = useOrgMutation<{ id: string; action: Action }>('POST', (b) => `/expenses/${b.id}/${b.action}`);
+  const decide = useOrgMutation<{ id: string; action: Action; reason?: string }>('POST', (b) => `/expenses/${b.id}/${b.action}`);
   const [pending, setPending] = useState<string | null>(null);
+  // Rejecting and reimbursing are confirmed first, saying what they mean for the member.
+  const [asking, setAsking] = useState<{ e: ExpenseRow; action: Action } | null>(null);
 
   const summary = q.data?.summary;
   const canApprove = org.can('expenses:approve');
@@ -65,10 +69,10 @@ export default function ExpensesPage() {
 
   if (!org.can('expenses:read')) return <PermissionState />;
 
-  const act = async (e: ExpenseRow, action: Action) => {
+  const act = async (e: ExpenseRow, action: Action, reason?: string) => {
     setPending(`${e.id}:${action}`);
     try {
-      await decide.mutateAsync({ id: e.id, action });
+      await decide.mutateAsync({ id: e.id, action, ...(reason ? { reason } : {}) });
       toast.success(action === 'approve' ? 'Expense approved' : action === 'reject' ? 'Expense rejected' : 'Marked as reimbursed');
     } catch (err) {
       toast.error(errorMessage(err));
@@ -108,6 +112,7 @@ export default function ExpensesPage() {
     {
       key: 'receipt',
       header: 'Receipt',
+      priority: 'secondary',
       cell: (e) =>
         e.receipt_file_id ? (
           <a href={receiptUrl(e.receipt_file_id)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-interactive hover:underline" onClick={(ev) => ev.stopPropagation()}>
@@ -119,7 +124,25 @@ export default function ExpensesPage() {
         ),
     },
     { key: 'amount', header: 'Amount', align: 'right', cell: (e) => <span className="font-medium">{fmtMoney(e.amount_minor, e.currency)}</span>, value: (e) => e.amount_minor, sortable: false, priority: 'primary' },
-    { key: 'status', header: 'Status', cell: (e) => <StatusBadge status={e.status} />, value: (e) => e.status, sortable: false, priority: 'secondary' },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (e) => (
+        <span className="block max-w-64">
+          <StatusBadge status={e.status} />
+          {/* The member sees why it was rejected, by whom and when. */}
+          {e.status === 'REJECTED' && e.rejection_reason && (
+            <span className="mt-0.5 block text-xs text-text-muted">
+              “{e.rejection_reason}”{e.rejected_by_name ? ` · ${e.rejected_by_name}` : ''}
+              {e.rejected_at ? `, ${fmtDate(e.rejected_at)}` : ''}
+            </span>
+          )}
+        </span>
+      ),
+      value: (e) => e.status,
+      sortable: false,
+      priority: 'secondary',
+    },
     ...(canApprove
       ? [
           {
@@ -136,12 +159,12 @@ export default function ExpensesPage() {
                     </Button>
                   )}
                   {(e.status === 'SUBMITTED' || e.status === 'APPROVED') && !e.invoiced && (
-                    <Button size="xs" variant="ghost" icon={<X className="size-3" />} loading={pending === `${e.id}:reject`} onClick={() => act(e, 'reject')}>
+                    <Button size="xs" variant="ghost" icon={<X className="size-3" />} loading={pending === `${e.id}:reject`} onClick={() => setAsking({ e, action: 'reject' })}>
                       Reject
                     </Button>
                   )}
                   {e.status === 'APPROVED' && e.reimbursable && (
-                    <Button size="xs" variant="ghost" icon={<Wallet className="size-3" />} loading={pending === `${e.id}:reimburse`} onClick={() => act(e, 'reimburse')}>
+                    <Button size="xs" variant="ghost" icon={<Wallet className="size-3" />} loading={pending === `${e.id}:reimburse`} onClick={() => setAsking({ e, action: 'reimburse' })}>
                       Reimburse
                     </Button>
                   )}
@@ -155,6 +178,30 @@ export default function ExpensesPage() {
 
   return (
     <>
+      <RejectDialog
+        expense={asking?.action === 'reject' ? asking.e : null}
+        onClose={() => setAsking(null)}
+        onReject={(e, reason) => {
+          setAsking(null);
+          void act(e, 'reject', reason);
+        }}
+      />
+      <ConfirmDialog
+        open={!!asking && asking.action !== 'reject'}
+        onOpenChange={(o) => !o && setAsking(null)}
+        title={asking ? `${asking.action === 'reject' ? 'Reject' : 'Mark as reimbursed:'} ${asking.e.worker_name || 'this'}’s ${fmtMoney(asking.e.amount_minor, asking.e.currency)} ${asking.e.category} expense?` : ''}
+        description={
+          asking?.action === 'reject'
+            ? 'The member sees it as Rejected, and it is not paid back or invoiced. You can still approve it later if this was a mistake.'
+            : 'This records that the member was paid back. It moves to Reimbursed and counts as paid in the finance reports.'
+        }
+        confirmLabel={asking?.action === 'reject' ? 'Reject expense' : 'Mark as reimbursed'}
+        danger={asking?.action === 'reject'}
+        onConfirm={() => {
+          if (asking) void act(asking.e, asking.action);
+          setAsking(null);
+        }}
+      />
       <PageHeader
         title="Expenses"
         description={canApprove ? 'Submitted expenses from your team. Approve, reject and track reimbursements.' : 'Submit expenses with receipts for approval and reimbursement.'}
@@ -325,7 +372,13 @@ function ExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
           <Input id="ex-amount" inputMode="decimal" className="tabular" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         <Field label="Currency" htmlFor="ex-cur" error={err?.field('currency')}>
-          <Input id="ex-cur" value={currency} maxLength={3} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
+          <Select id="ex-cur" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            {[...new Set([currency, ...CURRENCIES])].filter(Boolean).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </Select>
         </Field>
         <Field label="Project" htmlFor="ex-project" className="sm:col-span-2" hint="Billable expenses on a client project can be added to that client's invoice." error={err?.field('project_id')}>
           <Select id="ex-project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
@@ -375,6 +428,43 @@ function ExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
           {err.title}
         </p>
       )}
+    </Dialog>
+  );
+}
+
+/** Rejecting says why, so the member knows what to correct (required; shown to them and kept in the history). */
+function RejectDialog({ expense, onClose, onReject }: { expense: ExpenseRow | null; onClose: () => void; onReject: (e: ExpenseRow, reason: string) => void }) {
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  useEffect(() => {
+    setReason('');
+    setTried(false);
+  }, [expense?.id]);
+  const short = reason.trim().length < 3;
+  return (
+    <Dialog
+      open={!!expense}
+      onOpenChange={(o) => !o && onClose()}
+      title={expense ? `Reject ${expense.worker_name || 'this'}’s ${fmtMoney(expense.amount_minor, expense.currency)} ${expense.category} expense?` : ''}
+      description="The member sees it as Rejected with your reason, and it is not paid back or invoiced. You can still approve it later if this was a mistake."
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              setTried(true);
+              if (expense && !short) onReject(expense, reason.trim());
+            }}
+          >
+            Reject expense
+          </Button>
+        </>
+      }
+    >
+      <Field label="Reason" htmlFor="reject-reason" required hint="What is wrong, and what the member should change." error={tried && short ? 'Write a reason of at least 3 characters.' : undefined}>
+        <Textarea id="reject-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3} autoFocus />
+      </Field>
     </Dialog>
   );
 }

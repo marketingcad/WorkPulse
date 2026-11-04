@@ -30,6 +30,7 @@ export default function PayStubsPage() {
     { key: 'status', header: 'Status', value: (s) => s.status, cell: (s) => <StatusBadge status={s.status} /> },
     {
       key: 'pdf',
+      actions: true,
       header: <span className="sr-only">Download</span>,
       align: 'right',
       cell: (s) => (

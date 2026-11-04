@@ -15,6 +15,8 @@ import { TourProvider } from '@/components/help/tour';
 import { HelpReturnBar } from '@/components/help/help-return';
 import { NewOrgDialog } from './new-org-dialog';
 import { TimerBar } from './timer-bar';
+import { HelpLink } from '@/components/help/help-link';
+import { guideFor } from '@/components/help/page-help';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const org = useOrg();
@@ -63,6 +65,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </IconButton>
             <div className="min-w-0 flex-1">{org.can('tracking:track') && org.membership.tracking_enabled && <TimerBar />}</div>
             {org.organization.is_demo && <span className="hidden rounded-full border border-warning/40 bg-warning-soft px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide text-warning lg:inline">{t('shell.demoData')}</span>}
+            <PageHelp />
             <Notifications />
             <UserMenu />
           </header>
@@ -105,7 +108,7 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
   }, [activeGroup]);
   const toggleGroup = (label: string) =>
     setOpen((o) => {
-      const next = { ...o, [label]: !o[label] };
+      const next = { ...o, [label]: !(o[label] ?? true) };
       try {
         localStorage.setItem(NAV_GROUPS_KEY, JSON.stringify(next));
       } catch {
@@ -163,7 +166,8 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
               </div>
             );
           }
-          const isOpen = !!open[g.label];
+          // Open unless the person closed it (the audit found new admins facing five closed groups).
+          const isOpen = open[g.label] ?? true;
           const panelId = `${idPrefix}-nav-${gi}`;
           return (
             <div key={g.label} className="mb-1">
@@ -247,6 +251,14 @@ function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
       <NewOrgDialog open={creating} onOpenChange={setCreating} />
     </>
   );
+}
+
+/** "Help" to this page's guide, in the same place on every page that has one (phones included). */
+function PageHelp() {
+  const org = useOrg();
+  const path = usePathname().slice(org.base.length);
+  const guide = path === '/help' ? null : guideFor(path, org.can);
+  return guide ? <HelpLink article={guide.id} /> : null;
 }
 
 function Notifications() {

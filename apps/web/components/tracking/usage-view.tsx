@@ -52,6 +52,7 @@ export function UsageView({ kind, initialMember }: { kind: 'apps' | 'urls'; init
       ? [
           {
             key: 'spans',
+            actions: true,
             header: <span className="sr-only">Timeline</span>,
             sortable: false,
             cell: (r: GroupRow) => (

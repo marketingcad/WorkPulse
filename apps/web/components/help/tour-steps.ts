@@ -27,25 +27,25 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: 'time',
     target: 'nav.group.time',
-    title: 'Time',
+    title: 'Time Tracking',
     body: 'Everyone’s time: time entries, timesheets waiting for approval, who is working right now, screenshots and apps, and end-of-day reports.',
   },
   {
     id: 'people',
     target: 'nav.group.people',
-    title: 'People',
+    title: 'Workforce',
     body: 'Invite members, organise them into teams, plan schedules, check attendance and handle time off.',
   },
   {
     id: 'work',
     target: 'nav.group.work',
-    title: 'Work',
+    title: 'Project Management',
     body: 'The clients you work for, their projects (with planned breaks) and the tasks people track time against.',
   },
   {
     id: 'money',
     target: 'nav.group.money',
-    title: 'Money',
+    title: 'Finance',
     body: 'Budgets and expenses, and, depending on your role, pay and bill rates, invoices and payroll.',
   },
   {

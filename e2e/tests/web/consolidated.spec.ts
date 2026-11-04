@@ -16,7 +16,7 @@ test.describe('Consolidated pages (admin)', () => {
   test('Timesheets: Approvals holds submitted timesheets and manual time; Team week is the other tab', { tag: '@smoke' }, async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}`);
     const nav = sidebar(page);
-    const group = nav.getByRole('button', { name: 'Time' });
+    const group = nav.getByRole('button', { name: 'Time Tracking' });
     if ((await group.getAttribute('aria-expanded')) === 'false') await group.click();
     await nav.getByRole('link', { name: 'Timesheets' }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/timesheets/approvals$`));
@@ -73,11 +73,14 @@ test.describe('Consolidated pages (admin)', () => {
   test('finance pages export what they show; Export asks for a period first', { tag: '@smoke' }, async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}/finance/expenses`);
     const exportButton = page.getByRole('button', { name: 'Export' });
-    await expect(exportButton).toBeDisabled();
-    await expect(exportButton).toHaveAttribute('title', 'Pick a period to export');
+    // Without a period the menu says what to do (a disabled button's hover tip reached no phone or
+    // keyboard user), and offers no format to download.
+    await exportButton.click();
+    await expect(page.getByRole('note')).toHaveText('Choose a period first. An export covers one period, so “Any date” cannot be exported.');
+    await expect(page.getByRole('menuitem')).toHaveCount(0);
+    await page.keyboard.press('Escape');
 
     await page.getByLabel('Date range').selectOption('this_month');
-    await expect(exportButton).toBeEnabled();
     await exportButton.click();
     const download = page.waitForEvent('download');
     await page.getByRole('menuitem', { name: 'CSV' }).click();
@@ -87,9 +90,13 @@ test.describe('Consolidated pages (admin)', () => {
 
     for (const path of ['/finance/invoices', '/finance/invoices/payments']) {
       await page.goto(`/o/${data.orgId}${path}`);
-      await expect(page.getByRole('button', { name: 'Export' })).toBeDisabled();
+      await page.getByRole('button', { name: 'Export' }).click();
+      await expect(page.getByRole('note')).toContainText('Choose a period first');
+      await page.keyboard.press('Escape');
       await page.getByLabel('Date range').selectOption('last_30');
-      await expect(page.getByRole('button', { name: 'Export' })).toBeEnabled();
+      await page.getByRole('button', { name: 'Export' }).click();
+      await expect(page.getByRole('menuitem', { name: 'CSV' })).toBeVisible();
+      await page.keyboard.press('Escape');
     }
     await page.goto(`/o/${data.orgId}/finance/budgets`);
     await expect(page.getByRole('button', { name: 'Export' })).toBeEnabled();

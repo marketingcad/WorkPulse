@@ -1,8 +1,9 @@
-import { app, BrowserWindow, crashReporter, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, shell, Tray, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, crashReporter, dialog, ipcMain, Menu, nativeImage, Notification, powerMonitor, safeStorage, shell, Tray, type IpcMainInvokeEvent } from 'electron';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IPC, type IpcChannel, type IpcPayload } from '../shared/ipc';
+import { PERMISSION_SETTINGS_URL } from '../shared/permissions';
 import { Agent } from './services/agent';
 import { readManagedConfig } from './services/managed-config';
 import { loadAutoUpdater } from './services/updater';
@@ -14,6 +15,8 @@ let win: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let agent: Agent;
 let quitting = false;
+/** The computer is shutting down or the user is logging off: quit at once (tracking is stopped and saved). */
+let systemEnding = false;
 
 // Single instance: a second launch focuses the existing window.
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -46,6 +49,10 @@ function createWindow(): BrowserWindow {
     },
   });
   w.once('ready-to-show', () => w.show());
+  // Windows log-off or shutdown: never hold it up waiting for a report.
+  w.on('session-end', () => {
+    systemEnding = true;
+  });
   // Never navigate away from the app or open windows inside it.
   w.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) void shell.openExternal(url);
@@ -109,9 +116,22 @@ function updateTray(): void {
           { label: 'Clock out…', click: () => (showWindow(), win?.webContents.send('app:navigate', 'clockout')) },
       { label: 'Open WorkPulse', click: () => showWindow() },
       { type: 'separator' },
-      { label: 'Quit', click: () => quit() },
+      { label: 'Quit', click: () => requestQuit() },
     ]),
   );
+}
+
+/**
+ * Quitting while clocked in first asks for the end-of-day report, like Clock out, so the shift is
+ * not ended without it by accident; the window offers Keep working too. Not clocked in: quit now.
+ */
+function requestQuit(): void {
+  if (!systemEnding && agent.state().tracking.state !== 'stopped') {
+    showWindow();
+    win?.webContents.send('app:navigate', 'clockout-quit');
+    return;
+  }
+  void quit();
 }
 
 async function quit(): Promise<void> {
@@ -148,7 +168,7 @@ function registerIpc(): void {
     'timer:start': (p: { projectId: string; taskId: string | null }) => agent.start(p.projectId, p.taskId),
     'timer:stop': (p?: IpcPayload<'timer:stop'>) => agent.stop(new Date(), p?.report),
     'timer:pause': () => agent.pause('MANUAL'),
-    'timer:resume': () => agent.resume(),
+    'timer:resume': () => (agent.assertMayTrack(), agent.resume()),
     'timer:break': (p: IpcPayload<'timer:break'>) => agent.takeBreak(p.breakTypeId, p.minutes ?? null),
     'timer:switch': (p: { projectId: string; taskId: string | null }) => agent.start(p.projectId, p.taskId),
     'notes:set': (p: { note: string }) => agent.setNote(p.note),
@@ -162,8 +182,12 @@ function registerIpc(): void {
     },
     'me:submitTimesheet': (p: IpcPayload<'me:submitTimesheet'>) => agent.api.request('POST', '/agent/me/timesheet/submit', p).then(async (r) => (await agent.refreshBootstrap(), r)),
     'me:requestTimeOff': (p: IpcPayload<'me:requestTimeOff'>) => agent.api.request('POST', '/agent/me/time-off', p),
+    'me:cancelTimeOff': (p: IpcPayload<'me:cancelTimeOff'>) => agent.api.request('POST', `/agent/me/time-off/${p.id}/cancel`),
     'me:readNotifications': (p: IpcPayload<'me:readNotifications'>) => agent.api.request('POST', '/agent/me/notifications/read', p),
     'me:savePayStub': (p: IpcPayload<'me:savePayStub'>) => savePayStub(p.id),
+    'agent:reconnect': () => agent.refreshBootstrap(),
+    'notAdded:dismiss': (p: { id: string }) => agent.dismissNotAdded(p.id),
+    'system:openPermissionSettings': (p: IpcPayload<'system:openPermissionSettings'>) => (process.platform === 'darwin' ? shell.openExternal(PERMISSION_SETTINGS_URL[p.kind]) : undefined),
     'app:quit': () => quit(),
   };
   for (const channel of Object.keys(IPC) as IpcChannel[]) {
@@ -266,6 +290,9 @@ app.whenReady().then(async () => {
     updateTray();
   });
   agent.on('show', () => showWindow());
+  powerMonitor.on('shutdown', () => {
+    systemEnding = true;
+  });
   // A desktop notification was clicked: bring the app forward on the page it is about.
   agent.on('open', (view: string) => {
     showWindow();
@@ -282,7 +309,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', (e) => {
   if (!quitting) {
     e.preventDefault();
-    void quit();
+    requestQuit();
   }
 });
 app.on('window-all-closed', () => {

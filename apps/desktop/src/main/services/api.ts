@@ -1,6 +1,9 @@
 import { net } from 'electron';
 import type { SecureStore } from './secure-store';
 
+/** Shown on the sign-in screen when an administrator removed this computer. */
+const REVOKED_MESSAGE = 'Your administrator removed this computer from WorkPulse (device revoked). Ask them to approve it again, then sign in.';
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -67,7 +70,7 @@ export class AgentApi {
     if (res.status === 401) {
       const body = (await res.json().catch(() => ({}))) as { code?: string; title?: string };
       this.clear();
-      this.onSignedOut(body.code === 'device_revoked' ? 'This device was revoked by your administrator.' : 'Your session expired. Please sign in again.');
+      this.onSignedOut(body.code === 'device_revoked' ? REVOKED_MESSAGE : 'Your session expired. Please sign in again.');
       throw new ApiError(401, body.code ?? 'unauthenticated', body.title ?? 'Signed out');
     }
     if (!res.ok) throw new ApiError(res.status, 'refresh_failed', `Token refresh failed (${res.status})`);
@@ -110,6 +113,14 @@ export class AgentApi {
       });
     let res = await send();
     if (res.status === 401) {
+      // Revoked: say so. Refreshing would fail too (revoking also ends the refresh token), and then
+      // read as "session expired", which sends the worker round in circles signing in again.
+      const p = (await res.clone().json().catch(() => ({}))) as { code?: string; title?: string };
+      if (p.code === 'device_revoked') {
+        this.clear();
+        this.onSignedOut(REVOKED_MESSAGE);
+        throw new ApiError(401, p.code, p.title ?? REVOKED_MESSAGE);
+      }
       this.access = null;
       res = await send();
     }

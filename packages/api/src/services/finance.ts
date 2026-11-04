@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  auditLogs,
   billingEntries,
   billingRates,
   budgets,
@@ -442,7 +443,7 @@ export async function pageExpenses(x: Ctx, q: ExpenseQuery & { page: number; pag
 }
 
 async function toExpenseRows(x: Ctx, rows: Array<{ e: typeof expenses.$inferSelect; projectName: string | null; clientName: string | null }>) {
-  const names = await memberNames(x, [...new Set(rows.map((r) => r.e.membershipId))]);
+  const names = await memberNames(x, [...new Set(rows.flatMap((r) => [r.e.membershipId, ...(r.e.rejectedBy ? [r.e.rejectedBy] : [])]))]);
   return rows.map(({ e, projectName, clientName }) => ({
     id: e.id,
     membership_id: e.membershipId,
@@ -462,6 +463,9 @@ async function toExpenseRows(x: Ctx, rows: Array<{ e: typeof expenses.$inferSele
     status: e.status,
     invoiced: !!e.invoiceLineId,
     created_at: e.createdAt.toISOString(),
+    rejection_reason: e.rejectionReason,
+    rejected_by_name: e.rejectedBy ? (names.get(e.rejectedBy) ?? '') : null,
+    rejected_at: e.rejectedAt?.toISOString() ?? null,
   }));
 }
 
@@ -511,7 +515,10 @@ export async function createExpense(x: Ctx, input: z.infer<typeof expenseInput>)
   return (await listExpenses(x, {})).find((e) => e.id === id)!;
 }
 
-export async function decideExpense(x: Ctx, id: string, action: 'APPROVE' | 'REJECT' | 'REIMBURSE') {
+export async function decideExpense(x: Ctx, id: string, action: 'APPROVE' | 'REJECT' | 'REIMBURSE', reason?: string) {
+  // The member must be able to tell what to correct, so a rejection says why.
+  const why = reason?.trim() ?? '';
+  if (action === 'REJECT' && why.length < 3) throw validation('Say why the expense is rejected, so the member knows what to correct', { reason: 'required' });
   const [e] = await x.tx.select().from(expenses).where(eq(expenses.id, id));
   if (!e || !can(x.actor, 'expenses:read', { ownerMembershipId: e.membershipId })) throw notFound('expense');
   if (!can(x.actor, 'expenses:approve', { ownerMembershipId: e.membershipId }) || e.membershipId === x.actor.membershipId) throw forbidden();
@@ -523,12 +530,19 @@ export async function decideExpense(x: Ctx, id: string, action: 'APPROVE' | 'REJ
   // Conditional on the status read above: two decisions sent at once cannot both apply (e.g. reimbursed twice).
   const [done] = await x.tx
     .update(expenses)
-    .set({ status: next, decidedBy: x.actor.membershipId, decidedAt: new Date(), ...(action === 'REIMBURSE' ? { reimbursedAt: new Date() } : {}), updatedAt: new Date() })
+    .set({
+      status: next,
+      decidedBy: x.actor.membershipId,
+      decidedAt: new Date(),
+      ...(action === 'REIMBURSE' ? { reimbursedAt: new Date() } : {}),
+      ...(action === 'REJECT' ? { rejectionReason: why, rejectedBy: x.actor.membershipId, rejectedAt: new Date() } : {}),
+      updatedAt: new Date(),
+    })
     .where(and(eq(expenses.id, id), eq(expenses.status, e.status)))
     .returning({ id: expenses.id });
   if (!done) throw conflict('expense_changed', 'This expense was just decided by someone else. Refresh to see its status.');
-  await emitFrom(x, `expense.${next.toLowerCase()}`, { expense_id: id, membership_id: e.membershipId }, { workerId: e.membershipId });
-  await audit(x, { action: `expense.${next.toLowerCase()}`, targetType: 'expense', targetId: id });
+  await emitFrom(x, `expense.${next.toLowerCase()}`, { expense_id: id, membership_id: e.membershipId, ...(action === 'REJECT' ? { reason: why } : {}) }, { workerId: e.membershipId });
+  await audit(x, { action: `expense.${next.toLowerCase()}`, targetType: 'expense', targetId: id, before: { status: e.status }, after: { status: next, ...(action === 'REJECT' ? { reason: why } : {}) } });
 }
 
 // ─── Invoices ────────────────────────────────────────────────────────────────
@@ -680,7 +694,7 @@ export async function createInvoice(x: Ctx, input: z.infer<typeof invoiceCreateI
   return getInvoice(x, id);
 }
 
-type InvoiceQuery = { status?: string; clientId?: string; from?: string; to?: string; search?: string };
+type InvoiceQuery = { status?: string; clientId?: string; clientIds?: string[]; from?: string; to?: string; search?: string };
 
 /**
  * An invoice's status exactly as `deriveInvoiceStatus` computes it, in SQL, so lists can filter
@@ -695,6 +709,7 @@ function invoiceWhere(q: InvoiceQuery, today: string, withStatus = true) {
   const term = q.search ? likePattern(q.search) : null;
   return and(
     q.clientId ? eq(invoices.clientId, q.clientId) : undefined,
+    q.clientIds?.length ? inArray(invoices.clientId, q.clientIds) : undefined,
     // OPEN: still waiting for money (sent, partially paid or overdue), e.g. for applying a payment.
     withStatus && q.status === 'OPEN' ? sql`${invoiceStatusSql(today)} in ('SENT', 'PARTIALLY_PAID', 'OVERDUE')` : undefined,
     withStatus && q.status && q.status !== 'ALL' && q.status !== 'OPEN' ? sql`${invoiceStatusSql(today)} = ${q.status}` : undefined,
@@ -846,6 +861,47 @@ export async function sendInvoice(x: Ctx, id: string) {
   await emitFrom(x, 'invoice.sent', { invoice_id: id, number: inv.number });
   await audit(x, { action: 'invoice.sent', targetType: 'invoice', targetId: id });
   return getInvoice(x, id);
+}
+
+/**
+ * Email the client again about an invoice already sent: the amount still due and the due date (worded
+ * as a reminder once it is overdue). The invoice itself does not change. Audited.
+ */
+export async function remindInvoice(x: Ctx, id: string): Promise<{ sent_to: string; overdue: boolean }> {
+  if (!x.actor.grants['invoices:manage']) throw forbidden();
+  const inv = await getInvoice(x, id);
+  if (!['SENT', 'PARTIALLY_PAID', 'OVERDUE'].includes(inv.status)) throw businessRule('invoice_not_open', 'Only a sent invoice with an amount still due can be sent again');
+  if (!inv.client.email) throw businessRule('client_no_email', 'This client has no email address. Add one to the client to send reminders.');
+  // At most 3 reminders a day per invoice, counted from the audit log in this request's transaction
+  // (a rate-limit middleware writes through another connection and deadlocks the org transaction).
+  const [sentToday] = await x.tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(auditLogs)
+    .where(and(eq(auditLogs.organizationId, x.org.id), eq(auditLogs.action, 'invoice.reminder_sent'), eq(auditLogs.targetId, id), gte(auditLogs.createdAt, new Date(x.deps.now().getTime() - 24 * 3600_000))));
+  if ((sentToday?.n ?? 0) >= 3) throw businessRule('reminder_limit', 'This client was already reminded 3 times about this invoice in the last 24 hours. Try again tomorrow.');
+  const fmt = (m: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: inv.currency }).format(m / 100);
+  const overdue = inv.status === 'OVERDUE' || inv.due_date < new Date().toISOString().slice(0, 10);
+  await x.deps.mailer.send(
+    renderEmail(
+      {
+        subject: overdue ? `Reminder: invoice ${inv.number} from ${x.org.name} is overdue` : `Reminder: invoice ${inv.number} from ${x.org.name}`,
+        preheader: `${fmt(inv.balance_minor)} due ${inv.due_date}`,
+        heading: `Invoice ${inv.number}`,
+        paragraphs: [overdue ? `This is a reminder that invoice ${inv.number} from ${x.org.name} was due on ${inv.due_date} and is not fully paid yet.` : `This is a reminder about invoice ${inv.number} from ${x.org.name}, due on ${inv.due_date}.`],
+        details: [
+          { label: 'Invoice total', value: fmt(inv.total_minor) },
+          ...(inv.paid_minor > 0 ? [{ label: 'Already paid', value: fmt(inv.paid_minor) }] : []),
+          { label: 'Amount due', value: fmt(inv.balance_minor), strong: true },
+          { label: 'Due date', value: inv.due_date },
+        ],
+        note: `Questions about this invoice? Reply to ${x.org.name} directly.`,
+        reason: `You received this email because ${x.org.name} sent you an invoice through WorkPulse.`,
+      },
+      { appUrl: x.deps.config.appUrl, to: inv.client.email },
+    ),
+  );
+  await audit(x, { action: 'invoice.reminder_sent', targetType: 'invoice', targetId: id, after: { to: inv.client.email, balance_minor: inv.balance_minor, overdue } });
+  return { sent_to: inv.client.email, overdue };
 }
 
 export async function voidInvoice(x: Ctx, id: string) {

@@ -19,7 +19,7 @@ const item = (groups: NavGroup[], label: string) => groups.flatMap((g) => g.item
 describe('admin sidebar', () => {
   const nav = navFor(ROLE_PRESETS.SYSTEM_ADMIN);
 
-  it('groups 36 items into 21 (with Help), with no personal items, Sessions or Developer in the tree', () => {
+  it('groups the pages by topic, with the person’s own pages under My work, and no Sessions or Developer in the tree', () => {
     expect(labels(nav)).toEqual([
       [null, ['nav.item.overview']],
       ['nav.group.time', ['nav.item.timeEntries', 'nav.item.timesheets', 'nav.item.live', 'nav.item.activity', 'nav.item.eodReports']],
@@ -27,19 +27,23 @@ describe('admin sidebar', () => {
       ['nav.group.work', ['nav.item.clients', 'nav.item.projects', 'nav.item.tasks']],
       ['nav.group.money', ['nav.item.rates', 'nav.item.budgets', 'nav.item.expenses', 'nav.item.invoices', 'nav.item.payroll']],
       ['nav.group.reports', ['nav.item.summary', 'nav.item.reportLibrary']],
+      // UX remediation: personal pages were only behind the avatar menu.
+      ['nav.group.me', ['nav.item.myTimesheet', 'nav.item.myPayStubs', 'nav.item.whatIsMonitored']],
       [null, ['nav.item.settings', 'nav.item.help']],
     ]);
-    expect(nav.flatMap((g) => g.items)).toHaveLength(21);
+    expect(nav.flatMap((g) => g.items)).toHaveLength(24);
   });
 
   it('Settings holds every settings page, Devices and the Developer pages as tabs, in one place', () => {
     const settings = item(nav, 'nav.item.settings')!;
     expect(settings.href).toBe('/settings');
-    expect(settings.tabs!.map((t) => t.href)).toEqual(['/settings', '/settings/time', '/settings/policies', '/devices', '/settings/roles', '/settings/access-review', '/settings/security', '/settings/screenshot-retention', '/developer/api-keys', '/developer/webhooks', '/settings/audit']);
+    expect(settings.tabs!.map((t) => t.href)).toEqual(['/settings', '/settings/time', '/settings/policies', '/settings/roles', '/settings/access-review', '/devices', '/settings/security', '/settings/screenshot-retention', '/settings/audit', '/developer/api-keys', '/developer/webhooks']);
+    // Shown in topic groups, so 11 pages are not one long row of tabs.
+    expect([...new Set(settings.tabs!.map((t) => t.group))]).toEqual(['nav.settings.general', 'nav.settings.time', 'nav.settings.people', 'nav.settings.data', 'nav.settings.integrations']);
   });
 
   it('Timesheets carries Approvals and Team week; Members carries Teams; Schedules carries Attendance; Invoices carries Payments received', () => {
-    expect(item(nav, 'nav.item.timesheets')!.tabs!.map((t) => t.href)).toEqual(['/timesheets/approvals', '/timesheets/team']);
+    expect(item(nav, 'nav.item.timesheets')!.tabs!.map((t) => t.href)).toEqual(['/timesheets/approvals', '/timesheets/team', '/timesheets/not-added']);
     expect(item(nav, 'nav.item.members')!.tabs!.map((t) => t.href)).toEqual(['/workers', '/teams']);
     expect(item(nav, 'nav.item.schedulesAttendance')!.tabs!.map((t) => t.href)).toEqual(['/schedules', '/attendance']);
     expect(item(nav, 'nav.item.invoices')!.tabs!.map((t) => t.href)).toEqual(['/finance/invoices', '/finance/invoices/payments']);
@@ -55,7 +59,8 @@ describe('who sees what', () => {
 
   it('someone who only requests manual time gets Approvals (their requests), not Team week', () => {
     const nav = navFor({ 'org:read': 'org', 'manual_time:request': 'own', 'tracking:read': 'team' });
-    expect(item(nav, 'nav.item.timesheets')!.tabs!.map((t) => t.href)).toEqual(['/timesheets/approvals']);
+    // Time not added follows tracking:read (team), like Session history.
+    expect(item(nav, 'nav.item.timesheets')!.tabs!.map((t) => t.href)).toEqual(['/timesheets/approvals', '/timesheets/not-added']);
   });
 
   it('a team manager sees no money pages but Budgets and Expenses, and lands on Tracking policies in Settings', () => {
@@ -108,10 +113,11 @@ describe('the highlighted page', () => {
     expect(at('/settings/time')).toEqual(['nav.item.settings', '/settings/time']);
   });
 
-  it('highlights nothing on personal pages (they are in the user menu)', () => {
-    expect(at('/timesheets')).toBeNull();
-    expect(at('/pay-stubs')).toBeNull();
-    expect(at('/me/monitoring')).toBeNull();
+  it('highlights My work on personal pages, and Approvals on its own pages under /timesheets', () => {
+    expect(at('/timesheets')).toEqual(['nav.item.myTimesheet', null]);
+    expect(at('/pay-stubs')).toEqual(['nav.item.myPayStubs', null]);
+    expect(at('/me/monitoring')).toEqual(['nav.item.whatIsMonitored', null]);
+    expect(at('/timesheets/not-added')).toEqual(['nav.item.timesheets', '/timesheets/not-added']);
   });
 });
 

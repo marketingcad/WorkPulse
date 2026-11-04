@@ -1,6 +1,4 @@
 'use client';
-import { useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { PageHeader, Panel, PermissionState, Tabs } from '@tallywork/ui';
 import { qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
@@ -9,6 +7,7 @@ import { TimeOffRequests } from '@/components/people/time-off-requests';
 import { TimeOffCalendar } from '@/components/people/time-off-calendar';
 import { TimeOffAdmin } from '@/components/people/time-off-admin';
 import type { TimeOffRequest } from '@/components/people/shared';
+import { useUrlParams } from '@/components/timesheets/use-url-params';
 
 type Tab = 'mine' | 'requests' | 'calendar' | 'admin';
 const TABS: Tab[] = ['mine', 'requests', 'calendar', 'admin'];
@@ -17,8 +16,10 @@ export default function TimeOffPage() {
   const org = useOrg();
   const canApprove = org.can('time_off:approve');
   const canManage = org.can('time_off:manage');
-  const param = useSearchParams().get('tab') as Tab | null;
-  const [chosen, setTab] = useState<Tab | null>(param && TABS.includes(param) ? param : null);
+  // The tab is in the address (refresh and Back keep it); none chosen: the queue when requests wait.
+  const [url, setUrl] = useUrlParams(['tab'] as const);
+  const chosen: Tab | null = url.tab && (TABS as readonly string[]).includes(url.tab) ? (url.tab as Tab) : null;
+  const setTab = (t: Tab) => setUrl({ tab: t });
   const pendingQ = useOrgQuery<TimeOffRequest[]>(canApprove ? `/time-off/requests${qs({ status: 'PENDING' })}` : null);
   const pendingForMe = pendingQ.data?.filter((r) => r.membership_id !== org.membership.id).length;
   // Approvers land on the queue while something is waiting for them.

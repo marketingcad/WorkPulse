@@ -17,13 +17,17 @@ declare global {
       resolveIdle(choice: 'KEPT' | 'DISCARDED' | 'REASSIGNED', projectId?: string, taskId?: string | null): Promise<void>;
       resolveRecovery(resume: boolean): Promise<void>;
       takeBreak(breakTypeId: string | null, minutes?: number | null): Promise<void>;
-      requestManualTime(r: { projectId: string; taskId: string | null; startedAt: string; endedAt: string; reason: string; note?: string }): Promise<void>;
+      requestManualTime(r: { projectId: string; taskId: string | null; startedAt: string; endedAt: string; reason: string; note?: string; refusedSessionId?: string }): Promise<void>;
       me<T>(resource: MeResource, params?: { from?: string; to?: string; date?: string }): Promise<T>;
       submitTimesheet(date: string, version?: number): Promise<unknown>;
       requestTimeOff(r: { policy_id: string; start_date: string; end_date: string; half_day?: boolean; reason?: string }): Promise<unknown>;
       readNotifications(ids: string[] | 'all'): Promise<void>;
       savePayStub(id: string): Promise<{ saved: boolean }>;
       onNavigate(cb: (view: string) => void): () => void;
+      reconnect(): Promise<void>;
+      dismissNotAdded(id: string): Promise<void>;
+      openPermissionSettings(kind: 'screen' | 'accessibility'): Promise<void>;
+      cancelTimeOff(id: string): Promise<unknown>;
       quit(): Promise<void>;
     };
   }

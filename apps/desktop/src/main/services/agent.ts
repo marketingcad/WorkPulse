@@ -10,6 +10,10 @@ import { breakOver, breakReminder, limitAction, localClock, shiftReminder } from
 import { ActivityMonitor, AppTracker, captureScreens, isWaylandSession, msUntilNextShotSlot, nextShotDelays } from './monitors';
 import { OfflineQueue, queueFileFor, type QueuedEvent } from './queue';
 import { SecureStore } from './secure-store';
+import { macPermissions } from './permissions';
+import { isNetworkError, plainError } from '../../shared/errors';
+import { expiredMessage, offlineStatus, type OfflineStatus } from '../../shared/offline';
+import { notAddedItems, type RejectedRecord } from '../../shared/not-added';
 import { BROWSER_NAMES, UrlResolver } from './urls';
 
 const SYNC_INTERVAL_MS = 10_000;
@@ -18,6 +22,20 @@ const BOOTSTRAP_MS = 5 * 60_000;
 const IDLE_POLL_MS = 5_000;
 const FLUSH_MS = 60_000;
 const REMINDER_MS = 30_000;
+/** Encrypted copy of the last bootstrap (account, projects, tracking policy), for starting offline. */
+const BOOT_CACHE = 'bootstrap-cache';
+/** Last time the server answered (ms), for the offline window. Written at most once a minute. */
+const LAST_CONTACT = 'last-contact';
+/** Records the server refused, kept until the worker has seen them (shared/not-added.ts). */
+const NOT_ADDED = 'not-added';
+/** Refused sessions the worker removed, still to be reported to the server. */
+const PENDING_DISMISS = 'pending-dismiss';
+
+interface BootCache {
+  account: string;
+  savedAt: string;
+  boot: Bootstrap;
+}
 
 /** PUT one object to a Supabase Storage signed upload URL (the URL itself is the credential). */
 async function uploadToSignedUrl(url: string, data: Buffer, contentType: string): Promise<void> {
@@ -39,6 +57,8 @@ interface LocalSession {
   /** the current break: when it started and its planned length */
   breakStartedAt?: string | null;
   breakMinutes?: number | null;
+  /** paused by the app because offline tracking ran out (when it ran out); cleared on resume */
+  offlinePausedAt?: string | null;
 }
 
 interface Bootstrap {
@@ -91,6 +111,16 @@ export class Agent extends EventEmitter {
   private lastSyncAt: string | null = null;
   private online = true;
   private syncError: string | null = null;
+  /** Why the last attempt to load the account from the server failed, in plain words. */
+  private connectError: string | null = null;
+  /** `boot` is the saved copy from an earlier run, not yet confirmed by the server this run. */
+  private bootFromCache = false;
+  private settingsSavedAt: number | null = null;
+  private lastContactAt: number | null;
+  private lastContactWritten = 0;
+  private totalsPartial = false;
+  private rejected: RejectedRecord[];
+  private pendingDismiss: Array<{ account: string; sessionId: string }>;
   private phase: AgentState['phase'];
   private error: string | null = null;
   private lastProject: AgentState['lastProject'];
@@ -109,15 +139,21 @@ export class Agent extends EventEmitter {
     this.session = this.store.readJson<LocalSession>('session');
     this.lastProject = this.store.readJson<AgentState['lastProject']>('last-project');
     this.manualRequests = this.store.readJson<ManualRequest[]>('manual-requests') ?? [];
+    this.rejected = this.store.readJson<RejectedRecord[]>(NOT_ADDED) ?? [];
+    this.pendingDismiss = this.store.readJson<Array<{ account: string; sessionId: string }>>(PENDING_DISMISS) ?? [];
+    this.lastContactAt = this.store.readJson<number>(LAST_CONTACT);
     this.phase = this.api.signedIn ? 'ready' : 'signed_out';
+    if (this.api.signedIn) this.loadSavedBoot();
     if (this.api.serverUrl) this.serverUrl = this.api.serverUrl;
     if (this.managedServer) this.serverUrl = this.managedServer;
     if (this.managedServer) this.serverUrl = this.managedServer;
     this.api.onSignedOut = (reason) => {
       this.stopMonitors();
       this.phase = 'signed_out';
-      this.error = reason;
+      // Unsent time stays in this account's encrypted queue: say so, so nobody thinks it is gone.
+      this.error = this.queue.size > 0 ? `${reason} The time saved on this computer is kept, and is sent when you sign in again.` : reason;
       this.boot = null;
+      this.clearSavedBoot();
       this.emitState();
     };
   }
@@ -130,10 +166,18 @@ export class Agent extends EventEmitter {
     powerMonitor.on('resume', () => this.emitState());
     powerMonitor.on('shutdown', () => this.onSuspend());
     if (this.session) this.handleCrashRecovery();
-    this.timers.push(setInterval(() => void this.sync(), SYNC_INTERVAL_MS));
+    this.timers.push(
+      setInterval(() => {
+        // Not loaded yet, or only the saved copy (started offline): keep trying often, so the
+        // server's current settings replace the saved ones soon after the connection is back.
+        if ((!this.boot || this.bootFromCache) && this.api.signedIn) void this.refreshBootstrap();
+        void this.sync();
+      }, SYNC_INTERVAL_MS),
+    );
     this.timers.push(setInterval(() => void this.heartbeat(), HEARTBEAT_MS));
     this.timers.push(setInterval(() => void this.refreshBootstrap(), BOOTSTRAP_MS));
     this.timers.push(setInterval(() => this.checkIdle(), IDLE_POLL_MS));
+    this.timers.push(setInterval(() => this.checkOfflineExpiry(), IDLE_POLL_MS));
     this.timers.push(setInterval(() => this.flushObservations(), FLUSH_MS));
     this.timers.push(setInterval(() => this.emitState(), 1_000));
     this.timers.push(setInterval(() => this.checkReminders(), REMINDER_MS));
@@ -143,7 +187,8 @@ export class Agent extends EventEmitter {
   get capabilities(): Record<string, boolean> {
     return {
       input: this.activity.available,
-      screenshots: !isWaylandSession(),
+      // macOS captures nothing without the Screen Recording permission.
+      screenshots: !isWaylandSession() && macPermissions()?.screenRecording !== false,
       apps: this.apps.available,
       urls: this.apps.urlsAvailable,
       // Reported so admins can see why a Linux worker has no activity, app or screenshot data.
@@ -163,7 +208,7 @@ export class Agent extends EventEmitter {
       await this.refreshBootstrap();
     } catch (e) {
       this.phase = 'signed_out';
-      this.error = e instanceof Error ? e.message : 'Sign-in failed';
+      this.error = e instanceof Error ? plainError(e.message) : 'Sign-in failed. Try again.';
     }
     this.emitState();
   }
@@ -183,7 +228,7 @@ export class Agent extends EventEmitter {
       } else this.phase = 'signed_out';
     } catch (e) {
       this.phase = 'signed_out';
-      this.error = e instanceof Error ? e.message : 'Sign-in failed';
+      this.error = e instanceof Error ? plainError(e.message) : 'Sign-in failed. Try again.';
       result = { status: 'error' };
     }
     this.emitState();
@@ -200,8 +245,167 @@ export class Agent extends EventEmitter {
     await this.sync();
     this.api.clear();
     this.boot = null;
+    this.clearSavedBoot();
     this.phase = 'signed_out';
     this.emitState();
+  }
+
+  // ─── Offline ───────────────────────────────────────────────────────────────
+  /**
+   * Starting without a connection: use the account, projects and tracking settings saved the last
+   * time this account loaded them here, so time can be tracked. The server checks everything again
+   * when the time arrives (shared/not-added.ts for what it refuses).
+   */
+  private loadSavedBoot(): void {
+    const c = this.store.readJson<BootCache>(BOOT_CACHE);
+    if (!c || !this.account || c.account !== this.account) return;
+    this.boot = c.boot;
+    this.bootFromCache = true;
+    // Not confirmed by the server yet: offline (and its time limit) applies until it answers.
+    this.online = false;
+    this.settingsSavedAt = Date.parse(c.savedAt);
+    this.lastContactAt ??= this.settingsSavedAt;
+    // The saved totals are only right for the day they were saved, and miss time tracked here since.
+    const day = (ms: number) => new Date(ms).toLocaleDateString('en-CA', { timeZone: c.boot.worker.timezone });
+    const sameDay = day(this.settingsSavedAt) === day(Date.now());
+    this.todayBase = { seconds: sameDay ? c.boot.today_seconds : 0, at: Date.now() };
+    this.weekBase = { seconds: sameDay ? c.boot.week_seconds : 0, at: Date.now() };
+    this.totalsPartial = true;
+  }
+
+  private saveBoot(b: Bootstrap): void {
+    this.store.writeJson(BOOT_CACHE, { account: accountOf(b), savedAt: new Date().toISOString(), boot: b } satisfies BootCache);
+    this.bootFromCache = false;
+    this.settingsSavedAt = Date.now();
+    this.totalsPartial = false;
+    this.markContact();
+  }
+
+  /** Signing out (or being signed out) removes the saved account and settings. Unsent time is kept in its queue. */
+  private clearSavedBoot(): void {
+    this.store.writeJson(BOOT_CACHE, null);
+    this.store.writeJson(LAST_CONTACT, null);
+    this.bootFromCache = false;
+    this.settingsSavedAt = null;
+    this.lastContactAt = null;
+  }
+
+  /** The server answered: the offline window starts again from now. */
+  private markContact(): void {
+    this.lastContactAt = Date.now();
+    if (this.lastContactAt - this.lastContactWritten > 60_000) {
+      this.lastContactWritten = this.lastContactAt;
+      this.store.writeJson(LAST_CONTACT, this.lastContactAt);
+    }
+  }
+
+  private offline(): OfflineStatus {
+    return offlineStatus({
+      online: this.online,
+      fromCache: this.bootFromCache,
+      settingsSavedAt: this.settingsSavedAt,
+      lastContactAt: this.lastContactAt,
+      maxOfflineHours: this.boot?.policy.tracking.maxOfflineHours ?? 24,
+      totalsPartial: this.totalsPartial,
+      now: Date.now(),
+    });
+  }
+
+  /**
+   * Offline tracking ran out while clocked in: pause at the moment it ran out, so no time after it is
+   * counted and the worker never believes time is still being recorded. Everything recorded before
+   * stays queued. It does not resume on its own: once back online the worker clocks back in.
+   */
+  checkOfflineExpiry(): void {
+    const s = this.session;
+    const o = this.offline();
+    if (!s || s.state !== 'active' || o.mode !== 'expired' || !o.allowedUntil) return;
+    // Never before the session's own running segment started (a session resumed later is paused now).
+    const at = new Date(Math.max(Date.parse(o.allowedUntil), s.segmentStartedAt ? Date.parse(s.segmentStartedAt) : 0));
+    this.pause('MANUAL', at);
+    s.offlinePausedAt = o.allowedUntil;
+    this.persistSession();
+    new Notification({ title: 'Tracking paused: offline for too long', body: `Your organization allows ${this.boot?.policy.tracking.maxOfflineHours ?? 24} hours offline, which ended at ${new Date(o.allowedUntil).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}. Time up to then is kept. Connect to the internet, then clock back in.` }).show();
+    this.emit('show');
+    this.emitState();
+  }
+
+  /** New tracking (clock in, back from a break) is refused once the offline window has passed. */
+  assertMayTrack(): void {
+    if (this.offline().mode === 'expired') throw new Error(expiredMessage(this.boot?.policy.tracking.maxOfflineHours ?? 24));
+  }
+
+  /** Keep what the server refused, with why, for the worker to see. Manual time has its own status. */
+  private keepRejected(batch: QueuedEvent[], results: Array<{ event_id: string; status: string; code?: string; message?: string }>): number {
+    const now = new Date().toISOString();
+    let kept = 0;
+    for (const r of results) {
+      if (r.status !== 'rejected' || !this.account) continue;
+      const ev = batch.find((e) => e.event_id === r.event_id);
+      if (!ev || ev.type === 'manual_time.request') continue;
+      const sessionId = ev.session_id ?? null;
+      const known = this.rejected.find((x) => sessionId && x.sessionId === sessionId && x.projectId);
+      const local = sessionId && this.session?.id === sessionId ? this.session : null;
+      this.rejected.push({
+        account: this.account,
+        eventId: ev.event_id,
+        type: ev.type,
+        sessionId,
+        projectId: (ev.project_id as string | undefined) ?? local?.projectId ?? known?.projectId ?? null,
+        taskId: (ev.task_id as string | null | undefined) ?? local?.taskId ?? known?.taskId ?? null,
+        occurredAt: ev.occurred_at,
+        code: r.code ?? 'rejected',
+        message: plainError(r.message ?? ''),
+        rejectedAt: now,
+      });
+      kept++;
+    }
+    if (kept) this.store.writeJson(NOT_ADDED, this.rejected);
+    return kept;
+  }
+
+  private forgetRejected(id: string): void {
+    this.rejected = this.rejected.filter((r) => r.account !== this.account || (r.sessionId ?? r.eventId) !== id);
+    this.store.writeJson(NOT_ADDED, this.rejected);
+    this.emitState();
+  }
+
+  /**
+   * The worker removed a refused item without asking for the time. The server is told (their managers
+   * then see it as decided); offline, it is told after the next successful sync.
+   */
+  dismissNotAdded(id: string): void {
+    const session = this.rejected.some((r) => r.account === this.account && r.sessionId === id);
+    this.forgetRejected(id);
+    if (!session || !this.account) return;
+    this.pendingDismiss = [...this.pendingDismiss.filter((d) => d.sessionId !== id), { account: this.account, sessionId: id }];
+    this.store.writeJson(PENDING_DISMISS, this.pendingDismiss);
+    void this.sendDismissals();
+  }
+
+  private dismissing = false;
+  private async sendDismissals(): Promise<void> {
+    // One sender at a time: two syncs finishing together would report the same dismissal twice.
+    if (this.dismissing) return;
+    this.dismissing = true;
+    try {
+      await this.sendPendingDismissals();
+    } finally {
+      this.dismissing = false;
+    }
+  }
+
+  private async sendPendingDismissals(): Promise<void> {
+    for (const d of this.pendingDismiss.filter((x) => x.account === this.account)) {
+      try {
+        await this.api.request('POST', `/agent/me/refused/${d.sessionId}/dismiss`);
+      } catch (e) {
+        // Not reachable now: tried again after the next sync. Anything else (already decided) is done.
+        if (isNetworkError(e)) return;
+      }
+      this.pendingDismiss = this.pendingDismiss.filter((x) => x !== d);
+      this.store.writeJson(PENDING_DISMISS, this.pendingDismiss);
+    }
   }
 
   // ─── Tracking commands ─────────────────────────────────────────────────────
@@ -214,7 +418,8 @@ export class Agent extends EventEmitter {
   }
 
   async start(projectId: string, taskId: string | null): Promise<void> {
-    if (!this.boot) throw new Error('Not ready');
+    if (!this.boot) throw new Error('WorkPulse hasn’t finished connecting yet. Try again in a moment.');
+    this.assertMayTrack();
     if (!this.boot.policy.tracking.allowDesktop) throw new Error('Desktop tracking is disabled by your organization');
     if (this.queue.full) throw new Error('Offline storage is full. Reconnect to the internet to continue tracking.');
     const st = this.state();
@@ -293,6 +498,7 @@ export class Agent extends EventEmitter {
   resume(at = new Date()): void {
     const s = this.session;
     if (!s || s.state !== 'paused') return;
+    s.offlinePausedAt = null;
     s.state = 'active';
     s.segmentStartedAt = at.toISOString();
     s.breakStartedAt = null;
@@ -330,7 +536,10 @@ export class Agent extends EventEmitter {
       ended_at: new Date(r.endedAt).toISOString(),
       ...(r.reason.trim() ? { reason: r.reason.trim() } : {}),
       ...(r.note ? { note: r.note } : {}),
+      ...(r.refusedSessionId ? { refused_session_id: r.refusedSessionId } : {}),
     });
+    // Asked for as manual time: the note has done its job here; the request carries it on the server.
+    if (r.refusedSessionId) this.forgetRejected(r.refusedSessionId);
     this.manualRequests = [{ id, projectId: r.projectId, startedAt: r.startedAt, endedAt: r.endedAt, status: 'queued' as const, message: null }, ...this.manualRequests].slice(0, 10);
     this.store.writeJson('manual-requests', this.manualRequests);
     this.emitState();
@@ -501,7 +710,7 @@ export class Agent extends EventEmitter {
         }
         this.enqueue({ type: 'screenshot.captured', session_id: s.id, occurred_at: shot.capturedAt, screenshot_id: shot.id, captured_at: shot.capturedAt, display_index: shot.displayIndex, blurred: shot.blurred, width: shot.width, height: shot.height, bytes: shot.data.length, sha256: shot.sha256, storage_key: intent.storage_key });
       }
-      if (p.notify && shots.length) new Notification({ title: 'Screenshot taken', body: p.blur ? 'Blurred before upload.' : 'You can review it on the web.', silent: true }).show();
+      if (p.notify && shots.length) new Notification({ title: 'Screenshot taken', body: p.blur ? 'Blurred on this computer before it was sent. It is kept with your activity for this session.' : 'It is kept with your activity for this session.', silent: true }).show();
     } catch (e) {
       // Offline or capture denied: skip this capture (screenshots are best-effort, time is not).
       // Logged so a persistent failure (permissions, storage) is diagnosable.
@@ -633,19 +842,27 @@ export class Agent extends EventEmitter {
         const res = await this.api.request<{ results: Array<{ event_id: string; status: string; code?: string; message?: string }>; session: { id: string; state: string; end_reason: string | null } | null; policy_hash: string }>('POST', '/agent/ingest/batch', { sent_at: new Date().toISOString(), events: batch });
         this.queue.ack(res.results.map((r) => r.event_id));
         this.settleManualRequests(res.results);
-        const rejected = res.results.filter((r) => r.status === 'rejected');
-        this.syncError = rejected.length ? (rejected[0]!.message ?? 'Some data was rejected') : null;
+        // Refused records are kept and shown with their reason (never dropped silently).
+        if (this.keepRejected(batch, res.results)) {
+          new Notification({ title: 'Some time was not added', body: 'Open WorkPulse to see what and why. It is kept on this computer until you have looked at it.' }).show();
+          this.emit('open', 'home');
+        }
+        this.syncError = null;
         server = res.session;
         if (this.boot && res.policy_hash !== this.boot.policy_hash) void this.refreshBootstrap();
         if (res.results.length < batch.length) break;
       }
       this.online = true;
+      this.markContact();
       this.lastSyncAt = new Date().toISOString();
+      if (this.pendingDismiss.length) void this.sendDismissals();
       // Limit reached, started elsewhere, or stopped by an admin: follow the server.
       if (server !== undefined) this.reconcile(server);
+      // Sending works again after an administrator approved this computer: pick up its new status.
+      if (this.boot?.device.status === 'PENDING') void this.refreshBootstrap();
     } catch (e) {
-      this.online = !(e instanceof TypeError) && !(e instanceof Error && /fetch|network|ENOTFOUND|ECONN/i.test(e.message));
-      if (e instanceof ApiError) this.syncError = e.message;
+      this.online = !isNetworkError(e);
+      if (e instanceof ApiError) this.syncError = plainError(e.message);
     } finally {
       this.syncing = false;
       this.emitState();
@@ -664,7 +881,13 @@ export class Agent extends EventEmitter {
     this.idle = null;
     if (this.recovery?.sessionId === s.id) this.recovery = null;
     this.persistSession();
-    new Notification({ title: 'Tracking stopped', body: 'Your timer was stopped by the server (limit reached, started elsewhere, or stopped by an admin).' }).show();
+    // A session the server refused to start says why, and where to find it.
+    const refused = this.rejected.find((r) => r.sessionId === s.id && r.type === 'session.start');
+    new Notification(
+      refused
+        ? { title: 'Tracking stopped: time not added', body: `${notAddedItems([refused])[0]!.reason} Open WorkPulse to see this time and ask for it to be added.` }
+        : { title: 'Tracking stopped', body: 'Your timer was stopped by the server (limit reached, started elsewhere, or stopped by an admin).' },
+    ).show();
     this.emitState();
   }
 
@@ -673,9 +896,11 @@ export class Agent extends EventEmitter {
     try {
       const r = await this.api.request<{ session: { id: string; state: string; end_reason: string | null } | null }>('POST', '/agent/heartbeat', { sent_at: new Date().toISOString(), session_id: this.session?.id ?? null, agent_version: this.version, capabilities: this.capabilities });
       this.online = true;
+      this.markContact();
       this.reconcile(r.session);
-    } catch {
-      this.online = false;
+    } catch (e) {
+      // Only a server that cannot be reached means offline (a pending device is refused, not offline).
+      this.online = !isNetworkError(e);
     }
   }
 
@@ -685,13 +910,18 @@ export class Agent extends EventEmitter {
       const b = await this.api.request<Bootstrap>('GET', '/agent/bootstrap');
       this.useAccount(accountOf(b));
       const policyChanged = this.boot && this.boot.policy_hash !== b.policy_hash;
+      const wasSaved = this.bootFromCache;
       this.boot = b;
+      this.saveBoot(b);
       this.remindTimesheet(b);
       this.todayBase = { seconds: b.today_seconds, at: Date.now() };
       this.weekBase = { seconds: b.week_seconds, at: Date.now() };
       if (this.recovery) this.recovery.projectName = b.assignments.find((a) => a.project_id === this.session?.projectId)?.project_name ?? '';
       if (policyChanged) {
-        new Notification({ title: 'Tracking settings changed', body: 'Your organization updated its tracking settings.' }).show();
+        new Notification({
+          title: 'Tracking settings changed',
+          body: wasSaved ? 'Your organization changed its tracking settings while you were offline. WorkPulse now follows the new settings; see What WorkPulse records on Home.' : 'Your organization updated its tracking settings.',
+        }).show();
         this.emit('show');
         if (this.session?.state === 'active') {
           this.stopMonitors();
@@ -701,10 +931,12 @@ export class Agent extends EventEmitter {
       // Another device/web started a timer: follow the server.
       if (this.session && b.current_session?.id !== this.session.id) this.reconcile(b.current_session ? { ...b.current_session, end_reason: null } : null);
       this.online = true;
+      this.connectError = null;
       this.phase = 'ready';
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return;
       this.online = false;
+      this.connectError = e instanceof Error ? plainError(e.message) : null;
     }
     this.emitState();
   }
@@ -774,6 +1006,10 @@ export class Agent extends EventEmitter {
       idlePrompt: this.idle && this.idle.endedAt !== null && this.boot?.policy.idle.behavior !== 'keep' ? { idleId: this.idle.idleId, startedAt: new Date(this.idle.startedAt).toISOString(), endedAt: new Date(this.idle.endedAt).toISOString() } : null,
       recoveryPrompt: this.recovery,
       sync: { queued: this.queue.size, lastSyncAt: this.lastSyncAt, online: this.online, error: this.syncError },
+      connectError: this.connectError,
+      offline: { ...this.offline(), pausedAt: s?.state === 'paused' ? (s.offlinePausedAt ?? null) : null },
+      permissions: macPermissions(),
+      notAdded: notAddedItems(this.rejected.filter((r) => r.account === this.account)),
       capabilities: this.capabilities,
       browserExtension: this.urls.bridge.connectedBrowsers().map((b) => BROWSER_NAMES[b]),
       lastProject: this.lastProject,

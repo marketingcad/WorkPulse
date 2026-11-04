@@ -176,6 +176,20 @@
       "when": 1793046751404,
       "tag": "0024_project_client_since",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793736436414,
+      "tag": "0025_refused_time",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793741663991,
+      "tag": "0026_expense_rejection_reason",
+      "breakpoints": true
     }
   ]
 }

@@ -75,9 +75,14 @@ export function BudgetDialog({ value, onClose, preset }: { value: BudgetStatusDt
       setErr(new ApiError(422, 'validation', 'Choose a subject', undefined, [{ field: 'subject_id', message: `Choose a ${subjectType === 'PROJECT' ? 'project' : 'client'}` }]));
       return;
     }
+    // Said plainly: an unusable value used to be replaced with 80% without a word.
     const w = Number(warn);
+    if (!warn.trim() || !Number.isInteger(w) || w < 1 || w > 100) {
+      setErr(new ApiError(422, 'validation', 'Check the warning level', undefined, [{ field: 'warn_pct', message: 'Use a whole number from 1 to 100, e.g. 80.' }]));
+      return;
+    }
     try {
-      await m.mutateAsync({ subject_type: subjectType, subject_id: subjectId, kind, amount: amt, period, warn_pct: Number.isInteger(w) ? w : 80, include_non_billable: nonBillable });
+      await m.mutateAsync({ subject_type: subjectType, subject_id: subjectId, kind, amount: amt, period, warn_pct: w, include_non_billable: nonBillable });
       toast.success('Budget saved');
       onClose();
     } catch (e) {

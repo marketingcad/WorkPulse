@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Copy, MailPlus, X } from 'lucide-react';
@@ -236,6 +237,8 @@ function PendingInvitations() {
 }
 
 function InviteDialog({ open, onOpenChange, roles, teams }: { open: boolean; onOpenChange: (o: boolean) => void; roles: RoleDto[]; teams: TeamDto[] }) {
+  const org = useOrg();
+  const requireApproval = (org.organization.settings as { requireDeviceApproval?: boolean }).requireDeviceApproval === true;
   const run = useOrgAction();
   const toast = useToast();
   const defaultRole = roles.find((r) => r.key === 'WORKER')?.id ?? roles[0]?.id ?? '';
@@ -336,6 +339,39 @@ function InviteDialog({ open, onOpenChange, roles, teams }: { open: boolean; onO
               {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
             </IconButton>
           </div>
+          {/* What happens after the invitation, so nobody is left wondering how the person starts tracking. */}
+          <section aria-labelledby="inv-next" className="rounded-sm border border-border bg-surface-sunken px-3 py-2.5">
+            <h3 id="inv-next" className="text-sm font-semibold">
+              What happens next
+            </h3>
+            {roleKey === 'WORKER' ? (
+              <ol className="mt-1.5 list-decimal space-y-1 pl-5 text-text-muted">
+                <li>They open the link and choose a password. They are then taken to the desktop app download page.</li>
+                <li>
+                  They install the desktop app (on their computer it is called “Tallywork”) and sign in. The download page:{' '}
+                  <a href="/download" target="_blank" rel="noopener noreferrer" className="font-medium text-interactive hover:underline">
+                    {typeof window === 'undefined' ? '/download' : `${window.location.origin}/download`}
+                  </a>
+                </li>
+                <li>
+                  {requireApproval ? (
+                    <>
+                      Their computer then waits for approval: approve it in{' '}
+                      <Link href={`${org.base}/devices`} className="font-medium text-interactive hover:underline">
+                        Settings › Devices
+                      </Link>
+                      . Until then their time is kept on their computer.
+                    </>
+                  ) : (
+                    'Their computer is approved automatically.'
+                  )}
+                </li>
+                <li>{f.project_ids.length ? 'They choose a project and clock in.' : 'Add them to a project (from their profile or the project), so they have something to clock in to.'}</li>
+              </ol>
+            ) : (
+              <p className="mt-1 text-text-muted">They open the link, choose a password and sign in to WorkPulse on the web with this role.</p>
+            )}
+          </section>
         </div>
       ) : (
         <form

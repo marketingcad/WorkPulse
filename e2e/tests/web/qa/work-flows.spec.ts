@@ -28,7 +28,9 @@ test.describe('QA · Tracking policies (admin)', () => {
     await expect(row.getByText('Overridden')).toBeVisible();
     await expect(page.getByText('Unsaved')).toBeVisible();
     await save.click();
-    await expect(page.getByText('Policy saved. Affected members have been notified.')).toBeVisible();
+    // Saving says what changes and for whom, then saves.
+    await page.getByRole('button', { name: 'Save and notify' }).click();
+    await expect(page.getByText(/^Policy saved./).first()).toBeVisible();
     expect(await layer()).toBe(!inherited);
 
     await open();
@@ -37,7 +39,8 @@ test.describe('QA · Tracking policies (admin)', () => {
     await row.getByRole('button', { name: 'Reset to inherited' }).click();
     await expect(shots).toBeChecked({ checked: inherited });
     await save.click();
-    await expect(page.getByText('Policy saved. Affected members have been notified.').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Save and notify' }).click();
+    await expect(page.getByText(/^Policy saved./).first()).toBeVisible();
     await expect.poll(layer).toBeUndefined();
   });
 });
@@ -71,6 +74,8 @@ test.describe('QA · Expenses (admin)', () => {
     await row.getByRole('button', { name: 'Approve' }).click();
     await expect(page.getByText('Expense approved')).toBeVisible();
     await row.getByRole('button', { name: 'Reimburse' }).click();
+    // Confirmed first: it records the money as paid back.
+    await page.getByRole('button', { name: 'Mark as reimbursed' }).click();
     await expect(page.getByText('Marked as reimbursed')).toBeVisible();
     const status = async () => (await ok<{ items?: Array<{ id: string; status: string }> } | Array<{ id: string; status: string }>>(await worker.get(`${url}?status=ALL&q=${encodeURIComponent(category)}`), 'expenses'));
     await expect.poll(async () => {

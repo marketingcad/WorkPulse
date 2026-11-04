@@ -36,7 +36,9 @@ import {
 import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
 import { downloadText, toCsv } from '@/lib/csv';
-import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
+import { useClampPage, useServerPage } from '@/lib/paging';
+import { useUrlParams } from '@/components/timesheets/use-url-params';
+import { isId, useUrlSearch } from '@/lib/url-state';
 import { DeleteEntryDialog, EditEntryDialog, ManualTimeDialog, RevisionsDrawer, SplitEntryDialog } from '@/components/timesheets/entry-dialogs';
 import { TimeTypeBadge } from '@/components/settings/time-types-panel';
 import { useQueryClient } from '@tanstack/react-query';
@@ -98,13 +100,20 @@ export default function AllTimeEntriesPage() {
   const qc = useQueryClient();
   const toast = useToast();
   const today = todayIn(org.organization.timezone);
-  const [preset, setPreset] = useState<Preset>('this_week');
-  const [custom, setCustom] = useState(() => presetRange('this_week', today, org.organization.week_start));
-  const range = preset === 'custom' ? custom : presetRange(preset, today, org.organization.week_start);
-  const [member, setMember] = useState('');
-  const [client, setClient] = useState('');
-  const [project, setProject] = useState('');
-  const [task, setTask] = useState('');
+  // The dates and filters are in the address, so refresh, Back and a shared link show the same list.
+  // One update per change: several separate updates in a row would each start from the old address.
+  const [url, setUrl] = useUrlParams(['range', 'from', 'to', 'member', 'client', 'project', 'task'] as const);
+  const validDay = (v: string | null) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const customOk = validDay(url.from) && validDay(url.to) && url.from! <= url.to!;
+  const preset: Preset = url.range && (PRESETS as Array<{ value: string }>).some((p) => p.value === url.range) && (url.range !== 'custom' || customOk) ? (url.range as Preset) : customOk ? 'custom' : 'this_week';
+  const range = preset === 'custom' ? { from: url.from!, to: url.to! } : presetRange(preset, today, org.organization.week_start);
+  const setPreset = (p: Preset) => setUrl(p === 'custom' ? { range: 'custom', from: range.from, to: range.to } : { range: p === 'this_week' ? null : p, from: null, to: null });
+  const setCustom = (r: { from: string; to: string }) => setUrl({ range: 'custom', from: r.from, to: r.to });
+  const member = isId(url.member) ? url.member : '';
+  const client = isId(url.client) ? url.client : '';
+  const project = isId(url.project) ? url.project : '';
+  const task = isId(url.task) ? url.task : '';
+  const setMember = (v: string) => setUrl({ member: v || null });
   const [desc, setDesc] = useState(true);
   const [showLeaves, setShowLeaves] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -121,7 +130,7 @@ export default function AllTimeEntriesPage() {
   const projectsQ = useOrgQuery<ProjectDto[]>('/projects');
   const tasksQ = useOrgQuery<TaskDto[]>(project && org.can('tasks:read') ? `/projects/${project}/tasks` : null);
   const typesQ = useOrgQuery<TimeTypeDto[]>('/time-types?include_archived=true', { staleTime: 60_000 });
-  const search = useSearch();
+  const search = useUrlSearch();
   // The server pages every entry in the range (busy ranges pass 5000) and returns totals for the
   // whole range and for each day, so day headers stay right when a day spans two pages.
   const filters = { from: range.from, to: range.to, membership_ids: member ? [member] : undefined, client_id: client || undefined, project_ids: project ? [project] : undefined, task_id: task || undefined, q: search.term || undefined, order: desc ? 'desc' : 'asc' };
@@ -275,13 +284,12 @@ export default function AllTimeEntriesPage() {
             type="date"
             aria-label="From"
             value={range.from}
-            onChange={(e) => (
+            onChange={(e) =>
               setCustom({
                 from: e.target.value,
                 to: range.to < e.target.value ? e.target.value : range.to,
-              }),
-              setPreset('custom')
-            )}
+              })
+            }
             className="h-7 w-36 text-xs"
           />
           <span className="text-xs text-text-muted">–</span>
@@ -290,7 +298,7 @@ export default function AllTimeEntriesPage() {
             aria-label="To"
             value={range.to}
             min={range.from}
-            onChange={(e) => (setCustom({ from: range.from, to: e.target.value }), setPreset('custom'))}
+            onChange={(e) => setCustom({ from: range.from, to: e.target.value })}
             className="h-7 w-36 text-xs"
           />
         </span>
@@ -310,7 +318,7 @@ export default function AllTimeEntriesPage() {
           </Select>
         )}
         {org.can('clients:read') && (
-          <Select aria-label="Client" value={client} onChange={(e) => (setClient(e.target.value), setProject(''), setTask(''))} className="h-8 w-44">
+          <Select aria-label="Client" value={client} onChange={(e) => setUrl({ client: e.target.value || null, project: null, task: null })} className="h-8 w-44">
             <option value="">All clients</option>
             {(clientsQ.data ?? []).map((c) => (
               <option key={c.id} value={c.id}>
@@ -319,7 +327,7 @@ export default function AllTimeEntriesPage() {
             ))}
           </Select>
         )}
-        <Select aria-label="Project" value={project} onChange={(e) => (setProject(e.target.value), setTask(''))} className="h-8 w-52">
+        <Select aria-label="Project" value={project} onChange={(e) => setUrl({ project: e.target.value || null, task: null })} className="h-8 w-52">
           <option value="">All projects</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
@@ -328,7 +336,7 @@ export default function AllTimeEntriesPage() {
           ))}
         </Select>
         {project && (
-          <Select aria-label="Task" value={task} onChange={(e) => setTask(e.target.value)} className="h-8 w-44">
+          <Select aria-label="Task" value={task} onChange={(e) => setUrl({ task: e.target.value || null })} className="h-8 w-44">
             <option value="">All tasks</option>
             {(tasksQ.data ?? []).map((t) => (
               <option key={t.id} value={t.id}>
@@ -591,12 +599,14 @@ export default function AllTimeEntriesPage() {
           project_ids: project ? [project] : undefined,
           group_by: ['date', 'worker', 'project'],
         }}
+        // Reports filter by dates, members, clients and projects only: say what is left out.
+        omitted={[...(task ? ['the task filter'] : []), ...(search.term ? ['the search'] : [])]}
       />
     </>
   );
 }
 
-function SaveAsReportDialog({ open, onClose, params }: { open: boolean; onClose: () => void; params: Record<string, unknown> }) {
+function SaveAsReportDialog({ open, onClose, params, omitted }: { open: boolean; onClose: () => void; params: Record<string, unknown>; omitted: string[] }) {
   const org = useOrg();
   const orgId = useOrgId();
   const toast = useToast();
@@ -623,7 +633,7 @@ function SaveAsReportDialog({ open, onClose, params }: { open: boolean; onClose:
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title="Save as report"
-      description="Saves these dates and filters as a Time & Activity report, grouped by day, member and project."
+      description={`Saves these dates and filters as a Time & Activity report, grouped by day, member and project.${omitted.length ? ` Not saved with it: ${omitted.join(' and ')} (reports do not filter by ${omitted.length > 1 ? 'these' : 'it'}), so its totals can be higher than this list.` : ''}`}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>

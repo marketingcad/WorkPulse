@@ -47,7 +47,8 @@ function Projects() {
   const [status, setStatus] = useState('');
   const [clientId, setClientId] = useState(params.get('client') ?? '');
   const [archived, setArchived] = useState(false);
-  const [edit, setEdit] = useState<ProjectDto | 'new' | null>(null);
+  // ?new=1 ("Add a project" after creating a client) opens New project on that client.
+  const [edit, setEdit] = useState<ProjectDto | 'new' | null>(() => (canManage && params.get('new') === '1' ? 'new' : null));
   const [archive, setArchive] = useState<ProjectDto | null>(null);
   const [busy, setBusy] = useState(false);
   const run = useOrgAction();
@@ -245,6 +246,7 @@ function Projects() {
         open={edit !== null}
         onOpenChange={(o) => !o && setEdit(null)}
         project={edit === 'new' ? null : edit}
+        defaultClientId={edit === 'new' ? clientId || undefined : undefined}
         clients={clientsQ.data}
         workers={workersQ.data}
         teams={teamsQ.data}

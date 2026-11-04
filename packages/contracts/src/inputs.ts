@@ -465,6 +465,9 @@ export const invoiceCreateInput = z.object({
 });
 /** Draft invoices only: fix dates or notes without recreating the invoice. */
 export const invoiceDraftUpdateInput = z.object({ issue_date: isoDate.optional(), due_date: isoDate.optional(), notes: optionalText(2000) });
+/** Deciding an expense: rejecting needs a reason the member can act on; approving and reimbursing do not. */
+export const expenseDecisionInput = z.object({ reason: z.string().trim().max(500).optional() });
+
 export const paymentInput = z.object({
   client_id: id.nullable().optional(),
   amount_minor: z.number().int().min(1),
@@ -521,6 +524,8 @@ export const reportQueryInput = z.object({
   group_by: z.array(z.string().max(30)).max(3).optional(),
   billable: z.enum(['all', 'billable', 'non_billable']).default('all'),
   status: z.string().max(30).optional(),
+  /** free-text search, for list exports that match a searched list (invoices: number or client) */
+  q: z.string().trim().max(100).optional(),
 });
 export const exportInput = reportQueryInput.extend({ format: z.enum(['CSV', 'XLSX', 'PDF']) });
 export const savedReportInput = z.object({

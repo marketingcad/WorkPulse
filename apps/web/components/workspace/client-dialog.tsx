@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { ClientDto } from '@tallywork/contracts';
 import { Button, Checkbox, Dialog, Field, Input, Select, Textarea, cx, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage } from '@/lib/api';
@@ -12,6 +13,7 @@ import { CURRENCIES, LANGUAGES, LogoEditor } from '@/components/workspace/logo-e
 /** Create or edit a client. `onSaved` receives the saved client (e.g. to select it in a picker). */
 export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: ClientDto | null; open: boolean; onOpenChange: (o: boolean) => void; onSaved?: (c: ClientDto) => void }) {
   const org = useOrg();
+  const router = useRouter();
   const run = useOrgAction();
   const toast = useToast();
   const canReadRates = org.can('rates:read');
@@ -81,7 +83,10 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
       if (!client) created.current = saved;
       const wasActive = !saved.archived_at;
       if (f.active !== wasActive) await run('POST', `/clients/${saved.id}/${f.active ? 'restore' : 'archive'}`);
-      toast.success(client ? 'Client updated' : 'Client created');
+      // A new client's next step is its first project (for people who can create one).
+      if (!client && org.can('projects:manage') && !saved.archived_at)
+        toast.success(`${saved.name} was created. Add its first project so people can track time to it.`, { label: 'Add a project', onClick: () => router.push(`${org.base}/projects?client=${saved.id}&new=1`) });
+      else toast.success(client ? 'Client updated' : 'Client created');
       onSaved?.(saved);
       onOpenChange(false);
     } catch (e) {
@@ -106,7 +111,7 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button variant="primary" loading={busy} disabled={!f.name.trim()} onClick={save}>
-            {client ? 'Save client' : 'Create client'}
+            {client && !client.archived_at && !f.active ? 'Archive client and its projects' : client ? 'Save client' : 'Create client'}
           </Button>
         </>
       }
@@ -125,6 +130,12 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
           </Field>
           <Checkbox label="Active" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} className="h-8" />
         </div>
+        {/* Unticking Active archives the client and its projects: say so before Save does it. */}
+        {client && !client.archived_at && !f.active && (
+          <p role="alert" className="rounded-sm bg-warning-soft px-3 py-2 text-sm text-warning">
+            Saving archives {client.name} and its {client.project_count === 1 ? 'project' : `${client.project_count} projects`}: no one can track time to them. Their time is kept, and restoring the client brings the projects back.
+          </p>
+        )}
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-[132px_1fr]">
           <div className="flex flex-col gap-4">

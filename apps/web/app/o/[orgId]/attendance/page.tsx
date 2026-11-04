@@ -1,5 +1,4 @@
 'use client';
-import { useState } from 'react';
 import Link from 'next/link';
 import { Clock3, Palmtree, Timer, UserCheck, UserX } from 'lucide-react';
 import { Info } from 'lucide-react';
@@ -7,7 +6,9 @@ import type { OffsetPage } from '@tallywork/contracts';
 import { DataTable, EmptyState, ErrorState, FilterBar, Input, KpiStrip, PageHeader, Panel, PermissionState, PersonCell, SegmentedControl, Select, StatusBadge, fmtDate, fmtTime, type Column } from '@tallywork/ui';
 import { qs, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
-import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
+import { useClampPage, useServerPage } from '@/lib/paging';
+import { useUrlSearch, useUrlValue } from '@/lib/url-state';
+import { useRouter } from 'next/navigation';
 import { DateStepper, dateRangeLabel, type AttendanceRow, type AttendanceStatus } from '@/components/people/shared';
 
 const STATUSES: Array<{ value: AttendanceStatus; label: string }> = [
@@ -23,14 +24,23 @@ export default function AttendancePage() {
   const org = useOrg();
   const tz = org.membership.timezone || org.organization.timezone;
   const today = todayIn(tz);
-  const [mode, setMode] = useState<'day' | 'week'>('day');
-  const [date, setDate] = useState(today);
-  const [status, setStatus] = useState<'' | AttendanceStatus>('');
+  // The view lives in the address: refresh, Back and shared links keep it.
+  const [mode, setMode] = useUrlValue<'day' | 'week'>('view', 'day', ['day', 'week']);
+  const [dateParam, setDateParam] = useUrlValue<string>('date', today);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : today;
+  const setDate = (d: string) => setDateParam(d);
+  const [status, setStatus] = useUrlValue<'' | AttendanceStatus>('status', '', ['', 'PRESENT', 'LATE', 'ABSENT', 'ON_LEAVE', 'HOLIDAY', 'UNSCHEDULED']);
 
   const from = mode === 'day' ? date : weekStartOf(date, org.organization.week_start);
   const to = mode === 'day' ? date : addDays(from, 6);
   const allowed = org.can('attendance:read');
-  const search = useSearch();
+  const router = useRouter();
+  const openDay = org.can('activity:read')
+    ? (member: string, day: string) => router.push(`${org.base}/activity?member=${member}&date=${day}`)
+    : org.can('timesheets:read')
+      ? (member: string, day: string) => router.push(`${org.base}/timesheets/team?member=${member}&date=${day}`)
+      : null;
+  const search = useUrlSearch();
   // The server computes everyone's attendance for the range, counts it, and sends one page of rows
   // (each with the member's time zone), instead of every member-day.
   const filters = { from, to, status: status || undefined, q: search.term || undefined };
@@ -135,6 +145,8 @@ export default function AttendancePage() {
             loading={q.isLoading}
             pagination={paging.pagination(q.data)}
             caption="Attendance roster"
+            // A row opens that member's day: activity when the person may see it, else their timesheet week.
+            onRowClick={openDay ? (r) => openDay(r.membership_id, r.date) : undefined}
             key={mode}
             empty={
               <EmptyState

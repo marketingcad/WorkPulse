@@ -29,7 +29,8 @@ test.describe('Client profiles', () => {
     await dialog.locator('input[type=file]').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: PNG });
     await expect(dialog.getByRole('button', { name: 'Change logo' })).toBeVisible();
     await dialog.getByRole('button', { name: 'Create client' }).click();
-    await expect(page.getByText('Client created')).toBeVisible();
+    // The next step is offered: its first project.
+    await expect(page.getByText(/was created. Add its first project/)).toBeVisible();
 
     const row = page.getByRole('row', { name: new RegExp(name) });
     await expect(row).toContainText('billing@umbrella.test');

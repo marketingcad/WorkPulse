@@ -6,9 +6,8 @@ import type { EodReportDto } from '@tallywork/contracts';
 import { Badge, Button, Dialog, EmptyState, ErrorState, FilterBar, Input, KpiStrip, PageHeader, PermissionState, PersonCell, Select, SkeletonRows, Panel, fmtTime, useToast } from '@tallywork/ui';
 import { qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
-import { DateRangeFilter, MemberFilter, useDefaultRange } from '@/components/tracking/filters';
-import type { DateRange } from '@/components/tracking/time';
-import { HelpLink } from '@/components/help/help-link';
+import { DateRangeFilter, MemberFilter } from '@/components/tracking/filters';
+import { useUrlId, useUrlRange, useUrlSearch, useUrlValue } from '@/lib/url-state';
 
 /** A local date ('YYYY-MM-DD') as "Tuesday, October 20", without a time-zone shift. */
 const fmtDay = (d: string, opts: Intl.DateTimeFormatOptions = { weekday: 'long', month: 'long', day: 'numeric' }) => new Date(`${d}T12:00:00`).toLocaleDateString([], opts);
@@ -20,10 +19,13 @@ const fmtDay = (d: string, opts: Intl.DateTimeFormatOptions = { weekday: 'long',
  */
 export default function EodReportsPage() {
   const org = useOrg();
-  const [range, setRange] = useState<DateRange>(useDefaultRange('this_week'));
-  const [member, setMember] = useState('');
-  const [show, setShow] = useState<'all' | 'finished'>('all');
-  const [search, setSearch] = useState('');
+  // Filters live in the address: refresh, Back and shared links keep them.
+  const [range, setRange] = useUrlRange('this_week');
+  const [member, setMember] = useUrlId('member');
+  const [show, setShow] = useUrlValue<'all' | 'finished'>('show', 'all', ['all', 'finished']);
+  const searchBox = useUrlSearch();
+  const search = searchBox.input;
+  const setSearch = searchBox.setInput;
   const [openId, setOpenId] = useState<string | null>(null);
   const allowed = org.can('tracking:read');
   const q = useOrgQuery<EodReportDto[]>(allowed ? `/eod-reports${qs({ from: range.from, to: range.to, membership_ids: member || undefined })}` : null);
@@ -48,7 +50,7 @@ export default function EodReportsPage() {
 
   return (
     <>
-      <PageHeader title="End-of-day reports" description="What each person completed, written when they clock out in the desktop app." actions={<HelpLink article="eod-reports" />} />
+      <PageHeader title="End-of-day reports" description="What each person completed, written when they clock out in the desktop app." />
       <FilterBar>
         <DateRangeFilter value={range} onChange={setRange} />
         <MemberFilter value={member} onChange={setMember} />

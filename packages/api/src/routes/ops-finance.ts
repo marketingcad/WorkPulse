@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   budgetInput,
   dateRangeQuery,
+  expenseDecisionInput,
   decisionInput,
   expenseInput,
   holidayInput,
@@ -72,6 +73,7 @@ import {
   sendInvoice,
   setRate,
   upsertBudget,
+  remindInvoice,
   voidInvoice,
   deletePayment,
   deleteDraftInvoice,
@@ -182,7 +184,9 @@ export const financeRoutes = new Hono<AppEnv>()
   })
   .post('/expenses', async (c) => c.json(await createExpense(ctx(c), await body(c, expenseInput)), 201))
   .post('/expenses/:id/:action{approve|reject|reimburse}', async (c) => {
-    await decideExpense(ctx(c), c.req.param('id'), c.req.param('action').toUpperCase() as 'APPROVE');
+    // A body is optional (approve, reimburse); rejecting needs { reason }.
+    const input = c.req.header('content-type')?.includes('application/json') ? await body(c, expenseDecisionInput) : {};
+    await decideExpense(ctx(c), c.req.param('id'), c.req.param('action').toUpperCase() as 'APPROVE', input.reason);
     return c.body(null, 204);
   })
   .get('/invoices', async (c) => {
@@ -202,6 +206,8 @@ export const financeRoutes = new Hono<AppEnv>()
   .patch('/invoices/:id', async (c) => c.json(await updateDraftInvoice(ctx(c), c.req.param('id'), await body(c, invoiceDraftUpdateInput))))
   .post('/invoices/:id/send', async (c) => c.json(await sendInvoice(ctx(c), c.req.param('id'))))
   .post('/invoices/:id/void', async (c) => c.json(await voidInvoice(ctx(c), c.req.param('id'))))
+  // Email the client again about what is still due (not more than a few times an hour).
+  .post('/invoices/:id/remind', async (c) => c.json(await remindInvoice(ctx(c), c.req.param('id'))))
 
   // Payroll
   .get('/payroll/profiles', async (c) => c.json(await listPayrollProfiles(ctx(c), { includeArchived: c.req.query('include_archived') === 'true' })))

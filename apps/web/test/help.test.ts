@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { ROLE_PRESETS } from '@tallywork/domain';
+import { PAGE_GUIDE } from '../components/help/page-help';
 import { HELP_ARTICLES, HELP_CATEGORIES, NAV_GUIDE } from '../components/help/content';
 import { searchArticles } from '../components/help/search';
 import { TOUR_STEPS, placeCard, visibleSteps } from '../components/help/tour-steps';
@@ -55,17 +56,8 @@ describe('help content matches the app', () => {
       }
   });
 
-  it('every “Help” link on a page points to a guide that exists', () => {
-    const files: string[] = [];
-    const walk = (d: string) => {
-      for (const f of readdirSync(d)) {
-        const p = path.join(d, f);
-        if (statSync(p).isDirectory()) walk(p);
-        else if (f.endsWith('.tsx')) files.push(p);
-      }
-    };
-    walk(orgPages);
-    const used = files.flatMap((f) => [...readFileSync(f, 'utf8').matchAll(/HelpLink article=(?:"([^"]+)"|\{[^}]*?'([^']+)'[^}]*?'([^']+)'\})/g)].flatMap((m) => [m[1], m[2], m[3]].filter(Boolean) as string[]));
+  it('every page’s named “Help” guide exists (the top bar links to it)', () => {
+    const used = [...Object.values(PAGE_GUIDE), 'manual-time'];
     expect(used.length).toBeGreaterThanOrEqual(5);
     for (const id of used) expect(HELP_ARTICLES.map((a) => a.id), id).toContain(id);
   });

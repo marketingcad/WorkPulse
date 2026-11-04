@@ -40,15 +40,15 @@ export const POLICY_SECTIONS: PolicySection[] = [
       { section: 'tracking', key: 'allowDesktop', label: 'Allow the desktop app', kind: b },
       { section: 'tracking', key: 'singleTimer', label: 'When a second timer is started', kind: { type: 'select', options: [{ value: 'supersede', label: 'Stop the running timer' }, { value: 'reject', label: 'Refuse the new timer' }] } },
       { section: 'tracking', key: 'maxPauseMinutes', label: 'Stop paused timers after', kind: { type: 'number', min: 1, max: 1440, unit: 'min' } },
-      { section: 'tracking', key: 'recoveryWindowMinutes', label: 'Crash recovery window', help: 'Time after a crash in which a session can be resumed.', kind: { type: 'number', min: 1, max: 240, unit: 'min' } },
-      { section: 'tracking', key: 'heartbeatGraceSeconds', label: 'Heartbeat grace', help: 'How long a silent desktop app keeps its session open.', kind: { type: 'number', min: 60, max: 3600, unit: 'sec' } },
-      { section: 'tracking', key: 'maxOfflineHours', label: 'Maximum offline tracking', help: 'Time tracked offline beyond this is not accepted.', kind: { type: 'number', min: 1, max: 168, unit: 'h' } },
+      { section: 'tracking', key: 'recoveryWindowMinutes', label: 'Offer to resume after a crash for', help: 'If the app or computer crashes, the member can pick up the same session within this time.', kind: { type: 'number', min: 1, max: 240, unit: 'min' } },
+      { section: 'tracking', key: 'heartbeatGraceSeconds', label: 'Treat a silent app as stopped after', help: 'How long WorkPulse waits to hear from a desktop app (for example on a lost connection) before showing the member as offline and pausing the session.', kind: { type: 'number', min: 60, max: 3600, unit: 'sec' } },
+      { section: 'tracking', key: 'maxOfflineHours', label: 'Maximum offline tracking', help: 'How long the desktop app may track without internet. After this it pauses tracking and asks the member to reconnect; time beyond it is not accepted.', kind: { type: 'number', min: 1, max: 168, unit: 'h' } },
     ],
   },
   {
     key: 'activity',
     title: 'Activity',
-    fields: [{ section: 'activity', key: 'enabled', label: 'Record activity levels', help: 'Counts keyboard and mouse events per minute. Which keys are pressed is never recorded.', kind: b }],
+    fields: [{ section: 'activity', key: 'enabled', label: 'Record activity levels', help: 'Counts keyboard and mouse use every minute, shown in 10-minute blocks. Which keys are pressed, and what is typed, are never recorded.', kind: b }],
   },
   {
     key: 'idle',
@@ -90,8 +90,8 @@ export const POLICY_SECTIONS: PolicySection[] = [
   {
     key: 'location',
     title: 'Location',
-    disabled: 'Requires the mobile app — future.',
-    fields: [{ section: 'location', key: 'enabled', label: 'Record location', kind: b, disabled: 'Requires the mobile app — future.' }],
+    disabled: 'Not available: the desktop app does not record location.',
+    fields: [{ section: 'location', key: 'enabled', label: 'Record location', kind: b, disabled: 'Not available: the desktop app does not record location.' }],
   },
   {
     key: 'limits',

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, ErrorState, Field, Input, Panel, SkeletonRows, Switch, useToast } from '@tallywork/ui';
 import { ApiError, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { hoursToSeconds, secondsToHours } from '@/components/workspace/shared';
+import { useUnsavedChanges } from '@/lib/unsaved';
 
 export interface OvertimeRules {
   dailyThresholdSeconds: number | null;
@@ -49,6 +50,7 @@ export function OvertimePanel() {
     onSuccess: () => toast.success('Overtime rules saved'),
   });
   const err = m.error instanceof ApiError ? m.error : null;
+  useUnsavedChanges(!!f && !!initial && JSON.stringify(f) !== JSON.stringify(initial));
 
   if (q.error)
     return (

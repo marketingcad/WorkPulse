@@ -578,6 +578,29 @@ export interface AgentBootstrapDto {
   min_agent_version: string;
 }
 
+/** Time a desktop app recorded but the server refused ("Time not added"), for managers. */
+export interface RefusedTimeDto {
+  id: string;
+  membership_id: string;
+  worker_name: string;
+  kind: 'time' | 'data';
+  project_id: string | null;
+  project_name: string | null;
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number;
+  /** why the server refused it (code and its message) */
+  code: string;
+  message: string;
+  /** OPEN: nothing done yet; CORRECTION_REQUESTED: the worker asked for it as manual time, waiting for approval */
+  status: 'OPEN' | 'CORRECTION_REQUESTED' | 'CORRECTED' | 'CORRECTION_DECLINED' | 'DISMISSED';
+  manual_request_id: string | null;
+  /** the worker's reason on that manual time request */
+  worker_reason: string | null;
+  decision_comment: string | null;
+  dismissed_at: string | null;
+}
+
 export interface TimesheetDueDto {
   period_start: string;
   period_end: string;

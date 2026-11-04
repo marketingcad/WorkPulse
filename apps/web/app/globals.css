@@ -8,10 +8,12 @@
     opacity: 0;
   }
 }
+/* Only a small lift: dialogs are centred with Tailwind's `translate` property, which this
+   `transform` adds to, so an x offset here slid every dialog (and toast) in from the left. */
 @keyframes pop {
   from {
     opacity: 0;
-    transform: translate(-50%, 4px) scale(0.98);
+    transform: translateY(4px) scale(0.98);
   }
 }
 @keyframes slide {

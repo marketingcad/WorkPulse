@@ -433,8 +433,9 @@ async function billingReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
 }
 
 async function invoicesReport(x: Ctx, p: ReportParams): Promise<ReportResult> {
-  // The whole date range, not only the newest 1000 invoices.
-  const rows = await listInvoices(x, { status: p.status, from: p.from, to: p.to }, null);
+  // The whole date range, not only the newest 1000 invoices; and the same client and search as the
+  // list it was exported from (the file used to hold every client's invoices).
+  const rows = await listInvoices(x, { status: p.status, from: p.from, to: p.to, clientIds: p.client_ids, search: p.q || undefined }, null);
   return {
     columns: [{ key: 'number', label: 'Invoice', type: 'text' }, { key: 'client_name', label: 'Client', type: 'text' }, { key: 'issue_date', label: 'Issued', type: 'date' }, { key: 'due_date', label: 'Due', type: 'date' }, { key: 'status', label: 'Status', type: 'status' }, { key: 'total_minor', label: 'Total', type: 'money' }, { key: 'balance_minor', label: 'Balance', type: 'money' }],
     rows: rows as unknown as ReportResult['rows'],

@@ -85,7 +85,7 @@ export const GUIDES: Record<GuidePlatform, Guide> = {
       },
       {
         title: 'Start tracking',
-        body: 'On Home, choose your project and click Clock in. The timer keeps running from the menu bar if you close the window. Click Clock out when you finish; you can add what you completed.',
+        body: 'On Home, choose your project and click Clock in. The timer keeps running from the menu bar if you close the window. Click Clock out when you finish and write a short end-of-day report of what you completed: it is needed to clock out.',
         image: '08-start-tracking.png',
         shows: 'The WorkPulse Home screen, clocked in on a project with the timer running.',
       },
@@ -146,7 +146,7 @@ export const GUIDES: Record<GuidePlatform, Guide> = {
       },
       {
         title: 'Start tracking',
-        body: 'On Home, choose your project and click Clock in. Closing the window keeps the timer running in the system tray. Click Clock out when you finish; you can add what you completed.',
+        body: 'On Home, choose your project and click Clock in. Closing the window keeps the timer running in the system tray. Click Clock out when you finish and write a short end-of-day report of what you completed: it is needed to clock out.',
         image: '07-start-tracking.png',
         shows: 'The WorkPulse Home screen, clocked in on a project with the timer running.',
       },
@@ -203,7 +203,7 @@ export const GUIDES: Record<GuidePlatform, Guide> = {
       },
       {
         title: 'Start tracking',
-        body: 'On Home, choose your project and click Clock in. Closing the window keeps the timer running in the top bar. Click Clock out when you finish; you can add what you completed.',
+        body: 'On Home, choose your project and click Clock in. Closing the window keeps the timer running in the top bar. Click Clock out when you finish and write a short end-of-day report of what you completed: it is needed to clock out.',
         image: '06-start-tracking.png',
         shows: 'The WorkPulse Home screen, clocked in on a project with the timer running.',
       },

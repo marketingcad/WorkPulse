@@ -53,7 +53,7 @@ export function TimeOffCalendar() {
               <Avatar name="A B" size={14} /> Approved
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <Avatar name="A B" size={14} className="opacity-50 outline-1 outline-dashed outline-offset-1 outline-text-muted" /> Pending (faded, dashed)
+              <Avatar name="A B" size={14} className="grayscale outline-1 outline-dashed outline-offset-1 outline-text-muted" /> Pending (grey, dashed)
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-block h-3 w-5 rounded-[2px] bg-surface-sunken" aria-hidden /> Holiday
@@ -105,7 +105,7 @@ export function TimeOffCalendar() {
                       <span className="flex flex-wrap items-center gap-0.5">
                         {list.slice(0, MAX_AVATARS).map((r) => (
                           <span key={r.id} title={`${r.worker_name} · ${r.policy_name}${r.status === 'PENDING' ? ' (pending)' : ''}`}>
-                            <Avatar name={r.worker_name} size={20} className={cx(r.status === 'PENDING' && 'opacity-50 outline-1 outline-dashed outline-offset-1 outline-text-muted')} />
+                            <Avatar name={r.worker_name} size={20} className={cx(r.status === 'PENDING' && 'grayscale outline-1 outline-dashed outline-offset-1 outline-text-muted')} />
                           </span>
                         ))}
                         {list.length > MAX_AVATARS && <span className="tabular text-2xs text-text-muted">+{list.length - MAX_AVATARS}</span>}

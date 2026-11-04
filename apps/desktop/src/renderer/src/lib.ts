@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AgentState, MeResource } from '../../shared/ipc';
+import { plainError } from '../../shared/errors';
 
 export const bridge = window.tallywork;
 
@@ -24,12 +25,25 @@ export function viewForLink(link: string): View | null {
   if (path.startsWith('timesheets')) return 'timesheet';
   if (path.startsWith('attendance/time-off') || path.startsWith('time-off')) return 'timeoff';
   if (path.startsWith('pay-stubs')) return 'paystubs';
-  const top: Record<string, View> = { tasks: 'tasks', projects: 'projects', activity: 'activity', reports: 'reports', schedules: 'schedule' };
+  const top: Record<string, View> = {
+    tasks: 'tasks',
+    projects: 'projects',
+    activity: 'activity',
+    reports: 'reports',
+    schedules: 'schedule',
+  };
   return top[path.split('/')[0]!] ?? null;
 }
 
 /** A date as the worker's calendar day, e.g. "Mon, Sep 22". `date` is YYYY-MM-DD. */
-export function fmtDay(date: string, opts: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric' }): string {
+export function fmtDay(
+  date: string,
+  opts: Intl.DateTimeFormatOptions = {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  },
+): string {
   return new Date(`${date}T12:00:00`).toLocaleDateString([], opts);
 }
 
@@ -51,7 +65,11 @@ export function weekStartOf(date: string): string {
  */
 export function useMe<T>(resource: MeResource, params: { from?: string; to?: string; date?: string } = {}, opts: { refreshMs?: number; deps?: unknown[] } = {}) {
   const key = JSON.stringify([resource, params]);
-  const [state, setState] = useState<{ data: T | null; error: string | null; loading: boolean }>({ data: null, error: null, loading: true });
+  const [state, setState] = useState<{
+    data: T | null;
+    error: string | null;
+    loading: boolean;
+  }>({ data: null, error: null, loading: true });
   const [tick, setTick] = useState(0);
   const lastKey = useRef(key);
   useEffect(() => {
@@ -59,11 +77,23 @@ export function useMe<T>(resource: MeResource, params: { from?: string; to?: str
     // A different resource/range must not show the previous one's data.
     const fresh = lastKey.current !== key;
     lastKey.current = key;
-    setState((s) => ({ data: fresh ? null : s.data, error: null, loading: true }));
+    setState((s) => ({
+      data: fresh ? null : s.data,
+      error: null,
+      loading: true,
+    }));
     bridge
       .me<T>(resource, params)
       .then((data) => alive && setState({ data, error: null, loading: false }))
-      .catch((e) => alive && setState((s) => ({ data: s.data, error: errorText(e, 'Could not load'), loading: false })));
+      .catch(
+        (e) =>
+          alive &&
+          setState((s) => ({
+            data: s.data,
+            error: errorText(e, 'Could not load'),
+            loading: false,
+          })),
+      );
     const t = opts.refreshMs ? setTimeout(() => setTick((n) => n + 1), opts.refreshMs) : null;
     return () => {
       alive = false;
@@ -91,11 +121,14 @@ export function fmtHhmm(hhmm: string): string {
 }
 
 const CLOCK_OUT_EVENT = 'tallywork:clockout';
+/** What happens after clocking out: nothing more, or sign out / quit (asked for while clocked in). */
+export type ClockOutThen = 'stay' | 'logout' | 'quit';
 /** Open the Clock out dialog (it asks for the end-of-day report). */
-export const openClockOut = () => window.dispatchEvent(new Event(CLOCK_OUT_EVENT));
-export const onClockOut = (cb: () => void) => {
-  window.addEventListener(CLOCK_OUT_EVENT, cb);
-  return () => window.removeEventListener(CLOCK_OUT_EVENT, cb);
+export const openClockOut = (then: ClockOutThen = 'stay'): void => void window.dispatchEvent(new CustomEvent<ClockOutThen>(CLOCK_OUT_EVENT, { detail: then }));
+export const onClockOut = (cb: (then: ClockOutThen) => void) => {
+  const listener = (e: Event) => cb((e as CustomEvent<ClockOutThen>).detail ?? 'stay');
+  window.addEventListener(CLOCK_OUT_EVENT, listener);
+  return () => window.removeEventListener(CLOCK_OUT_EVENT, listener);
 };
 
 export function fmtHm(sec: number): string {
@@ -106,12 +139,19 @@ export function fmtHm(sec: number): string {
 }
 
 export function fmtRange(fromIso: string, toIso: string): string {
-  const d = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  const d = (iso: string) =>
+    new Date(`${iso}T12:00:00`).toLocaleDateString([], {
+      month: 'short',
+      day: 'numeric',
+    });
   return `${d(fromIso)} – ${d(toIso)}`;
 }
 
 export function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 export function localDateInput(d = new Date()): string {
@@ -119,8 +159,18 @@ export function localDateInput(d = new Date()): string {
 }
 
 /** Message from a failed bridge call, without Electron's "Error invoking remote method…" prefix. */
-export function errorText(e: unknown, fallback = 'Action failed'): string {
-  return e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': Error: /, '') : fallback;
+/** An error from main, in words a worker understands (no Chromium codes or bare status numbers). */
+/**
+ * Sign out or quit. While clocked in this first opens Clock out (the end-of-day report), so the
+ * shift is never ended without it by accident; the dialog offers Keep working too.
+ */
+export function leave(s: AgentState, then: 'logout' | 'quit'): void {
+  if (s.tracking.state !== 'stopped') openClockOut(then);
+  else void (then === 'logout' ? bridge.logout() : bridge.quit());
+}
+
+export function errorText(e: unknown, fallback = 'That didn’t work. Try again.'): string {
+  return e instanceof Error ? plainError(e.message.replace(/^Error invoking remote method '[^']+': (?:[A-Za-z]*Error: )?/, '')) : fallback;
 }
 
 export function useAgentState(): AgentState | null {
@@ -150,4 +200,45 @@ export function initials(name: string): string {
     .slice(0, 2)
     .map((p) => p[0]!.toUpperCase())
     .join('');
+}
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Keyboard behaviour for a modal sheet or drawer: focus moves into it when it opens (unless a field
+ * there already took it with autoFocus), Tab and Shift+Tab stay inside it, Escape calls `onEscape`
+ * when given (a decision the worker must make, like idle time, passes none), and focus goes back to
+ * where it was when it closes. Put the returned ref on the dialog element.
+ */
+export function useDialogFocus<T extends HTMLElement>(onEscape?: () => void) {
+  const ref = useRef<T>(null);
+  const escape = useRef(onEscape);
+  escape.current = onEscape;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const before = document.activeElement as HTMLElement | null;
+    const items = () => Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((x) => x.tabIndex >= 0 && x.getClientRects().length > 0);
+    if (!el.contains(document.activeElement)) (items()[0] ?? el).focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && escape.current) {
+        e.preventDefault();
+        escape.current();
+      } else if (e.key === 'Tab') {
+        const list = items();
+        if (!list.length) return e.preventDefault();
+        const first = list[0]!;
+        const last = list[list.length - 1]!;
+        const at = document.activeElement;
+        if (e.shiftKey && (at === first || !el.contains(at))) (e.preventDefault(), last.focus());
+        else if (!e.shiftKey && (at === last || !el.contains(at))) (e.preventDefault(), first.focus());
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      if (before?.isConnected) before.focus();
+    };
+  }, []);
+  return ref;
 }

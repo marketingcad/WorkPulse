@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import * as D from '@radix-ui/react-dialog';
 import * as DM from '@radix-ui/react-dropdown-menu';
 import * as P from '@radix-ui/react-popover';
@@ -11,12 +11,36 @@ import { Button, cx } from './primitives';
 import { t } from './i18n';
 
 // ─── Dialog ──────────────────────────────────────────────────────────────────
+/**
+ * Focus goes back to whatever opened the dialog when it closes. Radix only returns it to its own
+ * Dialog.Trigger, and the app opens dialogs from ordinary buttons, so focus used to drop to the
+ * page body: keyboard and screen-reader users lost their place after every dialog.
+ */
+function useReturnFocus(open: boolean) {
+  const opener = useRef<HTMLElement | null>(null);
+  // Read as soon as the dialog commits: by Radix's own open-focus event the opener has already lost focus.
+  useLayoutEffect(() => {
+    if (open) opener.current = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+  }, [open]);
+  return {
+    onCloseAutoFocus: (e: Event) => {
+      const el = opener.current;
+      if (el?.isConnected) {
+        e.preventDefault();
+        el.focus();
+      }
+    },
+  };
+}
+
 export function Dialog({ open, onOpenChange, title, description, children, footer, width = 480 }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; description?: ReactNode; children: ReactNode; footer?: ReactNode; width?: number }) {
+  const focus = useReturnFocus(open);
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
         <D.Overlay className="fixed inset-0 z-50 bg-[rgb(10_18_32/0.45)] data-[state=open]:animate-[fade_120ms_ease-out]" />
         <D.Content
+          {...focus}
           className="fixed left-1/2 top-[10vh] z-50 flex max-h-[80vh] w-[calc(100vw-32px)] -translate-x-1/2 flex-col rounded-lg border border-border bg-surface shadow-overlay focus:outline-none data-[state=open]:animate-[pop_140ms_ease-out]"
           style={{ maxWidth: width }}
         >
@@ -30,7 +54,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
             </D.Close>
           </div>
           <div className="overflow-y-auto px-5 py-4">{children}</div>
-          {footer && <div className="flex justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>}
+          {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>}
         </D.Content>
       </D.Portal>
     </D.Root>
@@ -39,11 +63,12 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
 
 /** Right-hand detail drawer; full screen on mobile. */
 export function Drawer({ open, onOpenChange, title, subtitle, children, actions, width = 480 }: { open: boolean; onOpenChange: (o: boolean) => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; actions?: ReactNode; width?: number }) {
+  const focus = useReturnFocus(open);
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
         <D.Overlay className="fixed inset-0 z-40 bg-[rgb(10_18_32/0.25)]" />
-        <D.Content className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l border-border bg-surface shadow-overlay focus:outline-none data-[state=open]:animate-[slide_160ms_ease-out]" style={{ maxWidth: width }}>
+        <D.Content {...focus} className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l border-border bg-surface shadow-overlay focus:outline-none data-[state=open]:animate-[slide_160ms_ease-out]" style={{ maxWidth: width }}>
           <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-3.5">
             <div className="min-w-0">
               <D.Title className="truncate text-lg font-semibold">{title}</D.Title>

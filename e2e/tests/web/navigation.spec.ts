@@ -31,8 +31,8 @@ for (const [path, heading] of PAGES) {
 test('the sidebar navigates between sections', async ({ page, data }) => {
   await page.goto(`/o/${data.orgId}`);
   const nav = page.getByRole('complementary', { name: 'Primary' });
-  // Groups other than the current page's are collapsed: open "People" first.
-  const group = nav.getByRole('button', { name: 'People' });
+  // Groups other than the current page's are collapsed: open "Workforce" first.
+  const group = nav.getByRole('button', { name: 'Workforce' });
   if ((await group.getAttribute('aria-expanded')) === 'false') await group.click();
   await nav.getByRole('link', { name: 'Members' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Members' })).toBeVisible();

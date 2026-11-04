@@ -165,10 +165,10 @@ test.describe('End-of-day reports', () => {
     await expect(page.getByText(`No reports mention “nothing-like-this-${tag}”`)).toBeVisible();
   });
 
-  test('is in the Time menu for managers', async ({ page, data }) => {
+  test('is in the Time Tracking menu for managers', async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}`);
     const nav = page.getByRole('complementary', { name: 'Primary' });
-    const group = nav.getByRole('button', { name: 'Time' });
+    const group = nav.getByRole('button', { name: 'Time Tracking' });
     if ((await group.getAttribute('aria-expanded')) === 'false') await group.click();
     await nav.getByRole('link', { name: 'End-of-day reports' }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/tracking/reports$`));

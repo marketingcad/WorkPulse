@@ -64,6 +64,15 @@ export const PERMISSIONS = [
   'payroll:manage',
   'reports:read',
   'reports:finance',
+  'performance:read',
+  'performance:manage',
+  'goals:read',
+  'goals:manage',
+  'achievements:read',
+  'achievements:manage',
+  'achievements:award',
+  'reviews:read',
+  'reviews:manage',
   'api_keys:manage',
   'webhooks:manage',
   'audit:read',
@@ -89,6 +98,9 @@ export const ORG_ONLY_PERMISSIONS: readonly Permission[] = [
   'audit:read',
   'settings:security',
   'retention:manage',
+  // Scoring rules, leaderboard visibility and the achievement catalogue apply to everyone.
+  'performance:manage',
+  'achievements:manage',
 ];
 
 export const BUILTIN_ROLES = ['SYSTEM_ADMIN', 'TEAM_MANAGER', 'WORKER', 'AGENT'] as const;
@@ -136,6 +148,13 @@ export const ROLE_PRESETS: Record<BuiltinRole, Grants> = {
     'expenses:create': 'own',
     'expenses:approve': 'team',
     'reports:read': 'team',
+    'performance:read': 'team',
+    'goals:read': 'team',
+    'goals:manage': 'team',
+    'achievements:read': 'team',
+    'achievements:award': 'team',
+    'reviews:read': 'team',
+    'reviews:manage': 'team',
   },
   WORKER: {
     'org:read': 'org',
@@ -165,6 +184,10 @@ export const ROLE_PRESETS: Record<BuiltinRole, Grants> = {
     'expenses:read': 'own',
     'expenses:create': 'own',
     'reports:read': 'own',
+    // Their own progress, in the desktop app. Reviews reach them only when shared, never the private note.
+    'performance:read': 'own',
+    'goals:read': 'own',
+    'achievements:read': 'own',
   },
   AGENT: {
     'agent:ingest': 'own',

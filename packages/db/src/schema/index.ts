@@ -6,3 +6,4 @@ export * from './operations';
 export * from './finance';
 export * from './platform';
 export * from './portal';
+export * from './performance';

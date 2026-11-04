@@ -38,6 +38,7 @@ import { reconcileWorkerDays, recomputeUsageDays, recomputeWorkerDays } from '..
 import { applyTrigger, limitExceeded, lockWorker, resolveIdle } from '../services/tracking';
 import { memberNames } from '../services/timer';
 import { idleEndEvidence } from '../services/activity';
+import { handlePerformanceEvent, performanceDaily } from '../services/performance-jobs';
 
 const MAX_ATTEMPTS = 10;
 const SYSTEM = { type: 'system' as const, id: null };
@@ -54,6 +55,8 @@ interface Envelope {
 async function handleEvent(tx: Tx, deps: Deps, e: Envelope): Promise<void> {
   const p = e.payload;
   const org = e.organization_id;
+  // Goals and achievements follow completed tasks, milestones and approved timesheets.
+  await handlePerformanceEvent(tx, deps, e);
   switch (e.event_type) {
     case 'time.changed': {
       const m = p.membership_id as string;
@@ -373,7 +376,8 @@ export async function runDaily(deps: Deps) {
         await emit(tx, o.id, 'invoice.overdue', { invoice_id: i.id, number: i.number });
       }
       const digests = await sendDigests(tx, deps, o.id, today);
-      summary[o.id] = { deleted, accrued, overdue: overdue.length, rollups, digests };
+      const performance = await performanceDaily(tx, deps, o.id);
+      summary[o.id] = { deleted, accrued, overdue: overdue.length, rollups, digests, performance };
     });
   }
   await withSystem(deps.db, (tx) => tx.delete(rateLimitBuckets).where(lt(rateLimitBuckets.windowStart, new Date(deps.now().getTime() - 2 * 86400_000))));

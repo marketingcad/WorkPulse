@@ -172,4 +172,32 @@ describe('migrations', () => {
     expect(byId[approved]!.rejection_reason).toBeNull();
     expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
   });
+
+  it('0030 (Performance Center) gives existing built-in roles their performance permissions, leaves custom roles alone, and runs again cleanly', async () => {
+    const [org, admin, manager, worker, custom] = [newId(), newId(), newId(), newId(), newId()];
+    await withSystem(h.db, async (tx) => {
+      await tx.insert(organizations).values({ id: org, name: 'Perf', slug: `perf-${org}`, timezone: 'UTC', settings: {} as never });
+      await tx.insert(roles).values([
+        { id: admin, organizationId: org, key: 'SYSTEM_ADMIN', name: 'System Admin', builtin: true },
+        { id: manager, organizationId: org, key: 'TEAM_MANAGER', name: 'Team Manager', builtin: true },
+        { id: worker, organizationId: org, key: 'WORKER', name: 'Worker', builtin: true },
+        { id: custom, organizationId: org, key: 'CONTRACTOR', name: 'Contractor', builtin: false },
+      ]);
+    });
+    const when = journalWhen('0030_performance_center');
+    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at >= ${when}`);
+
+    await expect(h.migrate()).resolves.toBeUndefined();
+    // and once more, recorded this time
+    await expect(h.migrate()).resolves.toBeUndefined();
+
+    const got = await rows<{ role_id: string; permission: string; scope: string }>(sql`select role_id, permission, scope from role_permissions where organization_id = ${org} and (permission like 'performance:%' or permission like 'goals:%' or permission like 'achievements:%' or permission like 'reviews:%') order by permission`);
+    const of = (role: string) => Object.fromEntries(got.filter((r) => r.role_id === role).map((r) => [r.permission, r.scope]));
+    expect(of(admin)).toEqual({ 'achievements:award': 'org', 'achievements:manage': 'org', 'achievements:read': 'org', 'goals:manage': 'org', 'goals:read': 'org', 'performance:manage': 'org', 'performance:read': 'org', 'reviews:manage': 'org', 'reviews:read': 'org' });
+    expect(of(manager)).toEqual({ 'achievements:award': 'team', 'achievements:read': 'team', 'goals:manage': 'team', 'goals:read': 'team', 'performance:read': 'team', 'reviews:manage': 'team', 'reviews:read': 'team' });
+    expect(of(worker)).toEqual({ 'achievements:read': 'own', 'goals:read': 'own', 'performance:read': 'own' });
+    expect(of(custom)).toEqual({});
+    const [t] = await rows<{ n: number }>(sql`select count(*)::int as n from information_schema.tables where table_name in ('performance_rules', 'performance_settings', 'project_milestones', 'performance_goals', 'performance_goal_progress', 'achievement_definitions', 'achievement_awards', 'performance_reviews', 'performance_score_snapshots', 'client_appreciations')`);
+    expect(t!.n).toBe(10);
+  });
 });

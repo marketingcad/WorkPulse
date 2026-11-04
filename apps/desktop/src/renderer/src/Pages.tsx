@@ -5,6 +5,7 @@ import { ProjectsCard } from './Dashboard';
 import { SessionList, localDay } from './HomeCards';
 import { addDays, bridge, card, errorText, fmtDay, fmtHm, fmtTime, localDateInput, useMe, weekStartOf, type View } from './lib';
 import type { ActivityDayDto, PayStubDto, SessionDto, ShiftDto, SummaryDto, TaskDto, TimeOffDto, TimesheetDto } from './types';
+import { BarList } from '@tallywork/ui/charts';
 
 // ─── Shared page pieces ──────────────────────────────────────────────────────
 
@@ -175,7 +176,6 @@ export function ProjectsPage({ s }: { s: AgentState }) {
     }
   };
   const week = useMe<SummaryDto>('summary', { from: weekStartOf(today()), to: today() }, { refreshMs: 120_000, deps: [s.tracking.sessionId] });
-  const max = Math.max(1, ...(week.data?.projects.map((p) => p.seconds) ?? [0]));
   return (
     <Page title="Projects" description="Projects you are assigned to. Click one to start tracking.">
       {error && <p className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
@@ -183,19 +183,9 @@ export function ProjectsPage({ s }: { s: AgentState }) {
         <ProjectsCard s={s} run={run} />
         <Card title="This week">
           <Status loading={week.loading && !week.data} error={week.data ? null : week.error} onRetry={week.reload} empty={!!week.data && !week.data.projects.length && 'No time this week yet.'}>
-            <ul className="flex flex-col gap-3 px-4 py-3">
-              {week.data?.projects.map((p) => (
-                <li key={p.project_id}>
-                  <div className="flex items-baseline justify-between gap-2 text-sm">
-                    <span className="truncate">{p.project_name}</span>
-                    <span className="tabular shrink-0 font-semibold">{fmtHm(p.seconds)}</span>
-                  </div>
-                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-sunken">
-                    <div className="h-full rounded-full" style={{ width: `${(p.seconds / max) * 100}%`, background: p.color }} />
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <div className="px-4 py-3">
+              <BarList rows={(week.data?.projects ?? []).map((p) => ({ label: p.project_name, value: p.seconds, color: p.color }))} format={fmtHm} />
+            </div>
           </Status>
         </Card>
       </div>
@@ -486,25 +476,14 @@ export function ActivityPage({ s }: { s: AgentState }) {
 }
 
 function UsageList({ title, rows, empty }: { title: string; rows: Array<{ name: string; seconds: number }>; empty: string }) {
-  const max = Math.max(1, ...rows.map((r) => r.seconds));
   return (
     <Card title={title}>
       {rows.length === 0 ? (
         <p className="px-4 py-6 text-center text-sm text-text-muted">{empty}</p>
       ) : (
-        <ul className="flex flex-col gap-2.5 px-4 py-3">
-          {rows.slice(0, 8).map((r) => (
-            <li key={r.name}>
-              <div className="flex items-baseline justify-between gap-2 text-sm">
-                <span className="truncate">{r.name}</span>
-                <span className="tabular shrink-0 text-text-muted">{fmtHm(r.seconds)}</span>
-              </div>
-              <div className="mt-1 h-1 overflow-hidden rounded-full bg-surface-sunken">
-                <div className="h-full rounded-full bg-act-4" style={{ width: `${(r.seconds / max) * 100}%` }} />
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div className="px-4 py-3">
+          <BarList rows={rows.slice(0, 8).map((r) => ({ label: r.name, value: r.seconds, color: 'var(--color-chart-1)' }))} format={fmtHm} />
+        </div>
       )}
     </Card>
   );
@@ -573,22 +552,7 @@ export function ReportsPage() {
               </Card>
               <Card title="By project">
                 <Status loading={false} error={null} empty={!r.projects.length && 'No time in this period.'}>
-                  <ul className="flex flex-col gap-3 px-4 py-3">
-                    {r.projects.map((p) => (
-                      <li key={p.project_id}>
-                        <div className="flex items-baseline justify-between gap-2 text-sm">
-                          <span className="truncate">{p.project_name}</span>
-                          <span className="tabular shrink-0">
-                            <span className="font-semibold">{fmtHm(p.seconds)}</span>
-                            <span className="ml-1 text-2xs text-text-muted">{total ? Math.round((p.seconds / total) * 100) : 0}%</span>
-                          </span>
-                        </div>
-                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-sunken">
-                          <div className="h-full rounded-full" style={{ width: `${total ? (p.seconds / total) * 100 : 0}%`, background: p.color }} />
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                  <BarList max={total || 1} rows={r.projects.map((p) => ({ label: p.project_name, value: p.seconds, color: p.color, sub: `${total ? Math.round((p.seconds / total) * 100) : 0}%` }))} format={fmtHm} />
                 </Status>
               </Card>
             </div>

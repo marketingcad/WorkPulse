@@ -170,6 +170,11 @@ export async function widgetData(x: Ctx, keys: string[], scope: 'ALL' | 'ME' | '
     out.tracked_week = {
       seconds: weekS,
       previous_seconds: sum(prevWeek),
+      // Last week day by day, so this week so far is compared with the same days (not all of last week).
+      previous_by_day: Array.from({ length: 7 }, (_, i) => {
+        const d = addDaysToDate(weekStart, i - 7);
+        return { date: d, seconds: sum(prevWeek, (r) => r.localDate === d) };
+      }),
       billable_seconds: sum(week, (r) => r.billable) + liveBillableWeek,
       by_day: Array.from({ length: 7 }, (_, i) => {
         const d = addDaysToDate(weekStart, i);

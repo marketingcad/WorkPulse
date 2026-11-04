@@ -306,6 +306,21 @@ export const webEn = {
   'profile.locale.money': 'Money',
   'profile.locale.saved': 'Language and formats saved',
 
+  // Charts
+  'charts.vsPrevious': 'vs previous period',
+  'charts.vsPreviousSoFar': 'vs the same days of the previous period',
+  'charts.previousPeriod': 'Previous period',
+  'charts.billable': 'Billable',
+  'charts.nonBillable': 'Non-billable',
+  'charts.hoursPerDay': 'Hours per day',
+  'charts.hoursPerDayTitle': 'Hours logged per day, billable and non-billable',
+  'charts.billableShare': 'Billable share',
+  'charts.billableShareTitle': 'Billable and non-billable time',
+  'charts.logged': 'logged',
+  'charts.noTime': 'No time in this period',
+  'charts.noTimeHint': 'Time appears here once members track it or add it.',
+  'charts.comparedWith': 'Compared with {period}',
+
   // Settings: the desktop app's "What WorkPulse records" card
   'monitoringCard.title': 'Desktop app',
   'monitoringCard.label': 'Show “What WorkPulse records” in the desktop app',

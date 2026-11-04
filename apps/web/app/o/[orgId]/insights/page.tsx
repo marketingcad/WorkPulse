@@ -6,7 +6,9 @@ import type { InsightsDto } from '@tallywork/contracts';
 import { Button, DataTable, EmptyState, ErrorState, KpiStrip, PageHeader, Panel, PermissionState, PersonCell, SegmentedControl, SkeletonRows, fmtDate, fmtMoney, type Column } from '@tallywork/ui';
 import { qs, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
-import { ColumnChart, StackedBars } from '@/components/charts';
+import { periodChange } from '@tallywork/ui/chart-math';
+import { BarList, ColumnChart, Donut } from '@/components/charts-lazy';
+import { t } from '@/lib/i18n';
 import { PERIOD_OPTIONS, periodRange, type PeriodMode } from '@/components/insights/period';
 import { downloadText, toCsv } from '@/lib/csv';
 
@@ -20,12 +22,27 @@ export default function InsightsPage() {
   const pp = org.organization.pay_period as { type?: string; anchorDate?: string } | null;
   const period = periodRange(mode, todayIn(org.organization.timezone), offset, org.organization.week_start, pp?.type === 'biweekly' ? pp.anchorDate : undefined);
   const q = useOrgQuery<InsightsDto>(org.can('time:read') ? `/insights${qs({ from: period.from, to: period.to })}` : null);
+  // The period just before, from the same endpoint (server totals; cached when you step back to it).
+  const prev = periodRange(mode, todayIn(org.organization.timezone), offset - 1, org.organization.week_start, pp?.type === 'biweekly' ? pp.anchorDate : undefined);
+  const prevQ = useOrgQuery<InsightsDto>(org.can('time:read') ? `/insights${qs({ from: prev.from, to: prev.to })}` : null);
 
   if (!org.can('time:read')) return <PermissionState />;
   const data = q.data;
   const d = org.fmtDuration;
   const money = (m: number | null) => (m === null ? '—' : fmtMoney(m, data?.currency ?? org.organization.currency));
   const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+  const today = todayIn(org.organization.timezone);
+  // A period still in progress is compared with the same number of days of the previous one.
+  const elapsed = today >= period.from && today <= period.to ? Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${period.from}T12:00:00Z`)) / 86400000) + 1 : null;
+  const previous = prevQ.data;
+  const sameMoney = !!(data && previous && data.money_visible && previous.money_visible && previous.currency === data.currency);
+  const delta = (current: number | null, pick: ((x: InsightsDto['by_day'][number]) => number | null) | null) => {
+    if (current === null || !previous || !pick) return undefined;
+    const r = periodChange(current, previous.by_day.map((x) => pick(x) ?? 0), elapsed);
+    if (!r || r.change === null) return undefined;
+    const pct = Math.round(r.change * 100);
+    return { value: `${pct > 0 ? '+' : ''}${pct}%`, direction: pct > 0 ? ('up' as const) : pct < 0 ? ('down' as const) : ('flat' as const), label: t(r.toDate ? 'charts.vsPreviousSoFar' : 'charts.vsPrevious') };
+  };
 
   const columns: Column<Member>[] = [
     { key: 'name', header: 'Member', priority: 'primary', value: (m) => m.name, cell: (m) => <PersonCell name={m.name} sub={m.title ?? undefined} /> },
@@ -97,10 +114,10 @@ export default function InsightsPage() {
           <KpiStrip
             minItemWidth={data.money_visible ? 300 : 210}
             items={[
-              { label: 'Time logged', value: d(data.totals.logged_seconds), hint: plural(data.totals.people_with_time, 'person', 'people'), icon: <Clock3 />, tone: 'blue' as const },
-              ...(data.money_visible ? [{ label: 'Est. pay', value: money(data.totals.pay_minor), hint: plural(data.totals.paid_people, 'person', 'people'), icon: <Wallet />, tone: 'violet' as const }] : []),
-              { label: 'Billable time', value: d(data.totals.billable_seconds), hint: `${plural(data.totals.billable_clients, 'client')}, ${plural(data.totals.billable_projects, 'project')}`, icon: <BriefcaseBusiness />, tone: 'green' as const },
-              ...(data.money_visible ? [{ label: 'Est. billable', value: money(data.totals.bill_minor), icon: <Receipt />, tone: 'amber' as const }] : []),
+              { label: 'Time logged', value: d(data.totals.logged_seconds), delta: delta(data.totals.logged_seconds, (x) => x.seconds), hint: plural(data.totals.people_with_time, 'person', 'people'), icon: <Clock3 />, tone: 'blue' as const },
+              ...(data.money_visible ? [{ label: 'Est. pay', value: money(data.totals.pay_minor), delta: sameMoney ? delta(data.totals.pay_minor, (x) => x.pay_minor) : undefined, hint: plural(data.totals.paid_people, 'person', 'people'), icon: <Wallet />, tone: 'violet' as const }] : []),
+              { label: 'Billable time', value: d(data.totals.billable_seconds), delta: delta(data.totals.billable_seconds, (x) => x.billable_seconds), hint: `${plural(data.totals.billable_clients, 'client')}, ${plural(data.totals.billable_projects, 'project')}`, icon: <BriefcaseBusiness />, tone: 'green' as const },
+              ...(data.money_visible ? [{ label: 'Est. billable', value: money(data.totals.bill_minor), delta: sameMoney ? delta(data.totals.bill_minor, (x) => x.bill_minor) : undefined, icon: <Receipt />, tone: 'amber' as const }] : []),
               { label: 'Activity', value: data.totals.activity_pct === null ? '—' : `${data.totals.activity_pct}%`, icon: <Activity />, tone: 'rose' as const },
               { label: 'Days off', value: data.totals.days_off, icon: <Palmtree />, tone: 'teal' as const },
             ]}
@@ -113,32 +130,56 @@ export default function InsightsPage() {
             </p>
           )}
 
-          {mode !== 'day' && (
-            <Panel title="Hours per day">
+          {previous && <p className="-mt-2 text-xs text-text-faint">{t('charts.comparedWith', { period: prev.label })}</p>}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {mode !== 'day' && (
+              <Panel title={t('charts.hoursPerDay')} className="lg:col-span-2">
+                <div className="p-4 pt-6">
+                  {data.totals.logged_seconds ? (
+                    <ColumnChart
+                      title={t('charts.hoursPerDayTitle')}
+                      // Days still to come are "no data", not zero.
+                      data={data.by_day.map((x) => (x.date > today ? { date: x.date, billable: null, other: null } : { date: x.date, billable: x.billable_seconds, other: x.seconds - x.billable_seconds }))}
+                      x="date"
+                      series={[
+                        { key: 'billable', label: t('charts.billable'), color: 'var(--color-chart-1)' },
+                        { key: 'other', label: t('charts.nonBillable'), color: 'var(--color-chart-other)' },
+                      ]}
+                      format={d}
+                      axisUnit={3600}
+                      xFormat={(v) => fmtDate(v, mode === 'month' ? { day: 'numeric' } : { weekday: 'short', day: 'numeric' })}
+                      compare={previous ? { label: t('charts.previousPeriod'), values: data.by_day.map((_, i) => previous.by_day[i]?.seconds ?? null) } : undefined}
+                    />
+                  ) : (
+                    <EmptyState title={t('charts.noTime')} description={t('charts.noTimeHint')} />
+                  )}
+                </div>
+              </Panel>
+            )}
+            <Panel title={t('charts.billableShare')} className={mode === 'day' ? 'lg:col-span-3' : undefined}>
               <div className="p-4">
                 {data.totals.logged_seconds ? (
-                  <ColumnChart
-                    data={data.by_day.map((x) => ({ date: x.date, billable: x.billable_seconds, other: x.seconds - x.billable_seconds }))}
-                    x="date"
-                    series={[
-                      { key: 'billable', label: 'Billable', color: 'var(--color-secondary)' },
-                      { key: 'other', label: 'Non-billable', color: 'var(--color-border-strong)' },
-                    ]}
+                  <Donut
+                    title={t('charts.billableShareTitle')}
+                    centerLabel={t('charts.logged')}
                     format={d}
-                    xFormat={(v) => fmtDate(v, mode === 'month' ? { day: 'numeric' } : { weekday: 'short', day: 'numeric' })}
+                    segments={[
+                      { key: 'billable', label: t('charts.billable'), value: data.totals.billable_seconds, color: 'var(--color-chart-1)' },
+                      { key: 'other', label: t('charts.nonBillable'), value: Math.max(0, data.totals.logged_seconds - data.totals.billable_seconds), color: 'var(--color-chart-other)' },
+                    ]}
                   />
                 ) : (
-                  <EmptyState title="No time in this period" />
+                  <EmptyState title={t('charts.noTime')} />
                 )}
               </div>
             </Panel>
-          )}
+          </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Panel title="Hours by client">
               <div className="p-4">
                 {data.by_client.length ? (
-                  <StackedBars rows={data.by_client.slice(0, 10).map((c) => ({ label: c.name, value: c.seconds, sub: c.bill_minor ? money(c.bill_minor) : undefined }))} format={d} />
+                  <BarList rows={data.by_client.slice(0, 10).map((c) => ({ label: c.name, value: c.seconds, sub: c.bill_minor ? money(c.bill_minor) : undefined }))} format={d} />
                 ) : (
                   <EmptyState title="No client time" />
                 )}
@@ -147,7 +188,7 @@ export default function InsightsPage() {
             <Panel title="Hours by project">
               <div className="p-4">
                 {data.by_project.length ? (
-                  <StackedBars rows={data.by_project.slice(0, 10).map((p) => ({ label: p.name, value: p.seconds, color: p.color, sub: p.client_name ?? undefined }))} format={d} />
+                  <BarList rows={data.by_project.slice(0, 10).map((p) => ({ label: p.name, value: p.seconds, color: p.color, sub: p.client_name ?? undefined }))} format={d} />
                 ) : (
                   <EmptyState title="No project time" />
                 )}

@@ -157,7 +157,8 @@ export function Panel({ title, actions, children, className, bodyClassName, foot
 export interface Kpi {
   label: string;
   value: ReactNode;
-  delta?: { value: string; direction: 'up' | 'down' | 'flat'; good?: boolean } | null;
+  /** a change against a previous period; without `good`, shown neutral (more is not always better) */
+  delta?: { value: string; direction: 'up' | 'down' | 'flat'; good?: boolean; label?: string } | null;
   hint?: ReactNode;
   /** A small icon shown in a coloured tile next to the label. */
   icon?: ReactNode;
@@ -195,11 +196,12 @@ export function KpiStrip({ items, className, minItemWidth = 210 }: { items: Kpi[
                 <span
                   className={cx(
                     'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-2xs font-semibold',
-                    k.delta.direction === 'flat' ? 'bg-surface-muted text-text-muted' : k.delta.good ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger',
+                    k.delta.direction === 'flat' || k.delta.good === undefined ? 'bg-surface-muted text-text-muted' : k.delta.good ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger',
                   )}
                 >
                   {k.delta.direction === 'up' ? <TrendingUp className="size-3" aria-hidden /> : k.delta.direction === 'down' ? <TrendingDown className="size-3" aria-hidden /> : null}
                   {k.delta.value}
+                  {k.delta.label && <span className="font-normal"> {k.delta.label}</span>}
                 </span>
               )}
             </div>

@@ -1,6 +1,7 @@
 import type { AgentState } from '../../shared/ipc';
 import { card, fmtDay, fmtHm, fmtTime, useMe, type View } from './lib';
 import type { SessionDto, SummaryDto } from './types';
+import { Meter } from '@tallywork/ui/charts';
 
 /** Today's totals: live tracked time from the agent; active, idle and activity from the server. */
 export function TodaySummaryCard({ s, now }: { s: AgentState; now: number }) {
@@ -61,8 +62,8 @@ export function Total({ label, seconds, limit }: { label: string; seconds: numbe
         {limit && <span className="font-normal text-text-muted"> / {fmtHm(limit)}</span>}
       </dd>
       {pct !== null && (
-        <dd className="col-span-2 mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-sunken" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% of the limit`}>
-          <div className={`h-full rounded-full ${pct >= 100 ? 'bg-danger' : pct >= 90 ? 'bg-warning' : 'bg-interactive'}`} style={{ width: `${pct}%` }} />
+        <dd className="col-span-2 mt-1.5">
+          <Meter value={seconds} max={limit!} label={`${label}: ${pct}% of the limit`} />
         </dd>
       )}
     </div>

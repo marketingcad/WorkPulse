@@ -30,7 +30,7 @@ import {
 } from '@tallywork/ui';
 import { ApiError, api, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
-import { ColumnChart } from '@/components/charts';
+import { BarList, ColumnChart } from '@/components/charts-lazy';
 import { DateRangeFilter, isPreset, rangeFor, type Preset } from '@/components/reports/date-range';
 import { MultiSelect } from '@/components/reports/multi-select';
 import { NUMERIC_TYPES, formatCell, formatValue, type CatalogItem, type ColumnType, type FormatCtx, type ReportResult, type ReportRun, type SavedReport } from '@/components/reports/format';
@@ -384,7 +384,20 @@ function ReportRunner() {
           {chart && chart.data.length > 0 && chart.series.length > 0 && (
             <Panel title={xIsDate ? (chart.series.length > 1 ? 'Per day' : `${chart.series[0]?.label ?? ''} per day`) : `${chart.series[0]?.label ?? ''} by ${(result.columns.find((c) => c.key === chart.x)?.label ?? chart.x).toLowerCase()}`}>
               <div className="p-4">
-                <ColumnChart data={chart.data} x={chart.x} series={chart.series} format={(v) => formatValue(chartType, v, f)} xFormat={xIsDate ? (v) => fmtDate(v, { month: 'short', day: 'numeric' }) : undefined} />
+                {!xIsDate && chart.series.length === 1 ? (
+                  // Categories (members, projects…): ranked bars read better than columns with long names.
+                  <BarList rows={[...chart.data].map((row) => ({ label: String(row[chart.x] ?? '—'), value: Number(row[chart.series[0]!.key]) || 0 })).sort((a, b) => b.value - a.value).slice(0, 15)} format={(v) => formatValue(chartType, v, f)} />
+                ) : (
+                  <ColumnChart
+                    title={xIsDate ? 'Values per day' : 'Values by category'}
+                    data={chart.data}
+                    x={chart.x}
+                    series={chart.series}
+                    format={(v) => formatValue(chartType, v, f)}
+                    axisUnit={chartType === 'duration' ? 3600 : undefined}
+                    xFormat={xIsDate ? (v) => fmtDate(v, { month: 'short', day: 'numeric' }) : undefined}
+                  />
+                )}
               </div>
             </Panel>
           )}

@@ -33,7 +33,10 @@ import { useOrgStream } from '@/lib/stream';
 import { useOrg } from '@/lib/org';
 import { localDateOf } from '@/components/tracking/time';
 import { useCurrentTracking, useLiveSeconds } from '@/components/shell/timer-bar';
-import { StackedBars } from '@/components/charts';
+import { periodChange } from '@tallywork/ui/chart-math';
+import { BarList, ColumnChart, Meter, RingMeter, TrendDelta } from '@/components/charts-lazy';
+import { todayIn } from '@/lib/org';
+import { t as tr } from '@/lib/i18n';
 import { useMemberOptions } from '@/lib/members';
 import { SetupChecklist } from '@/components/workspace/setup-checklist';
 import { MemberAvatar } from '@/lib/avatars';
@@ -280,23 +283,30 @@ function Widget({ k, data }: { k: string; data: any }) {
         />
       );
     case 'tracked_week': {
-      const delta = data.previous_seconds ? Math.round(((data.seconds - data.previous_seconds) / data.previous_seconds) * 100) : null;
-      const max = Math.max(1, ...data.by_day.map((x: { seconds: number }) => x.seconds));
+      const today = todayIn(org.organization.timezone);
+      const days = data.by_day as Array<{ date: string; seconds: number }>;
+      const prevDays = (data.previous_by_day ?? null) as Array<{ date: string; seconds: number }> | null;
+      // This week so far against the same days of last week (not all of it, which always looks like a drop).
+      const elapsed = days.filter((x) => x.date <= today).length;
+      const change = prevDays ? periodChange(data.seconds, prevDays.map((x) => x.seconds), elapsed < days.length ? elapsed : null) : null;
       return (
         <div className="p-4">
-          <div className="flex items-baseline gap-3">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className="tabular text-2xl font-semibold tracking-tight">{d(data.seconds)}</span>
-            {delta !== null && <span className={cx('rounded-full px-1.5 py-0.5 text-2xs font-semibold', delta >= 0 ? 'bg-success-soft text-success' : 'bg-surface-muted text-text-muted')}>{delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}% vs last week</span>}
+            {change && <TrendDelta change={change.change} label="vs last week" toDate={change.toDate} />}
           </div>
-          <div className="mt-4 flex h-24 items-end gap-2" role="img" aria-label="Hours per day this week">
-            {data.by_day.map((x: { date: string; seconds: number }) => (
-              <div key={x.date} className="flex flex-1 flex-col items-center gap-1">
-                <div className="flex w-full flex-1 items-end">
-                  <div className="w-full rounded-t-[6px] bg-gradient-to-t from-[#3b5bff] to-[#7c5cff]" style={{ height: `${(x.seconds / max) * 100}%`, minHeight: x.seconds ? 3 : 0 }} title={`${fmtDate(x.date)}: ${d(x.seconds)}`} />
-                </div>
-                <span className="text-2xs text-text-faint">{fmtDate(x.date, { weekday: 'narrow' })}</span>
-              </div>
-            ))}
+          <div className="mt-4">
+            <ColumnChart
+              title="Hours per day this week"
+              height={104}
+              data={days.map((x) => ({ date: x.date, seconds: x.date > today ? null : x.seconds }))}
+              x="date"
+              series={[{ key: 'seconds', label: 'Tracked', color: 'var(--color-chart-1)' }]}
+              format={d}
+              axisUnit={3600}
+              xFormat={(v) => fmtDate(v, { weekday: 'narrow' })}
+              compare={prevDays ? { label: tr('charts.previousPeriod'), values: prevDays.map((x) => x.seconds) } : undefined}
+            />
           </div>
           <div className="mt-2 text-xs text-text-muted">Billable {d(data.billable_seconds)}</div>
         </div>
@@ -305,7 +315,7 @@ function Widget({ k, data }: { k: string; data: any }) {
     case 'activity':
       return (
         <div className="flex items-center gap-4 p-4">
-          <ActivityRing pct={data.pct} />
+          <RingMeter pct={data.pct} label="Average activity this week" />
           <div className="text-xs text-text-muted">
             Average activity this week
             {data.previous_pct !== null && <div>Last week {data.previous_pct}%</div>}
@@ -335,7 +345,7 @@ function Widget({ k, data }: { k: string; data: any }) {
     case 'hours_by_client':
       return data.length ? (
         <div className="p-4">
-          <StackedBars rows={data.map((c: { name: string; seconds: number }) => ({ label: c.name, value: c.seconds }))} format={d} />
+          <BarList rows={data.map((c: { name: string; seconds: number }) => ({ label: c.name, value: c.seconds }))} format={d} />
         </div>
       ) : (
         <EmptyState title="No time tracked this month" />
@@ -343,7 +353,7 @@ function Widget({ k, data }: { k: string; data: any }) {
     case 'hours_by_project':
       return data.length ? (
         <div className="p-4">
-          <StackedBars rows={data.map((p: { name: string; seconds: number; color: string }) => ({ label: p.name, value: p.seconds, color: p.color }))} format={d} />
+          <BarList rows={data.map((p: { name: string; seconds: number; color: string }) => ({ label: p.name, value: p.seconds, color: p.color }))} format={d} />
         </div>
       ) : (
         <EmptyState title="No time tracked this week" />
@@ -588,9 +598,7 @@ function Widget({ k, data }: { k: string; data: any }) {
                     {d(l.used_seconds)} of {d(l.limit_seconds)}
                   </span>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-surface-sunken" role="progressbar" aria-label={`${label} limit used`} aria-valuemin={0} aria-valuemax={l.limit_seconds} aria-valuenow={Math.min(l.used_seconds, l.limit_seconds)}>
-                  <div className={cx('h-full rounded-full', l.used_seconds >= l.limit_seconds ? 'bg-danger' : l.used_seconds >= l.limit_seconds * 0.9 ? 'bg-warning' : 'bg-interactive')} style={{ width: `${Math.min(100, (l.used_seconds / l.limit_seconds) * 100)}%` }} />
-                </div>
+                <Meter value={l.used_seconds} max={l.limit_seconds} label={`${label} limit used`} />
               </li>
             ) : null,
           )}
@@ -601,25 +609,6 @@ function Widget({ k, data }: { k: string; data: any }) {
     default:
       return <EmptyState title="Not available" />;
   }
-}
-
-/** Average activity as a ring (blue to violet), like the product preview on the sign-in page. */
-function ActivityRing({ pct }: { pct: number | null }) {
-  return (
-    <span className="relative inline-flex size-16 shrink-0" role="img" aria-label={pct === null ? 'No activity data' : `${pct}% average activity`}>
-      <svg viewBox="0 0 36 36" className="size-full -rotate-90" aria-hidden>
-        <circle cx="18" cy="18" r="15.5" fill="none" className="stroke-surface-sunken" strokeWidth="3.5" />
-        {pct !== null && <circle cx="18" cy="18" r="15.5" fill="none" stroke="url(#wp-activity)" strokeWidth="3.5" strokeLinecap="round" strokeDasharray={`${Math.min(100, pct)} 100`} pathLength="100" />}
-        <defs>
-          <linearGradient id="wp-activity" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#3b82ff" />
-            <stop offset="1" stopColor="#7c5cff" />
-          </linearGradient>
-        </defs>
-      </svg>
-      <span className="tabular absolute inset-0 flex items-center justify-center text-sm font-bold">{pct === null ? '—' : `${pct}%`}</span>
-    </span>
-  );
 }
 
 function CurrentTimerWidget() {

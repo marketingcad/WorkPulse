@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { API_KEY_SCOPES, newId } from '@tallywork/domain';
 import { Client, addMember, createHarness, pkce, signup, type Harness } from './harness';
@@ -18,6 +20,7 @@ let orgA: string;
 let adminB: Client;
 let device: Client;
 let key: Client;
+let workerId: string;
 
 type Route = { method: string; path: string };
 let routes: Route[];
@@ -37,7 +40,8 @@ beforeAll(async () => {
   t = await createHarness();
   ({ client: adminA, orgId: orgA } = await signup(t, 'Ann Admin', 'ann@a.test', 'Org A'));
   ({ client: adminB } = await signup(t, 'Ben Admin', 'ben@b.test', 'Org B'));
-  const { client: worker } = await addMember(t, adminA, orgA, 'Wim Worker', 'wim@a.test');
+  const { client: worker, membershipId } = await addMember(t, adminA, orgA, 'Wim Worker', 'wim@a.test');
+  workerId = membershipId;
 
   const { verifier, challenge } = pkce();
   const code = await worker.post('/agent/authorize', { code_challenge: challenge, organization_id: orgA });
@@ -89,29 +93,25 @@ describe('every organization route', () => {
 });
 
 /**
- * The endpoints docs/api/README.md ("Scopes and the endpoints they open") lists, as route templates.
- * `GET ''` is the organization itself, open to any key. Keep this in step with that table.
+ * The endpoints docs/api/README.md ("Scopes and the endpoints they open") lists, read from that table,
+ * so the docs and the code cannot drift apart: change one without the other and this fails.
+ * `GET /orgs/{orgId}` is the organization itself (route `GET `).
  */
-const DOCUMENTED_FOR_API_KEYS = new Set([
-  'GET ',
-  'GET /workers', 'GET /workers/:id',
-  'GET /teams', 'GET /teams/:id',
-  'GET /clients', 'GET /clients/:id',
-  'GET /projects', 'GET /projects/:id',
-  'GET /tasks', 'GET /tasks/:id', 'GET /projects/:id/tasks',
-  'GET /timesheets', 'GET /timesheets/:id/history',
-  'GET /time-entries', 'GET /time-entries/:id/revisions', 'GET /sessions', 'GET /sessions/:id',
-  'GET /activity/day', 'GET /screenshots', 'GET /apps', 'GET /urls', 'GET /apps/spans', 'GET /urls/spans', 'GET /idle-events',
-  'GET /reports', 'POST /reports/:key/query',
-  'GET /billing/amounts-owed', 'GET /rates', 'GET /budgets',
-  'GET /invoices', 'GET /invoices/:id', 'GET /payments',
-  'POST /projects', 'PATCH /projects/:id', 'POST /projects/:id/archive', 'POST /projects/:id/restore',
-  'POST /projects/:id/tasks', 'PATCH /tasks/:id', 'DELETE /tasks/:id',
-  'POST /clients', 'PATCH /clients/:id', 'POST /clients/:id/archive', 'POST /clients/:id/restore',
-]);
+function documentedForApiKeys(): Set<string> {
+  const md = readFileSync(path.resolve(__dirname, '../../../docs/api/README.md'), 'utf8');
+  const table = md.slice(md.indexOf('| Scope | Endpoints |')).split(/\r?\n\r?\n/)[0]!;
+  const out = new Set<string>();
+  for (const m of table.matchAll(/`(GET|POST|PATCH|PUT|DELETE) (\/[^`?]*)(\?[^`]*)?`/g)) {
+    const p = m[2] === '/orgs/{orgId}' ? '' : m[2]!.replace(/\{(\w+)\}/g, ':$1');
+    out.add(`${m[1]} ${p}`);
+  }
+  return out;
+}
 
 describe('API keys', () => {
   it('should_open_only_the_documented_endpoints_even_with_every_scope', async () => {
+    const DOCUMENTED_FOR_API_KEYS = documentedForApiKeys();
+    expect(DOCUMENTED_FOR_API_KEYS.size).toBeGreaterThan(20); // the table was found
     const open: string[] = [];
     for (const r of routes) {
       const res = await key.req(r.method, concrete(r.path), bodyFor(r.method));
@@ -121,13 +121,57 @@ describe('API keys', () => {
     // Nothing undocumented is reachable: payroll, the Performance Center, portal settings, support
     // access, settings, members' private data and deletions all stay closed to keys.
     expect(open.filter((r) => !DOCUMENTED_FOR_API_KEYS.has(r))).toEqual([]);
-    // And every documented endpoint that exists is open.
+    // Every documented endpoint exists (the docs promise nothing that is not there) and is open.
     const existing = new Set(routes.map((r) => `${r.method} ${r.path}`));
-    expect([...DOCUMENTED_FOR_API_KEYS].filter((r) => existing.has(r) && !open.includes(r))).toEqual([]);
+    expect([...DOCUMENTED_FOR_API_KEYS].filter((r) => !existing.has(r))).toEqual([]);
+    expect([...DOCUMENTED_FOR_API_KEYS].filter((r) => !open.includes(r))).toEqual([]);
   });
 
-  it.each(['/payroll/runs', '/performance/overview', '/performance/members', '/support-access', '/audit-logs', '/api-keys'])('should_refuse_api_keys_on_%s', async (path) => {
+  // Security decision (6 Nov 2026, D-2): monitoring data, and money other than amounts owed and
+  // invoices, stay with people who sign in. Some were once listed in the docs under read:time,
+  // read:activity, read:billing and read:invoices; the endpoint list closes them whatever the scope.
+  it.each([
+    '/sessions', '/screenshots', '/apps', '/urls', '/apps/spans', '/urls/spans', '/rates', '/budgets', '/payments',
+    '/payroll/runs', '/performance/overview', '/performance/members', '/support-access', '/audit-logs', '/api-keys', '/workers/options',
+  ])('should_refuse_an_api_key_with_every_scope_on_%s', async (path) => {
     const res = await key.get(`/orgs/${orgA}${path}`);
     expect(res.status).toBe(403);
+    expect(title(res.body)).toMatch(/does not have a scope for this endpoint/);
+  });
+
+  it('should_never_show_pay_or_bill_rates_to_an_api_key_even_where_the_admin_sees_them', async () => {
+    const rateKeys = (b: unknown) => (b as Array<Record<string, unknown>>).flatMap((w) => Object.keys(w).filter((k) => /rate/.test(k)));
+    expect((await adminA.post(`/orgs/${orgA}/rates`, { kind: 'PAY', scope: 'ORG', amount_minor: 2500, currency: 'USD', effective_from: '2026-01-01' })).status).toBeLessThan(300);
+    expect(rateKeys((await adminA.get(`/orgs/${orgA}/workers`)).body)).toContain('pay_rate_minor'); // the control
+    expect(rateKeys((await key.get(`/orgs/${orgA}/workers`)).body)).toEqual([]);
+  });
+
+  it('should_give_an_api_key_activity_levels_but_never_the_screenshots_an_admin_sees', async () => {
+    expect((await adminA.put(`/orgs/${orgA}/policies/ORG/${orgA}`, { screenshots: { enabled: true, perTenMinutes: 1 } })).status).toBe(200);
+    const projectId = (await adminA.post(`/orgs/${orgA}/projects`, { name: 'Shots', member_ids: [workerId] })).body.id;
+    const sid = newId();
+    const at = (ms: number) => new Date(t.clock.now.getTime() + ms).toISOString();
+    await device.post('/agent/ingest/batch', { sent_at: at(0), events: [{ event_id: newId(), type: 'session.start', session_id: sid, seq: 1, occurred_at: at(0), project_id: projectId }] });
+    await device.post('/agent/heartbeat', { sent_at: at(0), session_id: sid });
+    const shotId = newId();
+    const intent = await device.post('/agent/screenshots/upload-intent', { screenshot_id: shotId, session_id: sid, captured_at: at(60_000), content_type: 'image/webp', bytes: 4 });
+    const sent = await device.post('/agent/ingest/batch', {
+      sent_at: at(60_000),
+      events: [
+        { event_id: newId(), type: 'activity.minutes', session_id: sid, occurred_at: at(60_000), minutes: [{ minute_start: at(0), keyboard: 30, mouse: 20, active_seconds: 45, tracked_seconds: 60 }] },
+        { event_id: newId(), type: 'screenshot.captured', session_id: sid, occurred_at: at(60_000), screenshot_id: shotId, captured_at: at(60_000), display_index: 0, blurred: false, width: 1920, height: 1080, bytes: 4, sha256: 'a'.repeat(64), storage_key: intent.body.storage_key },
+      ],
+    });
+    expect(sent.body.results.map((r: { status: string }) => r.status)).toEqual(['accepted', 'accepted']);
+    const day = `/orgs/${orgA}/activity/day?membership_id=${workerId}&date=${at(0).slice(0, 10)}`;
+    const shots = (b: { blocks: Array<{ screenshots: unknown[] }> }) => b.blocks.flatMap((x) => x.screenshots);
+    const asAdmin = await adminA.get(day);
+    expect(shots(asAdmin.body)).toHaveLength(1); // the control: the screenshot is there
+    const asKey = await key.get(day);
+    expect(asKey.status).toBe(200);
+    expect(asKey.body.blocks.length).toBeGreaterThan(0); // activity levels are open to read:activity
+    expect(shots(asKey.body)).toEqual([]);
+    expect(JSON.stringify(asKey.body)).not.toContain(shotId);
+    expect((await key.get(`/orgs/${orgA}/screenshots?from=${at(0).slice(0, 10)}&to=${at(0).slice(0, 10)}`)).status).toBe(403);
   });
 });

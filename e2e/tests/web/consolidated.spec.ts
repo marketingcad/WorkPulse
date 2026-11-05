@@ -125,7 +125,7 @@ test.describe('Consolidated pages (admin)', () => {
     await page.getByRole('button', { name: 'Save changes' }).click();
     await expect(page.getByText('Time & pay settings saved')).toBeVisible();
 
-    await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Organization' }).click();
+    await page.getByRole('complementary', { name: 'Primary' }).getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Organization' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Organization' })).toBeVisible();
     await expect(page.getByLabel('Lock time older than (days)')).toHaveCount(0);
     await page.getByLabel('Company brief').fill('Builds things');

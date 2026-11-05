@@ -17,23 +17,30 @@ test.describe('Admin navigation', () => {
     await page.goto(`/o/${data.orgId}`);
     const nav = sidebar(page);
     // The collapsible group headings (the organization switcher above them is not one).
-    await expect(nav.getByRole('navigation').getByRole('button')).toHaveText(['Time Tracking', 'Workforce', 'Project Management', 'Finance', 'Reports', 'Performance New', 'My work']);
+    await expect(nav.getByRole('navigation').getByRole('button')).toHaveText(['Time Tracking', 'Workforce', 'Project Management', 'Finance', 'Reports', 'Performance New', 'My work', 'Settings']);
     // Each heading fits the sidebar in full (labels truncate, so a long one would be cut off silently).
     const cut = await nav.getByRole('navigation').getByRole('button').locator('span.truncate').evaluateAll((els) => els.filter((e) => e.scrollWidth > e.clientWidth).map((e) => e.textContent));
     expect(cut).toEqual([]);
     // UX remediation (phase 3): the person's own pages are in the menu now, under My work.
     for (const own of ['My timesheet', 'My pay stubs', 'What is monitored']) await expect(nav.getByRole('link', { name: own, exact: true })).toBeVisible();
-    for (const gone of ['Pay stubs', 'Sessions', 'API keys', 'Webhooks', 'Teams', 'Attendance', 'Tracking policies', 'Session history', 'Manual time', 'Team timesheets', 'Billing & rates']) {
+    for (const gone of ['Pay stubs', 'Sessions', 'Teams', 'Attendance', 'Session history', 'Manual time', 'Team timesheets', 'Billing & rates']) {
       await expect(nav.getByRole('link', { name: gone, exact: true })).toHaveCount(0);
     }
-    await expect(nav.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', `/o/${data.orgId}/settings`);
+    // Settings is a dropdown, closed here: the API pages and Tracking policies are only inside it.
+    await expect(nav.getByRole('button', { name: 'Settings', exact: true })).toHaveAttribute('aria-expanded', 'false');
+    for (const inSettings of ['API keys', 'Webhooks', 'Tracking policies']) {
+      const link = nav.getByRole('link', { name: inSettings, exact: true });
+      await expect(link).toHaveCount(1);
+      await expect(link.locator('xpath=ancestor::nav[@aria-label="Settings"]/ancestor::*[@inert]')).toHaveCount(1);
+    }
   });
 
-  test('Settings is one item whose tabs reach every settings page, including Devices and the API pages', { tag: '@smoke' }, async ({ page, data }) => {
+  test('Settings is one sidebar dropdown that reaches every settings page, including Devices and the API pages', { tag: '@smoke' }, async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}`);
-    await sidebar(page).getByRole('link', { name: 'Settings' }).click();
+    await sidebar(page).getByRole('button', { name: 'Settings', exact: true }).click();
+    const tabs = sidebar(page).getByRole('navigation', { name: 'Settings' });
+    await tabs.getByRole('link', { name: 'Organization' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Organization' })).toBeVisible();
-    const tabs = page.getByRole('navigation', { name: 'Settings' });
     // Grouped by topic (phase 3): General · Time and attendance · People and access · Data and privacy · Integrations.
     await expect(tabs.getByRole('link')).toHaveText(['Organization', 'Time & pay', 'Tracking policies', 'Roles & permissions', 'Access review', 'Devices', 'Security & retention', 'Screenshot retention', 'Audit log', 'API keys', 'Webhooks']);
     await expect(tabs.getByRole('link', { name: 'Organization' })).toHaveAttribute('aria-current', 'page');
@@ -41,7 +48,6 @@ test.describe('Admin navigation', () => {
     await tabs.getByRole('link', { name: 'Webhooks' }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/developer/webhooks$`));
     await expect(tabs.getByRole('link', { name: 'Webhooks' })).toHaveAttribute('aria-current', 'page');
-    await expect(sidebar(page).getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
 
     await tabs.getByRole('link', { name: 'Devices' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Devices' })).toBeVisible();
@@ -118,6 +124,7 @@ test.describe('A restricted role', () => {
   test('sees only what it can open: no Settings, and no personal timesheet in the menu', async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}`);
     const nav = sidebar(page);
+    await expect(nav.getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
     await expect(nav.getByRole('link', { name: 'Settings' })).toHaveCount(0);
     await expect(nav.getByRole('link', { name: 'Members' })).toHaveCount(0);
     await page.getByRole('button', { name: 'Account menu' }).click();

@@ -39,7 +39,7 @@ test('01.3', async ({ d, page }) => {
     else await d.point(button);
     await d.beat(1800);
   }
-  await d.point(nav.getByRole('link', { name: 'Settings' }), { hold: 1200 });
+  await d.point(nav.getByRole('button', { name: 'Settings', exact: true }), { hold: 1200 });
   await d.point(nav.getByRole('link', { name: 'Help' }), { hold: 1200 });
   await d.finish();
 });

@@ -65,7 +65,7 @@ test.describe('saving a client or a task once', () => {
     test.setTimeout(60_000);
     const project = (await (await adminApi.api.post(adminApi.orgApi('/projects'), { data: { name: `Settings ${uid()}`, member_ids: [data.newcomer.membershipId] } })).json()) as { id: string };
     await page.goto(`/o/${data.orgId}/projects/${project.id}`);
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('main').getByRole('button', { name: 'Settings', exact: true }).click();
     const short = page.getByLabel('Short name');
     await short.fill('TYPED');
     // Someone's time lands on the project (its totals change), and later the window gets focus back.

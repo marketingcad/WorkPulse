@@ -240,6 +240,17 @@ export function filterNav(can: Can, grants: Partial<Record<Permission, Scope>>, 
   })).filter((g) => g.items.length > 0);
 }
 
+/**
+ * The pages an item lists as a dropdown in the sidebar, by topic: only for an item whose tabs are
+ * grouped (Settings), and only when the person may open two or more of them. Otherwise null and the
+ * item is a plain link (its other tabs, if any, show as a tab bar on the page).
+ */
+export function subnavGroups(item: NavItem): { group: string; tabs: NavTab[] }[] | null {
+  const tabs = item.tabs;
+  if (!tabs || tabs.length < 2 || !tabs.some((tab) => tab.group)) return null;
+  return [...new Set(tabs.map((tab) => tab.group ?? ''))].map((group) => ({ group, tabs: tabs.filter((tab) => (tab.group ?? '') === group) }));
+}
+
 /** Every page an item stands for: itself, its tabs and its related pages. */
 const itemHrefs = (i: NavItem) => [i.href, ...(i.tabs?.map((t) => t.href) ?? []), ...(i.also ?? [])];
 

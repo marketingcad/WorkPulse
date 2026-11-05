@@ -9,7 +9,7 @@ import { IconButton, Logo, Menu, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioI
 import { api, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
-import { activeNav, filterNav, type NavItem } from './nav';
+import { activeNav, filterNav, subnavGroups, type NavItem, type NavTab } from './nav';
 import { SectionTabs } from './section-tabs';
 import { TourProvider } from '@/components/help/tour';
 import { HelpReturnBar } from '@/components/help/help-return';
@@ -173,6 +173,8 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
       {items.map((i) => {
         const active = isActive(i.href);
         const Icon = i.icon;
+        const sub = subnavGroups(i);
+        if (sub) return <SidebarSubnav key={i.href + i.label} item={i} groups={sub} active={active} collapsed={collapsed} />;
         return (
           <li key={i.href + i.label}>
             <Link
@@ -265,6 +267,124 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
         </button>
       )}
     </>
+  );
+}
+
+const SUBNAV_KEY = 'tw.nav.subnav';
+
+/**
+ * An item whose pages are grouped by topic (Settings), as a dropdown in the sidebar: the row opens
+ * and closes the list of its pages, each a link to its own address. Open on any of its pages;
+ * elsewhere it remembers what the person chose (per browser). On the icon-only rail, a flyout menu.
+ */
+function SidebarSubnav({ item, groups, active, collapsed }: { item: NavItem; groups: { group: string; tabs: NavTab[] }[]; active: boolean; collapsed: boolean }) {
+  const org = useOrg();
+  const router = useRouter();
+  const pathname = usePathname();
+  const path = pathname.slice(org.base.length);
+  const panelId = useId();
+  const [open, setOpen] = useState(active);
+  useEffect(() => {
+    if (active) {
+      setOpen(true);
+      return;
+    }
+    try {
+      setOpen((JSON.parse(localStorage.getItem(SUBNAV_KEY) ?? '{}') as Record<string, boolean>)[item.label] ?? false);
+    } catch {
+      /* storage unavailable */
+    }
+  }, [active, item.label]);
+  const toggle = () =>
+    setOpen((o) => {
+      try {
+        const stored = JSON.parse(localStorage.getItem(SUBNAV_KEY) ?? '{}') as Record<string, boolean>;
+        localStorage.setItem(SUBNAV_KEY, JSON.stringify({ ...stored, [item.label]: !o }));
+      } catch {
+        /* ignore */
+      }
+      return !o;
+    });
+  const Icon = item.icon;
+  const label = t(item.label);
+  const rowClass = (on: boolean) =>
+    cx(
+      'relative flex h-9 w-full items-center gap-2.5 rounded-sm text-sm transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#3b82ff]',
+      collapsed ? 'justify-center px-0' : 'px-2.5',
+      on ? 'bg-[#1766ff]/20 font-semibold text-white shadow-[inset_0_0_0_1px_rgba(59,130,255,0.28)]' : 'text-nav-muted hover:bg-white/[0.06] hover:text-nav-fg',
+    );
+
+  if (collapsed) {
+    return (
+      <li>
+        <Menu
+          align="start"
+          trigger={
+            <button type="button" data-tour={item.label} title={label} aria-label={label} className={rowClass(active)}>
+              {active && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[#3b82ff]" aria-hidden />}
+              <Icon className={cx('size-4 shrink-0', active && 'text-[#6ea2ff]')} aria-hidden />
+            </button>
+          }
+        >
+          {groups.map((g, gi) => (
+            <div key={g.group}>
+              {gi > 0 && <MenuSeparator />}
+              {g.group && <MenuLabel>{t(g.group)}</MenuLabel>}
+              {g.tabs.map((tab) => (
+                <MenuItem key={tab.href} onSelect={() => router.push(`${org.base}${tab.href}`)} icon={tab.href === path ? <Check className="size-3.5" aria-hidden /> : <span className="size-3.5" aria-hidden />}>
+                  {t(tab.label)}
+                </MenuItem>
+              ))}
+            </div>
+          ))}
+        </Menu>
+      </li>
+    );
+  }
+
+  return (
+    <li>
+      <button type="button" data-tour={item.label} onClick={toggle} aria-expanded={open} aria-controls={panelId} className={rowClass(active && !open)}>
+        {active && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[#3b82ff]" aria-hidden />}
+        <Icon className={cx('size-4 shrink-0', active && 'text-[#6ea2ff]')} aria-hidden />
+        <span className={cx('flex-1 truncate text-left', active && 'font-semibold text-white')}>{label}</span>
+        <ChevronRight className={cx('size-3.5 shrink-0 transition-transform duration-200 ease-out motion-reduce:transition-none', open && 'rotate-90')} aria-hidden />
+      </button>
+      <div id={panelId} inert={!open} className={cx('grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none', open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')}>
+        <div className="min-h-0 overflow-hidden">
+          <nav aria-label={label} className="ml-[1.1rem] mt-0.5 flex flex-col gap-2 border-l border-white/10 pb-1 pl-2.5 pt-1">
+            {groups.map((g) => (
+              <div key={g.group} role="group" aria-label={g.group ? t(g.group) : label}>
+                {g.group && (
+                  <span className="block px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-nav-muted/80" aria-hidden>
+                    {t(g.group)}
+                  </span>
+                )}
+                <ul className="flex flex-col gap-0.5">
+                  {g.tabs.map((tab) => {
+                    const current = tab.href === path;
+                    return (
+                      <li key={tab.href}>
+                        <Link
+                          href={`${org.base}${tab.href}`}
+                          aria-current={current ? 'page' : undefined}
+                          className={cx(
+                            'flex h-7 items-center rounded-sm px-2 text-[13px] transition-colors',
+                            current ? 'bg-[#1766ff]/20 font-semibold text-white shadow-[inset_0_0_0_1px_rgba(59,130,255,0.28)]' : 'text-nav-muted hover:bg-white/[0.06] hover:text-nav-fg',
+                          )}
+                        >
+                          <span className="truncate">{t(tab.label)}</span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </nav>
+        </div>
+      </div>
+    </li>
   );
 }
 

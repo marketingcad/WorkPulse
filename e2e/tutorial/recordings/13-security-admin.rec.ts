@@ -1,6 +1,6 @@
 import { expect, label, test } from '../kit';
 
-const settingsTab = (page: import('@playwright/test').Page, name: string) => page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name, exact: true });
+const settingsTab = (page: import('@playwright/test').Page, name: string) => page.getByRole('complementary', { name: 'Primary' }).getByRole('navigation', { name: 'Settings' }).getByRole('link', { name, exact: true });
 
 test('13.1', async ({ d, page }) => {
   await d.go('/settings');

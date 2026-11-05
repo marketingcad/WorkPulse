@@ -94,15 +94,17 @@ The two skipped tests are the load smoke (`ops.test.ts`) and dashboard latency (
 | ID | Severity | Module | Title | Status |
 |---|---|---|---|---|
 | D-1 | Medium | Integrations | An API key with `write:clients` could delete clients | **Fixed** |
-| D-2 | Medium | Integrations | Seven documented read endpoints refuse every API key | Open: needs a decision |
+| D-2 | Medium | Integrations | Seven documented read endpoints refuse every API key | **Resolved** (restrictions kept, docs corrected; see I) |
 | D-3 | Low | Integrations | `GET /workers/options` was open to `read:workers` keys, undocumented | **Fixed** |
 | D-4 | High | Web (performance budget) | Help over the 250 KB budget; `main` CI red since PR #106 | **Fixed** |
 | D-5 | Low | Tests | `profile-avatar.spec.ts` races with itself under parallel workers | **Fixed** |
 | D-6 | Low | Tests | `time-entries.spec.ts` bulk-delete test collides with its own earlier run | **Fixed** |
+| D-7 | High | Tracking | With the confirm window, a starting desktop timer was missing from Live tracking (so it could not be force-stopped), from reminders and from the erasure guard | **Fixed** (see I) |
+| D-8 | Low | Tests | `time-paging.spec.ts` typed its dates before the page loaded its default range, which then replaced them | **Fixed** (see I) |
 
 **D-1.** *Steps:* create a key with `write:clients`; `DELETE /api/v1/orgs/:orgId/clients/:id` with it. *Expected:* 403, since docs/api lists create, update, archive and restore only. *Actual:* the delete ran. *Root cause:* the key allowlist (26 Sep) matched write routes by path for any method; client deletion (30 Oct) then became reachable. *Fix:* `packages/api/src/middleware/tenant.ts` names the method of every write rule and matches ids as UUIDs only. *Regression test:* `route-boundaries.test.ts`, "should_open_only_the_documented_endpoints_even_with_every_scope" (failed on D-1 and D-3 before the fix).
 
-**D-2.** *Steps:* key with every scope; `GET /sessions`, `/screenshots`, `/apps`, `/urls`, `/rates`, `/budgets`, `/payments`. *Expected:* data, as docs/api lists them under `read:time`, `read:activity`, `read:billing` and `read:invoices`. *Actual:* 403. *Root cause:* each scope grants one permission (`read:time` → `time:read`), but these routes need another (`tracking:read`, `screenshots:read`, `apps:read`, `rates:read`, `budgets:read`, `payments:read`). *Not changed:* fixing it widens what keys can read, including screenshots, which is a product and privacy decision. Either map the scopes to the extra permissions or remove the rows from the docs.
+**D-2.** *Steps:* key with every scope; `GET /sessions`, `/screenshots`, `/apps`, `/urls`, `/rates`, `/budgets`, `/payments`. *Expected:* data, as docs/api lists them under `read:time`, `read:activity`, `read:billing` and `read:invoices`. *Actual:* 403. *Root cause:* each scope grants one permission (`read:time` → `time:read`), but these routes need another (`tracking:read`, `screenshots:read`, `apps:read`, `rates:read`, `budgets:read`, `payments:read`). *Decision (6 Nov):* keep the restrictions, correct the documentation. See I.
 
 **D-3.** As D-1: `/workers/[^/]+` matched the word `options`. Fixed by matching UUIDs only.
 
@@ -110,9 +112,9 @@ The two skipped tests are the load smoke (`ops.test.ts`) and dashboard latency (
 
 **D-5.** *Actual:* "a worker cannot see or change anyone else's picture" failed at its check of the admin's own picture, and the upload test failed at the member list. Every privacy assertion in it passed. *Root cause:* both tests change the shared admin's picture and ran at the same time (`fullyParallel`). *Fix:* the file's tests run in order (`test.describe.configure({ mode: 'default' })`). *Regression:* the file passed 15 of 15 over three repeats.
 
-**D-6.** *Actual:* "changing a filter clears the selection" failed in its setup with 422 `time_overlap` (2 of 3 repeats on one server). *Root cause:* it adds time at a fixed date and hour (3 Dec 2025, 10:00 and 11:00) and keeps one entry, so the next run on the same server overlaps it; the API refusing the overlap is correct. *Fix:* each run picks its own day in 2025. *Regression:* 5 of 5 repeats on one server.
+**D-6.** *Actual:* "changing a filter clears the selection" failed in its setup with 422 `time_overlap` (2 of 3 repeats on one server). *Root cause:* it adds time at a fixed date and hour (3 Dec 2025, 10:00 and 11:00) and keeps one entry, so the next run on the same server overlaps it; the API refusing the overlap is correct. *Fix:* each run picks its own day in a year no other spec uses (2022, see D-8). *Regression:* 5 of 5 repeats on one server.
 
-**G-1 (product gap, not a defect in code).** The README and plan describe a session that starts `CREATED` and is stopped if not confirmed within 120 seconds. The state machine supports it, but the server never creates `CREATED` sessions; they start `ACTIVE`. Either implement the confirm window or update the diagram.
+**G-1 (product gap, not a defect in code).** The README and plan describe a session that starts `CREATED` and is stopped if not confirmed within 120 seconds. The state machine supports it, but the server never creates `CREATED` sessions; they start `ACTIVE`. *Decision (6 Nov):* implement it. Done; see I.
 
 ## F. Remaining risks
 
@@ -120,7 +122,8 @@ The two skipped tests are the load smoke (`ops.test.ts`) and dashboard latency (
 - **Browser extension** code (`apps/extension`) has no tests; only the desktop side of its bridge is tested.
 - **Real desktop app** E2E runs on Windows only; macOS and Linux get unit tests in CI and the Linux release smoke test after publishing.
 - **Visual regression** (screenshot comparison) does not exist. Gate 3 covers accessibility, layout overflow and page health instead.
-- **D-2** and **G-1** need decisions.
+- **The confirm window** changes when desktop time starts counting. Review the silent-device rule in I before merging.
+- **Transient connection resets** on the local E2E server under load (one `ECONNRESET` in a run of 824; the spec passed alone and Gate 1 passed in full on re-run).
 - **Help** has 12 KB of headroom now, but the shared shell is about 231 KB of every page's 250 KB: further sidebar or shell additions should be lazy.
 
 ## G. Commands
@@ -140,7 +143,45 @@ The two skipped tests are the load smoke (`ops.test.ts`) and dashboard latency (
 
 ## H. Continuation plan
 
-1. Decide D-2 (map the scopes or correct the docs) and G-1 (implement the confirm window or correct the diagram).
-2. Add a `/support` browser spec (staff sign-in with two-factor, grant required, grant expiry, audit entry).
-3. Add tests for the extension (`background.js`, `popup.js`): message shapes, only the loopback bridge, nothing from incognito.
-4. Consider a visual regression baseline for a handful of key screens in Gate 3, once screenshots can be made deterministic.
+Follow-up issues (not blocking this PR):
+
+1. A `/support` browser spec (staff sign-in with two-factor, grant required, grant expiry, audit entry).
+2. Tests for the extension (`background.js`, `popup.js`): message shapes, only the loopback bridge, nothing from incognito.
+3. Electron smoke tests on Linux and macOS.
+4. A visual regression baseline for a handful of key screens in Gate 3, once screenshots can be made deterministic.
+5. A tracking-policy field in Settings for the confirm window (today it is set through the policy API).
+
+## I. Decisions applied (6 Nov 2026)
+
+### D-2: API keys keep their restrictions; documentation corrected
+
+- `docs/api/README.md` lists exactly what keys reach. Removed: `GET /sessions`, `/screenshots`, `/apps`, `/urls` (and spans), `/rates`, `/budgets`, `/payments`, and three endpoints that never existed (`GET /teams/{id}`, `/clients/{id}`, `/tasks/{id}`). Added: "Never open to API keys" (monitoring data, rates, budgets, payments, payroll, the Performance Center, private and HR data, administration, deleting anything but a task), and that `/activity/day` gives activity levels, never screenshots.
+- The key allowlist (`packages/api/src/middleware/tenant.ts`) no longer lists those endpoints, so they are refused by design, not by a later permission check that a future scope could change.
+- `route-boundaries.test.ts` now **reads the docs table**: an endpoint open to keys but not documented, documented but missing, or documented but closed fails the test. Added: refusals for all seven and more (16 paths), no rates in a key's `GET /workers` (with an admin control), and a real screenshot an admin sees while a key gets the same day's activity without it. The authorization matrix (scope → permission) is unchanged and agrees.
+- Device tokens still never receive screenshots (`agent-me.test.ts`, unchanged).
+
+### G-1: the 120-second confirm window, implemented on the server
+
+- A desktop start happening now is `CREATED` and holds no time. Any heartbeat naming it, or any event for it, **from the device that started it** confirms it; work then counts **from the start**. Web and API starts, and time recorded offline (it arrives with its history), start `ACTIVE`.
+- The window (`confirmTimeoutSeconds`, default 120, 60–900 per policy) runs from when the server **received** the start, so a delayed request gets the full window.
+- Past it, unconfirmed: if the device **kept talking** without confirming, the session stops as `NEVER_CONFIRMED` with no time, and anything sent for it later is refused (`session_not_confirmed`, explained to the worker and under "Time not added"). If the device was **silent** since the start, the offline rules apply: interrupted at the start with no time, recovered with no gap if it returns with its history, otherwise stopped with no time.
+- **Why the silent case differs** from a strict reading of the plan: a strict stop broke an existing rule and its test (a laptop that drops offline right after starting recovers its time), and silence is not evidence of a phantom session. Both paths count no time until the device proves the timer ran. Documented in `docs/plan/03-data-model.md` §8 and the README.
+- Server-authoritative: the sweep, ingest and heartbeat decide; the app only reports. The desktop app needed no change (it keeps running while the server says `CREATED`).
+- **D-7, found by the Electron E2E:** Live tracking, the missing-time reminder and the erasure guard listed live states without `CREATED`, so for up to a minute a manager could not see or force-stop a worker who had just clocked in. They now use the shared `LIVE_STATES`; Live shows a starting timer as Working. Regression test in `confirm-window.test.ts`.
+- **D-8:** `time-paging.spec.ts` and the D-6 test now wait for the page's first load before typing dates, and the D-6 test picks its day in 2022, a year no other spec uses.
+- Tests: domain (every transition out of `CREATED`, the 119/120/121-second rule, the default), `confirm-window.test.ts` (15 tests: confirmation by heartbeat and by events, not by another device, the boundary while the device talks, refusals afterwards, a delayed start, a 300-second policy and a refused 30-second one, silent device recovered and not recovered, web and offline starts, supersede, Live tracking and force-stop). Eight existing tests that started desktop timers without the heartbeat a real app sends got that heartbeat; no assertion changed.
+
+### Results after the decisions (same branch, fresh build)
+
+| Suite | Result |
+|---|---|
+| `pnpm typecheck` | 8 of 8 |
+| Gate 1 · Vitest | 634 passed (domain 72, db 22, API 484, desktop 56) |
+| Gate 2 · Vitest | 558 passed, 1 skipped |
+| Gate 3 · Vitest | 52 passed, 1 skipped |
+| API suite, after the D-7 fix | 838 passed, 2 skipped (78 files) |
+| Load smoke (ingest p95 < 500 ms) and dashboard latency | passed |
+| Gate 1 · Playwright (web, desktop window, Electron) | 101 passed, 1 failed with `ECONNRESET` (local server connection reset); the spec passed alone; **re-run of all of Gate 1: 102 passed** |
+| **Gate 2 · Playwright** | **257 passed** (full gate, clean) |
+| Gate 3 · Playwright | 465 passed |
+| `pnpm test:gates` | 210 test files, each in one gate |

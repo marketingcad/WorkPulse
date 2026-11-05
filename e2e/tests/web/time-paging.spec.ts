@@ -18,7 +18,11 @@ test('Time entries pages through a busy day with totals over every entry', { tag
     await ok(await api.post(orgApi('/manual-time'), { data: { project_id: data.projects.website.id, started_at: start.toISOString(), ended_at: new Date(start.getTime() + 5 * 60_000).toISOString(), note: `${note} #${i}`, reason: 'E2E paging' } }), `entry ${i}`);
   }
 
+  // Typed dates stick only once the page has loaded its default range: under a full parallel run the
+  // default range used to arrive after the dates were typed and replace them ("This week").
+  const loaded = page.waitForResponse((r) => new URL(r.url()).pathname.endsWith('/time-entries') && r.ok());
   await page.goto(`/o/${data.orgId}/timesheets/all`);
+  await loaded;
   await page.getByLabel('From', { exact: true }).fill(day);
   await page.getByLabel('To', { exact: true }).fill(day);
   await search(page, 'Search time entries', note, '/time-entries');

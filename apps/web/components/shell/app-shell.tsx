@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Check, ChevronRight, ChevronsUpDown, Clock, Eye, LogOut, Menu as MenuIcon, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Plus, Sun, UserRound, Wallet, X } from 'lucide-react';
 import type { MeDto, NotificationDto } from '@tallywork/contracts';
-import { IconButton, Logo, Menu, MenuItem, MenuLabel, MenuSeparator, Popover, cx, fmtRelative } from '@tallywork/ui';
+import { IconButton, Logo, Menu, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, Popover, cx, fmtRelative } from '@tallywork/ui';
 import { api, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
@@ -409,20 +409,25 @@ function ThemeSwitch() {
     if (mode === 'system') document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme', mode);
   };
+  // Menu radio items, so arrow keys reach the theme like the other entries (they used to skip it).
   return (
-    <div className="flex gap-1 px-2 py-1.5" role="radiogroup" aria-label={t('shell.theme')}>
-      {(
-        [
-          ['light', Sun],
-          ['dark', Moon],
-          ['system', Monitor],
-        ] as const
-      ).map(([mode, Icon]) => (
-        <button key={mode} role="radio" aria-checked={theme === mode} onClick={() => apply(mode)} className={cx('flex flex-1 items-center justify-center rounded-sm py-1', theme === mode ? 'bg-surface-muted text-text' : 'text-text-muted hover:text-text')} aria-label={t(`shell.theme.${mode}`)}>
-          <Icon className="size-3.5" />
-        </button>
-      ))}
-    </div>
+    <>
+      <MenuSeparator />
+      <MenuLabel>{t('shell.theme')}</MenuLabel>
+      <MenuRadioGroup row value={theme} onValueChange={(v) => apply(v as 'system' | 'light' | 'dark')} label={t('shell.theme')}>
+        {(
+          [
+            ['light', Sun],
+            ['dark', Moon],
+            ['system', Monitor],
+          ] as const
+        ).map(([mode, Icon]) => (
+          <MenuRadioItem key={mode} value={mode} keepOpen label={t(`shell.theme.${mode}`)}>
+            <Icon className="size-3.5" aria-hidden />
+          </MenuRadioItem>
+        ))}
+      </MenuRadioGroup>
+    </>
   );
 }
 
@@ -442,8 +447,8 @@ function UserMenu() {
       <div className="flex items-center gap-2.5 px-2 py-1.5">
         <MyAvatar size={36} />
         <div className="min-w-0">
-        <div className="truncate text-sm font-semibold">{name}</div>
-        <div className="truncate text-xs text-text-muted">{me?.user.email}</div>
+          <div className="truncate text-sm font-semibold">{name}</div>
+          <div className="truncate text-xs text-text-muted">{me?.user.email}</div>
         </div>
       </div>
       <MenuSeparator />

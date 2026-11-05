@@ -7,7 +7,7 @@ import { Button, Checkbox, ConfirmDialog, DataTable, EmptyState, ErrorState, Ico
 import { errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
-import { useOrgAction } from '@/components/workspace/shared';
+import { useOrgAction } from '@/components/workspace/basics';
 import { LogoAvatar } from '@/components/workspace/logo-editor';
 import { ClientDialog } from '@/components/workspace/client-dialog';
 

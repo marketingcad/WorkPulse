@@ -6,7 +6,7 @@ import { ApiError, useOrgMutation } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { CURRENCIES, WEEKDAYS, timeZones } from '@/components/settings/options';
 import { LANGUAGES, LogoEditor } from '@/components/workspace/logo-editor';
-import { hoursToSeconds, secondsToHours } from '@/components/workspace/shared';
+import { hoursToSeconds, secondsToHours } from '@/components/workspace/basics';
 import { useUnsavedChanges } from '@/lib/unsaved';
 
 type DurationFormat = 'hm' | 'clock' | 'decimal';

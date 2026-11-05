@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button, ErrorState, Field, Input, Panel, SkeletonRows, Switch, useToast } from '@tallywork/ui';
 import { ApiError, useOrgMutation, useOrgQuery } from '@/lib/api';
-import { hoursToSeconds, secondsToHours } from '@/components/workspace/shared';
+import { hoursToSeconds, secondsToHours } from '@/components/workspace/basics';
 import { useUnsavedChanges } from '@/lib/unsaved';
 
 export interface OvertimeRules {

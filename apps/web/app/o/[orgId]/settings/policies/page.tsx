@@ -2,7 +2,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Info, RotateCcw } from 'lucide-react';
-import { fieldLabel, type TeamDto } from '@tallywork/contracts';
+import type { TeamDto } from '@tallywork/contracts';
+// The subpath: the package root would bring every schema and zod into the page.
+import { fieldLabel } from '@tallywork/contracts/messages';
 import type { TrackingPolicy } from '@tallywork/domain';
 import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, Input, PageHeader, Panel, PermissionState, SegmentedControl, Select, SkeletonRows, Switch, Textarea, cx, fmtDateTime, useToast } from '@tallywork/ui';
 import { ApiError, useOrgMutation, useOrgQuery } from '@/lib/api';

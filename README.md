@@ -49,6 +49,11 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🆕 New updates
 
+- **6 November 2026 (page weight back under budget):** every web page is under the 250 KB first-load JavaScript budget again (`apps/web/scripts/check-bundle-budget.mjs`, run in CI). 20 routes were over, up to 285 KB; the largest is now 248.9 KB.
+  - **Loaded when needed, not on every page:** the calculator's modes, the product tour, two-factor setup on the "two-factor required" screen, and the new-organization dialog. Every organization page now shares about 231 KB instead of 241 KB.
+  - **Tracking policies:** it imported one label helper from the root of `@tallywork/contracts`, which brought every schema and zod into the browser (about 35 KB). It now uses the `@tallywork/contracts/messages` subpath.
+  - **Workspace helpers** (`useOrgAction`, colour dots, status badges, hour conversions, the colour picker) moved to `components/workspace/basics.tsx`, so pages that need only them no longer load the task and project dialogs. The project page loads its budget dialog, Documents tab and "new client" dialog on demand.
+  - **Guarded by** `apps/web/test/bundle-imports.test.ts`, which fails when one of these modules is imported statically again, or when browser code imports the contracts package root.
 - **6 November 2026 (Performance Center, phases 2–6 and the screens):** achievements, leaderboards, goals, reviews, team and worker performance, and client Insights, on the web, in the desktop app and in the client portal. Status and remaining gaps: [Performance.md](Performance.md).
   - **Web:** a **Performance** group in the sidebar (marked New) with Performance overview, Achievements (appreciation from clients waits in "Waiting for approval"), Leaderboards, Team performance, Worker performance (a list, and a profile with score history, goals, badges, project contributions and manager reviews) and Goals & challenges. Projects get a **Milestones** tab. Only people with team or organization scope see the group.
   - **Desktop:** a **My performance** screen after Timesheet: this week's work, goals, the next badge, badges, recognition, milestones and reviews shared with the worker. The score shows only when the organization shares it. The last copy is kept for when the device is offline.

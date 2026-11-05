@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Button, Dialog, Field, Input, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage } from '@/lib/api';
-import { useOrgAction } from '@/components/workspace/shared';
+import { useOrgAction } from '@/components/workspace/basics';
 
 /**
  * Owner only: reset a member's two-factor after they lost both their phone and their recovery codes.

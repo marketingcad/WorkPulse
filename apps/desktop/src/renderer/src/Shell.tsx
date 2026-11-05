@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Bell, CalendarClock, CalendarDays, CalendarOff, ChevronDown, Clock, CloudOff, Home, LogOut, Menu, Receipt, RefreshCw, Settings, X } from 'lucide-react';
+import { Bell, CalendarClock, CalendarDays, CalendarOff, ChevronDown, Clock, CloudOff, Home, LogOut, Menu, Receipt, RefreshCw, Settings, Trophy, X } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
 import { bridge, fmtTime, leave, useDialogFocus, useMe, useTick, viewForLink, type View } from './lib';
 import { GROUP_OF, NAV_GROUPS, groupFor } from './nav';
@@ -14,6 +14,7 @@ const GROUP_ICON: Record<string, ReactNode> = {
   timesheet: <CalendarDays className="size-4" />,
   timeoff: <CalendarOff className="size-4" />,
   schedule: <CalendarClock className="size-4" />,
+  performance: <Trophy className="size-4" />,
   paystubs: <Receipt className="size-4" />,
   settings: <Settings className="size-4" />,
 };
@@ -35,6 +36,12 @@ function NavList({ view, go, onPick }: { view: View; go: (v: View) => void; onPi
           {active === i.v && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[#3b82ff]" aria-hidden />}
           {GROUP_ICON[i.icon]}
           {i.label}
+          {i.badge && ' '}
+          {i.badge && (
+            <span aria-hidden className="ml-auto rounded-full bg-[#4d8dff]/22 px-1.5 text-[10px] font-semibold leading-4 tracking-wide text-[#a9c6ff]">
+              {i.badge}
+            </span>
+          )}
         </button>
       ))}
     </>

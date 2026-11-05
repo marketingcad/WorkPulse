@@ -5,7 +5,7 @@ import type { NotAddedItem } from './not-added';
 import type { MacPermissions } from './permissions';
 
 /** Own-data resources the renderer may read (GET /api/v1/agent/me/<resource>). */
-export const ME_RESOURCES = ['summary', 'sessions', 'timesheet', 'activity', 'tasks', 'schedule', 'time-off', 'notifications', 'pay-stubs', 'avatar'] as const;
+export const ME_RESOURCES = ['summary', 'sessions', 'timesheet', 'activity', 'tasks', 'schedule', 'time-off', 'notifications', 'pay-stubs', 'avatar', 'performance'] as const;
 export type MeResource = (typeof ME_RESOURCES)[number];
 
 /**

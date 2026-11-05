@@ -19,6 +19,7 @@ const SCREENS: Array<{ nav: string; tab?: string; heading: string | RegExp }> = 
   { nav: 'Timesheet', tab: 'Reports', heading: 'Reports' },
   { nav: 'Time off', heading: 'Time Off' },
   { nav: 'Schedule', heading: 'Schedule' },
+  { nav: 'My performance', heading: 'My performance' },
   { nav: 'Pay stubs', heading: 'Pay Stubs' },
   { nav: 'Settings', heading: 'Settings' },
 ];

@@ -14,11 +14,13 @@ import {
   type Tx,
 } from '@tallywork/db';
 import {
+  SCORE_SETTLE_DAYS,
   addDaysToDate,
+  businessRule,
   can,
   forbidden,
+  isPeriodSettled,
   localDate,
-  newId,
   notFound,
   periodBounds,
   rankEntries,
@@ -29,7 +31,7 @@ import type { OrgInfo } from '../context';
 import type { Ctx } from './ctx';
 import { listAwards } from './achievements';
 import { memberGoals } from './goals';
-import { currentRules, currentSettings, listMemberSnapshots, memberScore, snapshotMemberScore } from './performance';
+import { currentRules, currentSettings, listMemberSnapshots, memberScore, saveSnapshot, snapshotMemberScore } from './performance';
 import { activeMembers, canSeeTeam, orgToday, teamRoster, visibleActiveMembers, visibleTeamIds } from './performance-access';
 
 type Snapshot = typeof performanceScoreSnapshots.$inferSelect;
@@ -59,23 +61,16 @@ function averageScore(snaps: Snapshot[]): number | null {
   return round1(scored.reduce((sum, s, i) => sum + s.score! * w[i]!, 0) / w.reduce((a, b) => a + b, 0));
 }
 
-async function upsertSnapshot(tx: Tx, orgId: string, s: Omit<typeof performanceScoreSnapshots.$inferInsert, 'id' | 'organizationId'>) {
-  const key = and(eq(performanceScoreSnapshots.subjectType, s.subjectType), eq(performanceScoreSnapshots.subjectId, s.subjectId), eq(performanceScoreSnapshots.periodType, s.periodType), eq(performanceScoreSnapshots.periodStart, s.periodStart));
-  const [existing] = await tx.select().from(performanceScoreSnapshots).where(key);
-  if (existing?.final) return existing;
-  if (existing) return (await tx.update(performanceScoreSnapshots).set(s).where(eq(performanceScoreSnapshots.id, existing.id)).returning())[0]!;
-  return (await tx.insert(performanceScoreSnapshots).values({ id: newId(), organizationId: orgId, ...s }).returning())[0]!;
-}
-
 /**
  * Save the period's scores for every active member, then each team, project and the organization.
- * The daily job runs this; a closed period's snapshots are never changed again.
+ * The daily job runs this; once a period has settled (SCORE_SETTLE_DAYS after it ends) its snapshots
+ * are final and never change again.
  */
-export async function refreshPerformance(tx: Tx, org: OrgInfo, periodType: PerformancePeriod, date: string, now: Date): Promise<{ members: number }> {
+export async function refreshPerformance(tx: Tx, org: OrgInfo, periodType: PerformancePeriod, date: string, now: Date): Promise<{ members: number; final: boolean }> {
   const p = periodBounds(periodType, date, org.weekStart);
   const today = localDate(now, org.timezone);
-  if (p.start > today) return { members: 0 };
-  const final = today > p.end;
+  if (p.start > today) return { members: 0, final: false };
+  const final = isPeriodSettled(p.end, today);
   const rule = await currentRules(tx, org.id);
   const people = await activeMembers(tx);
   const memberSnaps = new Map<string, Snapshot>();
@@ -91,7 +86,7 @@ export async function refreshPerformance(tx: Tx, org: OrgInfo, periodType: Perfo
     const projectIds = (await tx.select({ p: projectTeams.projectId }).from(projectTeams).where(eq(projectTeams.teamId, teamId))).map((r) => r.p);
     const ms = await milestoneCounts(tx, org, projectIds, p.start, p.end, today);
     const sum = (f: (i: Inputs) => number) => snaps.reduce((a, s) => a + (inputsOf(s) ? f(inputsOf(s)!) : 0), 0);
-    await upsertSnapshot(tx, org.id, {
+    await saveSnapshot(tx, org.id, {
       ...base,
       subjectType: 'TEAM',
       subjectId: teamId,
@@ -117,13 +112,13 @@ export async function refreshPerformance(tx: Tx, org: OrgInfo, periodType: Perfo
     const ms = await milestoneCounts(tx, org, [pr.id], p.start, p.end, today);
     const ts = await taskCounts(tx, org, pr.id, p.start, p.end, today);
     const due = ms.due + ts.due;
-    await upsertSnapshot(tx, org.id, { ...base, subjectType: 'PROJECT', subjectId: pr.id, score: ratioScore(ms.on_time + ts.on_time, due), coverage: due ? 100 : 0, metrics: { milestones: ms, tasks: ts }, eligible: due > 0, rankGroup: null });
+    await saveSnapshot(tx, org.id, { ...base, subjectType: 'PROJECT', subjectId: pr.id, score: ratioScore(ms.on_time + ts.on_time, due), coverage: due ? 100 : 0, metrics: { milestones: ms, tasks: ts }, eligible: due > 0, rankGroup: null });
   }
 
   // The organization: everyone's scores.
   const all = [...memberSnaps.values()];
-  await upsertSnapshot(tx, org.id, { ...base, subjectType: 'ORG', subjectId: org.id, score: averageScore(all), coverage: all.length ? Math.round(all.reduce((a, s) => a + s.coverage, 0) / all.length) : 0, metrics: { members: all.length, scored_members: all.filter((s) => s.score !== null).length }, eligible: true, rankGroup: null });
-  return { members: people.length };
+  await saveSnapshot(tx, org.id, { ...base, subjectType: 'ORG', subjectId: org.id, score: averageScore(all), coverage: all.length ? Math.round(all.reduce((a, s) => a + s.coverage, 0) / all.length) : 0, metrics: { members: all.length, scored_members: all.filter((s) => s.score !== null).length }, eligible: true, rankGroup: null });
+  return { members: people.length, final };
 }
 
 async function milestoneCounts(tx: Tx, org: OrgInfo, projectIds: string[], from: string, to: string, today: string) {
@@ -144,16 +139,28 @@ async function snapshotsFor(tx: Tx, subjectType: Snapshot['subjectType'], period
   return tx.select().from(performanceScoreSnapshots).where(and(eq(performanceScoreSnapshots.subjectType, subjectType), eq(performanceScoreSnapshots.periodType, periodType), inArray(performanceScoreSnapshots.periodStart, starts)));
 }
 
-/** Make sure a period has snapshots before it is read (filled once; the daily job keeps them current). */
-async function ensurePeriod(x: Ctx, periodType: PerformancePeriod, start: string) {
+/**
+ * Make sure a period that is still open has snapshots before it is read (filled once; the daily job
+ * keeps them current). A settled period is only ever read: reading an old date never computes final
+ * history from today's members and rules, so a period with no snapshots simply shows no scores.
+ */
+async function ensurePeriod(x: Ctx, periodType: PerformancePeriod, start: string, end: string) {
+  if (isPeriodSettled(end, orgToday(x))) return;
   const [any] = await x.tx.select({ id: performanceScoreSnapshots.id }).from(performanceScoreSnapshots).where(and(eq(performanceScoreSnapshots.subjectType, 'ORG'), eq(performanceScoreSnapshots.periodType, periodType), eq(performanceScoreSnapshots.periodStart, start))).limit(1);
   if (!any) await refreshPerformance(x.tx, x.org, periodType, start, x.deps.now());
 }
 
-/** An admin recalculates the current period now (otherwise the daily job does it). */
+/** An admin recalculates a period that is still open now (otherwise the daily job does it). */
 export async function recalculatePerformance(x: Ctx, periodType: PerformancePeriod, date?: string) {
   if (!can(x.actor, 'performance:manage')) throw forbidden();
-  return refreshPerformance(x.tx, x.org, periodType, date ?? orgToday(x), x.deps.now());
+  const p = periodBounds(periodType, date ?? orgToday(x), x.org.weekStart);
+  if (isPeriodSettled(p.end, orgToday(x))) throw businessRule('period_closed', `This period ended more than ${SCORE_SETTLE_DAYS} days ago. Its scores are final and are not recalculated.`);
+  return refreshPerformance(x.tx, x.org, periodType, p.start, x.deps.now());
+}
+
+/** Team managers see ranks only while the organization shares leaderboards with managers. */
+async function ranksHidden(x: Ctx): Promise<boolean> {
+  return x.actor.grants['performance:read'] === 'team' && !(await currentSettings(x.tx, x.org.id)).leaderboardManagers;
 }
 
 // ─── Leaderboards ────────────────────────────────────────────────────────────
@@ -189,7 +196,7 @@ export async function leaderboard(x: Ctx, q: { type: 'workers' | 'teams' | 'proj
   const date = q.date ?? today;
   const periods = recentPeriods(q.period, date, 6, x.org.weekStart);
   const current = periods.at(-1)!;
-  await ensurePeriod(x, q.period, current.start);
+  await ensurePeriod(x, q.period, current.start, current.end);
   const rule = await currentRules(x.tx, x.org.id);
   // Workers with the board turned on see the organization-wide ranking, and only names and scores.
   const summaryOnly = scope === 'own';
@@ -271,12 +278,13 @@ export async function teamPerformance(x: Ctx, q: { period: PerformancePeriod; da
   if (!x.actor.grants['performance:read'] || x.actor.grants['performance:read'] === 'own') throw forbidden();
   const periods = recentPeriods(q.period, q.date ?? orgToday(x), 6, x.org.weekStart);
   const current = periods.at(-1)!;
-  await ensurePeriod(x, q.period, current.start);
+  await ensurePeriod(x, q.period, current.start, current.end);
   const visible = await visibleTeamIds(x, 'performance:read');
   const roster = await teamRoster(x.tx);
   const teamIds = [...roster.keys()].filter((id) => (visible === 'all' || visible.has(id)) && (!q.teamIds?.length || q.teamIds.includes(id)));
   const snaps = await snapshotsFor(x.tx, 'TEAM', q.period, periods.map((p) => p.start));
-  const ranks = new Map(rankEntries(snaps.filter((s) => s.periodStart === current.start && (visible === 'all' || visible.has(s.subjectId))).map((s) => ({ id: s.subjectId, score: s.score, eligible: s.eligible }))).map((r) => [r.id, r.rank]));
+  const hideRanks = await ranksHidden(x);
+  const ranks = hideRanks ? new Map<string, number | null>() : new Map(rankEntries(snaps.filter((s) => s.periodStart === current.start && (visible === 'all' || visible.has(s.subjectId))).map((s) => ({ id: s.subjectId, score: s.score, eligible: s.eligible }))).map((r) => [r.id, r.rank]));
   const memberSnaps = await snapshotsFor(x.tx, 'MEMBER', q.period, [current.start]);
   const awards = await awardsInPeriod(x.tx, 'team', current.start, current.end, x.org.timezone);
   const memberAwards = await awardsInPeriod(x.tx, 'member', current.start, current.end, x.org.timezone);
@@ -286,6 +294,7 @@ export async function teamPerformance(x: Ctx, q: { period: PerformancePeriod; da
     start: current.start,
     end: current.end,
     periods: periods.map((p) => p.start),
+    ranks_hidden: hideRanks,
     teams: teamIds.map((id) => {
       const t = roster.get(id)!;
       const snap = snaps.find((s) => s.subjectId === id && s.periodStart === current.start);
@@ -326,7 +335,7 @@ export async function performanceOverview(x: Ctx, q: { period: PerformancePeriod
   const periods = recentPeriods(q.period, q.date ?? today, 6, x.org.weekStart);
   const current = periods.at(-1)!;
   const previous = periods.at(-2)!;
-  await ensurePeriod(x, q.period, current.start);
+  await ensurePeriod(x, q.period, current.start, current.end);
   let people = await visibleActiveMembers(x, 'performance:read');
   const roster = await teamRoster(x.tx);
   if (q.teamId) {
@@ -352,10 +361,12 @@ export async function performanceOverview(x: Ctx, q: { period: PerformancePeriod
   const msDue = milestones.filter((m) => m.dueDate <= today || m.completedAt);
   const msOnTime = msDue.filter((m) => m.completedAt && localDate(m.completedAt, x.org.timezone) <= m.dueDate);
 
-  const awards = await listAwards(x, { from: periods[0]!.start, to: current.end, limit: 500 });
+  // Awards for both the score trend (six periods) and the six months chart, whichever reaches further back.
+  const months = recentPeriods('MONTH', current.end, 6, x.org.weekStart);
+  const awardsFrom = periods[0]!.start < months[0]!.start ? periods[0]!.start : months[0]!.start;
+  const awards = await listAwards(x, { from: awardsFrom, to: current.end, limit: 500 });
   const inPeriod = (d: string, p: { start: string; end: string }) => d >= p.start && d <= p.end;
   const awardsNow = awards.filter((a) => inPeriod(localDate(new Date(a.created_at), x.org.timezone), current));
-  const months = recentPeriods('MONTH', current.end, 6, x.org.weekStart);
   const monthAwards = months.map((m) => {
     const list = awards.filter((a) => inPeriod(localDate(new Date(a.created_at), x.org.timezone), m));
     return { month: m.start, bronze: list.filter((a) => a.tier === 'BRONZE').length, silver: list.filter((a) => a.tier === 'SILVER').length, gold: list.filter((a) => a.tier === 'GOLD' || a.tier === null).length, platinum: list.filter((a) => a.tier === 'PLATINUM').length };
@@ -430,7 +441,7 @@ export async function memberPerformanceList(x: Ctx, q: { period: PerformancePeri
   const scope = x.actor.grants['performance:read'];
   if (!scope || scope === 'own') throw forbidden();
   const current = periodBounds(q.period, q.date ?? orgToday(x), x.org.weekStart);
-  await ensurePeriod(x, q.period, current.start);
+  await ensurePeriod(x, q.period, current.start, current.end);
   const people = await visibleActiveMembers(x, 'performance:read');
   const snaps = await snapshotsFor(x.tx, 'MEMBER', q.period, [current.start]);
   const roster = await teamRoster(x.tx);
@@ -449,10 +460,16 @@ export async function memberPerformanceList(x: Ctx, q: { period: PerformancePeri
   };
 }
 
-/** One person's performance profile (managers and admins; the worker sees theirs in the desktop app). */
+/**
+ * One person's performance profile (managers and admins; the worker sees theirs in the desktop app).
+ * Its goals and achievements follow their own permissions: without them those sections are empty.
+ */
 export async function memberProfile(x: Ctx, membershipId: string, q: { period: PerformancePeriod; date?: string }) {
+  const scope = x.actor.grants['performance:read'];
+  if (!scope || scope === 'own') throw forbidden();
   const p = periodBounds(q.period, q.date ?? orgToday(x), x.org.weekStart);
   const score = await memberScore(x, membershipId, p.start, p.end);
+  const hideRanks = await ranksHidden(x);
   const [info] = await activeMembers(x.tx, [membershipId]);
   const roster = await teamRoster(x.tx);
   const teams = [...roster.entries()].filter(([, t]) => t.members.includes(membershipId)).map(([id, t]) => ({ id, name: t.name }));
@@ -485,8 +502,9 @@ export async function memberProfile(x: Ctx, membershipId: string, q: { period: P
     member: { id: membershipId, name: info?.name ?? '', title: info?.title ?? null, role: info?.role ?? '', teams, projects: projectRows },
     period: { type: q.period, start: p.start, end: p.end },
     score,
-    rank: myRank?.rank ?? null,
-    rank_group_size: group.filter((r) => r.rank !== null).length,
+    ranks_hidden: hideRanks,
+    rank: hideRanks ? null : (myRank?.rank ?? null),
+    rank_group_size: hideRanks ? null : group.filter((r) => r.rank !== null).length,
     rank_group: mine?.rankGroup ?? info?.rankGroup ?? null,
     rule_version: rule.version,
     kpis: {
@@ -500,8 +518,8 @@ export async function memberProfile(x: Ctx, membershipId: string, q: { period: P
     contributions: projectIdsSeen
       .map((id) => ({ project_id: id, name: pnames.get(id) ?? '', approved_seconds: Number(perProject.find((r) => r.project === id)?.s ?? 0), tasks_done: tasksIn.filter((t) => t.project === id).length, milestones_done: msIn.filter((m) => m.projectId === id).length }))
       .sort((a, b) => b.approved_seconds - a.approved_seconds),
-    goals: (await memberGoals(x, membershipId)).filter((g) => g.subject_type === 'MEMBER'),
-    achievements: await listAwards(x, { membershipId, limit: 50 }),
+    goals: can(x.actor, 'goals:read', { ownerMembershipId: membershipId }) ? (await memberGoals(x, membershipId)).filter((g) => g.subject_type === 'MEMBER') : [],
+    achievements: can(x.actor, 'achievements:read', { ownerMembershipId: membershipId }) ? await listAwards(x, { membershipId, limit: 50 }) : [],
     history: await listMemberSnapshots(x, membershipId, q.period),
   };
 }

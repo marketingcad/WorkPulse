@@ -12,7 +12,7 @@ test.describe('Worker app navigation', () => {
   test('has exactly the primary groups and no stray top-level items', { tag: '@smoke' }, async ({ page, openDesktop, workerDevice }) => {
     await openDesktop(workerDevice);
     const nav = primary(page);
-    await expect(nav.getByRole('button')).toHaveText(['Home', 'Track', 'Timesheet', 'Time off', 'Schedule', 'Pay stubs', 'Settings']);
+    await expect(nav.getByRole('button')).toHaveText(['Home', 'Track', 'Timesheet', 'My performance New', 'Time off', 'Schedule', 'Pay stubs', 'Settings']);
     // Screens grouped under Track and Timesheet are sub-tabs, not separate nav items; "Me" is gone.
     for (const gone of ['Projects', 'Tasks', 'Time Tracking', 'Reports', 'Activity', 'Me']) {
       await expect(nav.getByRole('button', { name: gone, exact: true })).toHaveCount(0);
@@ -39,9 +39,9 @@ test.describe('Worker app navigation', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Reports' })).toBeVisible();
   });
 
-  test('Schedule, Pay stubs and Settings open straight from the sidebar, with no sub-tabs', async ({ page, openDesktop, workerDevice }) => {
+  test('Schedule, My performance, Pay stubs and Settings open straight from the sidebar, with no sub-tabs', async ({ page, openDesktop, workerDevice }) => {
     await openDesktop(workerDevice);
-    for (const [button, heading] of [['Schedule', 'Schedule'], ['Pay stubs', 'Pay Stubs'], ['Settings', 'Settings']] as const) {
+    for (const [button, heading] of [['Schedule', 'Schedule'], ['My performance', 'My performance'], ['Pay stubs', 'Pay Stubs'], ['Settings', 'Settings']] as const) {
       await primary(page).getByRole('button', { name: button, exact: true }).click();
       await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
       await expect(primary(page).getByRole('button', { name: button, exact: true })).toHaveAttribute('aria-current', 'page');

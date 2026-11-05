@@ -367,7 +367,8 @@ describe('team performance, overview and profiles', () => {
   });
 
   it('a closed month names the top performer of each role, once', async () => {
-    at('2026-12-02T15:00:00Z');
+    // November settles (becomes final) 14 days after it ends.
+    at('2026-12-16T15:00:00Z');
     await withTenant(t.h.db, orgId, (tx) => performanceDaily(tx, t.deps, orgId));
     await withTenant(t.h.db, orgId, (tx) => performanceDaily(tx, t.deps, orgId));
     const tops = await withTenant(t.h.db, orgId, (tx) => tx.select().from(achievementAwards).where(eq(achievementAwards.periodKey, '2026-11')));

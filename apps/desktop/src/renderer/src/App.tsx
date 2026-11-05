@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import { ArrowRight, BarChart3, Check, ChevronLeft, Clock3, ClockPlus, ExternalLink, Eye, EyeOff, Lock, LogOut, Mail, RefreshCw, ShieldCheck, Users, type LucideIcon } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
 import { Dashboard } from './Dashboard';
+import { PerformancePage } from './PerformancePage';
 import { ActivityPage, PayStubsPage, ProjectsPage, ReportsPage, SchedulePage, TasksPage, TimeOffPage, TimesheetPage, TrackingPage } from './Pages';
 import { Mark } from './brand';
 import { Shell } from './Shell';
@@ -52,7 +53,9 @@ export function App() {
         return <TimeOffPage />;
       case 'schedule':
         return <SchedulePage />;
-      case 'paystubs':
+      case 'performance':
+      return <PerformancePage s={s} />;
+    case 'paystubs':
         return <PayStubsPage />;
       case 'settings':
         return narrow(<SettingsView s={s} onBack={() => setView('home')} />);

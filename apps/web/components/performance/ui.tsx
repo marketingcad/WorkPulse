@@ -1,31 +1,9 @@
 'use client';
-import { useState, type ReactNode } from 'react';
-import {
-  Award,
-  CalendarCheck,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  Crown,
-  Flag,
-  Gem,
-  Heart,
-  Repeat,
-  Rocket,
-  ShieldCheck,
-  Smile,
-  Sparkles,
-  Star,
-  Target,
-  Trophy,
-  Users,
-  Zap,
-  type LucideIcon,
-} from 'lucide-react';
+import { Suspense, lazy, useState, type ReactNode } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { addDaysToDate, periodBounds, type PerformancePeriod } from '@tallywork/domain';
 import { Button, SegmentedControl, cx } from '@tallywork/ui';
-import { t } from '@/lib/i18n';
+import { t } from './i18n';
 
 /** Shared pieces of the Performance Center pages (designs: the "Performance Center designs" canvas). */
 
@@ -43,27 +21,8 @@ export const METRIC_COLOR: Record<MetricKey, string> = {
 export const metricLabel = (m: MetricKey) => t(`perf.metric.${m}`);
 export const metricSource = (m: MetricKey) => t(`perf.metricSource.${m}`);
 
-const ICONS: Record<string, LucideIcon> = {
-  award: Award,
-  'check-circle': CheckCircle2,
-  'calendar-check': CalendarCheck,
-  flag: Flag,
-  repeat: Repeat,
-  clock: Clock,
-  crown: Crown,
-  heart: Heart,
-  star: Star,
-  gem: Gem,
-  smile: Smile,
-  trophy: Trophy,
-  target: Target,
-  zap: Zap,
-  rocket: Rocket,
-  'shield-check': ShieldCheck,
-  users: Users,
-  sparkles: Sparkles,
-};
-export const achievementIcon = (name: string): LucideIcon => ICONS[name] ?? Award;
+// The 18 achievement icons load with the first badge, not with every Performance page.
+const AchievementGlyph = lazy(() => import('./achievement-icons'));
 
 const TIER_CLASS: Record<Tier, { rim: string; soft: string; text: string }> = {
   BRONZE: { rim: 'bg-tier-bronze', soft: 'bg-tier-bronze-soft', text: 'text-tier-bronze' },
@@ -80,13 +39,17 @@ const HEX = 'polygon(50% 0, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%)';
 /** A hexagonal medallion (the WorkPulse logo shape) with a level-coloured rim. */
 export function HexBadge({ icon, tier, size = 48, label, dim, children }: { icon?: string; tier: Tier | null; size?: number; label?: string; dim?: boolean; children?: ReactNode }) {
   const c = TIER_CLASS[tier ?? 'GOLD'];
-  const Icon = icon ? achievementIcon(icon) : null;
   const h = Math.round(size * 1.13);
   return (
     <span role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true} className={cx('relative inline-grid shrink-0 place-items-center', c.rim, dim && 'opacity-45')} style={{ width: size, height: h, clipPath: HEX }}>
       <span className="grid place-items-center bg-surface" style={{ width: size - 6, height: h - 7, clipPath: HEX }}>
         <span className={cx('grid place-items-center', c.soft, c.text)} style={{ width: size - 12, height: h - 14, clipPath: HEX }}>
-          {children ?? (Icon && <Icon className="size-[45%]" strokeWidth={2.2} />)}
+          {children ??
+            (icon && (
+              <Suspense fallback={null}>
+                <AchievementGlyph name={icon} />
+              </Suspense>
+            ))}
         </span>
       </span>
     </span>

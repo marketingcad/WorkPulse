@@ -154,6 +154,18 @@ export function periodBounds(type: PerformancePeriod, date: string, weekStart = 
   }
 }
 
+/**
+ * Days after a period ends before its scores are final. Timesheets for the last days of a period are
+ * approved, and reviews for it written, after it ends; until then its scores keep being recalculated
+ * so that work counts. After it they are history and never change.
+ */
+export const SCORE_SETTLE_DAYS = 14;
+
+/** Whether a period that ends on `periodEnd` is final on `today` (both YYYY-MM-DD, org time zone). */
+export function isPeriodSettled(periodEnd: string, today: string): boolean {
+  return today > addDaysToDate(periodEnd, SCORE_SETTLE_DAYS);
+}
+
 export const AWARD_RECURRENCES = ['ONCE', ...PERFORMANCE_PERIODS] as const;
 export type AwardRecurrence = (typeof AWARD_RECURRENCES)[number];
 

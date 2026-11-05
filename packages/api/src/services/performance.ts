@@ -23,6 +23,7 @@ import {
   can,
   computeScore,
   forbidden,
+  isPeriodSettled,
   localDate,
   metricValues,
   newId,
@@ -293,10 +294,17 @@ function scoreDto(membershipId: string, from: string, to: string, rule: Rule, in
   };
 }
 
-/** The member must exist in this organization and be within the actor's reach (one answer for both). */
+/**
+ * The member must exist in this organization and be within the actor's reach (one answer for both).
+ * Someone who can only read their own performance sees their score only when the organization shares
+ * scores with workers (`workers_see_own_score`), on every route, not only in the desktop app.
+ */
 async function assertCanSeeMember(x: Ctx, membershipId: string) {
   const [m] = await x.tx.select({ id: memberships.id }).from(memberships).where(eq(memberships.id, membershipId));
   if (!m || !can(x.actor, 'performance:read', { ownerMembershipId: membershipId })) throw notFound('member');
+  if (x.actor.grants['performance:read'] === 'own' && !(await currentSettings(x.tx, x.org.id)).workersSeeOwnScore) {
+    throw forbidden('Your organization does not share scores with workers.');
+  }
 }
 
 /** A member's score for a date range, if the actor may see that member's performance. */
@@ -318,19 +326,17 @@ export async function snapshotMemberScore(
   q: { membershipId: string; periodType: PerformancePeriod; periodStart: string; periodEnd: string; rankGroup?: string | null },
 ): Promise<typeof performanceScoreSnapshots.$inferSelect> {
   if (q.periodEnd < q.periodStart) throw validation('The period must end on or after it starts');
-  const key = and(
-    eq(performanceScoreSnapshots.subjectType, 'MEMBER'),
-    eq(performanceScoreSnapshots.subjectId, q.membershipId),
-    eq(performanceScoreSnapshots.periodType, q.periodType),
-    eq(performanceScoreSnapshots.periodStart, q.periodStart),
-  );
-  const [existing] = await tx.select().from(performanceScoreSnapshots).where(key);
+  const [existing] = await tx.select().from(performanceScoreSnapshots).where(snapshotKey('MEMBER', q.membershipId, q.periodType, q.periodStart));
   if (existing?.final) return existing;
   const rule = await currentRules(tx, org.id);
   const inputs = await memberMetricInputs(tx, org, q.membershipId, q.periodStart, q.periodEnd, now);
   const dto = scoreDto(q.membershipId, q.periodStart, q.periodEnd, rule, inputs);
-  const final = localDate(now, org.timezone) > q.periodEnd;
-  const values = {
+  return saveSnapshot(tx, org.id, {
+    subjectType: 'MEMBER',
+    subjectId: q.membershipId,
+    periodType: q.periodType,
+    periodStart: q.periodStart,
+    periodEnd: q.periodEnd,
     ruleId: rule.id,
     ruleVersion: rule.version,
     score: dto.score,
@@ -338,18 +344,34 @@ export async function snapshotMemberScore(
     metrics: { parts: dto.parts, inputs: dto.inputs, approved_days: dto.approved_days, approved_seconds: inputs.approvedSeconds },
     eligible: dto.eligible,
     rankGroup: q.rankGroup ?? null,
-    final,
+    final: isPeriodSettled(q.periodEnd, localDate(now, org.timezone)),
     calculatedAt: now,
-  };
-  if (existing) {
-    const [row] = await tx.update(performanceScoreSnapshots).set(values).where(eq(performanceScoreSnapshots.id, existing.id)).returning();
-    return row!;
-  }
+  });
+}
+
+type SnapshotValues = Omit<typeof performanceScoreSnapshots.$inferInsert, 'id' | 'organizationId'>;
+
+const snapshotKey = (subjectType: SnapshotValues['subjectType'], subjectId: string, periodType: PerformancePeriod, periodStart: string) =>
+  and(eq(performanceScoreSnapshots.subjectType, subjectType), eq(performanceScoreSnapshots.subjectId, subjectId), eq(performanceScoreSnapshots.periodType, periodType), eq(performanceScoreSnapshots.periodStart, periodStart));
+
+/**
+ * Insert or update one snapshot in a single statement, so two first reads of a period (or a read and
+ * the daily job) cannot both insert it. A final snapshot is never overwritten: it is returned as it is.
+ */
+export async function saveSnapshot(tx: Tx, orgId: string, s: SnapshotValues) {
+  const { subjectType, subjectId, periodType, periodStart, periodEnd, ...values } = s;
   const [row] = await tx
     .insert(performanceScoreSnapshots)
-    .values({ id: newId(), organizationId: org.id, subjectType: 'MEMBER', subjectId: q.membershipId, periodType: q.periodType, periodStart: q.periodStart, periodEnd: q.periodEnd, ...values })
+    .values({ id: newId(), organizationId: orgId, ...s })
+    .onConflictDoUpdate({
+      target: [performanceScoreSnapshots.organizationId, performanceScoreSnapshots.subjectType, performanceScoreSnapshots.subjectId, performanceScoreSnapshots.periodType, performanceScoreSnapshots.periodStart],
+      set: { periodEnd, ...values },
+      setWhere: eq(performanceScoreSnapshots.final, false),
+    })
     .returning();
-  return row!;
+  if (row) return row;
+  const [kept] = await tx.select().from(performanceScoreSnapshots).where(snapshotKey(subjectType, subjectId, periodType as PerformancePeriod, periodStart));
+  return kept!;
 }
 
 /** Saved scores of members the actor may see, newest period first. */

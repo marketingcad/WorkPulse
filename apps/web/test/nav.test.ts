@@ -27,11 +27,12 @@ describe('admin sidebar', () => {
       ['nav.group.work', ['nav.item.clients', 'nav.item.projects', 'nav.item.tasks']],
       ['nav.group.money', ['nav.item.rates', 'nav.item.budgets', 'nav.item.expenses', 'nav.item.invoices', 'nav.item.payroll']],
       ['nav.group.reports', ['nav.item.summary', 'nav.item.reportLibrary']],
+      ['nav.group.performance', ['nav.item.performanceOverview', 'nav.item.achievements', 'nav.item.leaderboards', 'nav.item.teamPerformance', 'nav.item.workerPerformance', 'nav.item.goals']],
       // UX remediation: personal pages were only behind the avatar menu.
       ['nav.group.me', ['nav.item.myTimesheet', 'nav.item.myPayStubs', 'nav.item.whatIsMonitored']],
       [null, ['nav.item.settings', 'nav.item.help']],
     ]);
-    expect(nav.flatMap((g) => g.items)).toHaveLength(24);
+    expect(nav.flatMap((g) => g.items)).toHaveLength(30);
   });
 
   it('Settings holds every settings page, Devices and the Developer pages as tabs, in one place', () => {
@@ -81,6 +82,20 @@ describe('who sees what', () => {
     expect(invoices.tabs).toHaveLength(1);
   });
 
+  it('Performance is its own group (marked new) with a page per item, for people who read performance across a team or the organization', () => {
+    const manager = navFor(ROLE_PRESETS.TEAM_MANAGER);
+    const group = manager.find((g) => g.label === 'nav.group.performance')!;
+    expect(group.badge).toBe('nav.badge.new');
+    expect(group.items.map((i) => i.href)).toEqual(['/performance', '/performance/achievements', '/performance/leaderboards', '/performance/teams', '/performance/workers', '/performance/goals']);
+    expect(group.items.every((i) => !i.tabs)).toBe(true);
+    // Their own progress only (Workers): not in the web sidebar; they see it in the desktop app.
+    expect(navFor({ 'org:read': 'org', 'tracking:read': 'team', 'performance:read': 'own', 'achievements:read': 'own' }).find((g) => g.label === 'nav.group.performance')).toBeUndefined();
+    expect(navFor({ 'org:read': 'org', 'tracking:read': 'team' }).find((g) => g.label === 'nav.group.performance')).toBeUndefined();
+    // Achievements alone: the group shows with just that page.
+    const ach = navFor({ 'org:read': 'org', 'tracking:read': 'team', 'achievements:read': 'team' }).find((g) => g.label === 'nav.group.performance')!;
+    expect(ach.items.map((i) => i.label)).toEqual(['nav.item.achievements']);
+  });
+
   it('a page whose tabs are all refused is not in the sidebar', () => {
     const nav = navFor({ 'org:read': 'org', 'tracking:read': 'team', 'members:read': 'own', 'teams:read': 'own' });
     expect(item(nav, 'nav.item.members')).toBeUndefined();
@@ -103,6 +118,15 @@ describe('the highlighted page', () => {
     expect(at('/teams')).toEqual(['nav.item.members', '/teams']);
     expect(at('/attendance')).toEqual(['nav.item.schedulesAttendance', '/attendance']);
     expect(at('/finance/invoices/payments')).toEqual(['nav.item.invoices', '/finance/invoices/payments']);
+    // Each Performance page is its own sidebar item (no tabs), so no tab is selected.
+    expect(at('/performance')).toEqual(['nav.item.performanceOverview', null]);
+    expect(at('/performance/achievements')).toEqual(['nav.item.achievements', null]);
+    expect(at('/performance/leaderboards')).toEqual(['nav.item.leaderboards', null]);
+    expect(at('/performance/teams')).toEqual(['nav.item.teamPerformance', null]);
+    expect(at('/performance/workers/0190a000-0000-7000-8000-000000000001')).toEqual(['nav.item.workerPerformance', null]);
+    expect(at('/performance/goals')).toEqual(['nav.item.goals', null]);
+    // The Members › Teams tab is a different page.
+    expect(at('/teams')).toEqual(['nav.item.members', '/teams']);
   });
 
   it('keeps the parent highlighted on detail pages, and related pages under their item', () => {

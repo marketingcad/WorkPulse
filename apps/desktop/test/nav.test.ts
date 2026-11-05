@@ -3,11 +3,11 @@ import { GROUP_OF, NAV_GROUPS, groupFor, type NavGroup } from '../src/renderer/s
 
 // The set of views the app can show, mirrored from lib.ts `View`. Kept here so the test fails loudly
 // if a new screen is added without being placed in a nav group.
-const VIEWS = ['home', 'tracking', 'projects', 'tasks', 'timesheet', 'activity', 'reports', 'timeoff', 'schedule', 'paystubs', 'settings', 'manual'] as const;
+const VIEWS = ['home', 'tracking', 'projects', 'tasks', 'timesheet', 'activity', 'reports', 'timeoff', 'schedule', 'performance', 'paystubs', 'settings', 'manual'] as const;
 
 describe('worker nav model', () => {
   it('presents the primary groups, daily actions first and Settings last', () => {
-    expect(NAV_GROUPS.map((g) => g.label)).toEqual(['Home', 'Track', 'Timesheet', 'Time off', 'Schedule', 'Pay stubs', 'Settings']);
+    expect(NAV_GROUPS.map((g) => g.label)).toEqual(['Home', 'Track', 'Timesheet', 'My performance', 'Time off', 'Schedule', 'Pay stubs', 'Settings']);
   });
 
   it('places every view in a group that exists', () => {
@@ -36,8 +36,8 @@ describe('worker nav model', () => {
     }
   });
 
-  it('Schedule, Pay stubs and Settings are their own sidebar items, with no sub-tabs', () => {
-    for (const v of ['schedule', 'paystubs', 'settings'] as const) {
+  it('Schedule, My performance, Pay stubs and Settings are their own sidebar items, with no sub-tabs', () => {
+    for (const v of ['schedule', 'performance', 'paystubs', 'settings'] as const) {
       const g = NAV_GROUPS.find((x) => x.v === v);
       expect(g, `no sidebar item for "${v}"`).toBeDefined();
       expect(g!.tabs).toBeUndefined();

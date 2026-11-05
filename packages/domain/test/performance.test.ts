@@ -9,7 +9,9 @@ import {
   awardPeriodKey,
   computeScore,
   evaluateGoal,
+  SCORE_SETTLE_DAYS,
   goalMetricAllowed,
+  isPeriodSettled,
   metricValues,
   periodBounds,
   rankEntries,
@@ -225,5 +227,18 @@ describe('performance permissions', () => {
   it('scoring rules and the achievement catalogue are organization-wide only', () => {
     expect(ORG_ONLY_PERMISSIONS).toContain('performance:manage');
     expect(ORG_ONLY_PERMISSIONS).toContain('achievements:manage');
+  });
+});
+
+describe('when the scores of a period become final', () => {
+  it('stays open for SCORE_SETTLE_DAYS after the period ends, so late approvals and reviews count', () => {
+    expect(SCORE_SETTLE_DAYS).toBe(14);
+    expect(isPeriodSettled('2026-11-30', '2026-11-30')).toBe(false);
+    expect(isPeriodSettled('2026-11-30', '2026-12-01')).toBe(false);
+    expect(isPeriodSettled('2026-11-30', '2026-12-14')).toBe(false);
+    expect(isPeriodSettled('2026-11-30', '2026-12-15')).toBe(true);
+    // Across a year end.
+    expect(isPeriodSettled('2026-12-31', '2027-01-14')).toBe(false);
+    expect(isPeriodSettled('2026-12-31', '2027-01-15')).toBe(true);
   });
 });

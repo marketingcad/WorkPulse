@@ -226,7 +226,7 @@ export async function widgetData(x: Ctx, keys: string[], scope: 'ALL' | 'ME' | '
     const pending = await x.tx.select().from(timeOffRequests).where(and(eq(timeOffRequests.status, 'PENDING'), filter)).orderBy(timeOffRequests.startDate).limit(10);
     const upcoming = await x.tx.select().from(timeOffRequests).where(and(eq(timeOffRequests.status, 'APPROVED'), gte(timeOffRequests.endDate, today), lte(timeOffRequests.startDate, addDaysToDate(today, 30)), filter)).orderBy(timeOffRequests.startDate).limit(10);
     const names = await memberNames(x, [...new Set([...pending, ...upcoming].map((r) => r.membershipId))]);
-    const map = (r: typeof pending[number]) => ({ id: r.id, worker_name: names.get(r.membershipId) ?? '', start_date: r.startDate, end_date: r.endDate, hours: r.hours, status: r.status });
+    const map = (r: typeof pending[number]) => ({ id: r.id, membership_id: r.membershipId, worker_name: names.get(r.membershipId) ?? '', start_date: r.startDate, end_date: r.endDate, hours: r.hours, status: r.status });
     out.time_off_requests = pending.map(map);
     out.upcoming_time_off = upcoming.map(map);
   }

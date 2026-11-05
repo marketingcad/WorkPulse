@@ -232,7 +232,11 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
                   'hover:bg-white/5 hover:text-nav-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#3b82ff]',
                 )}
               >
-                <span className="flex-1 truncate text-left">{t(g.label)}</span>
+                <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                  <span className="truncate">{t(g.label)}</span>
+                  {g.badge && ' '}
+                  {g.badge && <span className="rounded-full bg-[#4d8dff]/22 px-1.5 text-[10px] leading-4 tracking-wide text-[#a9c6ff]">{t(g.badge)}</span>}
+                </span>
                 <ChevronRight className={cx('size-3.5 shrink-0 transition-transform duration-200 ease-out motion-reduce:transition-none', isOpen && 'rotate-90')} aria-hidden />
               </button>
               {/* grid-rows 0fr ↔ 1fr animates to the content's natural height */}

@@ -196,7 +196,7 @@ describe('member scores', () => {
   });
 
   it('come from goals, delivery and reviews; unmeasured attendance and consistency stay null and are re-weighted', async () => {
-    const r = await worker.get(o(`/performance/members/${workerId}/score?from=2026-11-01&to=2026-11-30`));
+    const r = await admin.get(o(`/performance/members/${workerId}/score?from=2026-11-01&to=2026-11-30`));
     expect(r.status).toBe(200);
     expect(r.body.inputs).toEqual({
       goals: { completed: 1, due: 1 },
@@ -226,10 +226,14 @@ describe('member scores', () => {
     expect((await manager.get(o(`/performance/members/${outsiderId}/score?from=2026-11-01&to=2026-11-30`))).status).toBe(404);
   });
 
-  it('a worker sees only their own', async () => {
+  it('a worker sees only their own, and only when the organization shares scores with workers', async () => {
     expect((await worker.get(o(`/performance/members/${outsiderId}/score?from=2026-11-01&to=2026-11-30`))).status).toBe(404);
     expect((await outsider.get(o(`/performance/members/${workerId}/score?from=2026-11-01&to=2026-11-30`))).status).toBe(404);
+    // Not shared by default (workers_see_own_score is off).
+    expect((await outsider.get(o(`/performance/members/${outsiderId}/score?from=2026-11-01&to=2026-11-30`))).status).toBe(403);
+    expect((await admin.put(o('/performance/settings'), { workers_see_own_score: true })).status).toBe(200);
     expect((await outsider.get(o(`/performance/members/${outsiderId}/score?from=2026-11-01&to=2026-11-30`))).status).toBe(200);
+    expect((await admin.put(o('/performance/settings'), { workers_see_own_score: false })).status).toBe(200);
   });
 
   it('another organization cannot read them, and an unknown member is not found', async () => {
@@ -248,22 +252,28 @@ describe('score snapshots', () => {
   const snap = (now: string) =>
     withTenant(t.h.db, orgId, async (tx) => snapshotMemberScore(tx, await loadOrg(tx, orgId), new Date(now), { membershipId: workerId, periodType: 'MONTH', periodStart: '2026-11-01', periodEnd: '2026-11-30', rankGroup: 'product designer' }));
 
-  it('a running period is recalculated; once it is over it is final and never changes, even with new rules', async () => {
+  it('a running period is recalculated; once it has settled it is final and never changes, even with new rules', async () => {
     const running = await snap('2026-11-12T15:00:00Z');
     expect(running).toMatchObject({ final: false, ruleVersion: 2, eligible: false, rankGroup: 'product designer' });
     const history = await manager.get(o(`/performance/members/${workerId}/history?period=MONTH`));
     expect(history.status).toBe(200);
     expect(history.body).toEqual([expect.objectContaining({ period_start: '2026-11-01', score: running.score, final: false, rule_version: 2 })]);
 
-    // December 1 in New York: November is over. The still-open "Later" task and the "Running" goal now count.
-    const closed = await snap('2026-12-01T15:00:00Z');
+    // December 1 in New York: November is over. The still-open "Later" task and the "Running" goal now
+    // count, but the month stays open for late approvals and reviews (SCORE_SETTLE_DAYS).
+    const ended = await snap('2026-12-01T15:00:00Z');
+    expect(ended).toMatchObject({ id: running.id, final: false });
+    expect(ended.metrics).toMatchObject({ inputs: { delivery: { on_time: 2, due: 4 }, goals: { completed: 1, due: 2 } } });
+
+    // December 15: 14 days after November 30, the month is final.
+    const closed = await snap('2026-12-15T15:00:00Z');
     expect(closed.final).toBe(true);
     expect(closed.id).toBe(running.id);
     expect(closed.metrics).toMatchObject({ inputs: { delivery: { on_time: 2, due: 4 }, goals: { completed: 1, due: 2 } } });
 
     // New rules after the period closed: November keeps the score it was given, and its rule version.
     await withTenant(t.h.db, orgId, (tx) => tx.insert(performanceRules).values({ id: newId(), organizationId: orgId, version: 3, weights: { goals: 10, delivery: 10, consistency: 10, quality: 60, attendance: 10 }, minEligibleDays: 1 }));
-    const again = await snap('2026-12-02T15:00:00Z');
+    const again = await snap('2026-12-16T15:00:00Z');
     expect(again).toMatchObject({ id: closed.id, score: closed.score, ruleVersion: 2, final: true });
     expect(again.calculatedAt.toISOString()).toBe(closed.calculatedAt.toISOString());
     const rows = await withTenant(t.h.db, orgId, (tx) => tx.select().from(performanceScoreSnapshots));

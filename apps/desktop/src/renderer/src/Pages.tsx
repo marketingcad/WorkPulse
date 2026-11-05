@@ -9,7 +9,7 @@ import { BarList } from '@tallywork/ui/charts';
 
 // ─── Shared page pieces ──────────────────────────────────────────────────────
 
-function Page({ title, description, actions, children }: { title: string; description?: string; actions?: ReactNode; children: ReactNode }) {
+export function Page({ title, description, actions, children }: { title: string; description?: string; actions?: ReactNode; children: ReactNode }) {
   return (
     <div className="mx-auto flex w-full max-w-350 flex-col gap-3 p-3 md:gap-4 md:p-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -24,7 +24,7 @@ function Page({ title, description, actions, children }: { title: string; descri
   );
 }
 
-function Card({ title, right, children, className = '' }: { title?: string; right?: ReactNode; children: ReactNode; className?: string }) {
+export function Card({ title, right, children, className = '' }: { title?: string; right?: ReactNode; children: ReactNode; className?: string }) {
   return (
     <section className={`${card} ${className}`}>
       {title && (
@@ -42,7 +42,7 @@ function Card({ title, right, children, className = '' }: { title?: string; righ
  * The one place that renders a data screen's loading / error / empty states, so every page handles
  * all of them the same way. Pass `onRetry` (a query's reload) to offer a Try again button on error.
  */
-function Status({ loading, error, empty, onRetry, children }: { loading: boolean; error: string | null; empty?: string | false; onRetry?: () => void; children?: ReactNode }) {
+export function Status({ loading, error, empty, onRetry, children }: { loading: boolean; error: string | null; empty?: string | false; onRetry?: () => void; children?: ReactNode }) {
   if (loading)
     return (
       <div className="space-y-2 p-4" aria-busy="true">
@@ -78,7 +78,7 @@ function Status({ loading, error, empty, onRetry, children }: { loading: boolean
 /** Solid tiles for stat icons, matching the web dashboards (white icon on a brand colour). */
 const TILE = { blue: 'bg-[#1766ff]', violet: 'bg-[#6d4cf5]', green: 'bg-[#0f9f6e]', amber: 'bg-[#e08a00]', teal: 'bg-[#0e98b3]' } as const;
 
-function Stat({ label, value, hint, tone, icon: Icon, color = 'blue' }: { label: string; value: string; hint?: string; tone?: 'warning'; icon?: LucideIcon; color?: keyof typeof TILE }) {
+export function Stat({ label, value, hint, tone, icon: Icon, color = 'blue' }: { label: string; value: string; hint?: string; tone?: 'warning'; icon?: LucideIcon; color?: keyof typeof TILE }) {
   return (
     <div className={`${card} flex items-start gap-3 px-4 py-3.5`}>
       {Icon && (
@@ -113,7 +113,7 @@ function Stepper({ label, onPrev, onNext, nextDisabled }: { label: string; onPre
   );
 }
 
-function Badge({ tone, children }: { tone: 'success' | 'warning' | 'danger' | 'info' | 'neutral'; children: ReactNode }) {
+export function Badge({ tone, children }: { tone: 'success' | 'warning' | 'danger' | 'info' | 'neutral'; children: ReactNode }) {
   const cls = { success: 'bg-success-soft text-success', warning: 'bg-warning-soft text-warning', danger: 'bg-danger-soft text-danger', info: 'bg-interactive-soft text-interactive', neutral: 'bg-surface-muted text-text-muted' }[tone];
   return <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-2xs font-semibold ${cls}`}>{children}</span>;
 }

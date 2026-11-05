@@ -22,7 +22,11 @@ Last updated: 5 November 2026.
   Activity levels, keystrokes and screenshots are never inputs.
 - **Missing data.** A metric with no data is `null`, never 0. It is left out and the other weights are re-normalized. When less than 50% of the weight is measured (`MIN_SCORE_COVERAGE`), there is no score.
 - **Weights.** Organization-configurable. They must be whole numbers adding up to 100. Every change creates a new **rules version** (`performance_rules` rows are never edited).
-- **Snapshots.** Each snapshot stores the rule version and the raw inputs it used. A **final** snapshot (its period is over) is never recalculated, even after the rules change.
+- **Snapshots.** Each snapshot stores the rule version and the raw inputs it used.
+  - A period stays open for `SCORE_SETTLE_DAYS` (14) after it ends, so timesheets approved and reviews written after it ends still count. The daily job recalculates every period that has not settled, not only the previous one.
+  - After that, the snapshot is **final** and is never recalculated, even after the rules change.
+  - Reading a settled period never computes it: a period with no snapshots shows no scores. An admin cannot recalculate a settled period (422 `period_closed`).
+  - Snapshots are saved in one insert-or-update statement that never overwrites a final row, so concurrent first reads cannot collide.
 - **Fair ranking.**
   - People are ranked only within their **role family**: their job title (`worker_profiles.title`), otherwise their role name.
   - People with fewer than `min_eligible_days` approved days (default 10) are not ranked.
@@ -32,8 +36,11 @@ Last updated: 5 November 2026.
   | Who | What they see |
   |---|---|
   | Admins | Everyone |
-  | Team managers | Their teams, when `leaderboard_managers` is on (default on) |
+  | Team managers | Their teams, when `leaderboard_managers` is on (default on). When it is off, Team performance and profiles still load, with `ranks_hidden: true` and no ranks. |
   | Workers | Only when `leaderboard_workers` is on (default off), and then names and scores only |
+
+- **Workers' own score.** A worker (own scope) reads their score and history, on the web routes and in the desktop app, only when `workers_see_own_score` is on (default off; 403 otherwise). The profile route is for managers and admins only.
+- **Profiles.** Goals and achievements on a profile follow `goals:read` and `achievements:read`. Without them, those sections are empty, not an error.
 
 - **Reviews.**
   - The private note goes only to people with `reviews:read` over the member. It is never sent to the member or a client.
@@ -50,13 +57,13 @@ Last updated: 5 November 2026.
 
 | Phase | Backend | Web UI | Desktop | Tests |
 |---|---|---|---|---|
-| 1 Foundation | ✅ Done | n/a (Roles screen labels ✅) | n/a | ✅ Domain, database, API, E2E (roles) |
-| 2 Achievements | ✅ Done | ❌ To do | ❌ To do | ✅ API · ❌ E2E |
-| 3 Leaderboards and team performance | ✅ Done | ❌ To do | n/a | ✅ API · ❌ E2E |
-| 4 Worker performance and reviews | ✅ Done | ❌ To do | n/a | ✅ API · ❌ E2E |
-| 5 Goals and client insights | ✅ Done | ❌ To do (incl. portal tab, milestones panel) | n/a | ✅ API · ❌ E2E |
-| 6 Desktop "My performance" | ✅ API done | n/a | ❌ To do (IPC, nav, page) | ✅ API · ❌ E2E |
-| 7 Final QA | ❌ To do | | | |
+| 1 Foundation | ✅ Done | ✅ Roles screen labels; Performance group in the sidebar; **Performance overview page** | n/a | ✅ Domain, database, API, E2E (roles, `performance-overview.spec.ts`) |
+| 2 Achievements | ✅ Done | ✅ Achievements page (appreciation, waiting for approval, awarded) | ✅ Badges on My performance | ✅ API · ✅ E2E |
+| 3 Leaderboards and team performance | ✅ Done | ✅ Leaderboards, Team performance | n/a | ✅ API · ✅ E2E |
+| 4 Worker performance and reviews | ✅ Done | ✅ Worker list and profile, reviews | n/a | ✅ API · ✅ E2E |
+| 5 Goals and client insights | ✅ Done | ✅ Goals, project Milestones tab, portal Insights | n/a | ✅ API · ✅ E2E |
+| 6 Desktop "My performance" | ✅ Done | n/a | ✅ IPC, nav, page | ✅ API · ✅ E2E |
+| 7 Final QA | ✅ Done, except the bundle budget (see Known issues) | | | ✅ Full regression, security pass, docs |
 
 ## 3. What is built
 
@@ -149,7 +156,7 @@ Every table has `organization_id`, composite foreign keys and row-level security
 |---|---|
 | `GET /performance/settings` | `performance:read` |
 | `PUT /performance/settings` | `performance:manage` |
-| `POST /performance/recalculate` `{period, date?}` | `performance:manage` |
+| `POST /performance/recalculate` `{period, date?}` | `performance:manage` (open periods only; 422 `period_closed` otherwise) |
 | `GET /performance/overview?period&date&team_id&project_id` | team or org scope |
 | `GET /performance/leaderboard?type=workers\|teams\|projects&period&date&compare=role\|everyone` | visibility settings above |
 | `GET /performance/teams?period&date&team_ids` | |
@@ -208,6 +215,8 @@ Every table has `organization_id`, composite foreign keys and row-level security
 | `pnpm typecheck` | 8 of 8 workspaces |
 | `e2e/tests/web/performance-permissions.spec.ts` | 3 passed |
 | Full E2E regression after phase 1 | 726 passed, 3 failed (see Known issues) |
+| **Final QA, 6 November 2026:** `pnpm typecheck` | 8 of 8 workspaces |
+| `pnpm test` (all Vitest suites and the full Playwright regression) | Exit 0. api 794 passed, 2 skipped (75 files); web 120; desktop 94; db 29; ui 32; domain passed. E2E: 823 tests, Playwright status "passed", 0 failed |
 
 **What the API tests cover:**
 - **Permissions:** admin, manager-team and worker-own scope; cross-tenant 404s.
@@ -223,6 +232,28 @@ Every table has `organization_id`, composite foreign keys and row-level security
 ## 5. Remaining work (next implementation)
 
 ### Web (`apps/web`)
+
+**Done (6 November 2026):** five pages, under one sidebar item.
+- **Sidebar:** a collapsible Performance group after Reports, marked New (as in the design), with one item per page: Performance overview, Achievements, Leaderboards, Team performance, Worker performance, Goals & challenges. Its four new icons add about 0.5 KB to every page's first load (see Bundle budget).
+- **Pages (`app/o/[orgId]/performance/…`):** Overview (with the Scoring rules dialog), Achievements & recognition (catalog, awarded, client appreciation waiting, Recognize someone, Create achievement, revoke), Leaderboards (podium, ranked table, visibility switches), Team performance (up to three teams, score over time, people, side by side), Worker performance (list and profile, with manager reviews and the private note).
+- **E2E:** `e2e/tests/web/performance-{overview,achievements,leaderboards,teams,workers}.spec.ts` (32 tests), plus all five pages in `a11y-sweep` and `mobile-sweep`.
+- **Text:** `components/performance/messages/*.ts`, one catalog per page plus `core` (shared) and one per form (`achievement-forms`, `reviews`, `rules`). Each file registers itself when imported; import the page's catalog in the page and the form's catalog in the form. Check with a search that every `t('perf.…')` key is in a catalog the file loads.
+- **Not built, because the API does not return the data (not faked):** Achievements "History" tab (revoked awards are never returned); Leaderboards "Past winners"; Team performance's five-part score strip (no per-team consistency or quality); the profile's "vs role median".
+- **Text:** the `perf.*` strings live in `components/performance/messages.ts` and are registered by `components/performance/i18n.ts`. Performance code imports `t` from there. They are not in `messages/en.ts`, so they stay out of every other page's first load. Only the sidebar labels (`nav.group.performance`, `nav.item.*`) go in `messages/en.ts`, and each new sidebar item also needs a line in `NAV_GUIDE` (`components/help/content.ts`).
+- **Bundle budget:** every Performance page is under 250 KB (246.5–249.6 KB). What keeps them there: the achievement icons, the dialogs and forms, the Overview body and the reviews panel load with `React.lazy` (not `next/dynamic`, which added about 1 KB); the Overview body and reviews panel are fetched as soon as the page loads, in parallel with the data. Before this work the branch already had 19 routes over budget (avatar and chart commits). Payroll is now just over (250.2 KB, from 249.5): every page carries the Performance sidebar item and the uncommitted `packages/ui/src/overlays.tsx` menu change, which is not part of this work.
+- **Not shown on the Overview, because the API has no data for them (not faked):** the design's custom date range, "biggest climb", "goals due this week", team ranges on the score trend (`lowest_team`/`highest_team` are always null) and the 4-week attendance heatmap. The overview's `previous_score` covers the whole previous period, not the same days, so the hero says "than the previous period".
+- **Goals & challenges** (`performance/goals`): summary counts, team challenges, filters by subject and status, goal cards that say where progress comes from, a drawer with the progress history, and New / Edit / Archive for people with `goals:manage` (team or org). Only measures that apply to the subject are offered (`goalMetricAllowed`); what a goal is for and how it is measured cannot change after it is set. E2E: `performance-goals.spec.ts` (6 tests).
+- **Project Milestones tab** (project page, after Tasks; `components/performance/project-milestones.tsx`, loaded when the tab opens): milestones by due date with Done on time / Done late / Overdue / Open and whether the client sees them; with `projects:manage`, add, mark done or reopen (the box changes at once and goes back if refused), edit, hide from the client and delete. A done milestone keeps its due date. E2E: `e2e/tests/web/project-milestones.spec.ts` (3 tests) and the mobile sweep.
+- **Client portal Insights tab** (`app/portal/[accessId]`: Dashboard · Insights; `components/portal/portal-insights.tsx`, loaded when the tab opens): completion, tasks, milestones and on-time headline numbers; delivery per project; the milestone timeline (client-visible milestones only); tasks completed per week; and "Appreciate the team" (a project, optionally one person on it, and a message), held for the organization's approval. Delivery facts only. The admin "Preview as client" keeps showing the dashboard only. E2E: `e2e/tests/web/portal-insights.spec.ts` (with axe and phone width).
+- The "client sent appreciation" notification (`/performance/achievements?tab=appreciation`) opens the Waiting for approval tab.
+- **The web UI is complete.**
+
+### Desktop "My performance" (done, 6 November 2026)
+- `'performance'` in `ME_RESOURCES` (the main process forwards `GET /agent/me/performance` like the other own-data resources); a "My performance" sidebar item between Schedule and Pay stubs; notifications that link to `/performance…` open it (`viewForLink`).
+- `apps/desktop/src/renderer/src/PerformancePage.tsx`: this week (approved time, tasks, consistency streak, badges), the score and recent months only when the organization shares scores, goals with pace, the next badge, badges, recognition with what was said, milestones on the worker's projects, and reviews shared with them (never the private note). A Refresh button.
+- **Offline:** the last good copy is kept per person in local storage and shown, labelled with when it was saved, when a refresh fails; with nothing saved, the error and Try again.
+- The shared page helpers in `Pages.tsx` (`Page`, `Card`, `Status`, `Stat`, `Badge`) are exported for it.
+- Tests: `apps/desktop/test/nav.test.ts`; E2E `e2e/tests/desktop/performance.spec.ts` (5, serial: one switches score sharing for the shared organization), plus the screen in `navigation`, `accessibility` and `a11y`.
 
 1. **Navigation** (`components/shell/nav.ts`): add the group `nav.group.performance`, placed after Reports, with:
    - `/performance`: `nav.item.performanceOverview`, gated by `performance:read`, minScope `team_or_org`, icon `Gauge`.
@@ -307,6 +338,13 @@ Every table has `organization_id`, composite foreign keys and row-level security
     - A README and API docs update (`docs/api/README.md`: client portal and desktop endpoints).
 
 ## 6. Known issues and notes
+
+- **Fixed after the pre-UI review (5 November 2026):** the items above on settling, old-date reads, concurrent saves, own-score and manager-rank visibility, and profile permissions. Also:
+  - The overview's achievements-by-month now covers its six months with any period (it missed older months with WEEK).
+  - Performance work no longer runs inside other jobs. For an outbox event, it runs in a savepoint after the event's notifications and webhooks. If it fails, it is queued as an internal `performance.retry` event (never sent to webhooks) and retried on its own. The daily step has its own transaction, so a failure there never rolls back retention, accruals or overdue invoices.
+  - The dashboard time-off rows include `membership_id`, so the widget shows profile pictures.
+  - The lockfile matches `pnpm install --frozen-lockfile` again (CI installs this way). The one-off production check script `packages/db/scripts/check-prod.mjs` was removed.
+  - Tests: `packages/api/test/performance-integrity.test.ts`, `performance-jobs-isolation.test.ts`, and `isPeriodSettled` in `packages/domain/test/performance.test.ts`.
 
 - **API tests with default parallelism:** some Vitest workers die with "Fatal process out of memory: Zone" (a V8 limit when many in-memory Postgres instances start at once; 14 GB RAM was free). `--maxWorkers=4` passes everything. Consider setting `maxWorkers` in `packages/api/vitest.config`.
 - **E2E failures after phase 1:**

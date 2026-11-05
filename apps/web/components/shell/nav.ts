@@ -1,6 +1,7 @@
 import type { Permission, Scope } from '@tallywork/domain';
 import {
   Activity,
+  Award,
   BadgeDollarSign,
   Banknote,
   BarChart3,
@@ -13,6 +14,7 @@ import {
   Eye,
   FileText,
   FolderKanban,
+  Gauge,
   LayoutDashboard,
   LifeBuoy,
   ListChecks,
@@ -22,6 +24,9 @@ import {
   Radio,
   Receipt,
   Settings,
+  Target,
+  Trophy,
+  UserCheck,
   Users,
   Wallet,
   type LucideIcon,
@@ -59,6 +64,8 @@ export interface NavItem extends Gate {
 export interface NavGroup {
   /** message key (webEn nav.group.*) */
   label: string | null;
+  /** message key of a small tag after the heading (e.g. "New" for a recently added area) */
+  badge?: string;
   items: NavItem[];
 }
 
@@ -157,6 +164,20 @@ export const NAV: NavGroup[] = [
     items: [
       { label: 'nav.item.summary', href: '/insights', icon: PieChart, perms: ['time:read'], minScope: 'team_or_org' },
       { label: 'nav.item.reportLibrary', href: '/reports', icon: BarChart3, perms: ['reports:read'] },
+    ],
+  },
+  {
+    // Performance Center: scores from outcomes only (goals, delivery, approved work, reviews,
+    // attendance). For admins and managers; workers see their own progress in the desktop app.
+    label: 'nav.group.performance',
+    badge: 'nav.badge.new',
+    items: [
+      { label: 'nav.item.performanceOverview', href: '/performance', icon: Gauge, perms: ['performance:read'], minScope: 'team_or_org' },
+      { label: 'nav.item.achievements', href: '/performance/achievements', icon: Award, perms: ['achievements:read'], minScope: 'team_or_org' },
+      { label: 'nav.item.leaderboards', href: '/performance/leaderboards', icon: Trophy, perms: ['performance:read'], minScope: 'team_or_org' },
+      { label: 'nav.item.teamPerformance', href: '/performance/teams', icon: Users, perms: ['performance:read'], minScope: 'team_or_org' },
+      { label: 'nav.item.workerPerformance', href: '/performance/workers', icon: UserCheck, perms: ['performance:read'], minScope: 'team_or_org' },
+      { label: 'nav.item.goals', href: '/performance/goals', icon: Target, perms: ['goals:read'], minScope: 'team_or_org' },
     ],
   },
   {

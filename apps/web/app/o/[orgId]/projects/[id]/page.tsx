@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
@@ -39,6 +39,9 @@ import { ProjectDocumentsTab } from '@/components/workspace/project-documents';
 import { useMemberOptions } from '@/lib/members';
 import { MemberAvatar } from '@/lib/avatars';
 
+// Loaded when the tab opens (this page is already over the 250 KB first-load budget).
+const ProjectMilestones = lazy(() => import('@/components/performance/project-milestones'));
+
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const org = useOrg();
@@ -65,6 +68,7 @@ export default function ProjectDetailPage() {
   const openTasks = (tasksQ.data ?? []).filter((t) => t.status !== 'DONE').length;
   const items = [
     ...(org.can('tasks:read') ? [{ value: 'tasks', label: 'Tasks', count: tasksQ.data?.length }] : []),
+    { value: 'milestones', label: 'Milestones' },
     { value: 'plan', label: 'Plan & budget' },
     { value: 'members', label: 'Members & teams', count: p.member_ids.length + p.team_ids.length },
     { value: 'documents', label: 'Documents' },
@@ -167,6 +171,11 @@ export default function ProjectDetailPage() {
 
       <Tabs value={activeTab} onValueChange={setTab} items={items} className="mb-4" />
       {activeTab === 'tasks' && <TasksTab project={p} tasks={tasksQ.data} loading={tasksQ.isLoading} error={tasksQ.error} onRetry={() => void tasksQ.refetch()} workers={workersQ.data} />}
+      {activeTab === 'milestones' && (
+        <Suspense fallback={<SkeletonRows rows={4} cols={2} />}>
+          <ProjectMilestones project={p} />
+        </Suspense>
+      )}
       {activeTab === 'plan' && <PlanTab project={p} budget={budget} onEditBudget={() => setBudgetOpen(true)} onEditPlan={() => setTab('settings')} />}
       {activeTab === 'members' && <MembersTab project={p} workers={workersQ.data} teams={teamsQ.data} canManage={canManage} />}
       {activeTab === 'documents' && <ProjectDocumentsTab project={p} />}

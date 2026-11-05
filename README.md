@@ -561,9 +561,11 @@ The session state machine lives in [packages/domain/src/session-machine.ts](pack
 
 ```mermaid
 stateDiagram-v2
-  [*] --> CREATED: start (web or agent)
-  CREATED --> ACTIVE: CONFIRM (first heartbeat) / opens WORK segment
-  CREATED --> STOPPED: CONFIRM_TIMEOUT (120s)
+  [*] --> CREATED: start in the desktop app
+  [*] --> ACTIVE: start on the web or API, or time recorded offline / opens WORK segment
+  CREATED --> ACTIVE: CONFIRM (heartbeat or any event from that app) / opens WORK from the start
+  CREATED --> STOPPED: CONFIRM_TIMEOUT (120s, the app online but not confirming) / no time
+  CREATED --> INTERRUPTED: the app silent since the start / no time yet
 
   ACTIVE --> PAUSED: PAUSE (user, idle, break) / opens IDLE or BREAK
   PAUSED --> ACTIVE: RESUME / opens WORK
@@ -579,7 +581,9 @@ stateDiagram-v2
   STOPPED --> [*]
 ```
 
-Default timings (these can be overridden per org through the tracking policy): confirm timeout 120s, heartbeat grace 180s, recovery window 15 min, max pause 4 h, max offline tracking 24 h.
+Default timings (these can be overridden per org through the tracking policy): confirm timeout 120s (`confirmTimeoutSeconds`, 60–900), heartbeat grace 180s, recovery window 15 min, max pause 4 h, max offline tracking 24 h.
+
+**The confirm window.** A timer started in the desktop app holds no time until that app confirms it: its heartbeat naming the session, or any event for it. Work then counts from the start, so confirming never loses the first seconds. The window runs from when the server received the start, so a start delayed by the network gets the full 120 s. Past it, unconfirmed: if the app kept talking to the server without confirming, it is not running this timer, and the session stops as `NEVER_CONFIRMED` with no time; anything sent for it later is refused and shown under "Time not added". If the app went silent right after the start (sleep, lost network), that proves nothing, so the offline rules apply: interrupted at the start, recovered with no gap if the app returns with its history within the offline window, otherwise stopped with no time.
 
 ### 4. Desktop tracking & offline sync
 

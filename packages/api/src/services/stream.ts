@@ -12,6 +12,7 @@ export const STREAM_EVENTS = [
   'session.stopped',
   'session.interrupted',
   'session.recovered',
+  'session.confirmed',
   'time.changed',
   'idle.started',
   'screenshot.captured',

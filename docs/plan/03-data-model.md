@@ -209,9 +209,10 @@ erDiagram
 
 | From | Trigger | Guard | To | Side effects |
 |---|---|---|---|---|
-| — | START_TRACKING | worker may track project/task; under limits; source allowed; if a live session exists → supersede it (policy `single_timer = supersede`) or reject 409 (`reject`) | CREATED (desktop) / ACTIVE (web, api) | `session.started`; old session → STOPPED(`SUPERSEDED`) + SSE to its client |
-| CREATED | agent confirms (first heartbeat) | same device | ACTIVE | opens WORK segment |
-| CREATED | no confirmation in 120s | — | STOPPED(`NEVER_CONFIRMED`) | zero-length, excluded from time |
+| — | START_TRACKING | worker may track project/task; under limits; source allowed; if a live session exists → supersede it (policy `single_timer = supersede`) or reject 409 (`reject`) | CREATED (desktop, started now) / ACTIVE (web, api, and desktop time recorded offline, which arrives with its own history) | `session.started`; old session → STOPPED(`SUPERSEDED`) + SSE to its client |
+| CREATED | agent confirms (a heartbeat naming the session, or any event for it) | same device | ACTIVE | opens WORK segment **at the session start** (confirming never drops the first seconds) |
+| CREATED | no confirmation in `confirm_timeout` (default 120s, measured from when the server received the start) while the device kept contacting the server | — | STOPPED(`NEVER_CONFIRMED`) | zero-length, excluded from time; later events for it are refused (`session_not_confirmed`) |
+| CREATED | no confirmation in `confirm_timeout` and **no contact at all** from the device since the start (implementation, 6 Nov 2026) | — | INTERRUPTED | no time yet; the offline rules apply: RECOVER with no gap if the device returns with its history within `max_offline_tracking`, otherwise STOPPED with no time. Silence is not evidence of a phantom session |
 | ACTIVE | PAUSE_TRACKING / idle.started (policy `idle_behavior = pause`) / break started | — | PAUSED | closes WORK segment, opens IDLE or BREAK segment |
 | PAUSED | RESUME_TRACKING / idle resolved `KEPT` (converts IDLE → WORK via revision) | not over limit | ACTIVE | new WORK segment |
 | PAUSED | paused > `max_pause` | — | STOPPED(`AUTO_PAUSE_TIMEOUT`) | — |

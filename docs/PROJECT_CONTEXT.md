@@ -68,10 +68,11 @@ These are product and legal commitments. Never weaken one to make a test pass ([
 - Every tenant table has PostgreSQL **row-level security** and composite `(organization_id, id)` foreign keys. Services also scope by organization. Requests run in `withTenant`; only system jobs use `withSystem`. The app connects as a role that cannot bypass RLS.
 - Checks happen in layers: the route guard (`requirePermission`), then a scope check in the service, then RLS. List endpoints apply the same scope filter as single reads, so lists, reports and exports never show more.
 - A device token reads only its own worker's data (`/agent/me/*`) and **never receives screenshots**, even on a manager's or admin's computer.
-- API keys reach only the endpoints their scopes list. The Performance Center, payroll and the portal are not open to them.
+- API keys reach only the endpoints [docs/api](api/README.md#scopes-and-the-endpoints-they-open) lists for their scopes; `route-boundaries.test.ts` reads that table and fails if the code differs. Monitoring data (screenshots, app and website usage, sessions), rates, budgets, payments, payroll, the Performance Center and the portal are never open to them, whatever the scopes.
 
 **Time**
 - One live session per worker; starting elsewhere supersedes the old one. The session state machine is in [session-machine.ts](../packages/domain/src/session-machine.ts). Defaults: confirm within 120 s, recovery window 15 min, maximum pause 4 h, offline tracking up to 24 h. Organizations can override these in the tracking policy.
+- A desktop timer holds no time until its app confirms it (heartbeat or any event), then counts from its start. Unconfirmed after the window: stopped as `NEVER_CONFIRMED` with no time if the app kept talking without confirming; handled by the offline rules if the app went silent ([README › Time tracking session lifecycle](../README.md#3-time-tracking-session-lifecycle)).
 - Time history is **append-only** (`time_entry_revisions`).
 - Daily and weekly limits stop tracking when they are reached. App updates never install while a timer is running.
 - Time entries can be **locked** after a set number of days or before a set date.

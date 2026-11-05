@@ -9,7 +9,7 @@
         "packages/domain": ["domain", "overtime"],
         "packages/db": ["rls", "migrations", "performance"],
         "packages/api": [
-          "access-consistency", "agent-login", "agent-me", "audit-oct28", "audit-phase1", "breaks-eod", "compliance", "device-approval",
+          "access-consistency", "agent-login", "agent-me", "audit-oct28", "audit-phase1", "breaks-eod", "compliance", "confirm-window", "device-approval",
           "finance", "flow", "forms-phase4", "integrations", "invitations", "mfa-hardening", "money-p0", "money-p1-safety", "money-phase3",
           "offline-sync", "offline-sync.property", "payroll", "refused-time", "route-boundaries", "security", "security-auth", "security-authz",
           "session-timeouts", "staff-profile", "support", "time-accuracy", "time-integrity", "time-money", "time-overlap", "time-product",

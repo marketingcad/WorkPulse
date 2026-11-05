@@ -132,6 +132,9 @@ export function transition(
 
     case 'INTERRUPT':
       if (from === 'ACTIVE' || from === 'PAUSED') return result(from, 'INTERRUPTED', { type: 'close' });
+      // A desktop start whose device went silent before confirming it: nothing was counted yet, so there
+      // is nothing to close. RECOVER later opens work from the interruption (the start), with no gap.
+      if (from === 'CREATED') return result(from, 'INTERRUPTED', { type: 'none' });
       if (from === 'INTERRUPTED') return result(from, 'INTERRUPTED', { type: 'none' }, undefined, true);
       return invalid(from, trigger);
 
@@ -143,6 +146,16 @@ export function transition(
     default:
       return invalid(from, trigger);
   }
+}
+
+/**
+ * A desktop session waits in CREATED until its device confirms it. It is stopped as never confirmed
+ * only once MORE than `timeoutSeconds` have passed since the server received its start: still
+ * waiting at exactly the limit. Measured from receipt, so a start that arrives late (a slow network)
+ * gets the full window.
+ */
+export function confirmationExpired(receivedAt: Date, now: Date, timeoutSeconds: number): boolean {
+  return now.getTime() - receivedAt.getTime() > timeoutSeconds * 1000;
 }
 
 export function isLive(state: SessionState): boolean {

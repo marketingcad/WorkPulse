@@ -76,7 +76,7 @@ export async function runMissingTimeReminders(
   const [schedules, off, running, logged] = await Promise.all([
     tx.select().from(workSchedules).where(and(inArray(workSchedules.membershipId, pending), lte(workSchedules.effectiveFrom, latest))),
     tx.select({ m: timeOffRequests.membershipId, start: timeOffRequests.startDate, end: timeOffRequests.endDate }).from(timeOffRequests).where(and(inArray(timeOffRequests.membershipId, pending), eq(timeOffRequests.status, 'APPROVED'), lte(timeOffRequests.startDate, latest), gte(timeOffRequests.endDate, earliest))),
-    tx.select({ m: trackingSessions.membershipId }).from(trackingSessions).where(and(inArray(trackingSessions.membershipId, pending), inArray(trackingSessions.state, ['ACTIVE', 'PAUSED']))),
+    tx.select({ m: trackingSessions.membershipId }).from(trackingSessions).where(and(inArray(trackingSessions.membershipId, pending), inArray(trackingSessions.state, ['CREATED', 'ACTIVE', 'PAUSED']))),
     tx
       .select({ m: rollupWorkerDay.membershipId, d: rollupWorkerDay.localDate, s: sql<number>`sum(${rollupWorkerDay.trackedSeconds} + ${rollupWorkerDay.manualSeconds})::int` })
       .from(rollupWorkerDay)

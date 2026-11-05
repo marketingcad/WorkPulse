@@ -44,6 +44,8 @@ async function desktopSession(): Promise<{ device: Client; sid: string }> {
   const sid = newId();
   const r = await device.post('/agent/ingest/batch', { sent_at: t.clock.now.toISOString(), events: [{ event_id: newId(), type: 'session.start', session_id: sid, seq: 1, occurred_at: t.clock.now.toISOString(), project_id: projectId }] });
   expect(r.body.results[0].status).toBe('accepted');
+  // The app confirms its timer with its first heartbeat (the confirm window); then it goes quiet.
+  await device.post('/agent/heartbeat', { sent_at: t.clock.now.toISOString(), session_id: sid });
   expect(await state()).toBe('ACTIVE');
   return { device, sid };
 }

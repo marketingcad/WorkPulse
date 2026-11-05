@@ -12,6 +12,8 @@ export interface TrackingPolicy {
     recoveryWindowMinutes: number;
     heartbeatGraceSeconds: number;
     maxOfflineHours: number;
+    /** A timer started in the desktop app counts once the app confirms it (heartbeat or any event) within this. */
+    confirmTimeoutSeconds: number;
   };
   activity: { enabled: boolean };
   idle: {
@@ -50,6 +52,7 @@ export const DEFAULT_POLICY: TrackingPolicy = {
     recoveryWindowMinutes: 15,
     heartbeatGraceSeconds: 180,
     maxOfflineHours: 24,
+    confirmTimeoutSeconds: 120,
   },
   activity: { enabled: true },
   idle: {

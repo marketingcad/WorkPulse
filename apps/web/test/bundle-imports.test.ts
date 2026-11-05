@@ -88,6 +88,11 @@ describe('pages that only need workspace helpers', () => {
     expect(page).not.toContain('components/workspace/project-documents.tsx');
     expect(page).not.toContain('components/workspace/client-dialog.tsx');
   });
+
+  // The manual is about 13 KB gzip; inside the first load it put Help over budget (250.7 KB, 6 Nov 2026).
+  it('the Help page loads the manual alongside it, not in its first load', () => {
+    expect(reachable('app/o/[orgId]/help/page.tsx')).not.toContain('components/help/content.ts');
+  });
 });
 
 describe('the contracts package in the browser', () => {

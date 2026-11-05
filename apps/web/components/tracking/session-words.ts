@@ -35,6 +35,8 @@ const ACTOR: Record<string, string> = { user: 'a person', agent: 'the desktop ap
 
 const CAUSE: Record<string, string> = {
   heartbeat_lost: 'the desktop app stopped responding',
+  device_confirmed: 'the desktop app confirmed it was running',
+  never_confirmed: 'the desktop app was online but not running this timer',
   offline_sync: 'time sent after being offline',
   admin_force_stop: 'stopped from Live',
   task_switch: 'switched project or task',

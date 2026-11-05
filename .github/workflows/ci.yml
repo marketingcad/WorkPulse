@@ -22,7 +22,18 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r --filter "./packages/*" --filter @tallywork/web typecheck
-      - run: pnpm --filter @tallywork/domain --filter @tallywork/ui --filter @tallywork/db --filter @tallywork/api --filter @tallywork/web test
+      # Quality gates (docs/QUALITY_GATES.md): every test file belongs to one gate, and Gate 1 runs
+      # first so a business-correctness failure is named as such. Desktop tests run in the desktop job.
+      - name: Quality gates · every test file is in one gate
+        run: node scripts/quality-gates.mjs check
+      - name: Gate 1 · business correctness (critical) · unit, API, RLS
+        run: node scripts/quality-gates.mjs run 1 --unit --exclude=apps/desktop
+      - name: Gate 2 · product functionality (high) · unit, API
+        if: ${{ !cancelled() }}
+        run: node scripts/quality-gates.mjs run 2 --unit --exclude=apps/desktop
+      - name: Gate 3 · product quality (standard) · unit, API
+        if: ${{ !cancelled() }}
+        run: node scripts/quality-gates.mjs run 3 --unit --exclude=apps/desktop
       # Load smoke on its own (no competing test files): 20 agents, ingest p95 under 500 ms.
       - run: pnpm --filter @tallywork/api exec vitest run test/ops.test.ts -t "load smoke"
         env:
@@ -104,7 +115,24 @@ jobs:
       - run: pnpm --filter @tallywork/e2e typecheck
       - run: pnpm --filter @tallywork/e2e exec playwright install --with-deps chromium
       # The real Electron app needs a desktop session and an OS keychain: it runs in e2e-electron (Windows).
-      - run: pnpm test:e2e --project=web --project=desktop
+      # One step per quality gate; Gates 2 and 3 still run (and report) when Gate 1 fails, reusing the
+      # build the first step made. Each gate keeps its own report and traces (a run clears its folder).
+      - name: Gate 1 · business correctness (critical) · E2E
+        run: node scripts/quality-gates.mjs run 1 --e2e -- --project=web --project=desktop --output=test-results/gate-1
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/gate-1
+      - name: Gate 2 · product functionality (high) · E2E
+        if: ${{ !cancelled() }}
+        run: node scripts/quality-gates.mjs run 2 --e2e -- --project=web --project=desktop --output=test-results/gate-2
+        env:
+          E2E_SKIP_BUILD: "1"
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/gate-2
+      - name: Gate 3 · product quality (standard) · E2E
+        if: ${{ !cancelled() }}
+        run: node scripts/quality-gates.mjs run 3 --e2e -- --project=web --project=desktop --output=test-results/gate-3
+        env:
+          E2E_SKIP_BUILD: "1"
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/gate-3
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:

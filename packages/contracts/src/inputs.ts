@@ -245,6 +245,8 @@ export const policyDocInput = z
         recoveryWindowMinutes: z.number().int().min(1).max(240),
         heartbeatGraceSeconds: z.number().int().min(60).max(3600),
         maxOfflineHours: z.number().int().min(1).max(168),
+        // At least 60 s: the desktop app sends a heartbeat every minute, so less could stop timers that run fine.
+        confirmTimeoutSeconds: z.number().int().min(60).max(900),
       })
       .partial(),
     activity: z.object({ enabled: z.boolean() }).partial(),

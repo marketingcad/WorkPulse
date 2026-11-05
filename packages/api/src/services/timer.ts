@@ -13,7 +13,7 @@ import {
   users,
   workerProfiles,
 } from '@tallywork/db';
-import { can, forbidden, localDate, notFound, startOfLocalDay, addDaysToDate } from '@tallywork/domain';
+import { LIVE_STATES, can, forbidden, localDate, notFound, startOfLocalDay, addDaysToDate } from '@tallywork/domain';
 import type { CurrentTrackingDto, EodReportDto, LiveWorkerDto, OffsetPage, SessionDto } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { actorRef } from './ctx';
@@ -249,7 +249,7 @@ export async function liveWorkers(x: Ctx): Promise<LiveWorkerDto[]> {
   if (!ms.length) return [];
   const ids = ms.map((m) => m.id);
   const now = x.deps.now();
-  const live = await x.tx.select().from(trackingSessions).where(and(inArray(trackingSessions.membershipId, ids), inArray(trackingSessions.state, ['ACTIVE', 'PAUSED', 'INTERRUPTED']), eq(trackingSessions.backfill, false)));
+  const live = await x.tx.select().from(trackingSessions).where(and(inArray(trackingSessions.membershipId, ids), inArray(trackingSessions.state, [...LIVE_STATES]), eq(trackingSessions.backfill, false)));
   const liveBy = new Map(live.map((s) => [s.membershipId, s]));
   const openIdle = live.length
     ? await x.tx.select({ sessionId: timeSegments.sessionId, kind: timeSegments.kind }).from(timeSegments).where(and(inArray(timeSegments.sessionId, live.map((s) => s.id)), isNull(timeSegments.endedAt)))
@@ -284,7 +284,7 @@ export async function liveWorkers(x: Ctx): Promise<LiveWorkerDto[]> {
     const s = liveBy.get(m.id);
     const onIdle = s ? openIdle.some((g) => g.sessionId === s.id && g.kind === 'IDLE') : false;
     // WORKING = running; IDLE = paused (idle or break); INTERRUPTED devices count as offline and have no actionable session.
-    const status: LiveWorkerDto['status'] = !s || s.state === 'INTERRUPTED' ? 'OFFLINE' : s.state === 'ACTIVE' ? 'WORKING' : 'IDLE';
+    const status: LiveWorkerDto['status'] = !s || s.state === 'INTERRUPTED' ? 'OFFLINE' : s.state === 'ACTIVE' || s.state === 'CREATED' ? 'WORKING' : 'IDLE'; // CREATED: clocked in, the app confirming
     void onIdle;
     const ow = s ? openWork.find((w) => w.sessionId === s.id) : undefined;
     const dayStart = startOfLocalDay(todayOf.get(m.id)!, m.tz);

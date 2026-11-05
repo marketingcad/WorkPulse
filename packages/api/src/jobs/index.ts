@@ -20,7 +20,7 @@ import {
   withTenant,
   type Tx,
 } from '@tallywork/db';
-import { addDaysToDate, localDate, splitAtLocalMidnight, type TrackingPolicy } from '@tallywork/domain';
+import { addDaysToDate, confirmationExpired, localDate, splitAtLocalMidnight, type TrackingPolicy } from '@tallywork/domain';
 import type { Deps } from '../context';
 import { auditSystem, emit } from '../services/events';
 import { sendDigests } from '../services/digest';
@@ -233,9 +233,9 @@ export async function dispatchOutbox(deps: Deps, limit = 100): Promise<number> {
 /** Stale sessions, pause timeouts, idle defaults and time limits. */
 export async function sweepSessions(deps: Deps): Promise<Record<string, number>> {
   const now = deps.now();
-  const stats = { interrupted: 0, stopped: 0, limit: 0, idle_defaulted: 0 };
+  const stats = { never_confirmed: 0, interrupted: 0, stopped: 0, limit: 0, idle_defaulted: 0 };
   const live = await withSystem(deps.db, (tx) =>
-    tx.select({ id: trackingSessions.id, org: trackingSessions.organizationId, m: trackingSessions.membershipId }).from(trackingSessions).where(inArray(trackingSessions.state, ['ACTIVE', 'PAUSED', 'INTERRUPTED'])),
+    tx.select({ id: trackingSessions.id, org: trackingSessions.organizationId, m: trackingSessions.membershipId }).from(trackingSessions).where(inArray(trackingSessions.state, ['CREATED', 'ACTIVE', 'PAUSED', 'INTERRUPTED'])),
   );
   for (const s0 of live) {
     await withTenant(deps.db, s0.org, async (tx) => {
@@ -243,6 +243,26 @@ export async function sweepSessions(deps: Deps): Promise<Record<string, number>>
       const [s] = await tx.select().from(trackingSessions).where(eq(trackingSessions.id, s0.id));
       if (!s || s.state === 'STOPPED') return;
       const policy: TrackingPolicy = await effectivePolicy(tx, s.organizationId, s.membershipId);
+      // A desktop start not confirmed by its app within the confirm window (its receipt is lastHeartbeatAt;
+      // see startSession). Neither way counts any time:
+      // - the app kept talking to the server without confirming it, so it is not running this timer:
+      //   stopped as never confirmed, and nothing sent for it later is added;
+      // - the app went silent right after the start (sleep, lost network): not evidence of anything, so
+      //   the offline rules apply. Interrupted at the start; recovered with no gap if the app comes back
+      //   with its history within the offline window, otherwise stopped with no time.
+      if (s.state === 'CREATED') {
+        if (!s.lastHeartbeatAt || !confirmationExpired(s.lastHeartbeatAt, now, policy.tracking.confirmTimeoutSeconds)) return;
+        const [dev] = s.deviceId ? await tx.select({ lastSeenAt: devices.lastSeenAt }).from(devices).where(eq(devices.id, s.deviceId)) : [];
+        if (dev?.lastSeenAt && dev.lastSeenAt > s.lastHeartbeatAt) {
+          await applyTrigger(tx, s, 'CONFIRM_TIMEOUT', { at: s.startedAt, actor: SYSTEM, cause: 'never_confirmed' });
+          stats.never_confirmed++;
+        } else {
+          // The same cause as a running timer that lost its heartbeat, so recovery treats it the same way.
+          await applyTrigger(tx, s, 'INTERRUPT', { at: s.startedAt, actor: SYSTEM, cause: 'heartbeat_lost' });
+          stats.interrupted++;
+        }
+        return;
+      }
       const graceMs = policy.tracking.heartbeatGraceSeconds * 1000;
       if (s.state === 'ACTIVE' && s.source === 'DESKTOP' && s.lastHeartbeatAt && now.getTime() - s.lastHeartbeatAt.getTime() > graceMs) {
         const evidence = [s.lastEvidenceAt, s.lastHeartbeatAt].filter((d): d is Date => !!d).reduce((a, b) => (a > b ? a : b));

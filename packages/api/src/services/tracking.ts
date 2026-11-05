@@ -262,7 +262,7 @@ export async function applyTrigger(
     actorId: opts.actor.id,
     occurredAt: at,
   });
-  const evt = trigger === 'RECOVER' ? 'session.recovered' : EVENT_FOR[r.to];
+  const evt = trigger === 'RECOVER' ? 'session.recovered' : trigger === 'CONFIRM' ? 'session.confirmed' : EVENT_FOR[r.to];
   if (evt) {
     await emit(tx, s.organizationId, evt, { session_id: s.id, membership_id: s.membershipId, project_id: s.projectId, task_id: s.taskId, trigger, end_reason: patch.endReason ?? null }, { workerId: s.membershipId, sessionId: s.id, occurredAt: at, actor: opts.actor });
   }
@@ -383,6 +383,10 @@ export async function startSession(tx: Tx, input: StartInput): Promise<{ session
     await applyTrigger(tx, existing, 'SUPERSEDE', { at: input.at < existing.startedAt ? existing.startedAt : input.at, actor: input.actor, cause: `superseded_by_${input.source.toLowerCase()}` });
   }
 
+  // A timer started in the desktop app now counts once that app confirms it (its heartbeat or any
+  // event for it), within the confirm window; until then it is CREATED and holds no time. Time recorded
+  // offline and backfill arrive with their own history, so they start ACTIVE. Web and API starts too.
+  const awaitsConfirmation = input.source === 'DESKTOP' && !offline && !backfill;
   const id = input.sessionId ?? newId();
   const [session] = await tx
     .insert(trackingSessions)
@@ -394,11 +398,12 @@ export async function startSession(tx: Tx, input: StartInput): Promise<{ session
       source: input.source,
       projectId: input.projectId,
       taskId,
-      state: 'ACTIVE',
+      state: awaitsConfirmation ? 'CREATED' : 'ACTIVE',
       startedAt: input.at,
       timezone,
       note: input.note ?? null,
       lastSeq: input.seq ?? 0,
+      // For a CREATED session: when the server received its start (the confirm window runs from here).
       lastHeartbeatAt: input.now,
       lastEvidenceAt: input.at,
       backfill,
@@ -406,13 +411,13 @@ export async function startSession(tx: Tx, input: StartInput): Promise<{ session
     })
     .returning();
   for (const reason of problems) await flagForReview(tx, session!, localDate(input.at, timezone), reason, { project_id: input.projectId, task_id: input.taskId }, id);
-  await openSegment(tx, session!, 'WORK', input.at);
+  if (!awaitsConfirmation) await openSegment(tx, session!, 'WORK', input.at);
   await tx.insert(sessionTransitions).values({
     id: newId(),
     organizationId: input.organizationId,
     sessionId: id,
     fromState: null,
-    toState: 'ACTIVE',
+    toState: awaitsConfirmation ? 'CREATED' : 'ACTIVE',
     trigger: 'START',
     actorType: input.actor.type,
     actorId: input.actor.id,

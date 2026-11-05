@@ -98,14 +98,19 @@ test('the add time dialog checks the duration, the billable part and the project
 // project a bulk Delete also removed rows that were no longer on screen.
 test('changing a filter clears the selection, so a bulk delete touches only rows in view', async ({ page, data, adminApi }) => {
   const { api, orgApi } = adminApi;
-  const day = '2025-12-03';
+  // A day of its own in 2022, a year no other spec uses: the entry it keeps would otherwise overlap the
+  // next run's, or another spec's fixed day on the same server (refused, 422).
+  const day = new Date(Date.UTC(2022, 0, 1) + (parseInt(uid(), 16) % 360) * 86400_000).toISOString().slice(0, 10);
   const note = `Bulk scope ${data.run}-${uid()}`;
   const add = (projectId: string, hour: number) =>
     api.post(orgApi('/manual-time'), { data: { project_id: projectId, started_at: `${day}T${hour}:00:00.000Z`, ended_at: `${day}T${hour}:30:00.000Z`, note, reason: 'E2E bulk scope' } });
   await ok(await add(data.projects.website.id, 10), 'website entry');
   await ok(await add(data.projects.app.id, 11), 'app entry');
 
+  // Typed dates stick only once the page has loaded its default range (else that range replaces them).
+  const loaded = page.waitForResponse((r) => new URL(r.url()).pathname.endsWith('/time-entries') && r.ok());
   await page.goto(`/o/${data.orgId}/timesheets/all`);
+  await loaded;
   await page.getByLabel('From', { exact: true }).fill(day);
   await page.getByLabel('To', { exact: true }).fill(day);
   // The list for this search and these dates (an earlier answer, for the dates before, can arrive first).

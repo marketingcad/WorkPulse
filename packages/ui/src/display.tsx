@@ -39,6 +39,8 @@ const STATUS_MAP: Record<string, { tone: Tone; icon: ReactNode; label?: string }
   warning: { tone: 'warning', icon: <AlertTriangle className="size-3" />, label: 'status.warning' },
   INTERRUPTED: { tone: 'warning', icon: <AlertTriangle className="size-3" /> },
   IN_PROGRESS: { tone: 'info', icon: <CircleDashed className="size-3" />, label: 'status.IN_PROGRESS' },
+  // A desktop timer waiting for its app to confirm it (at most a couple of minutes).
+  CREATED: { tone: 'info', icon: <CircleDashed className="size-3" />, label: 'status.CREATED' },
   SENT: { tone: 'info', icon: <Clock className="size-3" /> },
   FINALIZED: { tone: 'info', icon: <CircleCheck className="size-3" /> },
   INVITED: { tone: 'info', icon: <Clock className="size-3" /> },

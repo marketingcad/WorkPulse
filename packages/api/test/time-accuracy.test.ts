@@ -69,6 +69,7 @@ describe('desktop totals', () => {
     const agent = await deviceFor(dee);
     const sid = newId();
     await agent.post('/agent/ingest/batch', { sent_at: t.clock.now.toISOString(), events: [{ event_id: newId(), type: 'session.start', session_id: sid, seq: 1, occurred_at: t.clock.now.toISOString(), project_id: projectId }] });
+    await agent.post('/agent/heartbeat', { sent_at: t.clock.now.toISOString(), session_id: sid }); // the app confirms its timer (confirm window)
     t.clock.advance(H * 1000); // the timer has run 1 h
 
     const boot = (await agent.get('/agent/bootstrap')).body;

@@ -21,6 +21,8 @@ A feature or change is not finished until it has automated tests that were **run
    - the regression that motivated the change, if it is a fix.
 
    Tag the critical journey `@smoke`.
+
+   Put every new test file in one of the three **quality gates** in `quality-gates.json` (Gate 1: money, time, access and tenant isolation; Gate 2: product functionality; Gate 3: accessibility, layout, performance). `pnpm test:gates` fails on a file with no gate. See [docs/QUALITY_GATES.md](docs/QUALITY_GATES.md).
 4. **Run them:**
    - The affected package: `pnpm --filter <pkg> test`.
    - The new or changed E2E specs: `pnpm test:e2e <file>`, or `-g "<title>"`.

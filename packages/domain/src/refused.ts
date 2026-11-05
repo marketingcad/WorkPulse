@@ -23,6 +23,10 @@ export function refusedReason(code: string, message: string, opts: { audience: '
       return w
         ? 'This session had already been stopped: by your manager, by a time limit, or because you were offline too long.'
         : 'This session had already been stopped: by a manager, by a time limit, or because the computer was offline too long.';
+    case 'session_not_confirmed':
+      return w
+        ? 'Your computer did not confirm this timer soon enough after it started (it may have gone to sleep or lost its connection right away), so its time was not added.'
+        : 'The member’s computer did not confirm this timer soon enough after it started (it may have gone to sleep or lost its connection right away), so its time was not added.';
     case 'activity_disabled':
     case 'apps_disabled':
     case 'urls_disabled':

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_POLICY,
   DomainError,
   ROLE_PRESETS,
+  SESSION_DEFAULTS,
   SESSION_STATES,
+  confirmationExpired,
   SESSION_TRIGGERS,
   aggregateWindows,
   amountForSeconds,
@@ -79,6 +82,43 @@ describe('session state machine', () => {
     expect(() => transition('ACTIVE', 'CONFIRM_TIMEOUT')).toThrow(DomainError);
     expect(() => transition('CREATED', 'LIMIT_REACHED')).toThrow(DomainError);
     expect(() => transition('CREATED', 'PAUSE')).toThrow(DomainError);
+  });
+});
+
+describe('the confirm window (a desktop start waits for its app)', () => {
+  it('should_open_work_only_when_the_app_confirms_and_treat_a_repeat_as_a_no_op', () => {
+    expect(transition('CREATED', 'CONFIRM')).toMatchObject({ to: 'ACTIVE', segment: { type: 'open', kind: 'WORK' }, noop: false });
+    expect(transition('ACTIVE', 'CONFIRM')).toMatchObject({ to: 'ACTIVE', noop: true });
+  });
+
+  it('should_stop_an_unconfirmed_start_as_never_confirmed_with_nothing_to_close', () => {
+    expect(transition('CREATED', 'CONFIRM_TIMEOUT')).toMatchObject({ to: 'STOPPED', endReason: 'NEVER_CONFIRMED', segment: { type: 'none' } });
+    // Stopping it any other way before it was confirmed counts nothing either.
+    for (const trigger of ['STOP', 'SUPERSEDE', 'FORCE_STOP'] as const) expect(transition('CREATED', trigger)).toMatchObject({ to: 'STOPPED', segment: { type: 'none' } });
+    // Once stopped it is final: a late confirmation cannot bring it back.
+    expect(() => transition('STOPPED', 'CONFIRM')).toThrow(DomainError);
+  });
+
+  it('should_interrupt_a_start_whose_app_went_silent_and_recover_it_from_the_start', () => {
+    expect(transition('CREATED', 'INTERRUPT')).toMatchObject({ to: 'INTERRUPTED', segment: { type: 'none' } });
+    expect(transition('INTERRUPTED', 'RECOVER')).toMatchObject({ to: 'ACTIVE', segment: { type: 'open', kind: 'WORK' } });
+  });
+
+  it.each([
+    [119, false],
+    [120, false],
+    [121, true],
+  ])('should_report_expired_%is_after_receipt_as_%s_with_the_120_second_default', (seconds, expired) => {
+    const received = new Date('2026-11-06T10:00:00Z');
+    expect(confirmationExpired(received, new Date(received.getTime() + seconds * 1000), DEFAULT_POLICY.tracking.confirmTimeoutSeconds)).toBe(expired);
+  });
+
+  it('should_follow_a_longer_window_and_default_to_120_seconds', () => {
+    const received = new Date('2026-11-06T10:00:00Z');
+    expect(confirmationExpired(received, new Date(received.getTime() + 200_000), 300)).toBe(false);
+    expect(confirmationExpired(received, new Date(received.getTime() + 301_000), 300)).toBe(true);
+    expect(DEFAULT_POLICY.tracking.confirmTimeoutSeconds).toBe(120);
+    expect(SESSION_DEFAULTS.confirmTimeoutSeconds).toBe(DEFAULT_POLICY.tracking.confirmTimeoutSeconds);
   });
 });
 
@@ -341,6 +381,19 @@ describe('money (Phase 9 gate)', () => {
     expect(resolveRate(rates, 'PAY', ctx('2026-03-01'))!.id).toBe('pay-worker'); // pay: worker before project
     expect(resolveRate([r('pay-client', 'PAY', 'CLIENT', 'c'), r('pay-org', 'PAY', 'ORG', null)], 'PAY', ctx('2026-03-01'))!.id).toBe('pay-client'); // pay: client before org
     expect(resolveRate(rates, 'BILL', ctx('2025-12-31'))).toBeNull();
+  });
+
+  // The documented orders (README, docs/PROJECT_CONTEXT.md): remove the winner one level at a time.
+  it.each([
+    ['BILL', ['PROJECT_WORKER', 'PROJECT', 'WORKER', 'CLIENT', 'ORG']],
+    ['PAY', ['PROJECT_WORKER', 'WORKER', 'PROJECT', 'CLIENT', 'ORG']],
+  ] as const)('should_pick_%s_rates_in_the_documented_precedence_order', (kind, order) => {
+    const scopeId = { ORG: null, CLIENT: 'c', PROJECT: 'p', WORKER: 'm', PROJECT_WORKER: 'p:m' } as const;
+    const ctx = { date: '2026-03-01', membershipId: 'm', projectId: 'p', clientId: 'c' };
+    const all = order.map((scope) => ({ id: scope, kind, scope, scopeId: scopeId[scope], amountMinor: 100, currency: 'USD', effectiveFrom: '2026-01-01', effectiveTo: null }));
+    for (let i = 0; i < order.length; i++) expect(resolveRate(all.slice(i), kind, ctx)!.id).toBe(order[i]);
+    // A rate of the other kind never stands in.
+    expect(resolveRate(all, kind === 'PAY' ? 'BILL' : 'PAY', ctx)).toBeNull();
   });
 
   it.each([

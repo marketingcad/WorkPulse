@@ -89,6 +89,7 @@ describe('single timer across devices', () => {
   it('starting on the web supersedes the running desktop session', async () => {
     const sid = newId();
     await ingest([{ event_id: newId(), type: 'session.start', session_id: sid, seq: 1, occurred_at: t.clock.now.toISOString(), project_id: projectId }]);
+    await agent.post('/agent/heartbeat', { sent_at: t.clock.now.toISOString(), session_id: sid }); // the app confirms its timer (confirm window)
     t.clock.advance(3 * 60_000);
     const web = await worker.post(`/orgs/${orgId}/tracking/start`, { project_id: projectId });
     expect(web.body.session.source).toBe('WEB');
@@ -234,6 +235,7 @@ describe('admin force stop', () => {
   it('stops a desktop session; the device learns it from heartbeat and sync; only managers of that org may do it', async () => {
     const sid = newId();
     await ingest([{ event_id: newId(), type: 'session.start', session_id: sid, seq: 1, occurred_at: t.clock.now.toISOString(), project_id: projectId }]);
+    await agent.post('/agent/heartbeat', { sent_at: t.clock.now.toISOString(), session_id: sid }); // the app confirms its timer (confirm window)
     t.clock.advance(5 * 60_000);
     const live = (await admin.get(`/orgs/${orgId}/tracking/live`)).body.find((w: { membership_id: string }) => w.membership_id === workerId);
     expect(live.session_id).toBe(sid);

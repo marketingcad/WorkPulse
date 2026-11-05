@@ -96,29 +96,43 @@ export async function loadActor(tx: Tx, principal: Principal, organizationId: st
  * The endpoints each API key scope opens. A key acts as the admin who created it (intersected
  * with its scopes), so without this list a read-only key could still reach that admin's own
  * settings, notifications or dashboard. Anything not listed is closed to API keys.
+ *
+ * It is exactly the table in docs/api/README.md (test/route-boundaries.test.ts reads that table and
+ * compares). Ids match UUIDs only, so a named route such as /workers/options never passes as
+ * /workers/:id, and writes name their method: a path alone let DELETE /clients/:id through once client
+ * deletion was added, although keys were never meant to delete.
+ *
+ * Deliberately closed to keys (security decision, 6 Nov 2026): screenshots, app and website usage,
+ * tracking sessions, pay and bill rates, budgets and payments. Monitoring data and money stay with
+ * people who sign in; do not reopen them here to match a scope's name.
  */
-const API_KEY_ROUTES: Record<string, { read?: RegExp[]; write?: RegExp[] }> = {
-  'read:workers': { read: [/^\/workers(\/[^/]+)?$/] },
-  'read:teams': { read: [/^\/teams(\/[^/]+)?$/] },
-  'read:clients': { read: [/^\/clients(\/[^/]+)?$/] },
-  'read:projects': { read: [/^\/projects(\/[^/]+)?$/] },
-  'read:tasks': { read: [/^\/tasks(\/[^/]+)?$/, /^\/projects\/[^/]+\/tasks$/] },
-  'read:timesheets': { read: [/^\/timesheets(\/[^/]+\/history)?$/] },
-  'read:time': { read: [/^\/time-entries(\/[^/]+\/revisions)?$/, /^\/sessions(\/[^/]+)?$/] },
-  'read:activity': { read: [/^\/activity\/day$/, /^\/screenshots$/, /^\/(apps|urls)(\/spans)?$/, /^\/idle-events$/] },
-  'read:reports': { read: [/^\/reports$/], write: [/^\/reports\/[\w-]+\/query$/] },
-  'read:billing': { read: [/^\/billing\/amounts-owed$/, /^\/rates$/, /^\/budgets$/] },
-  'read:invoices': { read: [/^\/invoices(\/[^/]+)?$/, /^\/payments$/] },
-  'write:projects': { write: [/^\/projects(\/[^/]+(\/(archive|restore))?)?$/] },
-  'write:tasks': { write: [/^\/tasks(\/[^/]+)?$/, /^\/projects\/[^/]+\/tasks$/] },
-  'write:clients': { write: [/^\/clients(\/[^/]+(\/(archive|restore))?)?$/] },
+const ID = '[0-9a-fA-F-]{36}';
+const re = (s: string) => new RegExp(`^${s.replaceAll(':id', ID)}$`);
+const API_KEY_ROUTES: Record<string, { read?: RegExp[]; write?: Array<[method: string, path: RegExp]> }> = {
+  'read:workers': { read: [re('/workers(/:id)?')] },
+  'read:teams': { read: [re('/teams')] },
+  'read:clients': { read: [re('/clients')] },
+  'read:projects': { read: [re('/projects(/:id)?')] },
+  'read:tasks': { read: [re('/tasks'), re('/projects/:id/tasks')] },
+  'read:timesheets': { read: [re('/timesheets(/:id/history)?')] },
+  'read:time': { read: [re('/time-entries(/:id/revisions)?')] },
+  'read:activity': { read: [re('/activity/day'), re('/idle-events')] },
+  'read:reports': { read: [re('/reports')], write: [['POST', re('/reports/[\\w-]+/query')]] },
+  'read:billing': { read: [re('/billing/amounts-owed')] },
+  'read:invoices': { read: [re('/invoices(/:id)?')] },
+  'write:projects': { write: [['POST', re('/projects')], ['PATCH', re('/projects/:id')], ['POST', re('/projects/:id/(archive|restore)')]] },
+  'write:tasks': { write: [['POST', re('/projects/:id/tasks')], ['PATCH', re('/tasks/:id')], ['DELETE', re('/tasks/:id')]] },
+  'write:clients': { write: [['POST', re('/clients')], ['PATCH', re('/clients/:id')], ['POST', re('/clients/:id/(archive|restore)')]] },
 };
 
 export function apiKeyAllows(scopes: string[], method: string, path: string): boolean {
   const p = path.replace(/\/$/, '');
   const reading = method === 'GET' || method === 'HEAD';
   if (reading && p === '') return true; // organization context
-  return scopes.some((s) => (reading ? API_KEY_ROUTES[s]?.read : API_KEY_ROUTES[s]?.write)?.some((re) => re.test(p)));
+  return scopes.some((s) => {
+    const rules = API_KEY_ROUTES[s];
+    return reading ? !!rules?.read?.some((r) => r.test(p)) : !!rules?.write?.some(([m, r]) => m === method && r.test(p));
+  });
 }
 
 function assertApiKeyRoute(scopes: string[], method: string, path: string) {

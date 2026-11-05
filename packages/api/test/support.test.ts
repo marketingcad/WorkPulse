@@ -79,6 +79,16 @@ describe('support console', () => {
     expect(trail.map((x) => x.action)).toEqual(expect.arrayContaining(['support.access_granted', 'support.details_viewed', 'support.access_revoked']));
   });
 
+  it('should_accept_grants_of_1_to_72_hours_only_and_end_a_72_hour_grant_at_exactly_72_hours', async () => {
+    for (const hours of [0, 73, 1.5]) expect((await customer.post(o('/support-access'), { hours, reason: 'Edge check' })).status, `${hours} h`).toBe(400);
+    expect((await customer.post(o('/support-access'), { hours: 1, reason: 'Edge check' })).status).toBe(200);
+    expect((await customer.post(o('/support-access'), { hours: 72, reason: 'Long investigation' })).status).toBe(200);
+    t.clock.set(new Date(t.clock.now.getTime() + 72 * 3600_000 - 1_000));
+    expect((await staff.get(`/support/orgs/${orgId}/details`)).status).toBe(200);
+    t.clock.set(new Date(t.clock.now.getTime() + 1_000));
+    expect((await staff.get(`/support/orgs/${orgId}/details`)).status).toBe(403);
+  });
+
   it('staff cannot use customer endpoints: they are not members', async () => {
     expect((await staff.get(o('/workers'))).status).toBe(404);
   });

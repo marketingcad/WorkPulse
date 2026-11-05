@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import * as D from '@radix-ui/react-dialog';
 import * as DM from '@radix-ui/react-dropdown-menu';
 import * as P from '@radix-ui/react-popover';
@@ -122,9 +122,14 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
 }
 
 // ─── Menu ────────────────────────────────────────────────────────────────────
+/**
+ * Non-modal, like Popover. A modal Radix menu locks page scrolling: it removes the scrollbar, so the
+ * page and every fixed element jumped sideways each time a menu opened. Outside clicks and Escape
+ * still close it.
+ */
 export function Menu({ trigger, children, align = 'end' }: { trigger: ReactNode; children: ReactNode; align?: 'start' | 'end' }) {
   return (
-    <DM.Root>
+    <DM.Root modal={false}>
       <DM.Trigger asChild>{trigger}</DM.Trigger>
       <DM.Portal>
         <DM.Content align={align} sideOffset={4} className="z-50 min-w-44 rounded-md border border-border bg-surface p-1 shadow-overlay">
@@ -145,6 +150,42 @@ export function MenuItem({ children, onSelect, danger, icon, disabled }: { child
       {icon}
       {children}
     </DM.Item>
+  );
+}
+
+/**
+ * A choice inside a menu (e.g. the theme), as menu radio items so arrow keys and screen readers reach
+ * it like any other item. `row` lays the options out side by side; Left/Right then move between them
+ * too (Up/Down already do).
+ */
+export function MenuRadioGroup({ value, onValueChange, label, row, children }: { value: string; onValueChange: (v: string) => void; label: string; row?: boolean; children: ReactNode }) {
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (!row || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitemradio"]:not([data-disabled])'));
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    if (i < 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    items[(i + (e.key === 'ArrowRight' ? 1 : items.length - 1)) % items.length]?.focus();
+  };
+  return (
+    <DM.RadioGroup value={value} onValueChange={onValueChange} aria-label={label} onKeyDown={onKeyDown} className={cx(row ? 'flex gap-1 px-1 py-0.5' : 'flex flex-col')}>
+      {children}
+    </DM.RadioGroup>
+  );
+}
+
+/** `keepOpen`: choosing it leaves the menu open, so the effect (a theme) can be seen and changed again. */
+export function MenuRadioItem({ value, label, keepOpen, children }: { value: string; label?: string; keepOpen?: boolean; children: ReactNode }) {
+  return (
+    <DM.RadioItem
+      value={value}
+      aria-label={label}
+      onSelect={keepOpen ? (e) => e.preventDefault() : undefined}
+      className="flex flex-1 cursor-pointer select-none items-center justify-center gap-2 rounded-sm px-2 py-1.5 text-sm text-text-muted outline-none data-[highlighted]:bg-surface-muted data-[state=checked]:bg-surface-muted data-[highlighted]:text-text data-[state=checked]:text-text data-[highlighted]:ring-2 data-[highlighted]:ring-focus/40"
+    >
+      {children}
+    </DM.RadioItem>
   );
 }
 

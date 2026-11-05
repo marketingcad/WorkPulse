@@ -62,7 +62,8 @@ interface LocalSession {
 }
 
 interface Bootstrap {
-  organization: { id: string; name: string; timezone: string };
+  /** show_monitoring_card: missing from older servers and saved copies, which counts as hidden (the default) */
+  organization: { id: string; name: string; timezone: string; show_monitoring_card?: boolean };
   worker: { membership_id: string; name: string; email: string; timezone: string };
   device: { id: string; status: string };
   policy: TrackingPolicy;
@@ -894,14 +895,27 @@ export class Agent extends EventEmitter {
   private async heartbeat(): Promise<void> {
     if (!this.api.signedIn) return;
     try {
-      const r = await this.api.request<{ session: { id: string; state: string; end_reason: string | null } | null }>('POST', '/agent/heartbeat', { sent_at: new Date().toISOString(), session_id: this.session?.id ?? null, agent_version: this.version, capabilities: this.capabilities });
+      const r = await this.api.request<{ session: { id: string; state: string; end_reason: string | null } | null; show_monitoring_card?: boolean }>('POST', '/agent/heartbeat', { sent_at: new Date().toISOString(), session_id: this.session?.id ?? null, agent_version: this.version, capabilities: this.capabilities });
       this.online = true;
       this.markContact();
+      this.applyMonitoringCard(r.show_monitoring_card);
       this.reconcile(r.session);
     } catch (e) {
       // Only a server that cannot be reached means offline (a pending device is refused, not offline).
       this.online = !isNetworkError(e);
     }
+  }
+
+  /**
+   * An admin showed or hid the "What WorkPulse records" card: apply it now (from the heartbeat), and in
+   * the saved copy, so a restart without a connection shows the same.
+   */
+  private applyMonitoringCard(show: boolean | undefined): void {
+    if (show === undefined || !this.boot || (this.boot.organization.show_monitoring_card === true) === show) return;
+    this.boot = { ...this.boot, organization: { ...this.boot.organization, show_monitoring_card: show } };
+    const c = this.store.readJson<BootCache>(BOOT_CACHE);
+    if (c) this.store.writeJson(BOOT_CACHE, { ...c, boot: { ...c.boot, organization: { ...c.boot.organization, show_monitoring_card: show } } } satisfies BootCache);
+    this.emitState();
   }
 
   async refreshBootstrap(): Promise<void> {
@@ -987,6 +1001,7 @@ export class Agent extends EventEmitter {
         : null,
       device: this.boot?.device ?? null,
       policy: this.boot?.policy ?? null,
+      showMonitoringCard: this.boot?.organization.show_monitoring_card === true,
       assignments: this.boot?.assignments ?? [],
       tracking: {
         state: s ? s.state : 'stopped',

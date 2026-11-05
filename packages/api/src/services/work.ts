@@ -657,6 +657,8 @@ export async function upsertTask(x: Ctx, projectId: string, taskId: string | nul
   const canManage = can(x.actor, 'tasks:manage', { projectId });
   const canCreate = canManage || can(x.actor, 'tasks:create', { projectId });
   let id = taskId;
+  /** moved to done by this change (emits task.completed once, for goals and achievements) */
+  let completedNow = false;
   if (id) {
     const [existing] = await x.tx.select().from(tasks).where(eq(tasks.id, id));
     if (!existing || existing.projectId !== projectId) throw notFound('task');
@@ -672,6 +674,7 @@ export async function upsertTask(x: Ctx, projectId: string, taskId: string | nul
     if (input.status !== undefined) {
       patch.status = input.status;
       patch.completedAt = input.status === 'DONE' ? (existing.completedAt ?? x.deps.now()) : null;
+      completedNow = input.status === 'DONE' && existing.status !== 'DONE';
     }
     if (input.priority !== undefined) patch.priority = input.priority;
     if (input.due_date !== undefined) patch.dueDate = input.due_date;
@@ -681,6 +684,7 @@ export async function upsertTask(x: Ctx, projectId: string, taskId: string | nul
     if (!canCreate) throw forbidden();
     if (!input.title) throw businessRule('title_required', 'A task needs a title');
     id = newId();
+    completedNow = input.status === 'DONE';
     await x.tx.insert(tasks).values({
       id,
       organizationId: x.org.id,
@@ -702,6 +706,11 @@ export async function upsertTask(x: Ctx, projectId: string, taskId: string | nul
     if (input.assignee_ids.length) await x.tx.insert(taskAssignees).values(input.assignee_ids.map((m) => ({ organizationId: x.org.id, taskId: id!, membershipId: m })));
   }
   await audit(x, { action: taskId ? 'task.updated' : 'task.created', targetType: 'task', targetId: id, after: input });
+  if (completedNow) {
+    const [t] = await x.tx.select({ dueDate: tasks.dueDate, completedAt: tasks.completedAt }).from(tasks).where(eq(tasks.id, id));
+    const assigneeIds = (await x.tx.select({ m: taskAssignees.membershipId }).from(taskAssignees).where(eq(taskAssignees.taskId, id))).map((a) => a.m);
+    await emitFrom(x, 'task.completed', { task_id: id, project_id: projectId, assignee_ids: assigneeIds, due_date: t?.dueDate ?? null, completed_at: t?.completedAt?.toISOString() ?? null });
+  }
   const [dto] = (await listTasks(x, { projectId, includeArchived: true })).filter((t) => t.id === id);
   if (!dto) throw notFound('task');
   return dto;

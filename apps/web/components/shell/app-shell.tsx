@@ -1,11 +1,11 @@
 'use client';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Check, ChevronRight, ChevronsUpDown, Clock, Eye, LogOut, Menu as MenuIcon, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Plus, Sun, UserRound, Wallet, X } from 'lucide-react';
 import type { MeDto, NotificationDto } from '@tallywork/contracts';
-import { Avatar, IconButton, Logo, Menu, MenuItem, MenuLabel, MenuSeparator, Popover, cx, fmtRelative } from '@tallywork/ui';
+import { IconButton, Logo, Menu, MenuItem, MenuLabel, MenuSeparator, Popover, cx, fmtRelative } from '@tallywork/ui';
 import { api, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
@@ -13,10 +13,13 @@ import { activeNav, filterNav, type NavItem } from './nav';
 import { SectionTabs } from './section-tabs';
 import { TourProvider } from '@/components/help/tour';
 import { HelpReturnBar } from '@/components/help/help-return';
-import { NewOrgDialog } from './new-org-dialog';
 import { TimerBar } from './timer-bar';
 import { HelpLink } from '@/components/help/help-link';
 import { CalculatorLauncher } from '@/components/calculator/calculator-launcher';
+import { MyAvatar } from '@/lib/avatars';
+
+// Opened from the organization switcher only, so not part of every page.
+const NewOrgDialog = lazy(() => import('./new-org-dialog').then((m) => ({ default: m.NewOrgDialog })));
 
 /**
  * The phone navigation drawer, as a modal dialog (audit QA-04): focus moves in and stays in while it
@@ -231,7 +234,11 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
                   'hover:bg-white/5 hover:text-nav-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#3b82ff]',
                 )}
               >
-                <span className="flex-1 truncate text-left">{t(g.label)}</span>
+                <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                  <span className="truncate">{t(g.label)}</span>
+                  {g.badge && ' '}
+                  {g.badge && <span className="rounded-full bg-[#4d8dff]/22 px-1.5 text-[10px] leading-4 tracking-wide text-[#a9c6ff]">{t(g.badge)}</span>}
+                </span>
                 <ChevronRight className={cx('size-3.5 shrink-0 transition-transform duration-200 ease-out motion-reduce:transition-none', isOpen && 'rotate-90')} aria-hidden />
               </button>
               {/* grid-rows 0fr ↔ 1fr animates to the content's natural height */}
@@ -296,7 +303,11 @@ function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
           {t('shell.newOrg')}
         </MenuItem>
       </Menu>
-      <NewOrgDialog open={creating} onOpenChange={setCreating} />
+      {creating && (
+        <Suspense fallback={null}>
+          <NewOrgDialog open onOpenChange={setCreating} />
+        </Suspense>
+      )}
     </>
   );
 }
@@ -424,13 +435,16 @@ function UserMenu() {
     <Menu
       trigger={
         <button data-tour="account-menu" className="flex items-center gap-2 rounded-sm p-1 hover:bg-surface-muted" aria-label={t('shell.accountMenu')}>
-          <Avatar name={name || '?'} size={28} />
+          <MyAvatar size={28} />
         </button>
       }
     >
-      <div className="px-2 py-1.5">
+      <div className="flex items-center gap-2.5 px-2 py-1.5">
+        <MyAvatar size={36} />
+        <div className="min-w-0">
         <div className="truncate text-sm font-semibold">{name}</div>
         <div className="truncate text-xs text-text-muted">{me?.user.email}</div>
+        </div>
       </div>
       <MenuSeparator />
       <MenuItem icon={<UserRound className="size-3.5" />} onSelect={() => router.push(`${org.base}/me/profile`)}>

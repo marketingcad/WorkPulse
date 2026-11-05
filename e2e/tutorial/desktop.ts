@@ -88,6 +88,7 @@ export class WorkerDevice {
       offline: { mode: 'online', settingsSavedAt: null, allowedUntil: null, totalsPartial: false },
       notAdded: [],
       permissions: null,
+      showMonitoringCard: b.organization.show_monitoring_card === true,
       capabilities: { input: true, screenshots: true, apps: true, urls: true },
       browserExtension: ['Chrome'],
       lastProject: null,

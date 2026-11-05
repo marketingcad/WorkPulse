@@ -122,7 +122,7 @@ The password is sent once and never stored by the desktop app. It keeps only the
 
 ## Client portal
 
-Read-only dashboards for an organization's clients. None of this is part of the API-key surface above: a client viewer is a `client_portal_access` row, never a membership or an API key, and the admin and worker endpoints below need permissions no key scope grants.
+Dashboards for an organization's clients. They are read-only, except that a client can send appreciation, which waits for the organization's approval. None of this is part of the API-key surface above: a client viewer is a `client_portal_access` row, never a membership or an API key, and the admin and worker endpoints below need permissions no key scope grants.
 
 ### Client (viewer) endpoints
 
@@ -134,8 +134,10 @@ Not under `/orgs/{orgId}`. A client reaches these after accepting an emailed inv
 | `GET /portal` | The signed-in client's dashboards: one entry per client they have accepted access to, across every organization. |
 | `GET /portal/{accessId}/summary` | `?from=&to=`. Hours total, projects, people (with activity level if that section is on), tasks and hour budgets (if that section is on). Never money. `404` if `accessId` is malformed, unknown, revoked, or the client's portal is turned off. |
 | `GET /portal/{accessId}/screenshots` | `?from=&to=`. `403` if the screenshots section isn't enabled for this client. Only screenshots captured during desktop-tracked time on the client's included projects, served through the signed media route (never a direct storage URL). |
+| `GET /portal/{accessId}/insights` | How the client's own included projects are delivered: `totals` (completion, tasks done and open, milestones done, on-time share, next milestone), `projects`, `milestones` and `weeks` (tasks completed per week, the last 8), plus `contributors` (the project members' names, for appreciation). Only milestones the organization marked client-visible, and nothing from before a project moved to this client. Task figures and `weeks` are `null`/empty when the tasks section is off. Never money, rates, scores, rankings, reviews, screenshots or anyone's activity. Same `404`s as the summary. |
+| `POST /portal/{accessId}/appreciations` | Body `{ project_id, membership_id?, message }` (message up to 1,000 characters) → `201 { id, status: "PENDING" }`. Thanks a project team, or one of its members. Nobody in the organization sees it until someone with `achievements:award` approves it. `404` if the project isn't one of this client's included projects, or the person isn't on it; `422` `too_many_pending` once 20 are waiting. Limited to **10 per hour**. |
 
-`GET /portal` and the two `/portal/{accessId}/*` reads are limited to **120 per minute**.
+`GET /portal` and the `/portal/{accessId}/*` endpoints are limited to **120 per minute**.
 
 ### Admin endpoints (`/orgs/{orgId}`, requires `clients:manage`)
 

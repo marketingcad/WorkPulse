@@ -65,6 +65,15 @@ Custom roles can grant any subset, but never more than the admin who creates the
 | `payroll:manage` | org | — | — | — |
 | `reports:read` | org | team | own | — |
 | `reports:finance` | org | — | — | — |
+| `performance:read` | org | team | own | — |
+| `performance:manage` | org | — | — | — |
+| `goals:read` | org | team | own | — |
+| `goals:manage` | org | team | — | — |
+| `achievements:read` | org | team | own | — |
+| `achievements:manage` | org | — | — | — |
+| `achievements:award` | org | team | — | — |
+| `reviews:read` | org | team | — | — |
+| `reviews:manage` | org | team | — | — |
 | `api_keys:manage` | org | — | — | — |
 | `webhooks:manage` | org | — | — | — |
 | `audit:read` | org | — | — | — |

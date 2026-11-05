@@ -24,6 +24,7 @@ import { timeRoutes } from './routes/time';
 import { financeRoutes, opsRoutes } from './routes/ops-finance';
 import { insightRoutes, platformRoutes } from './routes/insight-platform';
 import { agentRoutes } from './routes/agent';
+import { performanceRoutes } from './routes/performance';
 import { dispatchOutbox, runDaily, runTick } from './jobs';
 import { opsMetrics, readiness } from './services/ops';
 
@@ -123,6 +124,7 @@ export function createApp(deps: Deps) {
   app.route('/orgs/:orgId', financeRoutes);
   app.route('/orgs/:orgId', insightRoutes);
   app.route('/orgs/:orgId', platformRoutes);
+  app.route('/orgs/:orgId', performanceRoutes);
 
   return app;
 }

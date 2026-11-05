@@ -89,6 +89,8 @@ export interface OrgSettings {
   missingTimeCheckAt?: string;
   /** converts hours and days, e.g. for project estimates (default 8) */
   workingHoursPerDay?: number;
+  /** show workers the "What WorkPulse records" card in the desktop app (hidden unless set to true) */
+  showMonitoringCard?: boolean;
 }
 
 export const organizations = pgTable('organizations', {

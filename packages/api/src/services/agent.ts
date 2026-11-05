@@ -196,6 +196,8 @@ export interface AgentCtx {
   deviceId: string;
   userId: string;
   policy: TrackingPolicy;
+  /** the organization shows workers the "What WorkPulse records" card (off unless an admin turns it on) */
+  showMonitoringCard: boolean;
 }
 
 export async function loadAgentCtx(
@@ -217,7 +219,7 @@ export async function loadAgentCtx(
   if (!m || m.status !== 'ACTIVE') throw forbidden('Your membership is not active');
   const [org] = await tx.select().from(organizations).where(eq(organizations.id, p.organizationId));
   const policy = await effectivePolicy(tx, p.organizationId, p.membershipId);
-  return { tx, deps, organizationId: p.organizationId, orgTimezone: org!.timezone, weekStart: org!.weekStart, membershipId: p.membershipId, deviceId: p.deviceId, userId: p.userId, policy };
+  return { tx, deps, organizationId: p.organizationId, orgTimezone: org!.timezone, weekStart: org!.weekStart, membershipId: p.membershipId, deviceId: p.deviceId, userId: p.userId, policy, showMonitoringCard: org!.settings.showMonitoringCard === true };
 }
 
 /** The device's worker as a regular tenant actor, for reusing member-facing services with the same rules. */
@@ -252,7 +254,7 @@ export async function bootstrap(a: AgentCtx): Promise<AgentBootstrapDto> {
   // Finished time only: the desktop app adds its running segment (now − segment start) to these itself.
   const tw = await todayAndWeek(tx, a.membershipId, tz, a.weekStart, now, false);
   return {
-    organization: { id: org!.id, name: org!.name, timezone: org!.timezone },
+    organization: { id: org!.id, name: org!.name, timezone: org!.timezone, show_monitoring_card: a.showMonitoringCard },
     worker: { membership_id: a.membershipId, name: u?.name ?? '', email: u?.email ?? '', timezone: tz },
     device: { id: a.deviceId, status: device!.status },
     policy: a.policy,
@@ -614,6 +616,8 @@ export async function heartbeat(a: AgentCtx, input: { sessionId?: string | null;
     server_time: now.toISOString(),
     session: live ? { id: live.id, state: live.state, project_id: live.projectId, task_id: live.taskId, started_at: live.startedAt.toISOString(), end_reason: live.endReason } : null,
     policy_hash: policyHash(a.policy),
+    // An admin setting the app applies at once (not part of the tracking policy, so no "settings changed" notice).
+    show_monitoring_card: a.showMonitoringCard,
   };
 }
 

@@ -8,10 +8,10 @@ export const bridge = window.tallywork;
 export const card = 'rounded-md border border-border bg-surface shadow-card';
 
 /** Pages of the worker app (navigation order), plus the manual-time sub-screen reached from them. */
-export type Page = 'home' | 'tracking' | 'projects' | 'tasks' | 'timesheet' | 'activity' | 'reports' | 'timeoff' | 'schedule' | 'paystubs' | 'settings';
+export type Page = 'home' | 'tracking' | 'projects' | 'tasks' | 'timesheet' | 'activity' | 'reports' | 'timeoff' | 'schedule' | 'performance' | 'paystubs' | 'settings';
 export type View = Page | 'manual';
 
-const VIEWS: readonly View[] = ['home', 'tracking', 'projects', 'tasks', 'timesheet', 'activity', 'reports', 'timeoff', 'schedule', 'paystubs', 'settings', 'manual'];
+const VIEWS: readonly View[] = ['home', 'tracking', 'projects', 'tasks', 'timesheet', 'activity', 'reports', 'timeoff', 'schedule', 'performance', 'paystubs', 'settings', 'manual'];
 export const isView = (v: string): v is View => (VIEWS as readonly string[]).includes(v);
 
 /**
@@ -25,6 +25,8 @@ export function viewForLink(link: string): View | null {
   if (path.startsWith('timesheets')) return 'timesheet';
   if (path.startsWith('attendance/time-off') || path.startsWith('time-off')) return 'timeoff';
   if (path.startsWith('pay-stubs')) return 'paystubs';
+  // Recognition, goals and shared reviews (notifications link to the Performance pages).
+  if (path.startsWith('performance')) return 'performance';
   const top: Record<string, View> = {
     tasks: 'tasks',
     projects: 'projects',

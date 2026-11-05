@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import { ArrowRight, BarChart3, Check, ChevronLeft, Clock3, ClockPlus, ExternalLink, Eye, EyeOff, Lock, LogOut, Mail, RefreshCw, ShieldCheck, Users, type LucideIcon } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
 import { Dashboard } from './Dashboard';
+import { PerformancePage } from './PerformancePage';
 import { ActivityPage, PayStubsPage, ProjectsPage, ReportsPage, SchedulePage, TasksPage, TimeOffPage, TimesheetPage, TrackingPage } from './Pages';
 import { Mark } from './brand';
 import { Shell } from './Shell';
@@ -52,7 +53,9 @@ export function App() {
         return <TimeOffPage />;
       case 'schedule':
         return <SchedulePage />;
-      case 'paystubs':
+      case 'performance':
+      return <PerformancePage s={s} />;
+    case 'paystubs':
         return <PayStubsPage />;
       case 'settings':
         return narrow(<SettingsView s={s} onBack={() => setView('home')} />);
@@ -696,9 +699,12 @@ function SettingsView({ s, onBack }: { s: AgentState; onBack: () => void }) {
           ))}
         </dl>
         {s.sync.error && <p className="mx-4 mt-2 rounded-sm bg-warning-soft px-3 py-2 text-xs text-warning">{s.sync.error}</p>}
-        <div className="p-4">
-          <TrackingDisclosure s={s} compact />
-        </div>
+        {/* An organization setting: admins show or hide it (hidden by default). */}
+        {s.showMonitoringCard && (
+          <div className="p-4">
+            <TrackingDisclosure s={s} compact />
+          </div>
+        )}
       </div>
       <div className="flex shrink-0 flex-col gap-2 border-t border-border p-4">
         <button onClick={() => leave(s, 'logout')} className="flex h-9 items-center justify-center gap-2 rounded-sm border border-border text-sm text-danger hover:bg-danger-soft">

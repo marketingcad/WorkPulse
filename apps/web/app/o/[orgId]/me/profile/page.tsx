@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Laptop } from 'lucide-react';
 import type { DeviceDto, MeDto } from '@tallywork/contracts';
-import { Avatar, Badge, Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, PageHeader, Panel, Select, SkeletonRows, StatusBadge, Stat, fmtRelative, useToast } from '@tallywork/ui';
+import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, PageHeader, Panel, Select, SkeletonRows, StatusBadge, Stat, fmtRelative, useToast } from '@tallywork/ui';
 import { ApiError, api, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { applyAccountLocale, t } from '@/lib/i18n';
@@ -12,6 +12,8 @@ import { browserTimeZone, timeZones } from '@/components/settings/options';
 import { DataExportAction } from '@/components/security/data-export';
 import { TwoFactorPanel } from '@/components/security/two-factor-panel';
 import { useUnsavedChanges } from '@/lib/unsaved';
+import { MyAvatar } from '@/lib/avatars';
+import { AvatarPanel } from '@/components/profile/avatar-panel';
 
 interface Pref {
   type: string;
@@ -43,6 +45,7 @@ export default function ProfilePage() {
     <>
       <PageHeader title="Profile" description="Your account, sign-in, devices and notifications." />
       <div className="grid max-w-5xl grid-cols-1 gap-4 lg:grid-cols-2">
+        {me && <AvatarPanel me={me} />}
         <Panel title="Account">
           {meQ.error ? (
             <ErrorState error={meQ.error} onRetry={() => meQ.refetch()} />
@@ -51,7 +54,7 @@ export default function ProfilePage() {
           ) : (
             <div className="flex flex-col gap-4 p-4">
               <div className="flex items-center gap-3">
-                <Avatar name={me.user.name} size={40} />
+                <MyAvatar size={40} />
                 <div className="min-w-0">
                   <div className="truncate font-semibold">{me.user.name}</div>
                   <div className="truncate text-sm text-text-muted">{me.user.email}</div>

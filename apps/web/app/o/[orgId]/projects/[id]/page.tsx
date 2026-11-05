@@ -1,11 +1,10 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { BudgetStatusDto, ClientDto, ProjectDto, TaskDto, TeamDto, MemberOptionDto } from '@tallywork/contracts';
 import {
-  Avatar,
   Badge,
   BudgetProgress,
   Button,
@@ -35,9 +34,14 @@ import { ApiError, errorMessage, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
 import { ColorDot, PriorityBadge, ProjectFields, ProjectStatusBadge, TaskDialog, TaskStatusSelect, clientsForProject, projectPayload, projectToForm, useHoursPerDay, useOrgAction, type ProjectForm } from '@/components/workspace/shared';
-import { BudgetDialog } from '@/components/finance/budget-dialog';
-import { ProjectDocumentsTab } from '@/components/workspace/project-documents';
 import { useMemberOptions } from '@/lib/members';
+import { MemberAvatar } from '@/lib/avatars';
+
+// Loaded when the tab opens (this page is already over the 250 KB first-load budget).
+// Opened from a button or a tab, so loaded then.
+const BudgetDialog = lazy(() => import('@/components/finance/budget-dialog').then((m) => ({ default: m.BudgetDialog })));
+const ProjectDocumentsTab = lazy(() => import('@/components/workspace/project-documents').then((m) => ({ default: m.ProjectDocumentsTab })));
+const ProjectMilestones = lazy(() => import('@/components/performance/project-milestones'));
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -65,6 +69,7 @@ export default function ProjectDetailPage() {
   const openTasks = (tasksQ.data ?? []).filter((t) => t.status !== 'DONE').length;
   const items = [
     ...(org.can('tasks:read') ? [{ value: 'tasks', label: 'Tasks', count: tasksQ.data?.length }] : []),
+    { value: 'milestones', label: 'Milestones' },
     { value: 'plan', label: 'Plan & budget' },
     { value: 'members', label: 'Members & teams', count: p.member_ids.length + p.team_ids.length },
     { value: 'documents', label: 'Documents' },
@@ -167,11 +172,24 @@ export default function ProjectDetailPage() {
 
       <Tabs value={activeTab} onValueChange={setTab} items={items} className="mb-4" />
       {activeTab === 'tasks' && <TasksTab project={p} tasks={tasksQ.data} loading={tasksQ.isLoading} error={tasksQ.error} onRetry={() => void tasksQ.refetch()} workers={workersQ.data} />}
+      {activeTab === 'milestones' && (
+        <Suspense fallback={<SkeletonRows rows={4} cols={2} />}>
+          <ProjectMilestones project={p} />
+        </Suspense>
+      )}
       {activeTab === 'plan' && <PlanTab project={p} budget={budget} onEditBudget={() => setBudgetOpen(true)} onEditPlan={() => setTab('settings')} />}
       {activeTab === 'members' && <MembersTab project={p} workers={workersQ.data} teams={teamsQ.data} canManage={canManage} />}
-      {activeTab === 'documents' && <ProjectDocumentsTab project={p} />}
+      {activeTab === 'documents' && (
+        <Suspense fallback={<SkeletonRows rows={4} cols={2} />}>
+          <ProjectDocumentsTab project={p} />
+        </Suspense>
+      )}
       {activeTab === 'settings' && canManage && <SettingsTab project={p} />}
-      {budgetOpen && <BudgetDialog value={budget ?? 'new'} preset={{ type: 'PROJECT', id: p.id, name: p.name }} onClose={() => setBudgetOpen(false)} />}
+      {budgetOpen && (
+        <Suspense fallback={null}>
+          <BudgetDialog value={budget ?? 'new'} preset={{ type: 'PROJECT', id: p.id, name: p.name }} onClose={() => setBudgetOpen(false)} />
+        </Suspense>
+      )}
     </>
   );
 }
@@ -206,7 +224,7 @@ function TasksTab({ project, tasks, loading, error, onRetry, workers }: { projec
         ) : (
           <span className="flex items-center -space-x-1.5" title={t.assignee_ids.map((a) => names.get(a) ?? 'Member').join(', ')}>
             {t.assignee_ids.slice(0, 4).map((a) => (
-              <Avatar key={a} name={names.get(a) ?? '?'} size={22} className="ring-2 ring-surface" />
+              <MemberAvatar key={a} membershipId={a} name={names.get(a) ?? '?'} size={22} className="ring-2 ring-surface" />
             ))}
             {t.assignee_ids.length > 4 && <span className="pl-2.5 text-xs text-text-muted">+{t.assignee_ids.length - 4}</span>}
             <span className="sr-only">{t.assignee_ids.map((a) => names.get(a) ?? 'Member').join(', ')}</span>

@@ -38,6 +38,7 @@ import { reconcileWorkerDays, recomputeUsageDays, recomputeWorkerDays } from '..
 import { applyTrigger, limitExceeded, lockWorker, resolveIdle } from '../services/tracking';
 import { memberNames } from '../services/timer';
 import { idleEndEvidence } from '../services/activity';
+import { handlePerformanceEvent, performanceDaily } from '../services/performance-jobs';
 
 const MAX_ATTEMPTS = 10;
 const SYSTEM = { type: 'system' as const, id: null };
@@ -51,9 +52,32 @@ interface Envelope {
   payload: Record<string, unknown>;
 }
 
+/** Internal event: the Performance Center's share of an event whose performance step failed. */
+const PERFORMANCE_RETRY = 'performance.retry';
+
+/**
+ * Goals and achievements follow completed tasks, milestones and approved timesheets. They run in a
+ * savepoint after everything else the event does, so a failure here never rolls back or holds up the
+ * event's notifications and webhooks. A failed step is queued as its own event, which the outbox
+ * retries on its own (MAX_ATTEMPTS) without repeating the rest.
+ */
+async function performanceStep(tx: Tx, deps: Deps, e: Envelope): Promise<void> {
+  try {
+    await tx.transaction((sp) => handlePerformanceEvent(sp, deps, e));
+  } catch (err) {
+    console.error(`[jobs] performance step failed for ${e.event_type} ${e.event_id}; queued for retry`, err);
+    await emit(tx, e.organization_id, PERFORMANCE_RETRY, { event: { event_id: e.event_id, event_type: e.event_type, organization_id: e.organization_id, payload: e.payload } });
+  }
+}
+
 async function handleEvent(tx: Tx, deps: Deps, e: Envelope): Promise<void> {
   const p = e.payload;
   const org = e.organization_id;
+  if (e.event_type === PERFORMANCE_RETRY) {
+    // Failing again leaves this event to the outbox's normal retries; nothing else is repeated.
+    await handlePerformanceEvent(tx, deps, p.event as Envelope);
+    return;
+  }
   switch (e.event_type) {
     case 'time.changed': {
       const m = p.membership_id as string;
@@ -169,6 +193,7 @@ async function handleEvent(tx: Tx, deps: Deps, e: Envelope): Promise<void> {
       break;
   }
   await enqueueWebhooks(tx, org, e, deps.now());
+  await performanceStep(tx, deps, e);
 }
 
 /** Process pending outbox events. Each event runs in its own tenant transaction. */
@@ -375,6 +400,15 @@ export async function runDaily(deps: Deps) {
       const digests = await sendDigests(tx, deps, o.id, today);
       summary[o.id] = { deleted, accrued, overdue: overdue.length, rollups, digests };
     });
+    // Its own transaction: a Performance Center failure never rolls back the organization's retention
+    // cleanup, accruals or overdue invoices above. It is idempotent, so tomorrow's run catches up.
+    try {
+      const performance = await withTenant(deps.db, o.id, (tx) => performanceDaily(tx, deps, o.id));
+      summary[o.id] = { ...(summary[o.id] as object), performance };
+    } catch (err) {
+      console.error(`[jobs] daily performance failed for organization ${o.id}`, err);
+      summary[o.id] = { ...(summary[o.id] as object), performance: { error: err instanceof Error ? err.message.slice(0, 500) : 'failed' } };
+    }
   }
   await withSystem(deps.db, (tx) => tx.delete(rateLimitBuckets).where(lt(rateLimitBuckets.windowStart, new Date(deps.now().getTime() - 2 * 86400_000))));
   await checkOverdueCleanups(deps);

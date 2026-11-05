@@ -1,11 +1,14 @@
 'use client';
+import { Suspense, lazy } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ShieldAlert } from 'lucide-react';
 import type { MeDto } from '@tallywork/contracts';
-import { Button, Logo } from '@tallywork/ui';
+import { Button, Logo, Spinner } from '@tallywork/ui';
 import { ApiError, api } from '@/lib/api';
-import { TwoFactorPanel } from './two-factor-panel';
+
+// Only shown when an organization requires two-factor, so it is not part of every page.
+const TwoFactorPanel = lazy(() => import('./two-factor-panel').then((m) => ({ default: m.TwoFactorPanel })));
 
 export const isMfaEnrollmentError = (e: unknown) => e instanceof ApiError && e.code === 'mfa_enrollment_required';
 
@@ -38,7 +41,9 @@ export function MfaEnrollmentRequired({ orgId, onEnrolled }: { orgId: string; on
           </div>
         </div>
         {onProfile ? (
-          <TwoFactorPanel requiredByOrg onDone={onEnrolled} />
+          <Suspense fallback={<Spinner />}>
+            <TwoFactorPanel requiredByOrg onDone={onEnrolled} />
+          </Suspense>
         ) : (
           <div>
             <Button variant="primary" size="md" onClick={() => router.push(`${profile}#two-factor`)}>

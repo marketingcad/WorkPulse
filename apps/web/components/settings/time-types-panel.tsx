@@ -4,7 +4,7 @@ import { Archive, MoreHorizontal, Pencil, Plus } from 'lucide-react';
 import type { TimeTypeDto } from '@tallywork/contracts';
 import { Badge, Button, ConfirmDialog, DataTable, Dialog, EmptyState, ErrorState, Field, IconButton, Input, Menu, MenuItem, Panel, Switch, useToast, type Column } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
-import { ColorPicker } from '@/components/workspace/shared';
+import { ColorPicker } from '@/components/workspace/basics';
 import { TimeTypeBadge } from './time-type-badge';
 
 interface TimeTypeBody {

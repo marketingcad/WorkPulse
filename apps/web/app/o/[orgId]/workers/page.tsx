@@ -32,7 +32,8 @@ import {
 import { ApiError, errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
-import { useOrgAction, type RoleDto } from '@/components/workspace/shared';
+import { useOrgAction, type RoleDto } from '@/components/workspace/basics';
+import { MemberCell } from '@/lib/avatars';
 
 interface InvitationRow {
   id: string;
@@ -76,7 +77,7 @@ export default function WorkersPage() {
   if (!org.can('members:read')) return <PermissionState />;
 
   const columns: Column<WorkerDto>[] = [
-    { key: 'name', header: 'Member', priority: 'primary', value: (w) => `${w.name} ${w.email}`, cell: (w) => <PersonCell name={w.name} sub={w.email} /> },
+    { key: 'name', header: 'Member', priority: 'primary', value: (w) => `${w.name} ${w.email}`, cell: (w) => <MemberCell membershipId={w.id} name={w.name} sub={w.email} /> },
     {
       key: 'role',
       header: 'Role',

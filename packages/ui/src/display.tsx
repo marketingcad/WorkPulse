@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { AlertTriangle, CircleCheck, CircleDashed, CircleDot, CircleX, Clock, Inbox, Lock, MinusCircle, PauseCircle, TrendingDown, TrendingUp } from 'lucide-react';
 import { cx } from './primitives';
 import { t } from './i18n';
+import { Avatar, type AvatarImage } from './avatar';
 
 export type Tone = 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'brand' | 'secondary';
 
@@ -88,31 +89,10 @@ export function StatusBadge({ status, label, className }: { status: string; labe
   );
 }
 
-export function Avatar({ name, size = 28, className }: { name: string; size?: number; className?: string }) {
-  const initials = name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]!.toUpperCase())
-    .join('');
-  // Stable hue per name so people are recognizable across screens.
-  let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
-  return (
-    <span
-      aria-hidden
-      className={cx('inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white', className)}
-      style={{ width: size, height: size, fontSize: Math.max(10, size * 0.38), background: `hsl(${h} 50% 32%)` }}
-    >
-      {initials || '?'}
-    </span>
-  );
-}
-
-export function PersonCell({ name, sub, size = 24 }: { name: string; sub?: ReactNode; size?: number }) {
+export function PersonCell({ name, sub, size = 24, image, seed }: { name: string; sub?: ReactNode; size?: number; image?: AvatarImage; seed?: string }) {
   return (
     <span className="flex min-w-0 items-center gap-2">
-      <Avatar name={name} size={size} />
+      <Avatar name={name} size={size} image={image} seed={seed} />
       <span className="min-w-0">
         <span className="block truncate font-medium">{name}</span>
         {sub && <span className="block truncate text-xs text-text-muted">{sub}</span>}
@@ -177,7 +157,8 @@ export function Panel({ title, actions, children, className, bodyClassName, foot
 export interface Kpi {
   label: string;
   value: ReactNode;
-  delta?: { value: string; direction: 'up' | 'down' | 'flat'; good?: boolean } | null;
+  /** a change against a previous period; without `good`, shown neutral (more is not always better) */
+  delta?: { value: string; direction: 'up' | 'down' | 'flat'; good?: boolean; label?: string } | null;
   hint?: ReactNode;
   /** A small icon shown in a coloured tile next to the label. */
   icon?: ReactNode;
@@ -215,11 +196,12 @@ export function KpiStrip({ items, className, minItemWidth = 210 }: { items: Kpi[
                 <span
                   className={cx(
                     'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-2xs font-semibold',
-                    k.delta.direction === 'flat' ? 'bg-surface-muted text-text-muted' : k.delta.good ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger',
+                    k.delta.direction === 'flat' || k.delta.good === undefined ? 'bg-surface-muted text-text-muted' : k.delta.good ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger',
                   )}
                 >
                   {k.delta.direction === 'up' ? <TrendingUp className="size-3" aria-hidden /> : k.delta.direction === 'down' ? <TrendingDown className="size-3" aria-hidden /> : null}
                   {k.delta.value}
+                  {k.delta.label && <span className="font-normal"> {k.delta.label}</span>}
                 </span>
               )}
             </div>

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { PERMISSIONS, SCOPES, API_KEY_SCOPES } from '@tallywork/domain';
 import { currency, hhmm, id, isoDate, isoDateTime, nonEmpty, optionalText, timeZone } from './common';
+import { AVATAR_PRESETS } from './avatars';
 
 /**
  * Optional numbered paging for long lists. Sending `page` (1-based) switches a list endpoint's
@@ -80,6 +81,8 @@ export const updateOrgInput = z.object({
       missingTimeCheckAt: hhmm,
       /** converts hours and days, e.g. for project estimates */
       workingHoursPerDay: z.number().min(1).max(24),
+      /** show workers the "What WorkPulse records" card in the desktop app */
+      showMonitoringCard: z.boolean(),
     })
     .partial()
     .optional(),
@@ -584,3 +587,6 @@ export const overtimeRulesInput = z.object({
 });
 
 export const pauseInput = z.object({ break_type_id: z.uuid().nullable().optional() }).default({});
+
+/** Choosing one of the curated avatars (profile picture). */
+export const avatarPresetInput = z.object({ preset: z.enum(AVATAR_PRESETS) });

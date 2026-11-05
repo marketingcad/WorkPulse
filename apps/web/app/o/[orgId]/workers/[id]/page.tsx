@@ -5,7 +5,6 @@ import { useParams, useRouter } from 'next/navigation';
 import { Activity, ArrowRight, Check, Clock, Eraser, KeyRound, Lock, Pencil, UserX, X } from 'lucide-react';
 import type { DeviceDto, EffectivePolicyDto, MemberDetailsDto, ProjectDto, TeamDto, TimeEntryDto, WorkerDto } from '@tallywork/contracts';
 import {
-  Avatar,
   Badge,
   Button,
   ConfirmDialog,
@@ -34,13 +33,14 @@ import {
 } from '@tallywork/ui';
 import { ApiError, errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
-import { ColorDot, ProjectStatusBadge, hoursToSeconds, secondsToHours, useOrgAction, type RoleDto } from '@/components/workspace/shared';
+import { ColorDot, ProjectStatusBadge, hoursToSeconds, secondsToHours, useOrgAction, type RoleDto } from '@/components/workspace/basics';
 import { RateNote } from '@/components/finance/rate-note';
 import { AnonymizeDialog } from '@/components/security/anonymize-dialog';
 import { DataExportAction } from '@/components/security/data-export';
 import { MfaResetDialog } from '@/components/security/mfa-reset-dialog';
 import { fromMinor, toMinor } from '@/components/finance/types';
 import { useUrlValue } from '@/lib/url-state';
+import { MemberAvatar } from '@/lib/avatars';
 
 /** Platform names as on the Devices page (the desktop app reports windows, macos or linux). */
 const PLATFORM: Record<string, string> = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
@@ -84,7 +84,7 @@ export default function WorkerDetailPage() {
         }
         title={
           <span className="flex items-center gap-3">
-            <Avatar name={w.name} size={36} />
+            <MemberAvatar membershipId={w.id} name={w.name} size={36} />
             <span className="min-w-0 truncate">{w.name}</span>
           </span>
         }

@@ -5,7 +5,7 @@ import type { ProjectDocumentDto, ProjectDto } from '@tallywork/contracts';
 import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, IconButton, Panel, fmtDateTime, useToast, type Column } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgId, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
-import { useOrgAction } from './shared';
+import { useOrgAction } from './basics';
 import { useQueryClient } from '@tanstack/react-query';
 
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.csv,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx';

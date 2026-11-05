@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
  * route did exactly that and hung the E2E server, while Vitest (rate limits off) stayed green.
  * Limits on these routes belong in the service, counted in the same transaction.
  */
-const ORG_ROUTE_FILES = ['org.ts', 'time.ts', 'ops-finance.ts', 'insight-platform.ts'];
+const ORG_ROUTE_FILES = ['org.ts', 'time.ts', 'ops-finance.ts', 'insight-platform.ts', 'performance.ts'];
 
 describe('organization routes', () => {
   it.each(ORG_ROUTE_FILES)('%s does not use the rateLimit middleware', (file) => {

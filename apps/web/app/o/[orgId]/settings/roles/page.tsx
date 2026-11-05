@@ -20,7 +20,7 @@ interface Role {
 }
 
 const EDITABLE = PERMISSIONS.filter((p) => p !== 'agent:ingest');
-const RESOURCE_LABEL: Record<string, string> = { org: 'Organization', api_keys: 'API keys', manual_time: 'Manual time', time_off: 'Time off', settings: 'Security settings' };
+const RESOURCE_LABEL: Record<string, string> = { org: 'Organization', api_keys: 'API keys', manual_time: 'Manual time', time_off: 'Time off', settings: 'Security settings', reviews: 'Performance reviews' };
 const SCOPE_LABEL: Record<Scope, string> = { own: 'Own', assigned: 'Assigned', team: 'Team', org: 'Org' };
 const SCOPE_HELP = 'Own = only their own data · Assigned = projects they are assigned to · Team = teams they manage · Org = everyone';
 

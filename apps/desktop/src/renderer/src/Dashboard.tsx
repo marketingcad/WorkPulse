@@ -5,6 +5,7 @@ import { bridge, card, errorText, fmtClock, fmtHhmm, fmtHm, fmtMs, fmtRange, fmt
 import { CurrentSessionCard, RecentSessionsCard, TodaySummaryCard } from './HomeCards';
 import { NotAddedCard, StatusBanners, type ManualPrefill } from './HomeStatus';
 import { TrackingDisclosure } from './Disclosure';
+import { WorkerAvatar } from './WorkerAvatar';
 
 
 /**
@@ -43,7 +44,7 @@ export function Dashboard({ s, go, onRequestTime }: { s: AgentState; go: (v: Vie
       <aside className="flex min-w-0 flex-col gap-3 md:gap-4 md:pt-13">
         <TodaySummaryCard s={s} now={now} />
         <ActivityCard s={s} />
-        <TrackingDisclosure s={s} />
+        {s.showMonitoringCard && <TrackingDisclosure s={s} />}
       </aside>
     </div>
   );
@@ -53,11 +54,14 @@ function Greeting({ s, now }: { s: AgentState; now: number }) {
   const h = new Date(now).getHours();
   const part = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   return (
-    <div className="hidden md:block">
-      <h1 className="text-2xl font-semibold tracking-tight">
-        {part}, {s.account!.name.split(' ')[0]}
-      </h1>
-      <p className="text-sm text-text-muted">{new Date(now).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+    <div className="hidden items-center gap-3 md:flex">
+      <WorkerAvatar s={s} size={44} className="text-base" />
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {part}, {s.account!.name.split(' ')[0]}
+        </h1>
+        <p className="text-sm text-text-muted">{new Date(now).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+      </div>
     </div>
   );
 }

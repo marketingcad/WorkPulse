@@ -31,6 +31,8 @@ test.describe('Desktop start-up and tracking transparency', () => {
     await openDesktop(workerDevice, {
       state: (r) => ({
         ...r,
+        // Shown: an admin turned the card on (it is hidden by default).
+        showMonitoringCard: true,
         policy: { ...r.policy!, screenshots: { ...r.policy!.screenshots, enabled: true, perTenMinutes: 2, blur: true, notify: true }, apps: { enabled: false } },
         capabilities: { input: true, screenshots: true, apps: true, urls: true },
       }),
@@ -45,11 +47,20 @@ test.describe('Desktop start-up and tracking transparency', () => {
   });
 
   test('Settings repeats it, and says when this computer cannot record something', async ({ page, openDesktop, workerDevice }) => {
-    await openDesktop(workerDevice, { state: (r) => ({ ...r, policy: { ...r.policy!, apps: { enabled: true } }, capabilities: { input: true, screenshots: true, apps: false, urls: true } }) });
+    await openDesktop(workerDevice, { state: (r) => ({ ...r, showMonitoringCard: true, policy: { ...r.policy!, apps: { enabled: true } }, capabilities: { input: true, screenshots: true, apps: false, urls: true } }) });
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Settings', exact: true }).click();
     const card = page.getByRole('region', { name: 'What WorkPulse records' });
     await expect(card.getByRole('listitem').filter({ hasText: 'Apps' })).toContainText('This computer does not allow it');
     // Sign out stays reachable below the card.
     await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+  });
+
+  test('hidden by default: neither Home nor Settings shows the card', async ({ page, openDesktop, workerDevice }) => {
+    await openDesktop(workerDevice, { state: (r) => ({ ...r, showMonitoringCard: false }) });
+    await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
+    await expect(page.getByRole('region', { name: 'What WorkPulse records' })).toHaveCount(0);
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'What WorkPulse records' })).toHaveCount(0);
   });
 });

@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { Archive, MoreHorizontal, Pencil, Plus, RotateCcw } from 'lucide-react';
 import type { OffsetPage, ProjectDto, TaskDto } from '@tallywork/contracts';
 import {
-  Avatar,
   Button,
   ConfirmDialog,
   DataTable,
@@ -30,6 +29,7 @@ import { todayIn, useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { ColorDot, PriorityBadge, TASK_STATUSES, TaskDialog, TaskStatusSelect, useOrgAction } from '@/components/workspace/shared';
 import { useMemberOptions } from '@/lib/members';
+import { MemberAvatar } from '@/lib/avatars';
 
 export default function TasksPage() {
   const org = useOrg();
@@ -87,13 +87,13 @@ export default function TasksPage() {
           <span className="text-xs text-text-faint">Unassigned</span>
         ) : t.assignee_ids.length === 1 ? (
           <span className="flex items-center gap-1.5">
-            <Avatar name={nameOf(t.assignee_ids[0]!)} size={20} />
+            <MemberAvatar membershipId={t.assignee_ids[0]} name={nameOf(t.assignee_ids[0]!)} size={20} />
             <span className="truncate text-sm">{nameOf(t.assignee_ids[0]!)}</span>
           </span>
         ) : (
           <span className="flex items-center -space-x-1.5" title={t.assignee_ids.map(nameOf).join(', ')}>
             {t.assignee_ids.slice(0, 4).map((a) => (
-              <Avatar key={a} name={nameOf(a)} size={20} className="ring-2 ring-surface" />
+              <MemberAvatar key={a} membershipId={a} name={nameOf(a)} size={20} className="ring-2 ring-surface" />
             ))}
             <span className="sr-only">{t.assignee_ids.map(nameOf).join(', ')}</span>
           </span>

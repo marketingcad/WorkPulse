@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { ArrowDown, ArrowUp, CalendarOff, Copy, Download, History, Lock, MoreHorizontal, Pencil, Plus, Save, Scissors, Trash2 } from 'lucide-react';
 import type { ClientDto, InsightsDto, OffsetPage, ProjectDto, TaskDto, TimeEntryDto, TimeEntryPageSummary, TimeTypeDto } from '@tallywork/contracts';
 import {
-  Avatar,
   Badge,
   Button,
   Checkbox,
@@ -43,6 +42,7 @@ import { DeleteEntryDialog, EditEntryDialog, ManualTimeDialog, RevisionsDrawer, 
 import { TimeTypeBadge } from '@/components/settings/time-type-badge';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemberOptions } from '@/lib/members';
+import { MemberAvatar } from '@/lib/avatars';
 
 type Preset = 'today' | 'yesterday' | 'this_week' | 'prev_week' | 'this_month' | 'prev_month' | 'custom';
 type Action = {
@@ -477,7 +477,7 @@ export default function AllTimeEntriesPage() {
                         >
                           <Checkbox aria-label="Select entry" checked={selected.has(e.id)} disabled={!mayEdit(e)} onChange={() => toggle(e.id)} />
                           <span className="flex min-w-0 items-center gap-2">
-                            <Avatar name={e.worker_name ?? '?'} size={22} />
+                            <MemberAvatar membershipId={e.membership_id} name={e.worker_name ?? '?'} size={22} />
                             <span className="truncate">{e.worker_name}</span>
                           </span>
                           <span className="min-w-0 flex-1 basis-56 xl:basis-auto">

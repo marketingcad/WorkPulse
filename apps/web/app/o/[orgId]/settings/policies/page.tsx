@@ -2,7 +2,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Info, RotateCcw } from 'lucide-react';
-import { fieldLabel, type TeamDto } from '@tallywork/contracts';
+import type { TeamDto } from '@tallywork/contracts';
+// The subpath: the package root would bring every schema and zod into the page.
+import { fieldLabel } from '@tallywork/contracts/messages';
 import type { TrackingPolicy } from '@tallywork/domain';
 import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, Input, PageHeader, Panel, PermissionState, SegmentedControl, Select, SkeletonRows, Switch, Textarea, cx, fmtDateTime, useToast } from '@tallywork/ui';
 import { ApiError, useOrgMutation, useOrgQuery } from '@/lib/api';
@@ -10,6 +12,7 @@ import { useOrg } from '@/lib/org';
 import { POLICY_SECTIONS, displayPolicyValue, type PolicyField } from '@/components/settings/policy-fields';
 import { useMemberOptions } from '@/lib/members';
 import { useUnsavedChanges } from '@/lib/unsaved';
+import { MonitoringCardPanel } from '@/components/settings/monitoring-card-panel';
 
 type ScopeType = 'ORG' | 'TEAM' | 'WORKER';
 type Doc = Record<string, Record<string, unknown>>;
@@ -100,7 +103,9 @@ export default function PoliciesPage() {
             )}
           </>
         }
-      />
+      />      {/* Organization-wide, not part of the policy layers below. */}
+      <MonitoringCardPanel />
+
 
       <div className="mb-4 flex items-start gap-2.5 rounded-md border border-info/30 bg-info-soft px-4 py-3 text-sm text-info" role="note">
         <Info className="mt-0.5 size-4 shrink-0" aria-hidden />

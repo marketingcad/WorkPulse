@@ -2,7 +2,8 @@ import { del, get, put } from '@vercel/blob';
 import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 
 /**
- * Object storage abstraction. Keys are always prefixed `org/{orgId}/...`.
+ * Object storage abstraction. Keys are prefixed `org/{orgId}/...`, except profile pictures, which
+ * belong to the user account across organizations: `avatars/{userId}/...` (services/avatar.ts).
  * Private objects are never served directly; the API streams them after an
  * authorization check.
  */

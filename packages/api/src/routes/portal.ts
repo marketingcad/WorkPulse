@@ -1,11 +1,12 @@
 import { Hono, type Context } from 'hono';
-import { clientPortalAcceptInput, portalRangeInput } from '@tallywork/contracts';
+import { appreciationInput, clientPortalAcceptInput, portalRangeInput } from '@tallywork/contracts';
 import { DomainError, isUuid, notFound } from '@tallywork/domain';
 import type { AppEnv } from '../context';
 import { body, query } from '../lib/http';
 import { rateLimit } from '../middleware/rate-limit';
 import { clientIp } from '../lib/cidr';
 import { startUserSession } from './auth';
+import { portalInsights, submitAppreciation } from '../services/portal-insights';
 import { acceptPortalInvitation, listMyPortals, loadPortalAccess, portalScreenshots, portalSummary, type PortalAccess } from '../services/portal';
 
 function viewer(c: Context<AppEnv>): string {
@@ -39,4 +40,6 @@ export const portalRoutes = new Hono<AppEnv>()
   .use(rateLimit('portal', 120, 60))
   .get('/', async (c) => c.json(await listMyPortals(c.var.deps, viewer(c))))
   .get('/:accessId/summary', async (c) => c.json(await portalSummary(c.var.deps, await viewerAccess(c), query(c, portalRangeInput))))
+  .get('/:accessId/insights', async (c) => c.json(await portalInsights(c.var.deps, await viewerAccess(c))))
+  .post('/:accessId/appreciations', rateLimit('portal-appreciation', 10, 3600), async (c) => c.json(await submitAppreciation(c.var.deps, await viewerAccess(c), await body(c, appreciationInput)), 201))
   .get('/:accessId/screenshots', async (c) => c.json(await portalScreenshots(c.var.deps, await viewerAccess(c), query(c, portalRangeInput))));

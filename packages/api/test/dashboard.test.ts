@@ -223,3 +223,18 @@ describe.skipIf(!process.env.LOAD_SMOKE)('latency', () => {
     expect(p95).toBeLessThan(300);
   }, 120_000);
 });
+
+describe('this week against last week', () => {
+  it('gives last week day by day, adding up to its total, so a week in progress is compared with the same days', async () => {
+    await addTime(aId, '2026-09-15T13:00:00Z', 7200); // last Tuesday
+    await addTime(aId, '2026-09-18T13:00:00Z', 3600); // last Friday
+    await t.flush();
+    const w = (await widgets(admin, ['tracked_week'])).body.tracked_week as { by_day: Array<{ date: string }>; previous_seconds: number; previous_by_day: Array<{ date: string; seconds: number }> };
+    expect(w.previous_by_day).toHaveLength(7);
+    // The same weekdays, a week earlier.
+    expect(w.previous_by_day.map((d) => d.date)).toEqual(w.by_day.map((d) => new Date(Date.parse(`${d.date}T12:00:00Z`) - 7 * 86400000).toISOString().slice(0, 10)));
+    expect(w.previous_by_day.reduce((s, d) => s + d.seconds, 0)).toBe(w.previous_seconds);
+    expect(w.previous_by_day.find((d) => d.date === '2026-09-15')?.seconds).toBe(7200);
+    expect(w.previous_by_day.find((d) => d.date === '2026-09-18')?.seconds).toBe(3600);
+  });
+});

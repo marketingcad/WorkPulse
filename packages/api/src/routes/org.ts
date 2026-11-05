@@ -22,7 +22,9 @@ import {
 import type { AppEnv } from '../context';
 import { body, formFile, parse, query } from '../lib/http';
 import { requirePermission } from '../middleware/tenant';
+import { requireUser } from '../middleware/auth';
 import { ctx } from '../services/ctx';
+import { avatarResponse, memberAvatarImage, memberAvatars } from '../services/avatar';
 import {
   deleteRole,
   getMemberDetails,
@@ -89,6 +91,9 @@ export const orgRoutes = new Hono<AppEnv>()
 
   // Workers & invitations
   // Sending `page` returns { data, total, page, page_size }; without it, every member as before.
+  // Profile pictures of the members the caller may see (theirs, plus whom members:read covers).
+  .get('/avatars', requireUser, async (c) => c.json(await memberAvatars(ctx(c))))
+  .get('/avatars/:membershipId', requireUser, async (c) => avatarResponse(await memberAvatarImage(ctx(c), c.req.param('membershipId')), c.req.query('v')))
   .get('/workers', requirePermission('members:read'), async (c) => {
     const q = query(c, pageQuery.extend({ include_removed: bool, view: z.enum(['current', 'former']).optional(), status: z.enum(['INVITED', 'ACTIVE', 'SUSPENDED', 'REMOVED']).optional(), role_id: z.uuid().optional() }));
     const filters = { includeRemoved: q.include_removed, view: q.view, status: q.status, roleId: q.role_id, search: q.q };

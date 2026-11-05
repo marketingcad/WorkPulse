@@ -24,7 +24,7 @@ import { listTasks } from './work';
  * Screenshots are never readable from a device; edits and approvals are never possible.
  * Revoking the device ends access immediately (loadAgentCtx checks on every request).
  */
-const OWN: Permission[] = ['tracking:read', 'activity:read', 'apps:read', 'time:read', 'timesheets:read', 'timesheets:submit', 'schedules:read', 'time_off:read', 'time_off:request', 'reports:read'];
+const OWN: Permission[] = ['tracking:read', 'activity:read', 'apps:read', 'time:read', 'timesheets:read', 'timesheets:submit', 'schedules:read', 'time_off:read', 'time_off:request', 'reports:read', 'performance:read', 'goals:read', 'achievements:read'];
 const ASSIGNED: Permission[] = ['projects:read', 'tasks:read'];
 const RANK: Record<Scope, number> = { own: 0, assigned: 1, team: 2, org: 3 };
 
@@ -209,4 +209,12 @@ export async function cancelMyTimeOff(a: AgentCtx, id: string) {
 
 export async function readMyNotifications(a: AgentCtx, ids: string[] | 'all') {
   await markNotificationsRead(await ownCtx(a), ids);
+}
+
+/** The worker's own goals, badges, recognition and progress (Performance Center, desktop). */
+export async function myPerformanceData(a: AgentCtx) {
+  const x = await ownCtx(a);
+  need(x, 'performance:read');
+  const { myPerformance } = await import('./my-performance');
+  return myPerformance(x);
 }

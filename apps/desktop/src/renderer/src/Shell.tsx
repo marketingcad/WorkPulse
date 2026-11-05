@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Bell, CalendarClock, CalendarDays, CalendarOff, ChevronDown, Clock, CloudOff, Home, LogOut, Menu, Receipt, RefreshCw, Settings, X } from 'lucide-react';
+import { Bell, CalendarClock, CalendarDays, CalendarOff, ChevronDown, Clock, CloudOff, Home, LogOut, Menu, Receipt, RefreshCw, Settings, Trophy, X } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
-import { bridge, fmtTime, initials, leave, useDialogFocus, useMe, useTick, viewForLink, type View } from './lib';
+import { bridge, fmtTime, leave, useDialogFocus, useMe, useTick, viewForLink, type View } from './lib';
 import { GROUP_OF, NAV_GROUPS, groupFor } from './nav';
 import type { NotificationsDto } from './types';
 import { Mark } from './brand';
+import { WorkerAvatar } from './WorkerAvatar';
 
 /** Icon for each nav group, keyed by the group's `icon` id (the nav model itself stays icon-free and testable). */
 const GROUP_ICON: Record<string, ReactNode> = {
@@ -13,6 +14,7 @@ const GROUP_ICON: Record<string, ReactNode> = {
   timesheet: <CalendarDays className="size-4" />,
   timeoff: <CalendarOff className="size-4" />,
   schedule: <CalendarClock className="size-4" />,
+  performance: <Trophy className="size-4" />,
   paystubs: <Receipt className="size-4" />,
   settings: <Settings className="size-4" />,
 };
@@ -34,6 +36,12 @@ function NavList({ view, go, onPick }: { view: View; go: (v: View) => void; onPi
           {active === i.v && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[#3b82ff]" aria-hidden />}
           {GROUP_ICON[i.icon]}
           {i.label}
+          {i.badge && ' '}
+          {i.badge && (
+            <span aria-hidden className="ml-auto rounded-full bg-[#4d8dff]/22 px-1.5 text-[10px] font-semibold leading-4 tracking-wide text-[#a9c6ff]">
+              {i.badge}
+            </span>
+          )}
         </button>
       ))}
     </>
@@ -233,16 +241,19 @@ function ProfileMenu({ s }: { s: AgentState }) {
   return (
     <div ref={pop.ref} className="relative">
       <button onClick={() => pop.setOpen((o) => !o)} aria-expanded={pop.open} aria-haspopup="menu" aria-label="Profile" className="flex items-center gap-2 rounded-sm p-1 hover:bg-white/10 md:pr-2">
-        <span className="flex size-7 items-center justify-center rounded-full bg-interactive text-2xs font-semibold text-on-accent">{initials(s.account!.name)}</span>
+        <WorkerAvatar s={s} size={28} />
         <span className="hidden max-w-36 truncate text-sm md:inline">{s.account!.name}</span>
         <ChevronDown className="hidden size-3.5 text-nav-muted md:block" />
       </button>
       {pop.open && (
         <div className="absolute right-0 top-10 z-30 w-60 overflow-hidden rounded-md border border-border bg-surface py-1 text-text shadow-overlay" role="menu">
-          <div className="border-b border-border px-3 pb-2 pt-1.5">
-            <div className="truncate text-sm font-semibold">{s.account!.name}</div>
-            <div className="truncate text-xs text-text-muted">{s.account!.email}</div>
-            <div className="truncate text-2xs text-text-faint">{s.account!.organization}</div>
+          <div className="flex items-center gap-2.5 border-b border-border px-3 pb-2 pt-1.5">
+            <WorkerAvatar s={s} size={36} />
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold">{s.account!.name}</div>
+              <div className="truncate text-xs text-text-muted">{s.account!.email}</div>
+              <div className="truncate text-2xs text-text-faint">{s.account!.organization}</div>
+            </div>
           </div>
           <button role="menuitem" className={`${item} text-danger`} onClick={pick(() => leave(s, 'logout'))}>
             <LogOut className="size-4" /> Sign out

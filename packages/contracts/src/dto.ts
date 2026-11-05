@@ -3,9 +3,10 @@
  * snake_case on the wire; timestamps are ISO strings.
  */
 import type { Grants, TrackingPolicy } from '@tallywork/domain';
+import type { AvatarDto } from './avatars';
 
 export interface MeDto {
-  user: { id: string; name: string; email: string; email_verified: boolean; mfa_enabled: boolean; locale: string; /** finished or skipped the product tour */ tour_done: boolean };
+  user: { id: string; name: string; email: string; email_verified: boolean; mfa_enabled: boolean; locale: string; /** finished or skipped the product tour */ tour_done: boolean; /** their profile picture (the same in every organization) */ avatar: AvatarDto };
   organizations: Array<{ id: string; slug: string; name: string; role_key: string; role_name: string; membership_id: string; is_owner: boolean }>;
   /** client portals this person can open (they are a client viewer, not a member) */
   client_portals: Array<{ access_id: string; organization_name: string; client_name: string }>;
@@ -567,7 +568,8 @@ export interface EffectivePolicyDto {
 }
 
 export interface AgentBootstrapDto {
-  organization: { id: string; name: string; timezone: string };
+  /** show_monitoring_card: the organization shows workers the "What WorkPulse records" card (an admin setting; off by default) */
+  organization: { id: string; name: string; timezone: string; show_monitoring_card: boolean };
   worker: { membership_id: string; name: string; email: string; timezone: string };
   device: { id: string; status: string };
   policy: TrackingPolicy;

@@ -20,7 +20,6 @@ import {
   PageHeader,
   Panel,
   PermissionState,
-  PersonCell,
   Select,
   Textarea,
   useToast,
@@ -28,8 +27,9 @@ import {
 } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
-import { ColorDot, useOrgAction } from '@/components/workspace/shared';
+import { ColorDot, useOrgAction } from '@/components/workspace/basics';
 import { useMemberOptions } from '@/lib/members';
+import { MemberCell } from '@/lib/avatars';
 
 export default function TeamsPage() {
   const org = useOrg();
@@ -304,7 +304,7 @@ function TeamDrawer({ team, onClose, projects, canManage }: { team: TeamDto | nu
               {team.members.map((m) => (
                 <li key={m.membership_id} className="flex items-center gap-3 px-5 py-2">
                   <Link href={`${org.base}/workers/${m.membership_id}`} className="min-w-0 flex-1 hover:underline">
-                    <PersonCell name={m.name} />
+                    <MemberCell membershipId={m.membership_id} name={m.name} />
                   </Link>
                   {canManage ? (
                     <>

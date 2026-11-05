@@ -4,12 +4,13 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { CheckCheck, ExternalLink } from 'lucide-react';
 import type { ApprovalQueueItemDto, OffsetPage } from '@tallywork/contracts';
-import { ActivityBar, Button, DataTable, Drawer, EmptyState, ErrorState, Input, Panel, PersonCell, SkeletonRows, StatusBadge, Tabs, cx, fmtDateTime, useToast, type Column } from '@tallywork/ui';
+import { ActivityBar, Button, DataTable, Drawer, EmptyState, ErrorState, Input, Panel, SkeletonRows, StatusBadge, Tabs, cx, fmtDateTime, useToast, type Column } from '@tallywork/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { FlagBadges, periodLabel, type BulkResult } from '@/components/timesheets/shared';
+import { MemberCell } from '@/lib/avatars';
 
 // Loaded when a timesheet is opened, not with the page: the queue itself loads faster.
 const TimesheetView = dynamic(() => import('@/components/timesheets/timesheet-view').then((m) => m.TimesheetView), { loading: () => <SkeletonRows rows={6} /> });
@@ -60,7 +61,7 @@ export function ApprovalQueue() {
   };
 
   const columns: Column<ApprovalQueueItemDto>[] = [
-    { key: 'member', header: 'Member', cell: (r) => <PersonCell name={r.worker_name} />, value: (r) => r.worker_name, priority: 'primary' },
+    { key: 'member', header: 'Member', cell: (r) => <MemberCell membershipId={r.membership_id} name={r.worker_name} />, value: (r) => r.worker_name, priority: 'primary' },
     { key: 'period', header: 'Period', cell: (r) => <span className="tabular whitespace-nowrap">{periodLabel(r.period_start, r.period_end)}</span>, value: (r) => r.period_start, priority: 'secondary' },
     { key: 'total', header: 'Total', align: 'right', cell: (r) => <span className="font-medium">{d(r.total_seconds)}</span>, value: (r) => r.total_seconds, priority: 'secondary' },
     { key: 'expected', header: 'Expected', align: 'right', cell: (r) => (r.expected_seconds != null ? d(r.expected_seconds) : <span className="text-text-faint">—</span>), value: (r) => r.expected_seconds ?? -1 },

@@ -5,7 +5,7 @@ import type { UsageRowDto } from '@tallywork/contracts';
 import { Button, DataTable, EmptyState, ErrorState, FilterBar, Panel, PermissionState, SegmentedControl, SkeletonRows, fmtPct, type Column } from '@tallywork/ui';
 import { qs, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
-import { StackedBars } from '@/components/charts';
+import { BarList } from '@/components/charts-lazy';
 import { DateRangeFilter, MemberFilter, useDefaultRange } from './filters';
 import { SpansDrawer } from './spans-drawer';
 import type { DateRange } from './time';
@@ -110,7 +110,7 @@ export function UsageView({ kind, initialMember }: { kind: 'apps' | 'urls'; init
               <SkeletonRows rows={5} cols={2} />
             ) : (groupBy === 'name' ? chartRows : chartGroupRows).length ? (
               <div className="p-4">
-                <StackedBars rows={groupBy === 'name' ? chartRows : chartGroupRows} format={org.fmtDuration} />
+                <BarList rows={groupBy === 'name' ? chartRows : chartGroupRows} format={org.fmtDuration} />
               </div>
             ) : (
               <EmptyState title="Nothing to chart" />

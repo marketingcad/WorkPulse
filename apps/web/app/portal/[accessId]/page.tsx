@@ -1,18 +1,23 @@
 'use client';
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import type { PortalScreenshotDto, PortalSummaryDto } from '@tallywork/contracts';
-import { ErrorState, Spinner } from '@tallywork/ui';
+import { ErrorState, Spinner, Tabs } from '@tallywork/ui';
 import { PortalDashboard } from '@/components/portal/portal-dashboard';
 import { PortalToolbar } from '@/components/portal/portal-toolbar';
 import { api } from '@/lib/api';
+import { t } from '@/lib/i18n';
+
+// Insights (delivery facts and appreciation) load when the tab opens.
+const PortalInsightsTab = lazy(() => import('@/components/portal/portal-insights'));
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 export default function PortalPage() {
   const { accessId } = useParams<{ accessId: string }>();
   const [range, setRange] = useState(() => ({ from: iso(new Date(Date.now() - 29 * 86_400_000)), to: iso(new Date()) }));
+  const [tab, setTab] = useState('dashboard');
   const qs = `?from=${range.from}&to=${range.to}`;
   const summary = useQuery({ queryKey: ['portal', accessId, 'summary', range], queryFn: () => api<PortalSummaryDto>(`/portal/${accessId}/summary${qs}`) });
   const shots = useQuery({ queryKey: ['portal', accessId, 'screenshots', range], queryFn: () => api<PortalScreenshotDto[]>(`/portal/${accessId}/screenshots${qs}`), enabled: !!summary.data?.sections.screenshots });
@@ -33,13 +38,31 @@ export default function PortalPage() {
   return (
     <>
       {toolbar}
-      <PortalDashboard
-        summary={summary.data}
-        screenshots={summary.data.sections.screenshots ? (shots.data ?? []) : null}
-        screenshotsLoading={summary.data.sections.screenshots && shots.isLoading}
-        range={range}
-        onRange={setRange}
-      />
+      <div className="mx-auto max-w-6xl px-4 pt-2">
+        <Tabs
+          value={tab}
+          onValueChange={setTab}
+          items={[
+            { value: 'dashboard', label: t('portal.tab.dashboard') },
+            { value: 'insights', label: t('portal.tab.insights') },
+          ]}
+        />
+      </div>
+      {tab === 'dashboard' ? (
+        <PortalDashboard
+          summary={summary.data}
+          screenshots={summary.data.sections.screenshots ? (shots.data ?? []) : null}
+          screenshotsLoading={summary.data.sections.screenshots && shots.isLoading}
+          range={range}
+          onRange={setRange}
+        />
+      ) : (
+        <div className="mx-auto max-w-6xl px-4 py-6">
+          <Suspense fallback={<Spinner />}>
+            <PortalInsightsTab accessId={accessId} />
+          </Suspense>
+        </div>
+      )}
     </>
   );
 }

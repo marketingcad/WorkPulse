@@ -5,7 +5,7 @@ import { expect, test } from '../../support/fixtures';
  * QA: an axe-core scan (WCAG 2.2 A/AA) of each primary screen of the worker's desktop app, with
  * the real page code and API (see support/fixtures.ts, openDesktop).
  */
-const SCREENS = ['Home', 'Track', 'Timesheet', 'Time off', 'Schedule', 'Pay stubs', 'Settings'];
+const SCREENS = ['Home', 'Track', 'Timesheet', 'Time off', 'Schedule', 'My performance', 'Pay stubs', 'Settings'];
 
 test.describe('QA · Desktop app accessibility', () => {
   for (const screen of SCREENS) {

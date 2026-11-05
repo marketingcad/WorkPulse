@@ -7,7 +7,7 @@ import type { Page, View } from './lib';
  * app has is reachable here.
  */
 export type NavTab = { v: View; label: string };
-export type NavGroup = { v: Page; label: string; icon: string; tabs?: NavTab[] };
+export type NavGroup = { v: Page; label: string; icon: string; tabs?: NavTab[]; /** a small tag after the label, e.g. "New" */ badge?: string };
 
 export const NAV_GROUPS: NavGroup[] = [
   { v: 'home', label: 'Home', icon: 'home' },
@@ -31,6 +31,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { v: 'reports', label: 'Reports' },
     ],
   },
+  { v: 'performance', label: 'My performance', icon: 'performance', badge: 'New' },
   { v: 'timeoff', label: 'Time off', icon: 'timeoff' },
   { v: 'schedule', label: 'Schedule', icon: 'schedule' },
   { v: 'paystubs', label: 'Pay stubs', icon: 'paystubs' },
@@ -49,6 +50,7 @@ export const GROUP_OF: Record<View, Page> = {
   reports: 'timesheet',
   timeoff: 'timeoff',
   schedule: 'schedule',
+  performance: 'performance',
   paystubs: 'paystubs',
   settings: 'settings',
 };

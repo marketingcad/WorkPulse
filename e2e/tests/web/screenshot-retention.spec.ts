@@ -14,7 +14,7 @@ test.describe('Screenshot retention (admin)', () => {
   test('the policy saves, is validated, and survives a reload', async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}/settings/screenshot-retention`);
     await expect(page.getByRole('heading', { level: 1, name: 'Screenshot retention' })).toBeVisible();
-    await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Screenshot retention' })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('complementary', { name: 'Primary' }).getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Screenshot retention' })).toHaveAttribute('aria-current', 'page');
     const days = page.getByLabel('Keep screenshots for');
     await expect(days).toHaveValue('30');
     await expect(page.getByLabel('Time', { exact: true })).toHaveValue('02:00');

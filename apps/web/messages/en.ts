@@ -77,7 +77,6 @@ export const webEn = {
   'nav.settings.people': 'People and access',
   'nav.settings.data': 'Data and privacy',
   'nav.settings.integrations': 'Integrations',
-  'nav.settings.section': 'Settings section',
 
   // App shell chrome
   'shell.demoData': 'Demo data',

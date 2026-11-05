@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ROLE_PRESETS, type Grants, type Permission, type Scope } from '@tallywork/domain';
-import { activeNav, filterNav, type NavGroup } from '../components/shell/nav';
+import { activeNav, filterNav, subnavGroups, type NavGroup } from '../components/shell/nav';
 import { precedenceText } from '../components/finance/rate-precedence';
 
 /** The sidebar a person with these grants sees (same `can` as the org context). */
@@ -49,6 +49,36 @@ describe('admin sidebar', () => {
     expect(item(nav, 'nav.item.members')!.tabs!.map((t) => t.href)).toEqual(['/workers', '/teams']);
     expect(item(nav, 'nav.item.schedulesAttendance')!.tabs!.map((t) => t.href)).toEqual(['/schedules', '/attendance']);
     expect(item(nav, 'nav.item.invoices')!.tabs!.map((t) => t.href)).toEqual(['/finance/invoices', '/finance/invoices/payments']);
+  });
+});
+
+describe('sidebar dropdown (subnavGroups)', () => {
+  it('lists the Settings pages by topic for an admin', () => {
+    const groups = subnavGroups(item(navFor(ROLE_PRESETS.SYSTEM_ADMIN), 'nav.item.settings')!)!;
+    expect(groups.map((g) => [g.group, g.tabs.map((t) => t.href)])).toEqual([
+      ['nav.settings.general', ['/settings']],
+      ['nav.settings.time', ['/settings/time', '/settings/policies']],
+      ['nav.settings.people', ['/settings/roles', '/settings/access-review', '/devices']],
+      ['nav.settings.data', ['/settings/security', '/settings/screenshot-retention', '/settings/audit']],
+      ['nav.settings.integrations', ['/developer/api-keys', '/developer/webhooks']],
+    ]);
+  });
+
+  it('only lists the pages the person may open, and drops empty topics', () => {
+    const groups = subnavGroups(item(navFor(ROLE_PRESETS.TEAM_MANAGER), 'nav.item.settings')!)!;
+    expect(groups.map((g) => [g.group, g.tabs.map((t) => t.href)])).toEqual([
+      ['nav.settings.time', ['/settings/policies']],
+      ['nav.settings.people', ['/devices']],
+    ]);
+  });
+
+  it('is a plain link with one allowed page, and items with ungrouped tabs keep their tab bar', () => {
+    const nav = navFor({ 'org:read': 'org', 'devices:read': 'org', 'tracking:read': 'team' });
+    expect(item(nav, 'nav.item.settings')!.tabs).toHaveLength(1);
+    expect(subnavGroups(item(nav, 'nav.item.settings')!)).toBeNull();
+    const admin = navFor(ROLE_PRESETS.SYSTEM_ADMIN);
+    expect(subnavGroups(item(admin, 'nav.item.members')!)).toBeNull();
+    expect(subnavGroups(item(admin, 'nav.item.clients')!)).toBeNull();
   });
 });
 

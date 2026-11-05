@@ -3,9 +3,10 @@ import { choice, expect, label, test } from '../kit';
 test('04.1', async ({ d, page }) => {
   await d.go('');
   d.begin();
-  await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('link', { name: 'Settings' }));
+  await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('button', { name: 'Settings', exact: true }));
+  await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Organization' }));
   await expect(page.getByRole('heading', { level: 1, name: 'Organization' })).toBeVisible();
-  await d.mark('zoom to the Settings tabs', page.getByRole('navigation', { name: 'Settings' }));
+  await d.mark('zoom to the Settings menu', page.getByRole('complementary', { name: 'Primary' }).getByRole('navigation', { name: 'Settings' }));
   await d.beat(2500);
   await d.mark('zoom to the General panel', page.getByLabel('Organization name'));
   for (const name of ['Organization name', 'Time zone', 'Week starts on', 'Currency', 'Duration format']) await d.point(page.getByLabel(label(name)), { hold: 1100 });
@@ -19,7 +20,7 @@ test('04.1', async ({ d, page }) => {
 test('04.2', async ({ d, page }) => {
   await d.go('/settings');
   d.begin();
-  await d.click(page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Time & pay' }));
+  await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Time & pay' }));
   const period = page.getByLabel(label('Timesheet period'));
   await d.mark('zoom to Timesheet period', period);
   await d.point(period, { hold: 2500 });
@@ -47,7 +48,7 @@ test('04.2', async ({ d, page }) => {
 test('04.3', async ({ d, page }) => {
   await d.go('/settings/time');
   d.begin();
-  await d.click(page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Tracking policies' }));
+  await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Tracking policies' }));
   await expect(page.getByRole('heading', { level: 1, name: 'Tracking policies' })).toBeVisible();
   await d.beat(2500);
   for (const section of ['Activity', 'Idle', 'Screenshots', 'Apps', 'URLs']) {
@@ -71,7 +72,7 @@ test('04.3', async ({ d, page }) => {
 test('04.4', async ({ d, page }) => {
   await d.go('/settings/policies');
   d.begin();
-  await d.click(page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Roles & permissions' }));
+  await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Roles & permissions' }));
   const matrix = page.getByRole('region', { name: 'Permissions by role' });
   await d.mark('zoom to the permission matrix', matrix);
   await d.point(matrix, { hold: 2500 });

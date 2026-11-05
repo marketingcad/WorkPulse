@@ -32,9 +32,12 @@ test.describe('navigation', () => {
     await expect(sidebar(page).getByRole('link', { name: 'Invoices' })).toBeVisible();
   });
 
-  test('Settings shows every section under its topic, and a list of them on a phone', async ({ page, data }) => {
+  test('Settings is a dropdown in the sidebar with every section under its topic, also in the phone menu', async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}/settings`);
-    const nav = page.getByRole('navigation', { name: 'Settings' });
+    // Open on a settings page, and no tab panel above the page any more.
+    await expect(sidebar(page).getByRole('button', { name: 'Settings', exact: true })).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByRole('main').getByRole('navigation')).toHaveCount(0);
+    const nav = sidebar(page).getByRole('navigation', { name: 'Settings' });
     for (const [group, items] of [
       ['General', ['Organization']],
       ['Time and attendance', ['Time & pay', 'Tracking policies']],
@@ -46,12 +49,42 @@ test.describe('navigation', () => {
       for (const item of items) await expect(g.getByRole('link', { name: item })).toBeVisible();
     }
     await expect(nav.getByRole('link', { name: 'Organization' })).toHaveAttribute('aria-current', 'page');
-    expect((await new AxeBuilder({ page }).include('main nav').withTags(['wcag2a', 'wcag2aa']).analyze()).violations).toEqual([]);
+    expect((await new AxeBuilder({ page }).include('aside').withTags(['wcag2a', 'wcag2aa']).analyze()).violations).toEqual([]);
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByLabel('Settings section').selectOption({ label: 'Audit log' });
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    const drawer = page.getByRole('dialog', { name: 'Navigation' });
+    await expect(drawer.getByRole('button', { name: 'Settings', exact: true })).toHaveAttribute('aria-expanded', 'true');
+    await drawer.getByRole('navigation', { name: 'Settings' }).getByRole('group', { name: 'Data and privacy' }).getByRole('link', { name: 'Audit log' }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/settings/audit$`));
-    await expect(page.getByLabel('Settings section')).toHaveValue('/settings/audit');
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await expect(drawer.getByRole('link', { name: 'Audit log' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  test('the Settings dropdown opens and closes, stays closed off Settings, and is a flyout on the icon rail', async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}`);
+    const toggle = sidebar(page).getByRole('button', { name: 'Settings', exact: true });
+    // Closed away from Settings: its eleven pages do not crowd the sidebar.
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(sidebar(page).getByRole('link', { name: 'Webhooks', includeHidden: true }).locator('xpath=ancestor::*[@inert]')).toHaveCount(1);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await sidebar(page).getByRole('link', { name: 'Webhooks' }).click();
+    await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/developer/webhooks$`));
+    await expect(sidebar(page).getByRole('link', { name: 'Webhooks' })).toHaveAttribute('aria-current', 'page');
+    // It closes on a settings page too (the page stays where it is).
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(sidebar(page).getByRole('link', { name: 'Webhooks', includeHidden: true }).locator('xpath=ancestor::*[@inert]')).toHaveCount(1);
+    await toggle.click();
+
+    // Icon-only rail: the Settings icon opens a menu of the same sections.
+    await sidebar(page).getByRole('button', { name: 'Collapse navigation' }).click();
+    await sidebar(page).getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: 'Webhooks' })).toBeVisible();
+    await page.getByRole('menuitem', { name: 'Audit log' }).click();
+    await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/settings/audit$`));
+    await sidebar(page).getByRole('button', { name: 'Expand navigation' }).click();
   });
 
   test('the top bar Help opens this page’s guide, once, and not on Help itself', async ({ page, data }) => {

@@ -1,0 +1,79 @@
+{
+  "$comment": "Every automated test file belongs to exactly one quality gate. `node scripts/quality-gates.mjs check` fails when a test file is in no gate, in two, or listed but missing. Vitest entries are file names without .test.ts per package folder; Playwright entries are spec paths under e2e/tests without .spec.ts. See docs/QUALITY_GATES.md.",
+  "gates": {
+    "1": {
+      "name": "Business correctness",
+      "severity": "Critical",
+      "covers": "Time tracking, session state, timesheets, payroll, invoicing, money maths, permissions, authentication and tenant isolation.",
+      "vitest": {
+        "packages/domain": ["domain", "overtime"],
+        "packages/db": ["rls", "migrations", "performance"],
+        "packages/api": [
+          "access-consistency", "agent-login", "agent-me", "audit-oct28", "audit-phase1", "breaks-eod", "compliance", "device-approval",
+          "finance", "flow", "forms-phase4", "integrations", "invitations", "mfa-hardening", "money-p0", "money-p1-safety", "money-phase3",
+          "offline-sync", "offline-sync.property", "payroll", "refused-time", "route-boundaries", "security", "security-auth", "security-authz",
+          "session-timeouts", "staff-profile", "support", "time-accuracy", "time-integrity", "time-money", "time-overlap", "time-product",
+          "timesheet-entry", "timesheet-rules", "timesheets", "tracking", "work-integrity", "work-scope"
+        ],
+        "apps/desktop": ["agent", "agent-start", "agent-offline", "agent-force-stop", "agent-breaks", "offline", "permissions"]
+      },
+      "playwright": [
+        "web/auth", "web/two-factor", "web/qa/api-security", "web/performance-permissions",
+        "web/time-entries", "web/time-rules", "web/timesheet-decisions", "web/consolidated", "web/offline-sync",
+        "web/money-p0", "web/invoices", "web/payroll",
+        "desktop/clock-breaks", "desktop/worker-status", "desktop/pay-stubs",
+        "electron/desktop-app", "electron/offline"
+      ]
+    },
+    "2": {
+      "name": "Product functionality",
+      "severity": "High",
+      "covers": "Web workflows, desktop screens, integrations, reports, notifications, the client portal, the Performance Center and the support console.",
+      "vitest": {
+        "packages/domain": ["performance", "screenshot-retention"],
+        "packages/api": [
+          "agent-time-off-cancel", "avatar", "client-delete", "clients", "dashboard", "email", "email-verification", "expense-rejection",
+          "finance-paging", "help-tutorial", "insights", "invoice-export-filters", "invoice-reminder", "mailer", "monitoring-card",
+          "new-organization", "org-route-rate-limits", "people-paging", "performance-center", "performance-foundation", "performance-integrity",
+          "performance-jobs-isolation", "policy-notice", "portal", "projects-details", "reports", "screenshot-cleanup", "seed", "simplification",
+          "storage", "tick-lease", "time-paging", "tour-preference", "work-rules", "workforce"
+        ],
+        "packages/ui": ["avatar", "catalog", "chart-math", "i18n", "pagination", "table"],
+        "apps/web": [
+          "api-errors", "avatar-crop", "calculator", "calculator-oracle", "calculator-position", "confirm-dialogs", "csv-import", "deps",
+          "download-guides", "download-platform", "duration-input", "help", "invoice-extra-lines", "money-input", "nav", "page-help", "redirect",
+          "table-actions", "time-off-overlap", "unsaved", "url-range", "zoned"
+        ],
+        "apps/desktop": ["agent-account", "agent-connect", "agent-monitoring-card", "disclosure", "errors", "nav", "updater", "urls"]
+      },
+      "playwright": [
+        "web/attendance-scheduled", "web/breaks-eod", "web/budgets", "web/calculator", "web/calculator-accuracy", "web/charts", "web/client-delete",
+        "web/csv-import", "web/data-export", "web/download", "web/finance-paging", "web/help", "web/help-video", "web/insights", "web/invitations",
+        "web/member-profile", "web/monitoring-card-setting", "web/navigation", "web/navigation-flows", "web/organizations", "web/people-paging",
+        "web/performance-achievements", "web/performance-goals", "web/performance-leaderboards", "web/performance-overview", "web/performance-teams",
+        "web/performance-workers", "web/portal", "web/portal-insights", "web/profile-avatar", "web/profiles", "web/project-milestones",
+        "web/qa/activity-default", "web/qa/people-flows", "web/qa/public-auth", "web/qa/settings-integrations", "web/qa/work-flows",
+        "web/screenshot-retention", "web/simplified-nav", "web/time-paging", "web/work-forms",
+        "desktop/avatar", "desktop/navigation", "desktop/performance", "desktop/startup-transparency",
+        "electron/sign-in-feedback"
+      ]
+    },
+    "3": {
+      "name": "Product quality",
+      "severity": "Standard",
+      "covers": "Accessibility, responsive layout, page weight, page health, loading and error states, form feedback and latency budgets.",
+      "vitest": {
+        "packages/db": ["pool-settings", "query-stats"],
+        "packages/api": ["ops", "server-timing", "validation-feedback"],
+        "packages/ui": ["field-aria"],
+        "apps/web": ["bundle-imports"]
+      },
+      "playwright": [
+        "web/a11y-sweep", "web/qa/a11y", "web/account-menu-theme", "web/menu-layout-shift", "web/mobile-dialogs", "web/mobile-sweep",
+        "web/mobile-tables", "web/qa/responsive", "web/qa/page-health", "web/qa/forms", "web/qa/naming", "web/qa/validation-feedback",
+        "web/forms-feedback",
+        "desktop/a11y", "desktop/accessibility"
+      ]
+    }
+  }
+}

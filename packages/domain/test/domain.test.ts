@@ -343,6 +343,19 @@ describe('money (Phase 9 gate)', () => {
     expect(resolveRate(rates, 'BILL', ctx('2025-12-31'))).toBeNull();
   });
 
+  // The documented orders (README, docs/PROJECT_CONTEXT.md): remove the winner one level at a time.
+  it.each([
+    ['BILL', ['PROJECT_WORKER', 'PROJECT', 'WORKER', 'CLIENT', 'ORG']],
+    ['PAY', ['PROJECT_WORKER', 'WORKER', 'PROJECT', 'CLIENT', 'ORG']],
+  ] as const)('should_pick_%s_rates_in_the_documented_precedence_order', (kind, order) => {
+    const scopeId = { ORG: null, CLIENT: 'c', PROJECT: 'p', WORKER: 'm', PROJECT_WORKER: 'p:m' } as const;
+    const ctx = { date: '2026-03-01', membershipId: 'm', projectId: 'p', clientId: 'c' };
+    const all = order.map((scope) => ({ id: scope, kind, scope, scopeId: scopeId[scope], amountMinor: 100, currency: 'USD', effectiveFrom: '2026-01-01', effectiveTo: null }));
+    for (let i = 0; i < order.length; i++) expect(resolveRate(all.slice(i), kind, ctx)!.id).toBe(order[i]);
+    // A rate of the other kind never stands in.
+    expect(resolveRate(all, kind === 'PAY' ? 'BILL' : 'PAY', ctx)).toBeNull();
+  });
+
   it.each([
     [{ explicit: 'DRAFT', totalMinor: 100, paidMinor: 0, dueDate: '2026-09-01', today: '2026-09-25' }, 'DRAFT'],
     [{ explicit: 'VOID', totalMinor: 100, paidMinor: 0, dueDate: '2026-09-01', today: '2026-09-25' }, 'VOID'],

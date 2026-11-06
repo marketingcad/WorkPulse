@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, ok, test, uid } from '../../../support/fixtures';
 import { ADMIN_STATE, VIEWER_STATE, WEB_URL } from '../../../support/env';
 
@@ -38,6 +39,17 @@ test.describe('QA · API keys (admin)', () => {
     await row.getByRole('button', { name: `Revoke ${name}` }).click();
     await page.getByRole('alertdialog').or(page.getByRole('dialog', { name: 'Revoke API key?' })).getByRole('button', { name: /Revoke/ }).click();
     await expect.poll(async () => (await call()).status).toBe(401);
+
+    // Regression: a revoked row used to be faded with opacity, which took its key prefix below the
+    // contrast minimum in dark mode. It stays readable in both themes; the badge says it is revoked.
+    await expect(row.getByText('Revoked')).toBeVisible();
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.reload();
+      await expect(row).toBeVisible();
+      const axe = await new AxeBuilder({ page }).include('table').withRules(['color-contrast']).analyze();
+      expect(axe.violations.flatMap((v) => v.nodes.map((n) => `${colorScheme}: ${n.target.join(' ')}`))).toEqual([]);
+    }
   });
 });
 

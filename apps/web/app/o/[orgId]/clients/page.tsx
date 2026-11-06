@@ -129,7 +129,7 @@ export default function ClientsPage() {
             searchPlaceholder="Search clients…"
             caption="Clients"
             initialSort={{ key: 'name', dir: 'asc' }}
-            rowClassName={(c) => (c.archived_at ? 'opacity-70' : undefined)}
+            rowClassName={(c) => (c.archived_at ? 'bg-surface-muted/50' : undefined)}
             toolbar={<Checkbox label="Show archived" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="text-xs" />}
             empty={
               <EmptyState

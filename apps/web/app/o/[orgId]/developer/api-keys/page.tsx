@@ -141,7 +141,7 @@ export default function ApiKeysPage() {
               columns={columns}
               rowKey={(k) => k.id}
               initialSort={{ key: 'created_at', dir: 'desc' }}
-              rowClassName={(k) => (k.revoked_at ? 'opacity-60' : undefined)}
+              rowClassName={(k) => (k.revoked_at ? 'bg-surface-muted/50' : undefined)}
               empty={
                 <EmptyState
                   icon={<KeyRound className="size-5" />}

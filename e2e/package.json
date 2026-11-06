@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "record": "playwright test --config playwright.record.config.ts",
     "live": "playwright test --config playwright.live.config.ts",
+    "ui-audit": "playwright test --config playwright.audit.config.ts",
     "tutorial:record": "playwright test --config playwright.tutorial.config.ts",
     "tutorial:package": "node ../node_modules/tsx/dist/cli.mjs tutorial/build-package.ts",
     "tutorial:render": "node ../node_modules/tsx/dist/cli.mjs tutorial/render.ts",

@@ -28,6 +28,7 @@
     "test:e2e:install": "pnpm --filter @tallywork/e2e install-browsers",
     "test:e2e:record": "pnpm --filter @tallywork/e2e record",
     "test:live": "pnpm --filter @tallywork/e2e live",
+    "test:e2e:audit": "pnpm --filter @tallywork/e2e ui-audit",
     "tutorial:record": "pnpm --filter @tallywork/e2e tutorial:record",
     "tutorial:package": "pnpm --filter @tallywork/e2e tutorial:package",
     "tutorial:render": "pnpm --filter @tallywork/e2e tutorial:render",

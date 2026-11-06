@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { assistantCreateInput, assistantRenameInput, pageQuery } from '@tallywork/contracts';
+import { z } from 'zod';
+import { assistantCreateInput, assistantRenameInput } from '@tallywork/contracts';
 import type { AppEnv } from '../context';
 import { body, query } from '../lib/http';
 import { ctx } from '../services/ctx';
@@ -12,12 +13,15 @@ import { createConversation, deleteConversation, getConversation, listConversati
  * roles. The `assistant:crud` rate limit is applied in app.ts before `tenant`, so its write does
  * not happen inside the tenant transaction (which would deadlock single-connection PGlite).
  */
+/** Conversations list: at most 50 per page. */
+const listQuery = z.object({ page: z.coerce.number().int().min(1).max(100_000).default(1), page_size: z.coerce.number().int().min(1).max(50).default(50) });
+
 export const assistantRoutes = new Hono<AppEnv>()
   .get('/conversations', async (c) => {
     const x = ctx(c);
     assertAssistantAccess(x);
-    const q = query(c, pageQuery);
-    return c.json(await listConversations(x, { page: q.page ?? 1, pageSize: q.page_size }));
+    const q = query(c, listQuery);
+    return c.json(await listConversations(x, { page: q.page, pageSize: q.page_size }));
   })
   .post('/conversations', async (c) => {
     const x = ctx(c);

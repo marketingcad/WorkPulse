@@ -83,12 +83,12 @@ export async function renameConversation(x: Ctx, id: string, title: string): Pro
   const [row] = await x.tx
     .update(assistantConversations)
     .set({ title, updatedAt: x.deps.now() })
-    .where(and(eq(assistantConversations.id, conv.id), eq(assistantConversations.organizationId, x.org.id)))
+    .where(and(eq(assistantConversations.id, conv.id), eq(assistantConversations.organizationId, x.org.id), eq(assistantConversations.membershipId, x.actor.membershipId)))
     .returning();
   return toDto(row!);
 }
 
 export async function deleteConversation(x: Ctx, id: string): Promise<void> {
   const conv = await ownedConversation(x.tx, x, id);
-  await x.tx.delete(assistantConversations).where(and(eq(assistantConversations.id, conv.id), eq(assistantConversations.organizationId, x.org.id)));
+  await x.tx.delete(assistantConversations).where(and(eq(assistantConversations.id, conv.id), eq(assistantConversations.organizationId, x.org.id), eq(assistantConversations.membershipId, x.actor.membershipId)));
 }

@@ -31,7 +31,13 @@ export interface ToolOutcome {
   nav: NavLink[];
 }
 
+const MAX_BODY_BYTES = 8192;
+
+/** Only the matched tool's own name goes in the attribute, never model-supplied text. */
 const wrap = (name: string, body: string) => `<tool_result name="${name}">${body}</tool_result>`;
+
+/** Escape `<` and `>` so a value can never close the wrapper; still valid JSON, decodes to the same value. */
+const escapeBody = (json: string) => json.replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
 
 /**
  * Runs one model-requested tool call: unknown or unpermitted tools are denied, input is validated,
@@ -39,18 +45,23 @@ const wrap = (name: string, body: string) => `<tool_result name="${name}">${body
  */
 export async function executeTool(x: Ctx, tools: AssistantTool[], name: string, rawInput: unknown): Promise<ToolOutcome> {
   const tool = tools.find((t) => t.name === name);
-  if (!tool || !tool.allowed(x.actor)) return { status: 'denied', content: wrap(name, 'Not permitted.'), args: rawInput, nav: [] };
+  const label = tool ? tool.name : 'unknown';
+  if (!tool || !tool.allowed(x.actor)) return { status: 'denied', content: wrap(label, 'Not permitted.'), args: rawInput, nav: [] };
   const parsed = tool.input.safeParse(rawInput);
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => `${i.path.join('.') || 'input'}: ${i.message}`).join('; ');
-    return { status: 'error', content: wrap(name, `Invalid input. ${msg}`), args: rawInput, nav: [] };
+    return { status: 'error', content: wrap(label, escapeBody(`Invalid input. ${msg}`)), args: rawInput, nav: [] };
   }
   try {
     const out = await withTenant(x.deps.db, x.org.id, (tx) => tool.run({ ...x, tx }, parsed.data));
-    return { status: 'ok', content: wrap(name, JSON.stringify(out.data)), args: parsed.data, nav: out.nav ?? [] };
+    let body = escapeBody(JSON.stringify(out.data));
+    if (Buffer.byteLength(body) > MAX_BODY_BYTES) body = '{"truncated":true,"note":"Result too large."}';
+    return { status: 'ok', content: wrap(label, body), args: parsed.data, nav: out.nav ?? [] };
   } catch (e) {
-    if (e instanceof DomainError && e.category === 'forbidden') return { status: 'denied', content: wrap(name, 'Not permitted.'), args: parsed.data, nav: [] };
-    return { status: 'error', content: wrap(name, 'The lookup failed.'), args: parsed.data, nav: [] };
+    if (e instanceof DomainError && e.category === 'forbidden') return { status: 'denied', content: wrap(label, 'Not permitted.'), args: parsed.data, nav: [] };
+    // Never log the message, arguments or output (they can hold organization data).
+    console.error(JSON.stringify({ level: 'error', msg: 'assistant tool failed', request_id: x.requestId, tool: label, code: e instanceof DomainError ? e.code : (e as Error)?.name }));
+    return { status: 'error', content: wrap(label, 'The lookup failed.'), args: parsed.data, nav: [] };
   }
 }
 

@@ -4,13 +4,38 @@ import { DomainError } from '@tallywork/domain';
 import type { AiToolSpec } from '../../../lib/ai/provider';
 import type { Actor } from '../../../context';
 import type { Ctx } from '../../ctx';
+import { approvalsTool } from './approvals';
+import { budgetsTool } from './budgets';
 import { docsTool } from './docs';
+import { hoursTool } from './hours';
+import { liveTool } from './live';
+import { membersTool } from './members';
 import { navigationTool } from './navigation';
+import { overviewTool } from './overview';
+import { projectsTool } from './projects';
+import { teamsTool } from './teams';
+import { timeOffTool } from './time-off';
+import { timesheetStatusTool } from './timesheet-status';
 import type { AssistantTool, NavLink } from './types';
 
 export type { AssistantTool, NavLink } from './types';
+export { capOutput } from './shared';
 
-const ALL_TOOLS: AssistantTool<any>[] = [docsTool, navigationTool];
+/** Read-only tools. Each is gated by its own permission(s) and passes its output through redact.ts. */
+const ALL_TOOLS: AssistantTool<any>[] = [
+  docsTool,
+  navigationTool,
+  overviewTool,
+  membersTool,
+  liveTool,
+  hoursTool,
+  approvalsTool,
+  timesheetStatusTool,
+  projectsTool,
+  budgetsTool,
+  teamsTool,
+  timeOffTool,
+];
 
 /** The tool set for one actor: a tool the actor may not use is never offered to the model. */
 export function toolsFor(actor: Actor): AssistantTool[] {
@@ -63,11 +88,4 @@ export async function executeTool(x: Ctx, tools: AssistantTool[], name: string, 
     console.error(JSON.stringify({ level: 'error', msg: 'assistant tool failed', request_id: x.requestId, tool: label, code: e instanceof DomainError ? e.code : (e as Error)?.name }));
     return { status: 'error', content: wrap(label, 'The lookup failed.'), args: parsed.data, nav: [] };
   }
-}
-
-/** Cap rows and serialized size; reports whether anything was cut. */
-export function capOutput(rows: unknown[], maxRows = 50, maxBytes = 8192): { rows: unknown[]; truncated: boolean } {
-  let n = Math.min(rows.length, maxRows);
-  while (n > 0 && Buffer.byteLength(JSON.stringify(rows.slice(0, n))) > maxBytes) n--;
-  return { rows: rows.slice(0, n), truncated: n < rows.length };
 }

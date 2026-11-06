@@ -1,5 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { and, eq, sql } from 'drizzle-orm';
+import { memberships, users, withTenant } from '@tallywork/db';
 import { createDb, type DbHandle } from '@tallywork/db/client';
+import type { Ctx } from '../src/services/ctx';
+import { loadActor, loadOrg } from '../src/middleware/tenant';
 import { createApp } from '../src/app';
 import type { Deps } from '../src/context';
 import { loadConfig } from '../src/config';
@@ -138,4 +142,23 @@ export async function addMember(t: Harness, admin: Client, orgId: string, name: 
   const acc = await c.post('/auth/invitations/accept', { token, name, password: 'correct-horse-battery' });
   if (acc.status !== 200) throw new Error(`accept failed ${JSON.stringify(acc.body)}`);
   return { client: c, membershipId: (acc.body as { membership_id: string }).membership_id };
+}
+
+/**
+ * A Ctx for tool tests, built outside any request (PGlite is one connection: executeTool opens its
+ * own transaction, so it must not run inside a request transaction). `tx` is unused by design.
+ */
+export async function actorCtx(t: Harness, email: string, orgId: string): Promise<Ctx> {
+  return withTenant(t.deps.db, orgId, async (tx) => {
+    const [row] = await tx
+      .select({ userId: users.id, membershipId: memberships.id })
+      .from(users)
+      .innerJoin(memberships, eq(memberships.userId, users.id))
+      .where(and(sql`lower(${users.email}) = ${email.toLowerCase()}`, eq(memberships.organizationId, orgId)))
+      .limit(1);
+    if (!row) throw new Error(`no membership for ${email}`);
+    const actor = await loadActor(tx, { type: 'user', userId: row.userId, sessionId: 'test', mfaVerified: true }, orgId, row.membershipId);
+    const org = await loadOrg(tx, orgId);
+    return { tx, actor, org, deps: t.deps, requestId: 'test', ip: null, userAgent: null, policyCache: new Map() };
+  });
 }

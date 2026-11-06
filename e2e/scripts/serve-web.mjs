@@ -38,6 +38,8 @@ const env = {
   APP_SECRET: 'e2e-only-secret-0123456789abcdef0123456789abcdef',
   APP_URL: `http://localhost:${port}`,
   CRON_SECRET: 'e2e-cron-secret',
+  // The support console's staff, on this isolated server only (support-console.spec.ts).
+  SUPPORT_STAFF_EMAILS: 'support-staff@e2e.test',
   NEXT_TELEMETRY_DISABLED: '1',
   // Installer links for the /download page. Nothing is served here: download.spec intercepts them.
   DESKTOP_DOWNLOAD_URL_WINDOWS: `http://localhost:${port}/e2e-installers/Tallywork-Setup.exe`,

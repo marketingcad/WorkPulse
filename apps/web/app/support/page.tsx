@@ -45,13 +45,23 @@ export default function SupportPage() {
 
   if (me.isLoading) return <main className="p-6"><SkeletonRows rows={4} /></main>;
   if (me.error) {
-    const mfa = me.error.status === 403;
+    // Say which step is missing: every refusal used to read as "two-factor required", so staff who had
+    // not yet confirmed their email were told to sign in again with a code, which could never work.
+    const e = me.error;
+    const [title, description] =
+      e.code === 'support_mfa_required'
+        ? ['Two-factor authentication required', 'The support console needs a session verified with two-factor authentication. Sign out and sign in again with your code.']
+        : e.code === 'support_email_unproven'
+          ? ['Confirm your email address first', 'Open the link in a verification or password reset email for this account. It proves you control the address; then sign in with your two-factor code.']
+          : e.status === 403
+            ? ['You can’t open the support console', e.title]
+            : ['Page not found', 'This page does not exist.'];
     return (
       <main className="mx-auto max-w-lg p-6">
         <EmptyState
           icon={<Lock className="size-5" />}
-          title={mfa ? 'Two-factor authentication required' : 'Page not found'}
-          description={mfa ? 'The support console needs a session verified with two-factor authentication. Sign out and sign in again with your code.' : 'This page does not exist.'}
+          title={title}
+          description={description}
           action={<Link href="/" className="text-sm font-medium text-interactive hover:underline">Back to WorkPulse</Link>}
         />
       </main>
@@ -131,7 +141,8 @@ function OrgView({ id }: { id: string }) {
   return (
     <>
       <Panel title={o.organization.name}>
-        <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
+        {/* A description list: Stat renders term/value pairs (axe dlitem; found by support-console.spec). */}
+        <dl className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
           <Stat label="Owner" value={o.owner ? `${o.owner.name} · ${o.owner.email}` : '—'} />
           <Stat label="Members" value={o.members} />
           <Stat label="Tracking now" value={o.live_sessions} />
@@ -140,7 +151,7 @@ function OrgView({ id }: { id: string }) {
           <Stat label="App versions" value={Object.entries(o.agent_versions).map(([v, n]) => `${v} (${n})`).join(', ') || '—'} />
           <Stat label="Time zone / currency" value={`${o.organization.timezone} · ${o.organization.currency}`} />
           <Stat label="Created" value={fmtDate(o.organization.created_at)} />
-        </div>
+        </dl>
         <div className="flex flex-wrap gap-2 border-t border-border px-4 py-3 text-xs">
           <Badge tone={o.security.enforce_mfa === 'none' ? 'neutral' : 'success'}>2FA required: {o.security.enforce_mfa}</Badge>
           <Badge tone="neutral">Sessions {o.security.session_ttl_hours}h</Badge>

@@ -58,6 +58,27 @@ export const HELP_ARTICLES: HelpArticle[] = [
     keywords: ['desktop app', 'website', 'worker', 'member', 'clock in'],
   },
   {
+    id: 'using-workpulse-ai',
+    category: 'start',
+    title: 'Ask WorkPulse AI',
+    summary: 'Ask questions about WorkPulse and your organization’s data in plain words.',
+    steps: [
+      'Select the ✨ button in the bottom-right corner of any page.',
+      'Type a question, or pick one of the suggested questions.',
+      'Follow an “Open …” button in an answer to go straight to the page it mentions.',
+      'Use the history button to reopen, rename or delete earlier conversations, and New chat to start over.',
+    ],
+    points: [
+      'It sees only what you can see: a team manager gets answers about their own teams and assigned projects, and nobody sees money they could not see on the page.',
+      'It only reads. It never changes, approves or deletes anything.',
+      'It never receives email addresses, pay or bill rates, screenshots, activity, websites, request reasons or review notes.',
+      'Conversations are private to you and are deleted automatically after 90 days (your administrator can change this under Settings › Security). You can delete one at any time.',
+      'Answers can be wrong. Check important figures on the page itself.',
+    ],
+    keywords: ['ai', 'assistant', 'chat', 'chatbot', 'ask', 'question', 'workpulse ai'],
+    perms: ['org:read'],
+  },
+  {
     id: 'first-steps',
     category: 'start',
     title: 'Set up your organization',

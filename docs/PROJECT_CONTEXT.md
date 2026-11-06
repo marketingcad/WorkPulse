@@ -38,7 +38,7 @@ Roles are data. The four built-in roles above can be copied into **custom roles*
 
 | Surface | Code | Notes |
 |---|---|---|
-| **Web app** | [apps/web](../apps/web) (Next.js 16, App Router) | Admin and manager workspace under `app/o/[orgId]/`; sign-in pages in `app/(auth)/`; `/download`; `/device/authorize` (desktop browser sign-in); `/portal` (clients); `/support` (staff). |
+| **Web app** | [apps/web](../apps/web) (Next.js 16, App Router) | Admin and manager workspace under `app/o/[orgId]/`; sign-in pages in `app/(auth)/`; `/download`; `/device/authorize` (desktop browser sign-in); `/portal` (clients); `/support` (staff). The **WorkPulse AI** side panel (`components/assistant/`) is available to admins and managers on every workspace page (ADR-134). |
 | **API** | [packages/api](../packages/api) (Hono), mounted at `/api/v1/*` inside the Next.js app | One deployment, one origin. Route groups in `src/routes/`: `auth`, `org`, `time`, `ops-finance`, `insight-platform`, `performance`, `agent`, `portal`, `support`. |
 | **Desktop app** | [apps/desktop](../apps/desktop) (Electron) | The worker's whole workspace, not only a timer: Home, Track, Timesheet, My performance, Time off, Schedule, Pay stubs, Settings. Works offline. Released to GitHub Releases with automatic updates. |
 | **Browser extension** | [apps/extension](../apps/extension) (Manifest V3) | Reports the active tab to the desktop app on Windows, over a local `127.0.0.1` bridge. |

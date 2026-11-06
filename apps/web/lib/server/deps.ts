@@ -2,7 +2,7 @@ import 'server-only';
 import path from 'node:path';
 import { after } from 'next/server';
 import { attachDatabasePool } from '@vercel/functions';
-import { createApp, createMailer, createStorage, loadConfig, type App, type Deps } from '@tallywork/api';
+import { createAiProvider, createApp, createMailer, createStorage, loadConfig, type App, type Deps } from '@tallywork/api';
 import { createDb, type DbHandle } from '@tallywork/db/client';
 
 /**
@@ -52,6 +52,7 @@ async function init() {
     config: loadConfig(),
     storage: createStorage(),
     mailer: createMailer(),
+    ai: createAiProvider(),
     defer: (task) => after(task),
     now: () => new Date(),
   };

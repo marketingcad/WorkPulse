@@ -3,6 +3,7 @@ import { createDb, type DbHandle } from '@tallywork/db/client';
 import { createApp } from '../src/app';
 import type { Deps } from '../src/context';
 import { loadConfig } from '../src/config';
+import { FakeProvider } from '../src/lib/ai';
 import { MemoryMailer } from '../src/lib/mailer';
 import { MemoryStorage } from '../src/lib/storage';
 import { dispatchOutbox } from '../src/jobs';
@@ -12,6 +13,7 @@ export interface Harness {
   deps: Deps;
   app: ReturnType<typeof createApp>;
   mailer: MemoryMailer;
+  ai: FakeProvider;
   storage: MemoryStorage;
   clock: { now: Date; advance(ms: number): void; set(d: Date): void };
   flush(): Promise<void>;
@@ -22,6 +24,7 @@ export async function createHarness(): Promise<Harness> {
   const h = createDb('pglite://memory');
   await h.migrate();
   const mailer = new MemoryMailer();
+  const ai = new FakeProvider();
   const storage = new MemoryStorage();
   const clock = {
     now: new Date(),
@@ -38,6 +41,7 @@ export async function createHarness(): Promise<Harness> {
     config: { ...loadConfig({ NODE_ENV: 'test', APP_URL: 'http://localhost:3000' }), cronSecret: 'cron-secret' },
     storage,
     mailer,
+    ai,
     defer: (t) => {
       deferred.push(t);
     },
@@ -49,6 +53,7 @@ export async function createHarness(): Promise<Harness> {
     deps,
     app,
     mailer,
+    ai,
     storage,
     clock,
     async flush() {

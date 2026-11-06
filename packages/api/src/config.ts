@@ -13,6 +13,9 @@ export interface Config {
   supportStaffEmails: string[];
   streamPollMs: number;
   streamMaxMs: number;
+  /** AI assistant model id and feature switch (the API key is never part of Config) */
+  assistantModel: string;
+  assistantEnabled: boolean;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -32,5 +35,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     streamPollMs: Number(env.STREAM_POLL_MS ?? 2000),
     // Below the function timeout; the browser's EventSource reconnects and resumes from Last-Event-ID.
     streamMaxMs: Number(env.STREAM_MAX_MS ?? 55_000),
+    assistantModel: env.ASSISTANT_MODEL || 'claude-sonnet-5-5',
+    assistantEnabled: env.ASSISTANT_ENABLED !== 'false',
   };
 }

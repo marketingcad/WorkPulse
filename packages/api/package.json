@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
     "@node-rs/argon2": "^2.2.1",
     "@tallywork/contracts": "workspace:*",
     "@tallywork/db": "workspace:*",

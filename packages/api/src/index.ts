@@ -3,6 +3,7 @@ export { loadConfig, type Config } from './config';
 export type { Deps } from './context';
 export { createStorage, MemoryStorage, SupabaseStorage, VercelBlobStorage, type Storage } from './lib/storage';
 export { createMailer, MemoryMailer, type Mailer } from './lib/mailer';
+export { createAiProvider, FakeProvider, AiError, type AiProvider } from './lib/ai';
 export { runTick, runDaily, dispatchOutbox, sweepSessions } from './jobs';
 export { createOrganization, createUser } from './services/identity';
 export { seedDemo, DEMO_ADMIN } from './seed';

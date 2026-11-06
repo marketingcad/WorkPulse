@@ -170,8 +170,12 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb gnome-keyring dbus-x11 x11-utils
-          # Electron's sandbox helper from npm must be owned by root to run with the sandbox on.
-          sandbox=$(dirname "$(node -p "require('./apps/desktop/node_modules/electron')")")/chrome-sandbox
+          # Electron's sandbox helper from npm must be owned by root to run with the sandbox on. Download the
+          # binary first (the package fetches it lazily), then find it from the package folder.
+          electron_dir=$(cd apps/desktop/node_modules/electron && pwd -P)
+          node "$electron_dir/install.js"
+          sandbox="$electron_dir/dist/chrome-sandbox"
+          ls -l "$sandbox"
           sudo chown root:root "$sandbox" && sudo chmod 4755 "$sandbox"
       - name: Electron E2E
         if: runner.os != 'Linux'
@@ -179,7 +183,10 @@ jobs:
       - name: Electron E2E (under xvfb, with an unlocked keyring)
         if: runner.os == 'Linux'
         run: |
+          # XDG_CURRENT_DESKTOP as a real GNOME session sets it: Chromium picks the keyring (libsecret) by
+          # the desktop's name, and with none it reports no encryption, so the app refuses to start.
           dbus-run-session -- bash -c '
+            export XDG_CURRENT_DESKTOP=GNOME
             echo -n e2e | gnome-keyring-daemon --unlock --components=secrets >/dev/null
             xvfb-run -a pnpm test:e2e --project=electron'
       - uses: actions/upload-artifact@v4

@@ -47,12 +47,15 @@ jobs:
         run: |
           set +e
           sudo apt-get install -y -qq gnome-keyring dbus-x11
+          # XDG_CURRENT_DESKTOP as a real GNOME session sets it (Chromium picks the keyring by the desktop's
+          # name). A missing keyring shows a dialog that keeps the app "running", so the log line is the check.
           dbus-run-session -- bash -c '
+            export XDG_CURRENT_DESKTOP=GNOME
             echo -n smoke | gnome-keyring-daemon --unlock --components=secrets >/dev/null
             xvfb-run -a timeout 30 /opt/Tallywork/tallywork --enable-logging=stderr > deb.log 2>&1; echo $? > deb.code'
           code=$(cat deb.code); tail -n 40 deb.log
           if [ "$code" -ne 124 ]; then echo "::error::.deb app exited early (code $code)"; exit 1; fi
-          if grep -qE "could not start|FATAL|UnhandledPromiseRejection|keychain\) is not available" deb.log; then echo "::error::startup error in the log"; exit 1; fi
+          if grep -qE "could not start|FATAL|UnhandledPromiseRejection|keychain\) is not available|no desktop keyring" deb.log; then echo "::error::startup error in the log"; exit 1; fi
           echo "still running after 30 s, no startup errors"
       - name: AppImage without libfuse2 (default Ubuntu 22.04+)
         run: |
@@ -63,9 +66,10 @@ jobs:
           set +e
           sudo apt-get install -y -qq libfuse2t64
           dbus-run-session -- bash -c '
+            export XDG_CURRENT_DESKTOP=GNOME
             echo -n smoke | gnome-keyring-daemon --unlock --components=secrets >/dev/null
             xvfb-run -a timeout 30 ./Tallywork-linux.AppImage --enable-logging=stderr > appimage.log 2>&1; echo $? > appimage.code'
           code=$(cat appimage.code); tail -n 40 appimage.log
           if [ "$code" -ne 124 ]; then echo "::error::AppImage exited early (code $code)"; exit 1; fi
-          if grep -qE "could not start|FATAL|UnhandledPromiseRejection" appimage.log; then echo "::error::startup error in the log"; exit 1; fi
+          if grep -qE "could not start|FATAL|UnhandledPromiseRejection|no desktop keyring" appimage.log; then echo "::error::startup error in the log"; exit 1; fi
           echo "still running after 30 s, no startup errors"

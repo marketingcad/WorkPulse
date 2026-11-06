@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { localDate, type Permission } from '@tallywork/domain';
 import { listTimeOffRequests } from '../../operations';
 import { narrowMemberships } from '../../scope';
-import { approvalQueue, listManualTime } from '../../timesheets';
+import { listManualTime, pageApprovalQueue } from '../../timesheets';
 import type { Ctx } from '../../ctx';
 import type { Actor } from '../../../context';
 import { redactApprovalManualTime, redactApprovalTimeOff, redactApprovalTimesheet } from '../redact';
@@ -49,7 +49,9 @@ export const approvalsTool: AssistantTool<z.infer<typeof input>> = {
     for (const k of kinds) {
       if (k === 'timesheets') {
         // The queue service already leaves out the approver's own timesheet (unless they own the organization).
-        data.timesheets = queue((await approvalQueue(x, { status: 'SUBMITTED' })).map(redactApprovalTimesheet));
+        // Paged: the real total, and at most 50 rows built (the full queue computes per-row flags we'd discard).
+        const page = await pageApprovalQueue(x, { status: 'SUBMITTED', page: 1, pageSize: 50 });
+        data.timesheets = { count: page.total, items: page.data.map(redactApprovalTimesheet), truncated: page.total > page.data.length };
       } else if (k === 'manual_time') {
         const ids = approvable(x, 'manual_time:approve');
         const rows = (await listManualTime(x, { status: 'PENDING', membershipIds: ids })).filter(notOwn(x));

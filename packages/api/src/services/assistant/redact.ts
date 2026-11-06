@@ -45,10 +45,19 @@ export function redactEmployee(m: MemberOptionDto) {
   };
 }
 
-/** getLiveTrackingSummary: name, project, task, minutes in the current session. No activity or device data. */
+/**
+ * getLiveTrackingSummary: name, working or paused, project, task, and the session's age in minutes
+ * (since it started, pauses included). No activity or device data.
+ */
 export function redactLiveWorker(w: LiveWorkerDto, now: Date) {
   const started = w.started_at ? Date.parse(w.started_at) : now.getTime();
-  return { name: w.name, project: w.project_name, task: w.task_title, session_minutes: Math.max(0, Math.floor((now.getTime() - started) / 60_000)) };
+  return {
+    name: w.name,
+    status: w.status === 'WORKING' ? 'working' : 'paused',
+    project: w.project_name,
+    task: w.task_title,
+    session_age_minutes: Math.max(0, Math.floor((now.getTime() - started) / 60_000)),
+  };
 }
 
 /** getHoursSummary: the group label (member name, date or project name) and its hours. */
@@ -84,14 +93,19 @@ export function redactProject(p: ProjectDto) {
   return { name: p.name, client: p.client_name, status: p.status, tracked_hours: hrs(p.tracked_seconds ?? 0) };
 }
 
+/** Minor units (cents) to major units, as the rest of the codebase prints money (amount / 100). */
+const major = (minor: number) => Math.round(minor) / 100;
+
 /**
  * getProjectBudgetSummary: subject name, percent used and threshold state. Money only when the
- * service left it in (the actor holds billing:read or rates:read); hours budgets carry no amounts.
+ * service left it in (the actor holds billing:read or rates:read), in major units with its
+ * currency (100000 = 100,000.00 USD) so the model never quotes cents as dollars. Hours budgets
+ * carry no amounts.
  */
 export function redactBudget(b: BudgetStatusDto) {
   const base = { name: b.subject_name, subject: b.subject_type === 'PROJECT' ? 'project' : 'client', kind: b.kind === 'MONEY' ? 'money' : 'hours', percent_used: b.pct_used, state: b.state };
   if (b.kind !== 'MONEY' || b.amounts_hidden) return base;
-  return { ...base, amount: b.amount, spent: b.spent, remaining: b.remaining, currency: b.currency };
+  return { ...base, amount: major(b.amount), spent: major(b.spent), remaining: major(b.remaining), currency: b.currency };
 }
 
 /** getTeamSummary: team name, manager names, member count. */

@@ -286,7 +286,8 @@ describe('organization data tools', () => {
 
   it('getLiveTrackingSummary: who is tracking now, scoped', async () => {
     const a = await run(A, 'getLiveTrackingSummary');
-    expect(a.data.rows).toEqual([{ name: 'Walt Worker', project: 'Alpha Site', task: null, session_minutes: 25 }]);
+    expect(a.data.rows).toEqual([{ name: 'Walt Worker', status: 'working', project: 'Alpha Site', task: null, session_age_minutes: 25 }]);
+    expect(a.data).toMatchObject({ tracking_now: 1, paused: 0 });
     const m = await run(M, 'getLiveTrackingSummary');
     expect(m.data.rows.map((r: any) => r.name)).toEqual(['Walt Worker']);
     clean(a.content);
@@ -318,7 +319,7 @@ describe('organization data tools', () => {
     expect((await run(A, 'getHoursSummary', { from: '2026-08-01', to: '2026-11-01', group: 'day' })).status).toBe('ok');
     expect((await run(A, 'getHoursSummary', { from: '2026-08-01', to: '2026-11-02', group: 'day' })).status).toBe('error');
     expect((await run(A, 'getHoursSummary', { from: '2026-11-02', to: '2026-11-01', group: 'day' })).status).toBe('error');
-    clean(a.content + m.content + byProject.content);
+    clean(a.content + m.content + byProject.content + byDay.content);
   });
 
   it('getPendingApprovals: per queue counts and names, scoped, no reasons', async () => {
@@ -352,7 +353,28 @@ describe('organization data tools', () => {
     // Defaults to the current week.
     const now = await run(M, 'getTimesheetStatus', {});
     expect(now.data).toMatchObject({ from: '2026-11-02', to: '2026-11-08' });
-    clean(m.content + a.content);
+    // Per period: Walt submitted last week but not this week.
+    const two = await run(M, 'getTimesheetStatus', { from: LAST_WEEK.from, to: '2026-11-08' });
+    const walt = two.data.rows.filter((r: any) => r.name === 'Walt Worker').map((r: any) => [r.period_start, r.status]);
+    expect(walt).toEqual([['2026-10-26', 'submitted'], ['2026-11-02', 'not_submitted']]);
+    expect(two.data.counts.not_submitted).toBeGreaterThanOrEqual(3); // Tom both weeks, Walt this week
+    // A long range is cut to five periods and says so.
+    const long = await run(M, 'getTimesheetStatus', { from: '2026-08-03', to: '2026-11-08' });
+    expect(long.data.note).toMatch(/first 5 pay periods/);
+    clean(m.content + a.content + two.content);
+  });
+
+  it('getTimesheetStatus: two people with the same name keep separate statuses', async () => {
+    const s = await signup(t, 'Sam', 'sam@same.test', 'Same Names');
+    const w1 = await addMember(t, s.client, s.orgId, 'Jo Smith', 'jo1@same.test');
+    await addMember(t, s.client, s.orgId, 'Jo Smith', 'jo2@same.test');
+    const p = (await s.client.post(`/orgs/${s.orgId}/projects`, { name: 'P', member_ids: [w1.membershipId] })).body.id as string;
+    expect((await s.client.post(`/orgs/${s.orgId}/manual-time`, { membership_id: w1.membershipId, project_id: p, started_at: '2026-10-27T14:00:00Z', ended_at: '2026-10-27T15:00:00Z', reason: 'x' })).status).toBe(201);
+    expect((await w1.client.post(`/orgs/${s.orgId}/timesheets/submit`, { date: LAST_WEEK.from })).body.status).toBe('SUBMITTED');
+    const S = await actorCtx(t, 'sam@same.test', s.orgId);
+    const r = await run(S, 'getTimesheetStatus', LAST_WEEK);
+    const jos = r.data.rows.filter((x: any) => x.name === 'Jo Smith').map((x: any) => x.status).sort();
+    expect(jos).toEqual(['not_submitted', 'submitted']);
   });
 
   it('getProjectSummary: assigned projects only, with tracked hours', async () => {
@@ -368,7 +390,9 @@ describe('organization data tools', () => {
   it('getProjectBudgetSummary: money only for billing or rate viewers', async () => {
     const a = await run(A, 'getProjectBudgetSummary');
     expect(a.data.rows).toHaveLength(2);
-    expect(a.data.rows.find((r: any) => r.name === 'Alpha Site')).toMatchObject({ amount: 100_000_00, currency: 'USD', state: expect.any(String), percent_used: expect.any(Number) });
+    // Major units with the currency, so the model never quotes cents as dollars.
+    expect(a.data.rows.find((r: any) => r.name === 'Alpha Site')).toMatchObject({ amount: 100_000, currency: 'USD', state: expect.any(String), percent_used: expect.any(Number) });
+    clean(a.content);
     const m = await run(M, 'getProjectBudgetSummary');
     expect(m.data.rows).toHaveLength(1);
     const row = m.data.rows[0];
@@ -417,6 +441,19 @@ describe('organization data tools', () => {
     expect(toolsFor(P.actor).map((x) => x.name)).not.toContain('getProjectBudgetSummary');
     const r = await executeTool(P, toolsFor(A.actor), 'getProjectBudgetSummary', {});
     expect(r.status).toBe('denied');
+  });
+
+  it('getPendingApprovals: the actor’s own requests are never in their queue', async () => {
+    const alpha = (await adminC.get(o('/projects'))).body.find((p: { name: string }) => p.name === 'Alpha Site').id as string;
+    const pol = (await adminC.get(o('/time-off/policies'))).body.find((p: { name: string }) => p.name === 'Vacation').id as string;
+    expect((await miaC.post(o('/manual-time'), { project_id: alpha, started_at: '2026-11-03T16:00:00Z', ended_at: '2026-11-03T17:00:00Z', reason: 'x' })).body.status).toBe('PENDING');
+    expect((await miaC.post(o('/time-off/requests'), { policy_id: pol, start_date: '2026-11-20', end_date: '2026-11-20', reason: 'x' })).status).toBe(201);
+    const m = await run(M, 'getPendingApprovals');
+    for (const q of ['manual_time', 'time_off']) expect(m.data[q].items.map((i: any) => i.name)).not.toContain('Mia Manager');
+    // The admin does see them.
+    const a = await run(A, 'getPendingApprovals');
+    expect(a.data.manual_time.items.map((i: any) => i.name)).toContain('Mia Manager');
+    expect(a.data.time_off.items.map((i: any) => i.name)).toContain('Mia Manager');
   });
 
   it('offers no tool for reviews, payroll, invoices, rates, screenshots, activity or audit', () => {

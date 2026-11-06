@@ -258,6 +258,10 @@ if (process.env.TALLYWORK_CRASH_URL) crashReporter.start({ submitURL: process.en
 
 /** Linux desktops without a Secret Service keyring cannot keep the sign-in encrypted, and we never store it in plain text. */
 function explainMissingKeyring(): void {
+  // In the log too, before the dialog blocks: the Linux smoke test and the E2E look for this line (a
+  // waiting dialog otherwise looks like an app that started fine).
+  const backend = (safeStorage as { getSelectedStorageBackend?: () => string }).getSelectedStorageBackend?.() ?? 'unknown';
+  console.error(`[startup] no desktop keyring: the sign-in cannot be stored encrypted (storage backend: ${backend})`);
   dialog.showMessageBoxSync({
     type: 'error',
     title: 'WorkPulse',

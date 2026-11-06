@@ -120,6 +120,10 @@ export function createApp(deps: Deps) {
   app.route('/portal', portalRoutes);
   // Before tenant: the limiter writes outside the tenant transaction (see routes/assistant.ts).
   app.use('/orgs/:orgId/assistant/*', rateLimit('assistant:crud', 120, 60));
+  // Sending a message also counts against assistant:crud (120/min), which is looser than these.
+  const msgLimit = rateLimit('assistant:msg', 20, 60);
+  const dayLimit = rateLimit('assistant:day', 300, 86_400);
+  app.use('/orgs/:orgId/assistant/conversations/:id/messages', (c, next) => (c.req.method === 'POST' ? msgLimit(c, async () => void (await dayLimit(c, next))) : next()));
   app.use('/orgs/:orgId/*', tenant);
   app.route('/orgs/:orgId', orgRoutes);
   app.route('/orgs/:orgId', timeRoutes);

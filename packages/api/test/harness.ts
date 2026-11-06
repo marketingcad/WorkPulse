@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { memberships, users, withTenant } from '@tallywork/db';
 import { createDb, type DbHandle } from '@tallywork/db/client';
+import type { AssistantStreamEvent } from '@tallywork/contracts';
 import type { Ctx } from '../src/services/ctx';
 import { loadActor, loadOrg } from '../src/middleware/tenant';
 import { createApp } from '../src/app';
@@ -101,6 +102,23 @@ export class Client {
     return { status: res.status, body: parsed as T, headers: res.headers };
   }
 
+  /** The raw Response, unread: for streams (see readSse). */
+  raw(method: string, path: string, body?: unknown, init: { signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<Response> {
+    return Promise.resolve(
+      this.t.app.request(`/api/v1${path}`, {
+        method,
+        signal: init.signal,
+        headers: {
+          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          Origin: 'http://localhost:3000',
+          ...(this.cookie ? { Cookie: this.cookie } : {}),
+          ...(init.headers ?? {}),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
+    );
+  }
+
   get<T = any>(path: string) {
     return this.req<T>('GET', path);
   }
@@ -116,6 +134,25 @@ export class Client {
   del<T = any>(path: string) {
     return this.req<T>('DELETE', path);
   }
+}
+
+/** Parse a whole server-sent event stream into assistant stream events (reads the body to the end). */
+export async function readSse(res: Response): Promise<AssistantStreamEvent[]> {
+  return parseSse(await res.text());
+}
+
+export function parseSse(text: string): AssistantStreamEvent[] {
+  const out: AssistantStreamEvent[] = [];
+  for (const block of text.split(/\r?\n\r?\n/)) {
+    let event = '';
+    const data: string[] = [];
+    for (const line of block.split(/\r?\n/)) {
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
+    }
+    if (event) out.push({ event, data: data.length ? JSON.parse(data.join('\n')) : {} } as AssistantStreamEvent);
+  }
+  return out;
 }
 
 export function pkce() {

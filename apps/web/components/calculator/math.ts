@@ -5,11 +5,11 @@ import { toMinor } from '../finance/types';
 /**
  * The calculator's arithmetic. It reads hours and amounts with the same rules as the rest of WorkPulse
  * ("7:30", "7h 30m" or "7.5"; "75.50", never "75,50") and rounds money as payroll does, so a figure
- * checked here matches the one the app shows.
+ * checked here matches the one the app shows. Messages are i18n keys (webEn calc.*), shown with t().
  */
 
-export const HOURS_HINT = 'Enter hours like 7:30, 7h 30m or 7.5';
-export const AMOUNT_HINT = 'Enter an amount like 75 or 75.50';
+export const HOURS_HINT = 'calc.error.hours';
+export const AMOUNT_HINT = 'calc.error.amount';
 const DAY = 24 * 3600;
 
 /** "09:00" (or "9:00") → seconds after midnight; null when it is not a time of day. */
@@ -35,15 +35,15 @@ export type ShiftResult =
 export function shiftSeconds(s: Shift): ShiftResult {
   if (!s.start.trim() && !s.end.trim()) return { kind: 'empty' };
   const start = clockSeconds(s.start);
-  if (start === null) return { kind: 'error', field: 'start', message: 'Enter a start time like 09:00' };
+  if (start === null) return { kind: 'error', field: 'start', message: 'calc.error.start' };
   const end = clockSeconds(s.end);
-  if (end === null) return { kind: 'error', field: 'end', message: 'Enter an end time like 17:30' };
-  if (end === start) return { kind: 'error', field: 'end', message: 'The start and end are the same time' };
+  if (end === null) return { kind: 'error', field: 'end', message: 'calc.error.end' };
+  if (end === start) return { kind: 'error', field: 'end', message: 'calc.error.sameTime' };
   const overnight = end < start;
   const span = overnight ? end + DAY - start : end - start;
   const brk = s.breakText.trim() ? parseDuration(s.breakText) : 0;
-  if (brk === null) return { kind: 'error', field: 'break', message: 'Enter the break like 0:30, 30m or 0.5' };
-  if (brk >= span) return { kind: 'error', field: 'break', message: 'The break is as long as the shift or longer' };
+  if (brk === null) return { kind: 'error', field: 'break', message: 'calc.error.break' };
+  if (brk >= span) return { kind: 'error', field: 'break', message: 'calc.error.breakTooLong' };
   return { kind: 'ok', seconds: span - brk, overnight };
 }
 
@@ -53,6 +53,39 @@ export function totalShiftSeconds(shifts: Shift[]): number {
     const r = shiftSeconds(s);
     return r.kind === 'ok' ? sum + r.seconds : sum;
   }, 0);
+}
+
+export interface DurationLine {
+  op: '+' | '-';
+  /** as typed: "7:30", "7h 30m", "7.5" or "45m"; empty lines are skipped */
+  text: string;
+}
+
+export type LineResult = { kind: 'empty' } | { kind: 'error'; message: string } | { kind: 'ok'; seconds: number };
+
+export function lineSeconds(l: DurationLine): LineResult {
+  if (!l.text.trim()) return { kind: 'empty' };
+  const s = parseDuration(l.text);
+  return s === null ? { kind: 'error', message: HOURS_HINT } : { kind: 'ok', seconds: s };
+}
+
+/** Durations added and subtracted, e.g. a week's days less unpaid time. May be negative. */
+export function sumDurations(lines: DurationLine[]): number {
+  return lines.reduce((sum, l) => {
+    const r = lineSeconds(l);
+    return r.kind === 'ok' ? sum + (l.op === '-' ? -r.seconds : r.seconds) : sum;
+  }, 0);
+}
+
+/** H:MM with a sign: "-1:30" for a total below zero. */
+export function signedHm(seconds: number): string {
+  return seconds < 0 ? `-${asHm(-seconds)}` : asHm(seconds);
+}
+
+/** Decimal hours to two places, with a sign. */
+export function decimalHours(seconds: number): string {
+  const v = Math.abs(seconds) / 3600;
+  return `${seconds < 0 ? '-' : ''}${v.toFixed(2)}`;
 }
 
 export interface PayInput {
@@ -68,6 +101,10 @@ export interface PayResult {
   billMinor: number | null;
   /** bill − pay, when both rates are given */
   marginMinor: number | null;
+  /** margin as a share of the bill (bill > 0), in percent */
+  marginPct: number | null;
+  /** margin as a share of the pay (pay > 0), in percent */
+  markupPct: number | null;
 }
 
 /** Pay and bill amounts for a number of hours, each rounded half-up to the cent as payroll and invoices do. */
@@ -85,7 +122,11 @@ export function payFor(i: PayInput): PayResult {
   const bill = rate(i.billRate, 'billRate');
   const payMinor = seconds !== null && pay !== null ? amountForSeconds(seconds, pay) : null;
   const billMinor = seconds !== null && bill !== null ? amountForSeconds(seconds, bill) : null;
-  return { errors, seconds, payMinor, billMinor, marginMinor: payMinor !== null && billMinor !== null ? billMinor - payMinor : null };
+  const marginMinor = payMinor !== null && billMinor !== null ? billMinor - payMinor : null;
+  // Percentages come from the rounded amounts shown above them, so they agree with what is on screen.
+  const marginPct = marginMinor !== null && billMinor! > 0 ? (marginMinor * 100) / billMinor! : null;
+  const markupPct = marginMinor !== null && payMinor! > 0 ? (marginMinor * 100) / payMinor! : null;
+  return { errors, seconds, payMinor, billMinor, marginMinor, marginPct, markupPct };
 }
 
 export type ConvertResult = { kind: 'empty' } | { kind: 'error'; message: string } | { kind: 'ok'; seconds: number; hm: string; decimal: string; minutes: number };

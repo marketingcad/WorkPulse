@@ -54,7 +54,7 @@ test.describe('calculator accuracy: hours', () => {
     }
     await expect(result(p, 'Total worked')).toHaveText('8:00');
     await p.getByRole('button', { name: 'Work out pay for these hours' }).click();
-    await expect(p.getByLabel('Hours')).toHaveValue('8:00');
+    await expect(p.getByLabel('Hours', { exact: true })).toHaveValue('8:00');
     await p.getByLabel(/^Pay rate per hour/).fill('22.75');
     await expect(result(p, 'Pay')).toHaveText('$182.00'); // 8 × 22.75
   });
@@ -75,7 +75,7 @@ test.describe('calculator accuracy: pay and bill', () => {
   for (const c of PAY) {
     test(`${c.name}: ${c.hours} × ${c.pay}${c.bill ? ` (bill ${c.bill})` : ''} → ${c.want.pay}`, async ({ page, data }) => {
       const p = await open(page, data.orgId, 'Pay');
-      await p.getByLabel('Hours').fill(c.hours);
+      await p.getByLabel('Hours', { exact: true }).fill(c.hours);
       await p.getByLabel(/^Pay rate per hour/).fill(c.pay);
       if (c.bill) await p.getByLabel(/^Bill rate per hour/).fill(c.bill);
       await expect(result(p, 'Pay')).toHaveText(c.want.pay);
@@ -99,7 +99,7 @@ test.describe('calculator accuracy: conversions', () => {
     const p = await open(page, data.orgId, 'Convert');
     for (const [typed, hm, decimal, minutes] of CONVERT) {
       await test.step(`${typed} → ${hm} / ${decimal} / ${minutes} min`, async () => {
-        await p.getByLabel('Hours').fill(typed);
+        await p.getByLabel('Hours', { exact: true }).fill(typed);
         await expect(result(p, 'Hours and minutes')).toHaveText(hm);
         await expect(result(p, 'Decimal hours')).toHaveText(decimal);
         await expect(result(p, 'Minutes')).toHaveText(minutes);
@@ -128,7 +128,7 @@ test.describe('calculator accuracy: matches WorkPulse payroll', () => {
     await page.getByRole('button', { name: 'Open calculator' }).click();
     const p = page.getByRole('dialog', { name: 'Calculator' });
     await p.getByRole('radio', { name: 'Pay' }).click();
-    await p.getByLabel('Hours').fill(typed);
+    await p.getByLabel('Hours', { exact: true }).fill(typed);
     await p.getByLabel(/^Pay rate per hour/).fill('25');
     await expect(result(p, 'Pay')).toHaveText(payrollPay);
     expect(payrollPay).toBe('$75.00'); // 3 h × $25

@@ -23,6 +23,28 @@
   }
 }
 
+/* The calculator panel grows out of its round button (transform-origin is set on the panel to the
+   button's centre) and shrinks back into it when it closes. */
+@keyframes calc-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.92);
+  }
+}
+@keyframes calc-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.92);
+  }
+}
+/* The button's icon turns as it swaps between the calculator and the X. */
+@keyframes calc-icon {
+  from {
+    opacity: 0;
+    transform: rotate(-90deg) scale(0.6);
+  }
+}
+
 /* Toast pop is not translated */
 [aria-live] > div {
   animation-name: fade;
@@ -38,4 +60,21 @@
 
 .scrollbar-thin {
   scrollbar-width: thin;
+}
+
+/* The dark sidebar's scrollbar: no light track, a soft thumb in the sidebar's own tones that
+   brightens while the pointer is over the menu, and dark arrow buttons (color-scheme). */
+.scrollbar-nav {
+  color-scheme: dark;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--tw-nav-muted) 22%, transparent) transparent;
+  transition: scrollbar-color 150ms ease-out;
+}
+.scrollbar-nav:hover {
+  scrollbar-color: color-mix(in srgb, var(--tw-nav-muted) 45%, transparent) transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scrollbar-nav {
+    transition: none;
+  }
 }

@@ -1,14 +1,22 @@
 'use client';
-import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type AnimationEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import dynamic from 'next/dynamic';
 import { Calculator, CornerDownRight, X } from 'lucide-react';
-import { IconButton, cx } from '@tallywork/ui';
-import type { PayInput, Shift } from './math';
-import type { Mode } from './calculator-body';
+import { IconButton, Spinner, cx } from '@tallywork/ui';
+import { t } from '@/lib/i18n';
 import { clampToViewport, isDrag, panelPosition, parseSavedPosition, type Point, type Size } from './position';
+import { INITIAL_STATE, type CalcState } from './state';
 
-// The modes load when the panel first opens, or when the pointer or keyboard reaches the button.
-const loadBody = () => import('./calculator-body');
-const CalculatorBody = lazy(loadBody);
+/** The panel's body (modes, arithmetic, money formatting) loads the first time the calculator opens. */
+const loadPanel = () => import('./calculator-panel').then((m) => m.CalculatorPanel);
+const CalculatorPanel = dynamic(loadPanel, {
+  loading: () => (
+    <div className="flex items-center gap-2 py-6 text-xs text-text-muted">
+      <Spinner className="size-4" /> {t('calc.loading')}
+    </div>
+  ),
+});
+
 /** Where the person last left the button, in this browser. */
 const POSITION_KEY = 'tw.calculator.position';
 const BUTTON: Size = { width: 48, height: 48 };
@@ -16,6 +24,8 @@ const KEY_STEP = 24;
 const ARROWS: Record<string, Point> = { ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 }, ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 } };
 
 const viewport = (): Size => ({ width: window.innerWidth, height: window.innerHeight });
+/** The person asked for less motion: the panel appears and disappears without animating. */
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function savePosition(p: Point | null) {
   try {
@@ -33,11 +43,13 @@ function savePosition(p: Point | null) {
  * it reads and saves no data, so anyone signed in may use it. What was typed stays between pages.
  */
 export function CalculatorLauncher() {
+  /** Open as far as the person is concerned (the button shows X; Escape and clicks act on it). */
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<Mode>('hours');
-  const [shifts, setShifts] = useState<Shift[]>([{ start: '', end: '', breakText: '' }]);
-  const [pay, setPay] = useState<PayInput>({ hours: '', payRate: '', billRate: '' });
-  const [convert, setConvert] = useState('');
+  /** In the page: true from opening until the closing animation ends. */
+  const [mounted, setMounted] = useState(false);
+  /** The opening animation has finished (data-state="open"). */
+  const [settled, setSettled] = useState(false);
+  const [calc, setCalc] = useState<CalcState>(INITIAL_STATE);
   /** Top-left of the button; null keeps it in the bottom-right corner. */
   const [pos, setPos] = useState<Point | null>(null);
   const [panelAt, setPanelAt] = useState<Point | null>(null);
@@ -47,9 +59,24 @@ export function CalculatorLauncher() {
   const drag = useRef<{ pointerId: number; start: Point; origin: Point; moved: boolean } | null>(null);
   const draggedLauncher = useRef(false);
 
+  const openPanel = () => {
+    const still = reducedMotion();
+    setOpen(true);
+    setMounted(true);
+    setSettled(still);
+  };
   const close = () => {
     setOpen(false);
+    setSettled(false);
+    // With reduced motion there is no closing animation to wait for.
+    if (reducedMotion()) setMounted(false);
     launcher.current?.focus();
+  };
+  /** The panel's own animation ended (not one of its children's): finish opening or closing. */
+  const onPanelAnimationEnd = (e: AnimationEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (open) setSettled(true);
+    else setMounted(false);
   };
 
   useEffect(() => {
@@ -73,7 +100,8 @@ export function CalculatorLauncher() {
   // The panel opens next to a moved button, where it fits, and follows its height as content changes.
   useLayoutEffect(() => {
     const el = panel.current;
-    if (!open || !pos || !el) {
+    // Kept while it closes, so it shrinks back where it is rather than jumping to the corner.
+    if (!mounted || !pos || !el) {
       setPanelAt(null);
       return;
     }
@@ -82,16 +110,15 @@ export function CalculatorLauncher() {
     const ro = new ResizeObserver(place);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [open, pos]);
+  }, [mounted, pos]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open]);
+  // Escape closes the calculator only when the person is in it (its panel or its button), so it never
+  // also closes another dialog or menu that happens to be open on the page.
+  const onEscape = (e: ReactKeyboardEvent) => {
+    if (e.key !== 'Escape' || !open) return;
+    e.stopPropagation();
+    close();
+  };
 
   const startDrag = (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0 || !launcher.current) return;
@@ -134,6 +161,7 @@ export function CalculatorLauncher() {
   const dragHandlers = { onPointerDown: startDrag, onPointerMove: moveDrag, onPointerUp: endDrag, onPointerCancel: cancelDrag };
 
   const onLauncherKey = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    onEscape(e);
     const dir = ARROWS[e.key];
     if (!e.altKey || !dir || !launcher.current) return;
     e.preventDefault();
@@ -151,57 +179,71 @@ export function CalculatorLauncher() {
 
   return (
     <>
-      {open && (
+      {mounted && (
         <div
           ref={panel}
           id="calculator-panel"
           role="dialog"
-          aria-label="Calculator"
-          style={pos ? { left: panelAt?.x ?? 0, top: panelAt?.y ?? 0, visibility: panelAt ? undefined : 'hidden' } : undefined}
+          aria-label={t('calc.title')}
+          // opening → open → closing; tests that measure the panel wait for "open".
+          data-state={!open ? 'closing' : settled ? 'open' : 'opening'}
+          // A closing panel takes no more clicks or keys.
+          inert={!open}
+          onKeyDown={onEscape}
+          onAnimationEnd={onPanelAnimationEnd}
+          style={{
+            // It grows out of the button's centre: 24px in from the panel's right edge and 40px below it
+            // in the corner; worked out from both positions once the button has been moved.
+            transformOrigin: pos ? (panelAt ? `${pos.x + BUTTON.width / 2 - panelAt.x}px ${pos.y + BUTTON.height / 2 - panelAt.y}px` : undefined) : 'calc(100% - 24px) calc(100% + 40px)',
+            ...(pos ? { left: panelAt?.x ?? 0, top: panelAt?.y ?? 0, visibility: panelAt ? undefined : 'hidden' } : {}),
+          }}
           className={cx(
             'fixed z-40 flex w-[min(23rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-overlay',
+            open ? 'animate-[calc-in_200ms_cubic-bezier(0.22,1,0.36,1)]' : 'animate-[calc-out_140ms_ease-in_forwards]',
+            'motion-reduce:animate-none',
             pos ? 'max-h-[calc(100dvh-1rem)]' : 'bottom-[calc(max(1rem,env(safe-area-inset-bottom))+4rem)] right-4 max-h-[calc(100dvh-7rem)] sm:right-6',
           )}
         >
           <div {...dragHandlers} className={cx('flex touch-none select-none items-center justify-between gap-2 border-b border-border px-4 py-3', dragging ? 'cursor-grabbing' : 'cursor-grab')}>
             <div>
-              <h2 className="text-sm font-semibold text-text">Calculator</h2>
-              <p className="text-xs text-text-faint">Check hours and pay. Nothing is saved.</p>
+              <h2 className="text-sm font-semibold text-text">{t('calc.title')}</h2>
+              <p className="text-xs text-text-faint">{t('calc.subtitle')}</p>
             </div>
             <div className="flex items-center gap-1">
               {pos && (
-                <IconButton label="Move to corner" onClick={backToCorner}>
+                <IconButton label={t('calc.moveToCorner')} onClick={backToCorner}>
                   <CornerDownRight className="size-4" />
                 </IconButton>
               )}
-              <IconButton label="Close calculator" onClick={close}>
+              <IconButton label={t('calc.close')} onClick={close}>
                 <X className="size-4" />
               </IconButton>
             </div>
           </div>
-          <Suspense fallback={<p className="px-4 py-6 text-sm text-text-muted" role="status">Loading the calculator…</p>}>
-            <CalculatorBody mode={mode} onMode={setMode} shifts={shifts} onShifts={setShifts} pay={pay} onPay={setPay} convert={convert} onConvert={setConvert} />
-          </Suspense>
+          <div className="overflow-y-auto px-4 py-4">
+            <CalculatorPanel state={calc} onChange={setCalc} />
+          </div>
         </div>
       )}
       <button
         ref={launcher}
         type="button"
-        aria-label={open ? 'Close calculator' : 'Open calculator'}
+        aria-label={open ? t('calc.close') : t('calc.open')}
         aria-expanded={open}
         aria-controls="calculator-panel"
         aria-describedby="calculator-move-hint"
         {...dragHandlers}
         onKeyDown={onLauncherKey}
-        onPointerEnter={() => void loadBody()}
-        onFocus={() => void loadBody()}
+        // Start loading the panel as soon as the person reaches for the button, so it opens at once.
+        onPointerEnter={() => void loadPanel()}
+        onFocus={() => void loadPanel()}
         onClick={() => {
           if (draggedLauncher.current) {
             draggedLauncher.current = false;
             return;
           }
           if (open) close();
-          else setOpen(true);
+          else openPanel();
         }}
         style={pos ? { left: pos.x, top: pos.y } : undefined}
         className={cx(
@@ -210,12 +252,14 @@ export function CalculatorLauncher() {
           !pos && 'bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 sm:right-6',
         )}
       >
-        {open ? <X className="size-5" /> : <Calculator className="size-5" />}
+        {/* Keyed so the new icon turns in each time it swaps. */}
+        <span key={open ? 'x' : 'calc'} className="flex animate-[calc-icon_200ms_cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none" aria-hidden>
+          {open ? <X className="size-5" /> : <Calculator className="size-5" />}
+        </span>
       </button>
       <span id="calculator-move-hint" className="sr-only">
-        Drag to move it, or press Alt and an arrow key.
+        {t('calc.moveHint')}
       </span>
     </>
   );
 }
-

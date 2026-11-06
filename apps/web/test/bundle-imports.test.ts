@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 /**
  * Every page's first load is held to 250 KB of JavaScript (scripts/check-bundle-budget.mjs, in CI).
  * The shell is on every page, so what it imports statically is paid everywhere: these modules are
- * only needed after a click (the calculator's modes, the product tour, two-factor setup, creating an
+ * only needed after a click (the calculator's panel and arithmetic, the product tour, two-factor setup, creating an
  * organization, a client from the project form) and load on demand. A static import of one of them
  * from the shell, or of the dialogs from a page that only needs workspace helpers, quietly puts it
  * back on every visit. This follows static imports only; `import()` and type-only imports are free.
@@ -61,8 +61,9 @@ describe('what every page loads', () => {
   });
 
   it.each([
-    'components/calculator/calculator-body.tsx',
+    'components/calculator/calculator-panel.tsx',
     'components/calculator/math.ts',
+    'components/calculator/messages.ts',
     'components/help/tour-view.tsx',
     'components/help/tour-steps.ts',
     'components/security/two-factor-panel.tsx',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clockSeconds, convertHours, payFor, shiftSeconds, totalShiftSeconds } from '../components/calculator/math';
+import { clockSeconds, convertHours, decimalHours, lineSeconds, payFor, shiftSeconds, signedHm, sumDurations, totalShiftSeconds } from '../components/calculator/math';
 
 /** The floating calculator: hours and money read and rounded exactly as the rest of WorkPulse does. */
 describe('shift hours', () => {
@@ -40,9 +40,9 @@ describe('shift hours', () => {
 
 describe('pay and bill', () => {
   it('multiplies hours by each rate and rounds half-up to the cent, as payroll does', () => {
-    expect(payFor({ hours: '7:30', payRate: '75.50', billRate: '120' })).toEqual({ errors: {}, seconds: 27000, payMinor: 56625, billMinor: 90000, marginMinor: 33375 });
+    expect(payFor({ hours: '7:30', payRate: '75.50', billRate: '120' })).toEqual({ errors: {}, seconds: 27000, payMinor: 56625, billMinor: 90000, marginMinor: 33375, marginPct: (33375 * 100) / 90000, markupPct: (33375 * 100) / 56625 });
     // 1 minute at $10/h is 16.67 cents: rounds to 17.
-    expect(payFor({ hours: '1m', payRate: '10', billRate: '' })).toMatchObject({ payMinor: 17, billMinor: null, marginMinor: null });
+    expect(payFor({ hours: '1m', payRate: '10', billRate: '' })).toMatchObject({ payMinor: 17, billMinor: null, marginMinor: null, marginPct: null, markupPct: null });
   });
 
   it('accepts hours as 7:30, 7h 30m or 7.5, all giving the same pay', () => {
@@ -52,13 +52,13 @@ describe('pay and bill', () => {
 
   it('refuses a decimal comma rather than reading 12,50 as 1,250.00', () => {
     const r = payFor({ hours: '8', payRate: '12,50', billRate: '' });
-    expect(r.errors.payRate).toBe('Enter an amount like 75 or 75.50');
+    expect(r.errors.payRate).toBe('calc.error.amount');
     expect(r.payMinor).toBeNull();
   });
 
   it('flags unreadable hours and shows nothing until there is enough to work with', () => {
-    expect(payFor({ hours: 'eight', payRate: '20', billRate: '' }).errors.hours).toBe('Enter hours like 7:30, 7h 30m or 7.5');
-    expect(payFor({ hours: '', payRate: '', billRate: '' })).toEqual({ errors: {}, seconds: null, payMinor: null, billMinor: null, marginMinor: null });
+    expect(payFor({ hours: 'eight', payRate: '20', billRate: '' }).errors.hours).toBe('calc.error.hours');
+    expect(payFor({ hours: '', payRate: '', billRate: '' })).toEqual({ errors: {}, seconds: null, payMinor: null, billMinor: null, marginMinor: null, marginPct: null, markupPct: null });
   });
 
   it('shows a negative margin when billing below cost', () => {
@@ -74,6 +74,46 @@ describe('convert hours', () => {
 
   it('is empty or explains the format', () => {
     expect(convertHours('  ')).toEqual({ kind: 'empty' });
-    expect(convertHours('soon')).toEqual({ kind: 'error', message: 'Enter hours like 7:30, 7h 30m or 7.5' });
+    expect(convertHours('soon')).toEqual({ kind: 'error', message: 'calc.error.hours' });
+  });
+});
+
+describe('margin and markup percentages', () => {
+  it('are worked out from the rounded amounts shown above them', () => {
+    // 8 h: pay $200.00, bill $320.00, margin $120.00 → 37.5 % of the bill, 60 % of the pay.
+    const r = payFor({ hours: '8', payRate: '25', billRate: '40' });
+    expect(r.marginPct).toBe(37.5);
+    expect(r.markupPct).toBe(60);
+  });
+
+  it('are negative when billing below cost, and absent when they would divide by zero', () => {
+    expect(payFor({ hours: '2', payRate: '50', billRate: '40' })).toMatchObject({ marginPct: -25, markupPct: -20 });
+    expect(payFor({ hours: '8', payRate: '0', billRate: '0' })).toMatchObject({ marginMinor: 0, marginPct: null, markupPct: null });
+    expect(payFor({ hours: '8', payRate: '0', billRate: '10' })).toMatchObject({ marginPct: 100, markupPct: null });
+  });
+});
+
+describe('adding and taking away time', () => {
+  it('adds and subtracts each line, skipping empty ones', () => {
+    const lines = [
+      { op: '+' as const, text: '7:30' },
+      { op: '+' as const, text: '8h 15m' },
+      { op: '+' as const, text: '' },
+      { op: '-' as const, text: '45m' },
+    ];
+    expect(sumDurations(lines)).toBe(15 * 3600); // 7:30 + 8:15 − 0:45
+  });
+
+  it('goes below zero and shows the sign', () => {
+    const s = sumDurations([{ op: '+', text: '1' }, { op: '-', text: '2:30' }]);
+    expect(s).toBe(-1.5 * 3600);
+    expect(signedHm(s)).toBe('-1:30');
+    expect(decimalHours(s)).toBe('-1.50');
+    expect(signedHm(0)).toBe('0:00');
+  });
+
+  it('flags a line it cannot read and leaves it out of the total', () => {
+    expect(lineSeconds({ op: '+', text: 'lunch' })).toEqual({ kind: 'error', message: 'calc.error.hours' });
+    expect(sumDurations([{ op: '+', text: '2' }, { op: '-', text: 'lunch' }])).toBe(2 * 3600);
   });
 });

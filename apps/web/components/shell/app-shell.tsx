@@ -133,6 +133,16 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 const NAV_GROUPS_KEY = 'tw.nav.groups';
 
+/**
+ * Accordion motion shared by every sidebar dropdown: grid-rows 0fr ↔ 1fr animates to the content's
+ * natural height, the content fades and slides in, and the chevron turns. Off for reduced motion.
+ */
+const ACCORDION_EASE = 'duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none';
+const accordionPanel = (open: boolean) =>
+  cx('grid transition-[grid-template-rows,opacity]', ACCORDION_EASE, open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0');
+const accordionContent = (open: boolean) => cx('transition-transform', ACCORDION_EASE, open ? 'translate-y-0' : '-translate-y-2');
+const accordionChevron = (open: boolean) => cx('size-3.5 shrink-0 transition-transform', ACCORDION_EASE, open && 'rotate-90');
+
 function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggle?: () => void; onClose?: () => void }) {
   const org = useOrg();
   const pathname = usePathname();
@@ -208,7 +218,7 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
           </button>
         )}
       </div>
-      <nav className="scrollbar-thin flex-1 overflow-y-auto px-2 py-3">
+      <nav className="scrollbar-nav flex-1 overflow-y-auto px-2 py-3">
         {groups.map((g, gi) => {
           // Unlabelled group (Overview) and the icon-only rail: plain list, no dropdown.
           if (!g.label || collapsed) {
@@ -241,19 +251,11 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
                   {g.badge && ' '}
                   {g.badge && <span className="rounded-full bg-[#4d8dff]/22 px-1.5 text-[10px] leading-4 tracking-wide text-[#a9c6ff]">{t(g.badge)}</span>}
                 </span>
-                <ChevronRight className={cx('size-3.5 shrink-0 transition-transform duration-200 ease-out motion-reduce:transition-none', isOpen && 'rotate-90')} aria-hidden />
+                <ChevronRight className={accordionChevron(isOpen)} aria-hidden />
               </button>
-              {/* grid-rows 0fr ↔ 1fr animates to the content's natural height */}
-              <div
-                id={panelId}
-                inert={!isOpen}
-                className={cx(
-                  'grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none',
-                  isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
-                )}
-              >
+              <div id={panelId} inert={!isOpen} className={accordionPanel(isOpen)}>
                 <div className="min-h-0 overflow-hidden">
-                  <div className={cx('pb-2 pt-0.5 transition-transform duration-200 ease-out motion-reduce:transition-none', isOpen ? 'translate-y-0' : '-translate-y-1')}>{renderItems(g.items)}</div>
+                  <div className={cx('pb-2 pt-0.5', accordionContent(isOpen))}>{renderItems(g.items)}</div>
                 </div>
               </div>
             </div>
@@ -348,15 +350,15 @@ function SidebarSubnav({ item, groups, active, collapsed }: { item: NavItem; gro
         {active && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[#3b82ff]" aria-hidden />}
         <Icon className={cx('size-4 shrink-0', active && 'text-[#6ea2ff]')} aria-hidden />
         <span className={cx('flex-1 truncate text-left', active && 'font-semibold text-white')}>{label}</span>
-        <ChevronRight className={cx('size-3.5 shrink-0 transition-transform duration-200 ease-out motion-reduce:transition-none', open && 'rotate-90')} aria-hidden />
+        <ChevronRight className={accordionChevron(open)} aria-hidden />
       </button>
-      <div id={panelId} inert={!open} className={cx('grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none', open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')}>
+      <div id={panelId} inert={!open} className={accordionPanel(open)}>
         <div className="min-h-0 overflow-hidden">
-          <nav aria-label={label} className="ml-[1.1rem] mt-0.5 flex flex-col gap-2 border-l border-white/10 pb-1 pl-2.5 pt-1">
+          <nav aria-label={label} className={cx('ml-[1.1rem] mt-0.5 flex flex-col gap-2 border-l border-white/10 pb-1 pl-2.5 pt-1', accordionContent(open))}>
             {groups.map((g) => (
               <div key={g.group} role="group" aria-label={g.group ? t(g.group) : label}>
                 {g.group && (
-                  <span className="block px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-nav-muted/80" aria-hidden>
+                  <span className="block px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-nav-fg/90" aria-hidden>
                     {t(g.group)}
                   </span>
                 )}

@@ -379,4 +379,12 @@ export const webEn = {
   'avatar.picker.apply': 'Use this avatar',
   'avatar.picker.cancel': 'Cancel',
   'avatar.picker.preview': 'Preview',
+  // Floating calculator: the button and panel frame. The panel's own strings load with it (components/calculator/messages.ts).
+  'calc.title': 'Calculator',
+  'calc.subtitle': 'Check hours and pay. Nothing is saved.',
+  'calc.open': 'Open calculator',
+  'calc.close': 'Close calculator',
+  'calc.moveHint': 'Drag to move it, or press Alt and an arrow key.',
+  'calc.moveToCorner': 'Move to corner',
+  'calc.loading': 'Loading the calculator…',
 } as const;

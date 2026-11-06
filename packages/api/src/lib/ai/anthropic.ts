@@ -10,8 +10,10 @@ export interface AnthropicLike {
 function toAiError(e: unknown): AiError {
   if (e instanceof AiError) return e;
   if (e instanceof Anthropic.APIConnectionError) return new AiError('ai_unavailable');
-  const status = (e as { status?: unknown } | null)?.status;
-  if (status === 429 || status === 529) return new AiError('ai_rate_limited');
+  if (e instanceof SyntaxError) return new AiError('ai_bad_response');
+  const { status, type } = (e as { status?: unknown; type?: unknown } | null) ?? {};
+  // The SDK throws an APIError (status undefined, type set) for an SSE error event.
+  if (status === 429 || status === 529 || type === 'overloaded_error' || type === 'rate_limit_error') return new AiError('ai_rate_limited');
   return new AiError('ai_unavailable');
 }
 
@@ -41,7 +43,6 @@ export class AnthropicProvider implements AiProvider {
           max_tokens: i.maxTokens,
           system: i.system,
           stream: true,
-          thinking: { type: 'between_tools' },
           messages: i.messages.map((m) => ({ role: m.role, content: m.content })),
           tools: i.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema })),
         },
@@ -53,6 +54,7 @@ export class AnthropicProvider implements AiProvider {
     }
 
     const tools = new Map<number, { id: string; name: string; json: string }>();
+    const thinking = new Map<number, { thinking: string; signature: string }>();
     let inputTokens = 0;
     let outputTokens = 0;
     let stopped = false;
@@ -66,15 +68,28 @@ export class AnthropicProvider implements AiProvider {
             break;
           case 'content_block_start':
             if (ev.content_block?.type === 'tool_use') tools.set(ev.index, { id: ev.content_block.id, name: ev.content_block.name, json: '' });
+            else if (ev.content_block?.type === 'thinking') thinking.set(ev.index, { thinking: ev.content_block.thinking ?? '', signature: ev.content_block.signature ?? '' });
+            else if (ev.content_block?.type === 'redacted_thinking') yield { type: 'redacted_thinking', data: ev.content_block.data };
             break;
           case 'content_block_delta':
             if (ev.delta?.type === 'text_delta' && typeof ev.delta.text === 'string') yield { type: 'text_delta', text: ev.delta.text };
-            else if (ev.delta?.type === 'input_json_delta') {
+            else if (ev.delta?.type === 'thinking_delta') {
+              const t = thinking.get(ev.index);
+              if (t) t.thinking += ev.delta.thinking ?? '';
+            } else if (ev.delta?.type === 'signature_delta') {
+              const t = thinking.get(ev.index);
+              if (t) t.signature = ev.delta.signature ?? '';
+            } else if (ev.delta?.type === 'input_json_delta') {
               const t = tools.get(ev.index);
               if (t) t.json += ev.delta.partial_json ?? '';
             }
             break;
           case 'content_block_stop': {
+            const th = thinking.get(ev.index);
+            if (th) {
+              thinking.delete(ev.index);
+              yield { type: 'thinking', thinking: th.thinking, signature: th.signature };
+            }
             const t = tools.get(ev.index);
             if (t) {
               tools.delete(ev.index);
@@ -98,14 +113,13 @@ export class AnthropicProvider implements AiProvider {
             }
             break;
           }
-          case 'error':
-            throw new AiError(ev.error?.type === 'overloaded_error' || ev.error?.type === 'rate_limit_error' ? 'ai_rate_limited' : 'ai_unavailable');
         }
       }
     } catch (e) {
       if (isAbort(e, i.signal)) return;
       throw toAiError(e);
     }
+    if (i.signal.aborted) return;
     if (!stopped) throw new AiError('ai_bad_response');
   }
 }

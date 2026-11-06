@@ -1,3 +1,5 @@
+import { DEFAULT_ASSISTANT_MODEL } from './lib/ai/provider';
+
 export interface Config {
   env: 'development' | 'test' | 'production';
   appUrl: string;
@@ -35,7 +37,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     streamPollMs: Number(env.STREAM_POLL_MS ?? 2000),
     // Below the function timeout; the browser's EventSource reconnects and resumes from Last-Event-ID.
     streamMaxMs: Number(env.STREAM_MAX_MS ?? 55_000),
-    assistantModel: env.ASSISTANT_MODEL || 'claude-sonnet-5-5',
+    assistantModel: env.ASSISTANT_MODEL || DEFAULT_ASSISTANT_MODEL,
     assistantEnabled: env.ASSISTANT_ENABLED !== 'false',
   };
 }

@@ -24,7 +24,7 @@ export async function createHarness(): Promise<Harness> {
   const h = createDb('pglite://memory');
   await h.migrate();
   const mailer = new MemoryMailer();
-  const ai = new FakeProvider();
+  const ai = new FakeProvider(() => clock.now);
   const storage = new MemoryStorage();
   const clock = {
     now: new Date(),

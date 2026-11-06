@@ -20,12 +20,14 @@ export class FakeProvider implements AiProvider {
   private queue: AiChunk[][] = [];
   private seq = 0;
 
+  constructor(private readonly now: () => Date = () => new Date()) {}
+
   script(turns: AiChunk[][]): void {
     this.queue = [...turns];
   }
 
   async *streamTurn(i: AiTurnInput): AsyncIterable<AiChunk> {
-    this.calls.push({ system: i.system, messages: i.messages, tools: i.tools });
+    this.calls.push(structuredClone({ system: i.system, messages: i.messages, tools: i.tools }));
     const chunks = this.queue.length ? this.queue.shift()! : this.respond(i.messages);
     for (const chunk of chunks) {
       if (i.signal.aborted) return;
@@ -55,7 +57,7 @@ export class FakeProvider implements AiProvider {
     ];
     if (lower.includes('error-test')) throw new AiError('ai_unavailable');
     if (lower.includes('hours')) {
-      const now = new Date();
+      const now = this.now();
       return tool('getHoursSummary', { from: mondayUtc(now), to: now.toISOString().slice(0, 10), group: 'member' });
     }
     if (lower.includes('budget')) return tool('getProjectBudgetSummary', {});

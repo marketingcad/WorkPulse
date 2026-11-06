@@ -1169,7 +1169,7 @@ Run from the repo root unless noted.
 | `pnpm install` | Install all workspace dependencies |
 | `pnpm dev` | Start the web app + API (`next dev` on port 3000) |
 | `pnpm build` | Build every package / app via Turborepo |
-| `pnpm typecheck` | Type-check every workspace |
+| `pnpm typecheck` | Type-check every workspace. The root `@opentelemetry/api` devDependency pins an optional peer that `@anthropic-ai/sdk` brings in, so all workspaces resolve one `drizzle-orm` instance (two instances break typecheck) |
 | `pnpm test` | Run all Vitest suites |
 | `pnpm test:e2e` | Run the Playwright E2E suite: builds, starts isolated servers on :3100/:3101, runs, reports ([e2e/README.md](e2e/README.md)) |
 | `pnpm test:e2e:smoke` | Only the critical E2E journeys (`@smoke`) |

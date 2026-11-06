@@ -1,12 +1,10 @@
 import { AnthropicProvider } from './anthropic';
 import { FakeProvider } from './fake';
-import { AiError, type AiChunk, type AiProvider } from './provider';
+import { AiError, DEFAULT_ASSISTANT_MODEL, type AiChunk, type AiProvider } from './provider';
 
 export * from './provider';
 export { AnthropicProvider } from './anthropic';
 export { FakeProvider } from './fake';
-
-export const DEFAULT_ASSISTANT_MODEL = 'claude-sonnet-5-5';
 
 /** Used in production when no key is configured: reports unavailable and refuses to stream. */
 class UnavailableProvider implements AiProvider {

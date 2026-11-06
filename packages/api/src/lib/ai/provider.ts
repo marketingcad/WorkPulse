@@ -1,7 +1,10 @@
 export type AiBlock =
   | { type: 'text'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean };
+  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }
+  /** Opaque pass-through: must be sent back to the provider unchanged. */
+  | { type: 'thinking'; thinking: string; signature: string }
+  | { type: 'redacted_thinking'; data: string };
 
 export interface AiMessage {
   role: 'user' | 'assistant';
@@ -18,7 +21,11 @@ export type AiChunk =
   | { type: 'text_delta'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'stop'; reason: 'end_turn' | 'tool_use' | 'max_tokens' }
-  | { type: 'usage'; inputTokens: number; outputTokens: number };
+  | { type: 'usage'; inputTokens: number; outputTokens: number }
+  | { type: 'thinking'; thinking: string; signature: string }
+  | { type: 'redacted_thinking'; data: string };
+
+export const DEFAULT_ASSISTANT_MODEL = 'claude-sonnet-5-5';
 
 export type AiErrorCode = 'ai_unavailable' | 'ai_rate_limited' | 'ai_bad_response';
 

@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it } from 'vitest';
 import { AiError, AnthropicProvider, FakeProvider, createAiProvider, type AiChunk, type AiMessage } from '../src/lib/ai';
 import { loadConfig } from '../src/config';
@@ -95,9 +96,98 @@ describe('AnthropicProvider', () => {
     const truncated = new AnthropicProvider('k', 'm', fakeClient(stream([{ type: 'message_start', message: { usage: {} } }])));
     await expect(collect(run(truncated, userMsg('hi')))).rejects.toMatchObject({ code: 'ai_bad_response' });
   });
-  it('maps an in-stream overloaded error event', async () => {
-    const p = new AnthropicProvider('k', 'm', fakeClient(stream([{ type: 'error', error: { type: 'overloaded_error', message: 'secret' } }])));
-    await expect(collect(run(p, userMsg('hi')))).rejects.toMatchObject({ code: 'ai_rate_limited' });
+  it('maps an in-stream SDK error thrown for an SSE error event', async () => {
+    // Built the way core/streaming.js builds it: status undefined, type from the event.
+    const thrower = (err: unknown) => async () =>
+      (async function* () {
+        yield { type: 'message_start', message: { usage: {} } };
+        throw err;
+      })();
+    const sse = (type: string) => new Anthropic.APIError(undefined, { type: 'error', error: { type, message: 'secret sk-ant-x' } }, undefined, undefined, type as never);
+    for (const [type, code] of [['overloaded_error', 'ai_rate_limited'], ['rate_limit_error', 'ai_rate_limited'], ['api_error', 'ai_unavailable']] as const) {
+      const p = new AnthropicProvider('k', 'm', fakeClient(thrower(sse(type))));
+      const e = await collect(run(p, userMsg('hi'))).catch((x) => x);
+      expect(e.code).toBe(code);
+      expect(e.message).not.toContain('secret');
+    }
+    const bad = new AnthropicProvider('k', 'm', fakeClient(thrower(new SyntaxError('Unexpected token'))));
+    await expect(collect(run(bad, userMsg('hi')))).rejects.toMatchObject({ code: 'ai_bad_response' });
+  });
+  it('maps connection errors and timeouts to ai_unavailable', async () => {
+    for (const err of [new Anthropic.APIConnectionError({ message: 'down' }), new Anthropic.APIConnectionTimeoutError()]) {
+      const p = new AnthropicProvider('k', 'm', fakeClient(() => Promise.reject(err)));
+      await expect(collect(run(p, userMsg('hi')))).rejects.toMatchObject({ code: 'ai_unavailable' });
+    }
+  });
+  it('ends quietly when aborted mid-stream, even without a stop event', async () => {
+    const ac = new AbortController();
+    const p = new AnthropicProvider(
+      'k',
+      'm',
+      fakeClient(async () =>
+        (async function* () {
+          yield { type: 'message_start', message: { usage: {} } };
+          ac.abort();
+        })(),
+      ),
+    );
+    expect(await collect(run(p, userMsg('hi'), ac.signal))).toEqual([]);
+  });
+  it('sends the model, max_tokens, mapped tools and the signal; thinking is omitted', async () => {
+    let seen: { params: any; options: any } | undefined;
+    const p = new AnthropicProvider('k', 'claude-sonnet-5-5', {
+      messages: {
+        create: async (params: any, options: any) => {
+          seen = { params, options };
+          return (async function* () {
+            yield { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } };
+          })();
+        },
+      },
+    });
+    const ac = new AbortController();
+    await collect(p.streamTurn({ system: 'sys', messages: userMsg('hi'), tools: [{ name: 't', description: 'd', inputSchema: { type: 'object' } }], maxTokens: 321, signal: ac.signal }));
+    expect(seen!.params).toMatchObject({
+      model: 'claude-sonnet-5-5',
+      max_tokens: 321,
+      system: 'sys',
+      stream: true,
+      tools: [{ name: 't', description: 'd', input_schema: { type: 'object' } }],
+    });
+    expect(seen!.params).not.toHaveProperty('thinking');
+    expect(seen!.options.signal).toBe(ac.signal);
+  });
+  it('round-trips thinking blocks unchanged', async () => {
+    const events = [
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Let me ' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'think.' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'sig123' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'content_block_start', index: 1, content_block: { type: 'redacted_thinking', data: 'opaque' } },
+      { type: 'content_block_stop', index: 1 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 2 } },
+    ];
+    const sent: any[] = [];
+    const p = new AnthropicProvider('k', 'm', {
+      messages: {
+        create: async (params: any) => {
+          sent.push(params.messages);
+          return (async function* () {
+            for (const e of events) yield e;
+          })();
+        },
+      },
+    });
+    const out = await collect(run(p, userMsg('hi')));
+    const blocks = out.filter((c) => c.type === 'thinking' || c.type === 'redacted_thinking');
+    expect(blocks).toEqual([
+      { type: 'thinking', thinking: 'Let me think.', signature: 'sig123' },
+      { type: 'redacted_thinking', data: 'opaque' },
+    ]);
+    const history: AiMessage[] = [...userMsg('hi'), { role: 'assistant', content: blocks as AiMessage['content'] }];
+    await collect(run(p, history));
+    expect(sent[1][1].content).toEqual(blocks);
   });
 });
 
@@ -110,6 +200,8 @@ describe('FakeProvider', () => {
     expect(input.group).toBe('member');
     expect(new Date(input.from + 'T00:00:00Z').getUTCDay()).toBe(1);
     expect(input.to).toBe(new Date().toISOString().slice(0, 10));
+    const fixed = new FakeProvider(() => new Date('2026-11-11T10:00:00Z')); // a Wednesday
+    expect(toolOf(await collect(run(fixed, userMsg('hours')))).input).toEqual({ from: '2026-11-09', to: '2026-11-11', group: 'member' });
     expect(toolOf(await collect(run(f, userMsg('project budget?')))).name).toBe('getProjectBudgetSummary');
     const nav = toolOf(await collect(run(f, userMsg('where do I approve timesheets'))));
     expect(nav).toMatchObject({ name: 'suggestNavigation', input: { key: 'timesheets.approvals' } });
@@ -118,6 +210,13 @@ describe('FakeProvider', () => {
     expect((doc.input as { query: string }).query).toHaveLength(200);
     await expect(collect(run(f, userMsg('error-test')))).rejects.toMatchObject({ code: 'ai_unavailable' });
     expect(f.calls.length).toBe(5);
+  });
+  it('records calls as copies', async () => {
+    const f = new FakeProvider();
+    const msgs = userMsg('hi');
+    await collect(run(f, msgs));
+    msgs[0]!.content.push({ type: 'text', text: 'later' });
+    expect(f.calls[0]!.messages[0]!.content).toHaveLength(1);
   });
   it('answers tool results with split text deltas then end_turn', async () => {
     const f = new FakeProvider();

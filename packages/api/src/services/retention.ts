@@ -1,6 +1,6 @@
 import { asc, count, lt, sql } from 'drizzle-orm';
 import type { z } from 'zod';
-import { activityMinutes, appSpans, auditLogs, retentionPolicies, urlSpans, type Tx } from '@tallywork/db';
+import { activityMinutes, appSpans, assistantConversations, auditLogs, retentionPolicies, urlSpans, type Tx } from '@tallywork/db';
 import { forbidden, validation } from '@tallywork/domain';
 import type { retentionInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
@@ -12,7 +12,7 @@ type DataClass = (typeof retentionPolicies.$inferSelect)['dataClass'];
 /** Legal lower bounds: financial records at least 7 years, the audit log at least a year. */
 export const MIN_KEEP_DAYS: Partial<Record<DataClass, number>> = { INVOICES: 2555, TIMESHEETS: 2555, AUDIT: 365 };
 /** Classes the daily job deletes. Timesheets, invoices, sessions and location are kept (the settings record intent only). */
-export const PURGED: DataClass[] = ['ACTIVITY', 'APPS', 'URLS', 'AUDIT'];
+export const PURGED: DataClass[] = ['ACTIVITY', 'APPS', 'URLS', 'AUDIT', 'AI_CONVERSATIONS'];
 /** Screenshots have their own cleanup, with a preview and approval (services/screenshot-cleanup.ts). */
 const OWN_CLEANUP: DataClass[] = ['SCREENSHOTS'];
 /** A shorter keep period takes effect only after this delay, so a mistaken change can be undone before data is lost. */
@@ -76,6 +76,10 @@ export async function setRetention(x: Ctx, input: z.infer<typeof retentionInput>
 const cutoffFor = (keepDays: number, now: Date) => new Date(now.getTime() - keepDays * 86400_000);
 
 async function countOlder(tx: Tx, cls: DataClass, cutoff: Date): Promise<number> {
+  if (cls === 'AI_CONVERSATIONS') {
+    const [r] = await tx.select({ n: count() }).from(assistantConversations).where(sql`coalesce(${assistantConversations.lastMessageAt}, ${assistantConversations.createdAt}) < ${cutoff}`);
+    return Number(r?.n ?? 0);
+  }
   const q = (t: typeof activityMinutes | typeof appSpans | typeof urlSpans | typeof auditLogs, col: Parameters<typeof lt>[0]) => tx.select({ n: count() }).from(t).where(lt(col, cutoff));
   const [r] =
     cls === 'ACTIVITY' ? await q(activityMinutes, activityMinutes.minuteStart)
@@ -120,7 +124,15 @@ export async function applyRetention(tx: Tx, deps: Deps): Promise<Record<string,
     if (p.dataClass === 'ACTIVITY') deleted.activity_minutes = (await tx.delete(activityMinutes).where(lt(activityMinutes.minuteStart, cut)).returning({ s: activityMinutes.sessionId })).length;
     else if (p.dataClass === 'APPS') deleted.app_spans = (await tx.delete(appSpans).where(lt(appSpans.startedAt, cut)).returning({ id: appSpans.id })).length;
     else if (p.dataClass === 'URLS') deleted.url_spans = (await tx.delete(urlSpans).where(lt(urlSpans.startedAt, cut)).returning({ id: urlSpans.id })).length;
-    else if (p.dataClass === 'AUDIT') {
+    else if (p.dataClass === 'AI_CONVERSATIONS') {
+      // Messages go with their conversation (foreign key cascade).
+      deleted.assistant_conversations = (
+        await tx
+          .delete(assistantConversations)
+          .where(sql`${assistantConversations.organizationId} = ${p.organizationId} and coalesce(${assistantConversations.lastMessageAt}, ${assistantConversations.createdAt}) < ${cut}`)
+          .returning({ id: assistantConversations.id })
+      ).length;
+    } else if (p.dataClass === 'AUDIT') {
       // The app cannot delete audit rows itself; the database function enforces the one-year minimum on its own clock.
       const r = await tx.execute<{ n: number }>(sql`select tallywork_purge_audit(${keep}) as n`);
       deleted.audit = Number((r as unknown as { rows: Array<{ n: number }> }).rows[0]?.n ?? 0);

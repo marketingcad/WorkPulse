@@ -170,7 +170,7 @@ export const retentionPolicies = pgTable(
   {
     organizationId: orgId(),
     dataClass: text()
-      .$type<'SCREENSHOTS' | 'ACTIVITY' | 'APPS' | 'URLS' | 'SESSIONS' | 'TIMESHEETS' | 'INVOICES' | 'AUDIT' | 'LOCATION'>()
+      .$type<'SCREENSHOTS' | 'ACTIVITY' | 'APPS' | 'URLS' | 'SESSIONS' | 'TIMESHEETS' | 'INVOICES' | 'AUDIT' | 'LOCATION' | 'AI_CONVERSATIONS'>()
       .notNull(),
     keepDays: integer().notNull(),
     /** a shorter keep period waits 7 days before it takes effect, so an accidental change can be undone */

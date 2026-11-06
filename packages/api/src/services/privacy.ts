@@ -3,6 +3,8 @@ import {
   activityMinutes,
   activityWindows,
   apiKeys,
+  assistantConversations,
+  assistantMessages,
   appSpans,
   auditLogs,
   dashboardLayouts,
@@ -70,6 +72,8 @@ export async function collectMemberData(tx: Tx, membershipId: string) {
   const [u] = await tx.select({ id: users.id, name: users.name, email: users.email, locale: users.locale, created_at: users.createdAt }).from(users).where(eq(users.id, m.m.userId));
   const by = <T extends { membershipId: unknown }>(t: T) => eq(t.membershipId as never, membershipId);
   const sessions = await tx.select().from(trackingSessions).where(by(trackingSessions)).orderBy(asc(trackingSessions.startedAt));
+  const convs = await tx.select().from(assistantConversations).where(by(assistantConversations)).orderBy(asc(assistantConversations.createdAt));
+  const msgs = convs.length ? await tx.select().from(assistantMessages).where(inArray(assistantMessages.conversationId, convs.map((c) => c.id))).orderBy(asc(assistantMessages.createdAt)) : [];
   return {
     exported_at: new Date().toISOString(),
     account: u,
@@ -90,6 +94,11 @@ export async function collectMemberData(tx: Tx, membershipId: string) {
     expenses: await tx.select().from(expenses).where(by(expenses)),
     devices: (await tx.select().from(devices).where(by(devices))).map((d) => ({ id: d.id, name: d.name, platform: d.platform, status: d.status, last_seen_at: d.lastSeenAt })),
     notifications: await tx.select().from(notifications).where(by(notifications)),
+    assistant_conversations: convs.map((c) => ({
+      title: c.title,
+      created_at: c.createdAt,
+      messages: msgs.filter((m) => m.conversationId === c.id).map((m) => ({ role: m.role, content: m.content, created_at: m.createdAt })),
+    })),
     actions_in_audit_log: await tx.select({ action: auditLogs.action, target_type: auditLogs.targetType, created_at: auditLogs.createdAt }).from(auditLogs).where(eq(auditLogs.actorId, membershipId)).orderBy(asc(auditLogs.createdAt)),
   };
 }
@@ -119,6 +128,8 @@ export async function anonymizeMember(x: Ctx, membershipId: string) {
   counts.activity_windows = (await x.tx.delete(activityWindows).where(eq(activityWindows.membershipId, membershipId)).returning({ m: activityWindows.membershipId })).length;
   counts.app_spans = (await x.tx.delete(appSpans).where(eq(appSpans.membershipId, membershipId)).returning({ id: appSpans.id })).length;
   counts.url_spans = (await x.tx.delete(urlSpans).where(eq(urlSpans.membershipId, membershipId)).returning({ id: urlSpans.id })).length;
+  // Their assistant chats may quote anything they saw; messages go with the conversation (cascade).
+  counts.assistant_conversations = (await x.tx.delete(assistantConversations).where(and(eq(assistantConversations.organizationId, x.org.id), eq(assistantConversations.membershipId, membershipId))).returning({ id: assistantConversations.id })).length;
   await x.tx.delete(notifications).where(eq(notifications.membershipId, membershipId));
   await x.tx.delete(notificationPreferences).where(eq(notificationPreferences.membershipId, membershipId));
   await x.tx.delete(dashboardLayouts).where(eq(dashboardLayouts.membershipId, membershipId));

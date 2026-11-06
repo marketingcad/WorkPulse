@@ -42,6 +42,7 @@ export const POLICY_SECTIONS: PolicySection[] = [
       { section: 'tracking', key: 'maxPauseMinutes', label: 'Stop paused timers after', kind: { type: 'number', min: 1, max: 1440, unit: 'min' } },
       { section: 'tracking', key: 'recoveryWindowMinutes', label: 'Offer to resume after a crash for', help: 'If the app or computer crashes, the member can pick up the same session within this time.', kind: { type: 'number', min: 1, max: 240, unit: 'min' } },
       { section: 'tracking', key: 'heartbeatGraceSeconds', label: 'Treat a silent app as stopped after', help: 'How long WorkPulse waits to hear from a desktop app (for example on a lost connection) before showing the member as offline and pausing the session.', kind: { type: 'number', min: 60, max: 3600, unit: 'sec' } },
+      { section: 'tracking', key: 'confirmTimeoutSeconds', label: 'Wait for the desktop app to confirm a new timer for', help: 'A timer started in the desktop app counts once the app confirms it is running, usually within a minute. If the app is online but does not confirm it in time, the timer stops and adds no time. An app that went offline right after starting follows the offline rule below instead.', kind: { type: 'number', min: 60, max: 900, unit: 'sec' } },
       { section: 'tracking', key: 'maxOfflineHours', label: 'Maximum offline tracking', help: 'How long the desktop app may track without internet. After this it pauses tracking and asks the member to reconnect; time beyond it is not accepted.', kind: { type: 'number', min: 1, max: 168, unit: 'h' } },
     ],
   },

@@ -43,6 +43,42 @@ test.describe('QA · Tracking policies (admin)', () => {
     await expect(page.getByText(/^Policy saved./).first()).toBeVisible();
     await expect.poll(layer).toBeUndefined();
   });
+
+  // The desktop confirm window (default 120 s) used to be settable through the API only. Uses the
+  // newcomer's own layer, so it never meets the test above (which edits the worker's).
+  test('the desktop confirm window can be set in Settings: out of range is explained, a valid value is saved, then reset', async ({ page, data, adminApi }) => {
+    const layer = async () => (await ok<{ doc: { tracking?: { confirmTimeoutSeconds?: number } } }>(await adminApi.api.get(adminApi.orgApi(`/policies/WORKER/${data.newcomer.membershipId}`)), 'layer')).doc.tracking?.confirmTimeoutSeconds;
+    const open = async () => {
+      await page.goto(`/o/${data.orgId}/settings/policies`);
+      await expect(page.getByRole('heading', { level: 1, name: 'Tracking policies' })).toBeVisible();
+      await page.getByRole('radio', { name: 'Member' }).or(page.getByRole('button', { name: 'Member', exact: true })).first().click();
+      await page.getByLabel('Member', { exact: true }).selectOption({ label: data.newcomer.name });
+    };
+    const field = page.getByLabel('Wait for the desktop app to confirm a new timer for');
+    const row = page.getByRole('listitem').filter({ has: field });
+    const save = page.getByRole('button', { name: 'Save policy' });
+
+    await open();
+    await expect(field).toHaveValue('120'); // inherited default
+    // Under a minute is refused before anything is sent: the app heartbeats once a minute.
+    await field.fill('30');
+    await expect(page.getByText('A value is out of range. Correct the highlighted field to save.')).toBeVisible();
+    await field.fill('300');
+    await expect(row.getByText('Overridden')).toBeVisible();
+    await save.click();
+    await page.getByRole('button', { name: 'Save and notify' }).click();
+    await expect(page.getByText(/^Policy saved./).first()).toBeVisible();
+    await expect.poll(layer).toBe(300);
+
+    await open();
+    await expect(field).toHaveValue('300');
+    await row.getByRole('button', { name: 'Reset to inherited' }).click();
+    await expect(field).toHaveValue('120');
+    await save.click();
+    await page.getByRole('button', { name: 'Save and notify' }).click();
+    await expect(page.getByText(/^Policy saved./).first()).toBeVisible();
+    await expect.poll(layer).toBeUndefined();
+  });
 });
 
 test.describe('QA · Tracking policies (restricted role)', () => {

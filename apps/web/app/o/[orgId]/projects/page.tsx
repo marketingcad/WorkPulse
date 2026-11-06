@@ -230,7 +230,7 @@ function Projects() {
             searchPlaceholder="Search projects or clients…"
             caption="Projects"
             initialSort={{ key: 'name', dir: 'asc' }}
-            rowClassName={(p) => (p.archived_at ? 'opacity-70' : undefined)}
+            rowClassName={(p) => (p.archived_at ? 'bg-surface-muted/50' : undefined)}
             empty={
               <EmptyState
                 title={filtered ? 'No projects match these filters' : 'No projects yet'}

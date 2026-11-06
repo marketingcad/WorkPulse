@@ -141,6 +141,22 @@ Rules:
 - **Production rate limits apply.** The suite signs in once per run, and runs on 2 workers.
 - Reports go to `playwright-report/live`, failure artifacts to `test-results/live`.
 
+## Live UI audit (every page, every role)
+
+[audit/live-audit.spec.ts](audit/live-audit.spec.ts) opens every workspace page in a real browser against the isolated server:
+
+- as an admin at desktop, laptop, tablet and phone sizes, and in dark mode;
+- as a team manager, a worker, a custom role, a client viewer and a non-staff user on the support console.
+
+It records console errors, crashes, failed requests, API errors, broken images, sideways scrolling and accessibility problems (axe). Pages a role must not open are checked to refuse it, on the page and in the API. Findings per role (JSON) and screenshots go to `e2e/.tmp/live-audit`.
+
+```bash
+pnpm test:e2e:audit                    # about 6 minutes
+E2E_SKIP_BUILD=1 pnpm test:e2e:audit   # reuse the last build
+```
+
+`pnpm test:e2e` never runs it, and it must not share a server with that run. It creates a team manager and a client viewer, and the full regression run already uses the whole per-IP budget for invitations and sign-ups that production rate limits allow (20 and 10 an hour). Run it on its own, and stop any E2E server already on :3100 first, because a running server is reused. Run it after UI-wide changes such as layout, theme, navigation or permissions.
+
 ## Video tutorial recordings
 
 [tutorial/](tutorial/README.md) uses the same tools to record the screen footage of the WorkPulse video tutorial, one clip per scene, against its own isolated server with demo data on :3200 (`pnpm tutorial:record`). It is not part of `pnpm test:e2e`. When a feature that the tutorial shows changes, re-record its scenes.

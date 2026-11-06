@@ -169,7 +169,7 @@ export default function DevicesPage() {
                   <Input aria-label="Search devices" placeholder="Search device, platform or member…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="h-7 w-64 text-xs" />
                 ) : undefined
               }
-              rowClassName={(d) => (d.status === 'REVOKED' ? 'opacity-60' : undefined)}
+              rowClassName={(d) => (d.status === 'REVOKED' ? 'bg-surface-muted/50' : undefined)}
               caption="Registered devices"
               empty={search.term ? <EmptyState title="No devices match your search" /> : <EmptyState icon={<Laptop className="size-5" />} title="No devices yet" description="Install the desktop app and sign in. The computer appears here after its first sync." />
               }

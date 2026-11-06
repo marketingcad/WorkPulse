@@ -121,11 +121,14 @@ function BrandPanel() {
 /** A decorative, live miniature of the dashboard (timer ticks), tilted like a device in perspective. */
 function DashboardPreview() {
   const [s, setS] = useState(3 * 3600 + 44 * 60 + 13);
+  // The date follows the browser's locale and timezone, which the server can't know: format it only
+  // after mount, so the server and the first client render match (React #418 otherwise, e.g. en-GB).
+  const [today, setToday] = useState<string | null>(null);
   useEffect(() => {
+    setToday(new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date()));
     const id = setInterval(() => setS((x) => x + 1), 1000);
     return () => clearInterval(id);
   }, []);
-  const today = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date());
   const bars = [44, 70, 52, 66, 88, 61, 74, 95, 69, 58, 83, 77];
   const nav: Array<[LucideIcon, string]> = [
     [LayoutDashboard, 'auth.preview.nav.dashboard'],
@@ -164,7 +167,7 @@ function DashboardPreview() {
               <p className="text-sm font-semibold">{t('auth.preview.greeting')}</p>
               <p className="text-[10px] text-[#8b9bbb]">{t('auth.preview.greetingSub')}</p>
             </div>
-            <span className="rounded-md border border-white/10 px-2 py-1 text-[10px] text-[#9fb0cf]">{t('auth.preview.today', { date: today })}</span>
+            {today && <span className="rounded-md border border-white/10 px-2 py-1 text-[10px] text-[#9fb0cf]">{t('auth.preview.today', { date: today })}</span>}
           </div>
           <div className="mt-3 grid grid-cols-[1.6fr_1fr] gap-3">
             <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">

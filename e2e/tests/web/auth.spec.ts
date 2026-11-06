@@ -140,3 +140,23 @@ test.describe('workers use the desktop app', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Get the WorkPulse desktop app' })).toBeVisible();
   });
 });
+
+test.describe('signed-out pages in any locale', () => {
+  // Regression: the brand panel's preview printed today's date in the browser's format during the
+  // server render, so an en-GB browser ("7 Nov 2026" vs "Nov 7, 2026") hit React #418 (hydration
+  // mismatch) on every signed-out page at desktop width. A far-ahead timezone also moves the date.
+  test.use({ locale: 'en-GB', timezoneId: 'Pacific/Kiritimati', viewport: { width: 1440, height: 900 } });
+
+  test('render without a hydration error in an en-GB browser', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    for (const path of ['/login', '/signup', '/download']) {
+      await page.goto(path);
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      // The preview's date appears once the page is running in the browser, in the browser's format.
+      const today = new Intl.DateTimeFormat('en-GB', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Pacific/Kiritimati' }).format(new Date());
+      await expect(page.getByText(`Today, ${today}`)).toBeAttached();
+    }
+    expect(errors).toEqual([]);
+  });
+});

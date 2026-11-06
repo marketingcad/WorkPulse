@@ -47,3 +47,4 @@ A feature or change is not finished until it has automated tests that were **run
 | `pnpm test` | All Vitest suites |
 | `pnpm test:e2e` | All Playwright tests, one command |
 | `pnpm test:e2e:smoke` | Critical E2E paths only |
+| `pnpm test:e2e:audit` | Every page as every role, at four screen sizes and in dark mode, with axe. Run it on its own, see [e2e/README.md](e2e/README.md#live-ui-audit-every-page-every-role) |

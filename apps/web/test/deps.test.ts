@@ -13,6 +13,7 @@ vi.mock('@tallywork/db/client', () => ({ createDb }));
 vi.mock('@tallywork/api', () => ({
   createApp: vi.fn(() => ({ fetch: vi.fn() })),
   createMailer: vi.fn(),
+  createAiProvider: vi.fn(),
   createStorage: vi.fn(),
   loadConfig: vi.fn(() => ({})),
 }));

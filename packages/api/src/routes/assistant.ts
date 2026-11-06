@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { streamSSE } from 'hono/streaming';
-import { sectionFor } from '@tallywork/domain/assistant';
+import { sectionFor, suggestionsFor } from '@tallywork/domain/assistant';
 import { assistantCreateInput, assistantRenameInput, assistantSendInput, type AssistantErrorCode } from '@tallywork/contracts';
 import type { AppEnv } from '../context';
 import { body, query } from '../lib/http';
@@ -21,7 +21,17 @@ import { createConversation, deleteConversation, getConversation, listConversati
 /** Conversations list: at most 50 per page. */
 const listQuery = z.object({ page: z.coerce.number().int().min(1).max(100_000).default(1), page_size: z.coerce.number().int().min(1).max(50).default(50) });
 
+/** The page the person is on; matched against the navigation allowlist, otherwise ignored. */
+const suggestionsQuery = z.object({ route: z.string().max(200).optional() });
+
 export const assistantRoutes = new Hono<AppEnv>()
+  /** 3–4 suggested questions for the welcome screen, picked from the person's permissions and page. */
+  .get('/suggestions', async (c) => {
+    const x = ctx(c);
+    assertAssistantAccess(x);
+    const q = query(c, suggestionsQuery);
+    return c.json({ questions: suggestionsFor(x.actor.grants, q.route ? sectionFor(q.route) : null) });
+  })
   .get('/conversations', async (c) => {
     const x = ctx(c);
     assertAssistantAccess(x);

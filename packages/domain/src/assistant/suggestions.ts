@@ -1,5 +1,5 @@
 import type { Grants } from '../permissions';
-import { gateAllows, type NavGate, type NavTargetKey } from './navigation';
+import { NAV_TARGETS, gateAllows, type NavGate, type NavTargetKey } from './navigation';
 
 type Suggestion = { q: string; gate?: NavGate };
 
@@ -59,9 +59,14 @@ const BY_SECTION: Partial<Record<NavTargetKey, Suggestion[]>> = {
   ],
 };
 
-/** 3 to 4 starter questions the person may ask: the page's own, then general ones, de-duplicated. */
+/**
+ * 3 to 4 starter questions the person may ask: the page's own, then general ones, de-duplicated.
+ * A page's questions are offered only to people who may open that page, so nobody is invited to
+ * ask about something the assistant would then refuse (e.g. a manager on a payroll URL).
+ */
 export function suggestionsFor(grants: Grants, section: NavTargetKey | null): string[] {
-  const pool = [...((section && BY_SECTION[section]) || []), ...GENERAL];
+  const page = section && gateAllows(grants, NAV_TARGETS[section]) ? BY_SECTION[section] : undefined;
+  const pool = [...(page ?? []), ...GENERAL];
   const out: string[] = [];
   for (const s of pool) {
     if (s.gate && !gateAllows(grants, s.gate)) continue;

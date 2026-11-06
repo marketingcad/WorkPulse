@@ -169,3 +169,36 @@ describe('assistant conversations', () => {
     expect(statuses[120]).toBe(429);
   });
 });
+
+describe('assistant suggestions and enabled flag', () => {
+  it('suggests questions from the page and the person’s permissions', async () => {
+    const a = await admin.get(o(`/suggestions?route=${encodeURIComponent(`/o/${orgId}/timesheets/approvals`)}`));
+    expect(a.status).toBe(200);
+    expect(a.body.questions.length).toBeGreaterThanOrEqual(3);
+    expect(a.body.questions.length).toBeLessThanOrEqual(4);
+    expect(a.body.questions.some((q: string) => /approv/i.test(q))).toBe(true);
+    const m = await admin2.get(o(`/suggestions?route=${encodeURIComponent(`/o/${orgId}/finance/payroll`)}`));
+    expect(m.status).toBe(200);
+    // A route outside the allowlist falls back to general questions.
+    expect((await admin.get(o(`/suggestions?route=${encodeURIComponent('https://evil.example/x')}`))).body.questions.length).toBeGreaterThanOrEqual(3);
+    expect((await admin.get(o(`/suggestions?route=${'a'.repeat(201)}`))).status).toBe(400);
+    expect((await worker.get(o('/suggestions'))).status).toBe(403);
+  });
+
+  it('never suggests a question a manager cannot get answered', async () => {
+    const m = await manager.get(o(`/suggestions?route=${encodeURIComponent(`/o/${orgId}/finance/payroll`)}`));
+    for (const q of m.body.questions as string[]) expect(q).not.toMatch(/payroll|invoice|budget/i);
+  });
+
+  it('reports assistant_enabled in the organization context', async () => {
+    expect((await admin.get(`/orgs/${orgId}`)).body.assistant_enabled).toBe(true);
+    expect((await worker.get(`/orgs/${orgId}`)).body.assistant_enabled).toBe(false);
+    const saved = t.deps.ai!;
+    t.deps.ai = { available: false, streamTurn: saved.streamTurn.bind(saved) };
+    try {
+      expect((await admin.get(`/orgs/${orgId}`)).body.assistant_enabled).toBe(false);
+    } finally {
+      t.deps.ai = saved;
+    }
+  });
+});

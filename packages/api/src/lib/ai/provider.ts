@@ -47,6 +47,8 @@ export interface AiTurnInput {
   system: string;
   messages: AiMessage[];
   tools: AiToolSpec[];
+  /** 'none' keeps the tool definitions (needed when history holds tool blocks) but forbids new calls. */
+  toolChoice?: 'auto' | 'none';
   maxTokens: number;
   signal: AbortSignal;
 }

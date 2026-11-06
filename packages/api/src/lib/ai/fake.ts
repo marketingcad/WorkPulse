@@ -16,7 +16,7 @@ function mondayUtc(d: Date): string {
 /** Deterministic provider for tests, E2E and local development without a key. */
 export class FakeProvider implements AiProvider {
   readonly available = true;
-  readonly calls: Array<{ system: string; messages: AiMessage[]; tools: AiToolSpec[] }> = [];
+  readonly calls: Array<{ system: string; messages: AiMessage[]; tools: AiToolSpec[]; toolChoice?: 'auto' | 'none' }> = [];
   private queue: AiChunk[][] = [];
   private seq = 0;
 
@@ -27,7 +27,7 @@ export class FakeProvider implements AiProvider {
   }
 
   async *streamTurn(i: AiTurnInput): AsyncIterable<AiChunk> {
-    this.calls.push(structuredClone({ system: i.system, messages: i.messages, tools: i.tools }));
+    this.calls.push(structuredClone({ system: i.system, messages: i.messages, tools: i.tools, ...(i.toolChoice ? { toolChoice: i.toolChoice } : {}) }));
     const chunks = this.queue.length ? this.queue.shift()! : this.respond(i.messages);
     for (const chunk of chunks) {
       if (i.signal.aborted) return;

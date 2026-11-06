@@ -45,6 +45,7 @@ export class AnthropicProvider implements AiProvider {
           stream: true,
           messages: i.messages.map((m) => ({ role: m.role, content: m.content })),
           tools: i.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema })),
+          ...(i.toolChoice === 'none' ? { tool_choice: { type: 'none' } } : {}),
         },
         { signal: i.signal },
       );

@@ -7,7 +7,7 @@ import type { AppEnv } from '../context';
 import { body, query } from '../lib/http';
 import { ctx } from '../services/ctx';
 import { assertAssistantAccess } from '../services/assistant/access';
-import { STREAM_TIMEOUT_MS, prepareTurn, releaseLock, runAssistantTurn, saveTurn } from '../services/assistant/orchestrator';
+import { prepareTurn, runAssistantTurn, streamBudgetMs, turnStore } from '../services/assistant/orchestrator';
 import { buildSystemPrompt, historyToMessages } from '../services/assistant/prompt';
 import { createConversation, deleteConversation, getConversation, listConversations, renameConversation } from '../services/assistant/conversations';
 
@@ -53,8 +53,18 @@ export const assistantRoutes = new Hono<AppEnv>()
   })
   /**
    * Send a message and stream the reply (spec §2, §4). The user message is saved and the lock
-   * taken in the request transaction, which commits once the Response is returned. The reply then
-   * streams outside it: each tool call and the final save use their own short tenant transactions.
+   * taken in the request transaction (c.var.tx). The reply streams outside it: each tool call and
+   * the final save use their own short tenant transactions.
+   *
+   * streamSSE starts the callback before this handler returns, so the callback runs while the
+   * request transaction is still open. That is safe: the callback's first database writes wait on
+   * the row lock (Postgres) or the connection mutex (PGlite) held by the request transaction, which
+   * commits as soon as the Response is returned. SSE writes apply backpressure, so the turn mostly
+   * runs once the client is reading; a tool that starts earlier only reads in its own transaction
+   * (it needs nothing the request transaction wrote) and, on PGlite, simply waits for the mutex.
+   *
+   * The stream stops shortly before its lock expires (streamBudgetMs), and clears only its own lock
+   * value, so a stale stream can never release a newer stream's lock.
    */
   .post('/conversations/:id/messages', async (c) => {
     const x = ctx(c);
@@ -71,7 +81,7 @@ export const assistantRoutes = new Hono<AppEnv>()
       const timer = setTimeout(() => {
         timedOut = true;
         ac.abort();
-      }, STREAM_TIMEOUT_MS);
+      }, streamBudgetMs(turn.lockUntil, x.deps.now()));
       const abort = () => ac.abort();
       stream.onAbort(abort);
       c.req.raw.signal?.addEventListener('abort', abort);
@@ -84,7 +94,7 @@ export const assistantRoutes = new Hono<AppEnv>()
             continue;
           }
           const errorCode: AssistantErrorCode | null = timedOut ? 'timeout' : ev.errorCode;
-          const id = await saveTurn(x, turn.conversationId, { ...ev, errorCode });
+          const id = await turnStore.saveTurn(x, turn.conversationId, turn.lockUntil, { ...ev, errorCode });
           released = true;
           if (errorCode) await stream.writeSSE({ event: 'error', data: JSON.stringify({ code: errorCode, retryable: true }) });
           else await stream.writeSSE({ event: 'done', data: JSON.stringify({ assistant_message_id: id }) });
@@ -96,7 +106,7 @@ export const assistantRoutes = new Hono<AppEnv>()
         clearTimeout(timer);
         c.req.raw.signal?.removeEventListener('abort', abort);
         if (!released) {
-          await releaseLock(x, turn.conversationId).catch((e) =>
+          await turnStore.releaseLock(x, turn.conversationId, turn.lockUntil).catch((e) =>
             console.error(JSON.stringify({ level: 'error', msg: 'assistant lock release failed', request_id: x.requestId, code: (e as Error)?.name })),
           );
         }

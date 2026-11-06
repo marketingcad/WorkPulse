@@ -155,7 +155,34 @@ describe('AnthropicProvider', () => {
       tools: [{ name: 't', description: 'd', input_schema: { type: 'object' } }],
     });
     expect(seen!.params).not.toHaveProperty('thinking');
+    expect(seen!.params).not.toHaveProperty('tool_choice');
     expect(seen!.options.signal).toBe(ac.signal);
+  });
+  it("maps toolChoice 'none' to tool_choice none and keeps the tools; 'auto' sends nothing extra", async () => {
+    const seen: any[] = [];
+    const p = new AnthropicProvider('k', 'm', {
+      messages: {
+        create: async (params: any) => {
+          seen.push(params);
+          return (async function* () {
+            yield { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } };
+          })();
+        },
+      },
+    });
+    const tools = [{ name: 't', description: 'd', inputSchema: { type: 'object' } }];
+    const signal = new AbortController().signal;
+    await collect(p.streamTurn({ system: 's', messages: userMsg('hi'), tools, toolChoice: 'none', maxTokens: 10, signal }));
+    await collect(p.streamTurn({ system: 's', messages: userMsg('hi'), tools, toolChoice: 'auto', maxTokens: 10, signal }));
+    expect(seen[0].tool_choice).toEqual({ type: 'none' });
+    expect(seen[0].tools).toHaveLength(1);
+    expect(seen[1]).not.toHaveProperty('tool_choice');
+  });
+  it('FakeProvider records toolChoice in calls', async () => {
+    const f = new FakeProvider();
+    f.script([[{ type: 'stop', reason: 'end_turn' }]]);
+    await collect(f.streamTurn({ system: 's', messages: userMsg('hi'), tools: [], toolChoice: 'none', maxTokens: 10, signal: new AbortController().signal }));
+    expect(f.calls[0]!.toolChoice).toBe('none');
   });
   it('round-trips thinking blocks unchanged', async () => {
     const events = [

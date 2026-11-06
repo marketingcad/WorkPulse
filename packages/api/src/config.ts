@@ -18,6 +18,8 @@ export interface Config {
   /** AI assistant model id and feature switch (the API key is never part of Config) */
   assistantModel: string;
   assistantEnabled: boolean;
+  /** How long one assistant reply may stream; its lock holds for exactly this long (default 120 s). */
+  assistantStreamMs: number;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -39,5 +41,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     streamMaxMs: Number(env.STREAM_MAX_MS ?? 55_000),
     assistantModel: env.ASSISTANT_MODEL || DEFAULT_ASSISTANT_MODEL,
     assistantEnabled: env.ASSISTANT_ENABLED !== 'false',
+    assistantStreamMs: 120_000,
   };
 }

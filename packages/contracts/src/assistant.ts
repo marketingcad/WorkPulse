@@ -45,7 +45,7 @@ export const assistantStreamEvent = z.discriminatedUnion('event', [
   z.object({ event: z.literal('delta'), data: z.object({ text: z.string() }) }),
   z.object({
     event: z.literal('tool_status'),
-    data: z.object({ tool: z.string(), state: z.enum(['running', 'done', 'denied']) }),
+    data: z.object({ tool: z.string(), state: z.enum(['running', 'done', 'denied', 'error']) }),
   }),
   z.object({ event: z.literal('nav'), data: z.object({ key: z.string(), label: z.string(), href: z.string() }) }),
   z.object({ event: z.literal('done'), data: z.object({ assistant_message_id: id }) }),

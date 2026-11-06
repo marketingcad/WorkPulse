@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { assistantConversations, assistantMessages, withSystem } from '@tallywork/db';
+import { assistantConversations, assistantMessages, rateLimitBuckets, withSystem } from '@tallywork/db';
+import { turnStore } from '../src/services/assistant/orchestrator';
 import type { AssistantStreamEvent } from '@tallywork/contracts';
 import type { AiChunk, AiProvider, AiTurnInput } from '../src/lib/ai';
 import { buildSystemPrompt, historyToMessages } from '../src/services/assistant/prompt';
@@ -181,15 +182,21 @@ describe('assistant messages: streaming', () => {
     ]);
   });
 
-  it('forces a final answer without tools after six tool rounds', async () => {
+  it('forces a final answer with tool choice none after six tool rounds', async () => {
     const id = await newConversation();
     t.ai.calls.length = 0;
-    t.ai.script(Array.from({ length: 7 }, (_, n) => [navUse(`tu_${n}`), stop('tool_use')]));
+    // The 7th turn still asks for a tool (ignored), then answers.
+    t.ai.script([...Array.from({ length: 6 }, (_, n) => [navUse(`tu_${n}`), stop('tool_use')]), [text('Summary.'), navUse('tu_6'), stop('tool_use')]]);
     const events = await readSse(await send(id, 'Loop forever'));
     expect(names(events).at(-1)).toBe('done');
     expect(t.ai.calls).toHaveLength(7);
-    for (const call of t.ai.calls.slice(0, 6)) expect(call.tools.length).toBeGreaterThan(0);
-    expect(t.ai.calls[6]!.tools).toHaveLength(0);
+    for (const call of t.ai.calls.slice(0, 6)) {
+      expect(call.tools.length).toBeGreaterThan(0);
+      expect(call.toolChoice).not.toBe('none');
+    }
+    // The tool definitions stay (the history holds tool blocks); new calls are forbidden.
+    expect(t.ai.calls[6]!.tools.length).toBeGreaterThan(0);
+    expect(t.ai.calls[6]!.toolChoice).toBe('none');
     expect(events.filter((e) => e.event === 'tool_status' && e.data.state === 'running')).toHaveLength(6);
     expect(events.filter((e) => e.event === 'nav')).toHaveLength(1);
     const rows = await messages(id);
@@ -265,28 +272,75 @@ describe('assistant messages: streaming', () => {
     expect((await conversation(a)).streamLockUntil).toBeNull();
   });
 
-  it('reports internal when saving the reply fails, and the member can send again', async () => {
+  it('reports internal when saving the reply fails, releases the lock, and the same chat works again', async () => {
     const a = await newConversation();
-    const gate = new GateProvider();
-    t.deps.ai = gate;
-    const first = await send(a, 'Doomed question');
-    await waitFor(async () => (await conversation(a)).streamLockUntil !== null);
-    // Deleting the conversation mid-stream makes the final insert fail (foreign key).
-    expect((await admin.del(o(`/conversations/${a}`))).status).toBe(204);
+    const save = vi.spyOn(turnStore, 'saveTurn').mockRejectedValueOnce(new Error('save failed'));
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    gate.release();
-    const events = await readSse(first);
+    t.ai.script([[text('Lost reply.'), stop()]]);
+    const events = await readSse(await send(a, 'Doomed question'));
     const logged = JSON.stringify(spy.mock.calls);
     spy.mockRestore();
+    save.mockRestore();
     expect(events.at(-1)).toEqual({ event: 'error', data: { code: 'internal', retryable: true } });
     // Logged with the request id, without message content.
     expect(logged).toContain('assistant stream failed');
     expect(logged).not.toContain('Doomed');
+    expect((await conversation(a)).streamLockUntil).toBeNull();
 
-    t.deps.ai = t.ai;
-    const b = await newConversation();
     t.ai.script([[text('Fine.'), stop()]]);
-    expect(names(await readSse(await send(b, 'Next one'))).at(-1)).toBe('done');
+    expect(names(await readSse(await send(a, 'Next one'))).at(-1)).toBe('done');
+  });
+
+  it('never clears a lock that a newer stream took over', async () => {
+    const a = await newConversation();
+    const gate = new GateProvider();
+    t.deps.ai = gate;
+    const first = await send(a, 'Slow question');
+    await waitFor(async () => (await conversation(a)).streamLockUntil !== null);
+    // Simulate a stale takeover: another stream now owns the lock with a different value.
+    const newer = new Date(t.clock.now.getTime() + 500_000);
+    await withSystem(t.deps.db, (tx) => tx.update(assistantConversations).set({ streamLockUntil: newer }).where(eq(assistantConversations.id, a)));
+    gate.release();
+    expect(names(await readSse(first)).at(-1)).toBe('done');
+    expect((await conversation(a)).streamLockUntil?.getTime()).toBe(newer.getTime());
+    await withSystem(t.deps.db, (tx) => tx.update(assistantConversations).set({ streamLockUntil: null }).where(eq(assistantConversations.id, a)));
+  });
+
+  it('treats an empty final reply as ai_bad_response and saves no reply', async () => {
+    const id = await newConversation();
+    t.ai.script([[{ type: 'usage', inputTokens: 1, outputTokens: 0 }, stop()]]);
+    const events = await readSse(await send(id, 'Say nothing'));
+    expect(names(events)).toEqual(['message_saved', 'error']);
+    expect(events[1]!.data).toEqual({ code: 'ai_bad_response', retryable: true });
+    expect((await messages(id)).map((m) => m.role)).toEqual(['user']);
+    expect((await conversation(id)).streamLockUntil).toBeNull();
+  });
+
+  it('streams tool_status error when a tool call fails validation', async () => {
+    const id = await newConversation();
+    t.ai.script([[{ type: 'tool_use', id: 'tu_bad', name: 'suggestNavigation', input: { key: 'nope' } }, stop('tool_use')], [text('That page does not exist.'), stop()]]);
+    const events = await readSse(await send(id, 'Open nowhere'));
+    expect(events.filter((e) => e.event === 'tool_status').map((e) => e.data)).toEqual([
+      { tool: 'suggestNavigation', state: 'running' },
+      { tool: 'suggestNavigation', state: 'error' },
+    ]);
+    expect(names(events).at(-1)).toBe('done');
+    expect((await messages(id))[1]!.toolCalls).toEqual([{ name: 'suggestNavigation', args: null, status: 'error' }]);
+  });
+
+  it('stops at the stream time limit with timeout, keeps partial text and releases the lock', async () => {
+    const id = await newConversation();
+    const before = t.deps.config.assistantStreamMs;
+    t.deps.config.assistantStreamMs = 300;
+    t.deps.ai = new GateProvider(); // never released: only the time limit ends it
+    try {
+      const events = await readSse(await send(id, 'Never ending'));
+      expect(events.at(-1)).toEqual({ event: 'error', data: { code: 'timeout', retryable: true } });
+    } finally {
+      t.deps.config.assistantStreamMs = before;
+    }
+    expect((await messages(id))[1]).toMatchObject({ role: 'assistant', content: 'Partial', errorCode: 'timeout' });
+    expect((await conversation(id)).streamLockUntil).toBeNull();
   });
 
   it("returns 404 for another member's or another organization's conversation", async () => {
@@ -335,6 +389,18 @@ describe('assistant messages: streaming', () => {
     expect(res.headers.get('retry-after')).toBeTruthy();
     // Other assistant routes still work (messages have their own bucket).
     expect((await admin.get(o(`/conversations/${id}`))).status).toBe(200);
+  });
+
+  it('rate limits messages per day: past 300 a send is refused', async () => {
+    const x = await actorCtx(t, 'ben@s.test', orgId);
+    const day = 86_400_000;
+    const windowStart = new Date(Math.floor(t.clock.now.getTime() / day) * day);
+    await withSystem(t.deps.db, (tx) => tx.insert(rateLimitBuckets).values({ key: `assistant:day:u:${x.actor.userId}`, count: 300, windowStart }));
+    const id = await newConversation(admin2);
+    const res = await send(id, 'One more', admin2, { headers: { 'x-test-rate-limit': 'on' } });
+    expect(res.status).toBe(429);
+    expect(res.headers.get('retry-after')).toBeTruthy();
+    expect(await messages(id)).toHaveLength(0);
   });
 });
 

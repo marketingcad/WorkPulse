@@ -33,6 +33,7 @@ describe('assistantStreamEvent', () => {
     { event: 'delta', data: { text: 'hi' } },
     { event: 'tool_status', data: { tool: 'list_projects', state: 'running' } },
     { event: 'tool_status', data: { tool: 'list_projects', state: 'denied' } },
+    { event: 'tool_status', data: { tool: 'list_projects', state: 'error' } },
     { event: 'nav', data: { key: 'projects', label: 'Projects', href: '/projects' } },
     { event: 'done', data: { assistant_message_id: '5b0f1c1e-3c1a-4a43-9d51-0d6c1f6f2a12' } },
     { event: 'error', data: { code: 'timeout', retryable: true } },

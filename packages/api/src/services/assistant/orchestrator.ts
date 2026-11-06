@@ -1,5 +1,5 @@
 import { and, desc, eq, gt } from 'drizzle-orm';
-import { assistantConversations, assistantMessages, memberships, roles, withTenant, type AssistantToolCallRow } from '@tallywork/db';
+import { assistantConversations, assistantMessages, memberships, roles, withTenant, type AssistantToolCallRow, type Tx } from '@tallywork/db';
 import { DomainError, newId } from '@tallywork/domain';
 import type { AssistantErrorCode, AssistantStreamEvent } from '@tallywork/contracts';
 import { AiError, type AiBlock, type AiMessage } from '../../lib/ai/provider';
@@ -12,8 +12,14 @@ import { executeTool, toolSpecs, toolsFor } from './tools';
 export const MAX_TOOL_ROUNDS = 6;
 export const MAX_TOKENS = 1500;
 export const MAX_REPLY_CHARS = 16_000;
-/** How long one reply may stream, and how long its lock holds if the process dies mid-stream. */
-export const STREAM_TIMEOUT_MS = 120_000;
+/**
+ * The stream stops this long before its lock expires, so the final save (which clears the lock)
+ * happens while the lock is still its own. The window itself is `config.assistantStreamMs`.
+ */
+export function streamBudgetMs(lockUntil: Date, now: Date): number {
+  const left = lockUntil.getTime() - now.getTime();
+  return Math.max(1, left - Math.min(5_000, Math.floor(left / 10)));
+}
 
 const DEFAULT_TITLE = 'New chat';
 
@@ -46,7 +52,10 @@ export async function* runAssistantTurn(x: Ctx, i: { system: string; history: Ai
       // The assistant turn as the provider sent it, thinking blocks included and in order: it is
       // replayed unchanged on the continuation call, and never stored.
       const blocks: AiBlock[] = [];
-      for await (const ch of ai.streamTurn({ system: i.system, messages, tools: forceFinal ? [] : specs, maxTokens: MAX_TOKENS, signal: i.signal })) {
+      // The forced final call keeps the tool definitions (the history holds tool blocks, which the
+      // provider refuses without them) and forbids new calls with tool choice 'none'.
+      const choice = forceFinal && specs.length ? { toolChoice: 'none' as const } : {};
+      for await (const ch of ai.streamTurn({ system: i.system, messages, tools: specs, ...choice, maxTokens: MAX_TOKENS, signal: i.signal })) {
         if (ch.type === 'text_delta') {
           if (!ch.text) continue;
           const last = blocks[blocks.length - 1];
@@ -79,7 +88,7 @@ export async function* runAssistantTurn(x: Ctx, i: { system: string; history: Ai
         yield { event: 'tool_status', data: { tool: name, state: 'running' } };
         const out = await executeTool(x, tools, use.name, use.input);
         toolCalls.push({ name, args: out.status === 'ok' ? out.args : null, status: out.status });
-        yield { event: 'tool_status', data: { tool: name, state: out.status === 'denied' ? 'denied' : 'done' } };
+        yield { event: 'tool_status', data: { tool: name, state: out.status === 'ok' ? 'done' : out.status } };
         for (const link of out.nav) {
           if (nav.includes(link.key)) continue;
           nav.push(link.key);
@@ -101,6 +110,8 @@ export async function* runAssistantTurn(x: Ctx, i: { system: string; history: Ai
     }
   }
   if (i.signal.aborted) errorCode = 'interrupted';
+  // A finished turn with nothing to show is a bad response, not an empty reply to store.
+  if (!errorCode && !text.trim()) errorCode = 'ai_bad_response';
 
   // Never the message text or tool output: ids, tool names, token counts and the error code only.
   const log = { level: errorCode && errorCode !== 'interrupted' ? 'warn' : 'info', msg: 'assistant turn', request_id: x.requestId, tools: toolCalls.map((c) => c.name), rounds, input_tokens: inputTokens, output_tokens: outputTokens, error_code: errorCode };
@@ -113,6 +124,8 @@ export async function* runAssistantTurn(x: Ctx, i: { system: string; history: Ai
 export interface PreparedTurn {
   conversationId: string;
   userMessageId: string;
+  /** The exact lock value this stream owns; it clears only this value. */
+  lockUntil: Date;
   roleName: string;
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
@@ -127,6 +140,7 @@ export async function prepareTurn(x: Ctx, conversationId: string, content: strin
   const now = x.deps.now();
 
   // Serialize this member's sends on their membership row, so two requests can't both take the lock.
+  // (PGlite has one connection, so the tests cannot prove this serialization; it relies on Postgres row locks.)
   const [member] = await tx
     .select({ roleName: roles.name })
     .from(memberships)
@@ -160,22 +174,37 @@ export async function prepareTurn(x: Ctx, conversationId: string, content: strin
   }
 
   const title = conv.title === DEFAULT_TITLE ? content.replace(/\s+/g, ' ').trim().slice(0, 120) || DEFAULT_TITLE : conv.title;
+  const lockUntil = new Date(now.getTime() + x.deps.config.assistantStreamMs);
   await tx
     .update(assistantConversations)
-    .set({ streamLockUntil: new Date(now.getTime() + STREAM_TIMEOUT_MS), title, lastMessageAt: now, updatedAt: now })
+    .set({ streamLockUntil: lockUntil, title, lastMessageAt: now, updatedAt: now })
     .where(and(eq(assistantConversations.id, conv.id), eq(assistantConversations.organizationId, x.org.id)));
 
-  return { conversationId: conv.id, userMessageId, roleName: member?.roleName ?? x.actor.roleKey, history: history.map((m) => ({ role: m.role, content: m.content })) };
+  return { conversationId: conv.id, userMessageId, lockUntil, roleName: member?.roleName ?? x.actor.roleKey, history: history.map((m) => ({ role: m.role, content: m.content })) };
+}
+
+const ownConversation = (x: Ctx, conversationId: string) =>
+  and(eq(assistantConversations.id, conversationId), eq(assistantConversations.organizationId, x.org.id), eq(assistantConversations.membershipId, x.actor.membershipId));
+
+/**
+ * Compare-and-clear: only the stream that set this exact lock value releases it, so a stream whose
+ * lock went stale and was taken over never clears the newer stream's lock.
+ */
+async function clearOwnLock(tx: Tx, x: Ctx, conversationId: string, lockUntil: Date): Promise<void> {
+  await tx
+    .update(assistantConversations)
+    .set({ streamLockUntil: null })
+    .where(and(ownConversation(x, conversationId), eq(assistantConversations.streamLockUntil, lockUntil)));
 }
 
 /**
- * Saves the reply and releases the lock in one short tenant transaction. A provider failure with
+ * Saves the reply and releases this stream's lock in one short tenant transaction. A failure with
  * no text saves nothing (the user message stays for a retry). Returns the reply id, if saved.
  */
-export async function saveTurn(x: Ctx, conversationId: string, final: Pick<TurnFinal, 'text' | 'toolCalls' | 'nav' | 'errorCode'>): Promise<string | null> {
+async function saveTurn(x: Ctx, conversationId: string, lockUntil: Date, final: Pick<TurnFinal, 'text' | 'toolCalls' | 'nav' | 'errorCode'>): Promise<string | null> {
   return withTenant(x.deps.db, x.org.id, async (tx) => {
     const now = x.deps.now();
-    const save = final.errorCode === null || final.text.length > 0;
+    const save = final.errorCode === null || final.text.trim().length > 0;
     const id = save ? newId() : null;
     if (id) {
       await tx.insert(assistantMessages).values({
@@ -191,18 +220,17 @@ export async function saveTurn(x: Ctx, conversationId: string, final: Pick<TurnF
     }
     await tx
       .update(assistantConversations)
-      .set({ streamLockUntil: null, updatedAt: now, ...(id ? { lastMessageAt: now } : {}) })
-      .where(and(eq(assistantConversations.id, conversationId), eq(assistantConversations.organizationId, x.org.id), eq(assistantConversations.membershipId, x.actor.membershipId)));
+      .set({ updatedAt: now, ...(id ? { lastMessageAt: now } : {}) })
+      .where(ownConversation(x, conversationId));
+    await clearOwnLock(tx, x, conversationId, lockUntil);
     return id;
   });
 }
 
-/** Clears the lock on its own: used when saving the reply failed. */
-export async function releaseLock(x: Ctx, conversationId: string): Promise<void> {
-  await withTenant(x.deps.db, x.org.id, (tx) =>
-    tx
-      .update(assistantConversations)
-      .set({ streamLockUntil: null })
-      .where(and(eq(assistantConversations.id, conversationId), eq(assistantConversations.organizationId, x.org.id), eq(assistantConversations.membershipId, x.actor.membershipId))),
-  );
+/** Releases this stream's lock on its own: used when saving the reply failed. */
+async function releaseLock(x: Ctx, conversationId: string, lockUntil: Date): Promise<void> {
+  await withTenant(x.deps.db, x.org.id, (tx) => clearOwnLock(tx, x, conversationId, lockUntil));
 }
+
+/** The route calls these through this object, so a test can make a save fail once. */
+export const turnStore = { saveTurn, releaseLock };

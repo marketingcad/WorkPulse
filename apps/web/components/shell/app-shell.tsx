@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,11 +13,13 @@ import { activeNav, filterNav, subnavGroups, type NavItem, type NavTab } from '.
 import { SectionTabs } from './section-tabs';
 import { TourProvider } from '@/components/help/tour';
 import { HelpReturnBar } from '@/components/help/help-return';
-import { NewOrgDialog } from './new-org-dialog';
 import { TimerBar } from './timer-bar';
 import { HelpLink } from '@/components/help/help-link';
 import { CalculatorLauncher } from '@/components/calculator/calculator-launcher';
 import { MyAvatar } from '@/lib/avatars';
+
+// Opened from the organization switcher only, so not part of every page.
+const NewOrgDialog = lazy(() => import('./new-org-dialog').then((m) => ({ default: m.NewOrgDialog })));
 
 /**
  * The phone navigation drawer, as a modal dialog (audit QA-04): focus moves in and stays in while it
@@ -423,7 +425,11 @@ function OrgSwitcher({ collapsed }: { collapsed: boolean }) {
           {t('shell.newOrg')}
         </MenuItem>
       </Menu>
-      <NewOrgDialog open={creating} onOpenChange={setCreating} />
+      {creating && (
+        <Suspense fallback={null}>
+          <NewOrgDialog open onOpenChange={setCreating} />
+        </Suspense>
+      )}
     </>
   );
 }

@@ -281,6 +281,19 @@ export async function acknowledgePolicy(a: AgentCtx, hash: string): Promise<void
 // ─── Ingest ──────────────────────────────────────────────────────────────────
 class Duplicate extends Error {}
 
+/**
+ * The confirm window (docs/plan/03-data-model.md §8): a timer the app started counts once that app shows
+ * it running, by its heartbeat or any event for it. Work then counts from the start, not from the
+ * confirmation, so no first seconds are lost. A session stopped as never confirmed takes nothing more:
+ * no time and no monitoring data (the app keeps the refused records and explains them to the worker).
+ */
+async function confirmFromDevice(a: AgentCtx, sessionId: string): Promise<void> {
+  await lockWorker(a.tx, a.membershipId);
+  const s = await sessionFor(a, sessionId);
+  if (s.state === 'STOPPED' && s.endReason === 'NEVER_CONFIRMED') throw businessRule('session_not_confirmed', 'This timer was never confirmed by the computer that started it, so its time was not added');
+  if (s.state === 'CREATED' && s.deviceId === a.deviceId) await applyTrigger(a.tx, s, 'CONFIRM', { at: s.startedAt, actor: agentActor(a), cause: 'device_confirmed' });
+}
+
 async function sessionFor(a: AgentCtx, sessionId: string) {
   const [s] = await a.tx.select().from(trackingSessions).where(eq(trackingSessions.id, sessionId)).limit(1);
   if (!s || s.membershipId !== a.membershipId) throw notFound('session');
@@ -357,6 +370,7 @@ const TRIGGERS: Record<string, SessionTrigger> = {
 async function processEvent(a: AgentCtx, ev: AgentEvent, correct: (iso: string) => Date): Promise<void> {
   const at = correct(ev.occurred_at);
   const actor = agentActor(a);
+  if (ev.type !== 'session.start' && ev.type !== 'manual_time.request') await confirmFromDevice(a, ev.session_id);
   switch (ev.type) {
     case 'session.start': {
       const r = await startSession(a.tx, {
@@ -609,6 +623,10 @@ export async function heartbeat(a: AgentCtx, input: { sessionId?: string | null;
   // Only a session this device still runs: one it no longer knows (lost local state) must not be kept
   // alive or revived by its heartbeats, or it would count hours nobody worked.
   if (live && live.deviceId === a.deviceId && input.sessionId === live.id) {
+    if (live.state === 'CREATED') {
+      await confirmFromDevice(a, live.id);
+      live = (await liveSession(a.tx, a.membershipId)) ?? live;
+    }
     if (live.state === 'INTERRUPTED') live = await recoverFromServerInterrupt(a, live, now);
     await a.tx.update(trackingSessions).set({ lastHeartbeatAt: now }).where(eq(trackingSessions.id, live.id));
   }

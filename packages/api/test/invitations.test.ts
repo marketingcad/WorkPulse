@@ -137,3 +137,19 @@ describe('re-inviting', () => {
     expect(r.body.code).toBe('already_member');
   });
 });
+
+describe('who is tracked from the start', () => {
+  // Workers are tracked once they join; the owner and invited admins and managers are not, so they
+  // never appear in Live tracking until an admin switches it on for them.
+  it('should_start_invited_workers_with_tracking_on_and_owners_admins_and_managers_with_it_off', async () => {
+    const { membershipId: worker } = await addMember(t, admin, orgId, 'Tess Tracked', 'tess@invite.test', 'WORKER');
+    const { membershipId: manager } = await addMember(t, admin, orgId, 'Max Manager', 'max@invite.test', 'TEAM_MANAGER');
+    const { membershipId: second } = await addMember(t, admin, orgId, 'Sam Admin', 'sam@invite.test', 'SYSTEM_ADMIN');
+    const people = (await admin.get<Array<{ id: string; email: string; tracking_enabled: boolean }>>(o('/workers'))).body;
+    const tracked = (id: string) => people.find((p) => p.id === id)?.tracking_enabled;
+    expect(tracked(worker)).toBe(true);
+    expect(tracked(manager)).toBe(false);
+    expect(tracked(second)).toBe(false);
+    expect(people.find((p) => p.email === 'ada@invite.test')?.tracking_enabled).toBe(false); // the owner
+  });
+});

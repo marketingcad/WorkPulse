@@ -5,7 +5,7 @@ import type { ClientDto } from '@tallywork/contracts';
 import { Button, Checkbox, Dialog, Field, Input, Select, Textarea, cx, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage } from '@/lib/api';
 import { useOrg } from '@/lib/org';
-import { ColorPicker, useOrgAction } from '@/components/workspace/shared';
+import { ColorPicker, useOrgAction } from './basics';
 import { RateNote } from '@/components/finance/rate-note';
 import { fromMinor, toMinor } from '@/components/finance/types';
 import { CURRENCIES, LANGUAGES, LogoEditor } from '@/components/workspace/logo-editor';

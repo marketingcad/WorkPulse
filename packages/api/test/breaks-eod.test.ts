@@ -114,6 +114,7 @@ describe('end-of-day reports', () => {
   it('a report sent after an admin already force-stopped the session is still kept', async () => {
     const sid = newId();
     await ingest([{ event_id: newId(), type: 'session.start', session_id: sid, seq: 1, occurred_at: t.clock.now.toISOString(), project_id: projectId }]);
+    await agent.post('/agent/heartbeat', { sent_at: t.clock.now.toISOString(), session_id: sid }); // the app confirms its timer (confirm window)
     t.clock.advance(30 * 60_000);
     expect((await admin.post(`/orgs/${orgId}/sessions/${sid}/force-stop`)).status).toBe(200);
     const r = await ingest([{ event_id: newId(), type: 'session.stop', session_id: sid, seq: 2, occurred_at: t.clock.now.toISOString(), report: { text: 'Half day', finished: false } }]);

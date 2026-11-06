@@ -163,6 +163,7 @@ describe('desktop heartbeats keep alive only the session the device still runs',
     const agent = await deviceFor(hal);
     const s = sessionEvents('2026-10-22T09:00:00Z', 0);
     await agent.post('/agent/ingest/batch', { sent_at: t.clock.now.toISOString(), events: s.events });
+    await agent.post('/agent/heartbeat', { sent_at: t.clock.now.toISOString(), session_id: s.sid }); // the app ran it (confirmed)
     // The app lost its local state: it heartbeats without a session.
     for (let i = 0; i < 6; i++) {
       t.clock.advance(2 * MIN);

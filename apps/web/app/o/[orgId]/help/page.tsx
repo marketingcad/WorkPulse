@@ -1,13 +1,13 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, ChevronRight, Compass, Film, LifeBuoy, PlayCircle, Search, X } from 'lucide-react';
-import { Button, EmptyState, Input, PageHeader, cx } from '@tallywork/ui';
+import { Button, EmptyState, Input, PageHeader, SkeletonRows, cx } from '@tallywork/ui';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
 import { activeNav, filterNav, type NavItem } from '@/components/shell/nav';
-import { HELP_ARTICLES, HELP_CATEGORIES, NAV_GUIDE, type HelpArticle, type HelpCategoryId } from '@/components/help/content';
+import type { HelpArticle, HelpCategoryId } from '@/components/help/content';
 import { searchArticles } from '@/components/help/search';
 import { rememberHelpArticle } from '@/components/help/help-return';
 import { useHelpTutorial, VideoTutorial } from '@/components/help/video-tutorial';
@@ -17,7 +17,20 @@ import { useHelpTutorial, VideoTutorial } from '@/components/help/video-tutorial
  * that link straight to the right page, answers to common questions, the product tour, and for
  * system admins the video tutorial. Only guides and links for pages this person can open are shown.
  */
+// The manual itself (about 13 KB) loads alongside the page instead of inside its first-load
+// JavaScript: started here, so it downloads in parallel, and read with use() below.
+const helpContent = import('@/components/help/content');
+
 export default function HelpPage() {
+  return (
+    <Suspense fallback={<SkeletonRows rows={6} cols={2} />}>
+      <HelpCenter />
+    </Suspense>
+  );
+}
+
+function HelpCenter() {
+  const { HELP_ARTICLES, HELP_CATEGORIES, NAV_GUIDE } = use(helpContent);
   const org = useOrg();
   const router = useRouter();
   const [query, setQuery] = useState('');

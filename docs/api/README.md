@@ -29,21 +29,31 @@ A key can reach **only** the endpoints listed for its scopes. Everything else re
 |---|---|
 | (any key) | `GET /orgs/{orgId}` (organization details) |
 | `read:workers` | `GET /workers`, `GET /workers/{id}` |
-| `read:teams` | `GET /teams`, `GET /teams/{id}` |
-| `read:clients` | `GET /clients`, `GET /clients/{id}` |
+| `read:teams` | `GET /teams` |
+| `read:clients` | `GET /clients` |
 | `read:projects` | `GET /projects`, `GET /projects/{id}` |
-| `read:tasks` | `GET /tasks`, `GET /tasks/{id}`, `GET /projects/{id}/tasks` |
+| `read:tasks` | `GET /tasks`, `GET /projects/{id}/tasks` |
 | `read:timesheets` | `GET /timesheets?membership_id=&date=`, `GET /timesheets/{id}/history` |
-| `read:time` | `GET /time-entries?from=&to=`, `GET /time-entries/{id}/revisions`, `GET /sessions`, `GET /sessions/{id}` |
-| `read:activity` | `GET /activity/day`, `GET /screenshots`, `GET /apps`, `GET /urls` (and `/spans`), `GET /idle-events` |
+| `read:time` | `GET /time-entries?from=&to=`, `GET /time-entries/{id}/revisions` |
+| `read:activity` | `GET /activity/day` (activity levels, never screenshots), `GET /idle-events` |
 | `read:reports` | `GET /reports`, `POST /reports/{key}/query` |
-| `read:billing` | `GET /billing/amounts-owed?from=&to=`, `GET /rates`, `GET /budgets` |
-| `read:invoices` | `GET /invoices`, `GET /invoices/{id}`, `GET /payments` |
+| `read:billing` | `GET /billing/amounts-owed?from=&to=` |
+| `read:invoices` | `GET /invoices`, `GET /invoices/{id}` |
 | `write:projects` | `POST /projects`, `PATCH /projects/{id}`, `POST /projects/{id}/archive`, `POST /projects/{id}/restore` |
 | `write:tasks` | `POST /projects/{id}/tasks`, `PATCH /tasks/{id}`, `DELETE /tasks/{id}` |
 | `write:clients` | `POST /clients`, `PATCH /clients/{id}`, `POST /clients/{id}/archive`, `POST /clients/{id}/restore` |
 
 Data is also limited by what the creator can see. For example, a key made by a team manager returns only that manager's teams.
+
+**Never open to API keys, whatever the scopes.** These stay with people who sign in, by design:
+
+- **Monitoring data:** screenshots, app and website usage (`/screenshots`, `/apps`, `/urls` and their spans), and tracking sessions (`/sessions`). `GET /activity/day` gives activity levels only, never screenshots.
+- **Money other than amounts owed and invoices:** pay and bill rates (`/rates`), budgets (`/budgets`), payments (`/payments`), payroll and pay stubs.
+- **People's private data:** the Performance Center (scores, reviews, goals, achievements), personal and HR details (`/workers/{id}/details`) and HR notes, bank details, time off. `GET /workers` and `GET /workers/{id}` give the work profile only, never pay or bill rates.
+- **Administration:** roles, members and invitations (changing them), policies, API keys, webhooks, the audit log, retention and screenshot cleanup, security settings, support access and the client portal's settings.
+- **Deleting anything** except a task (`DELETE /tasks/{id}` with `write:tasks`).
+
+A key's scopes are also intersected with its creator's current permissions, so it can never see more than that person (see [docs/security/authorization-matrix.md](../security/authorization-matrix.md)).
 
 Date ranges are capped at 400 days.
 

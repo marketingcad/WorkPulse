@@ -7,7 +7,7 @@ import type { PayStubDto, PayrollRunDto } from '@tallywork/contracts';
 import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, KpiStrip, PageHeader, Panel, PermissionState, SkeletonRows, StatusBadge, fmtDate, fmtMoney, useToast, type Column } from '@tallywork/ui';
 import { errorMessage, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
-import { useOrgAction } from '@/components/workspace/shared';
+import { useOrgAction } from '@/components/workspace/basics';
 import { AdjustmentsDialog } from '@/components/finance/payroll';
 
 type Action = 'recalculate' | 'finalize' | 'paid' | 'delete';

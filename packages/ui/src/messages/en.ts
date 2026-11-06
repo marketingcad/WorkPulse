@@ -51,6 +51,7 @@ export const uiEn = {
   'status.PARTIALLY_PAID': 'Partially paid',
   'status.warning': 'Warning',
   'status.IN_PROGRESS': 'In progress',
+  'status.CREATED': 'Starting',
   'status.ON_LEAVE': 'On leave',
   'status.WEB': 'Web',
   'status.DESKTOP': 'Desktop',

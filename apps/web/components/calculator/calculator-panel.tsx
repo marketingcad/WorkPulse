@@ -4,6 +4,7 @@ import { Check, Copy, Minus, Plus, X } from 'lucide-react';
 import { Button, Field, IconButton, Input, SegmentedControl, cx, fmtMoney, fmtPct } from '@tallywork/ui';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
+import './messages';
 import { asHm } from '@/lib/duration';
 import { fromMinor } from '../finance/types';
 import { convertHours, decimalHours, lineSeconds, payFor, shiftSeconds, signedHm, sumDurations, totalShiftSeconds, type DurationLine, type PayInput, type Shift } from './math';

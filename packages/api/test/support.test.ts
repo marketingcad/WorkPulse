@@ -38,10 +38,19 @@ describe('support console', () => {
   it('is invisible to non-staff and needs a two-factor session for staff', async () => {
     expect((await customer.get('/support/orgs?q=acme')).status).toBe(404);
     const r = await staff.get('/support/orgs?q=acme');
-    expect([r.status, r.body.title]).toEqual([403, 'The support console needs a session verified with two-factor authentication']);
+    expect([r.status, r.body.code, r.body.title]).toEqual([403, 'support_mfa_required', 'The support console needs a session verified with two-factor authentication']);
     const s = await staff.post('/me/mfa/totp/setup', { password: 'correct-horse-battery' });
     expect((await staff.post('/me/mfa/totp/confirm', { code: totpCode(s.body.secret, t.clock.now) })).status).toBe(200);
     expect((await staff.get('/support/me')).body).toMatchObject({ email: 'sam@tallywork.test' });
+  });
+
+  // The console says which step is missing (it used to show "two-factor required" for both).
+  it('should_tell_a_staff_address_that_has_not_proven_its_mailbox_to_confirm_it_first', async () => {
+    t.deps.config.supportStaffEmails.push('una@tallywork.test');
+    const { client: una } = await signup(t, 'Una', 'una@tallywork.test', 'Una Org');
+    const r = await una.get('/support/me');
+    expect([r.status, r.body.code]).toEqual([403, 'support_email_unproven']);
+    expect(r.body.title).toMatch(/^Confirm your email address first/);
   });
 
   it('finds organizations by name or owner email and shows metadata only', async () => {
@@ -77,6 +86,16 @@ describe('support console', () => {
 
     const trail = await asOwner<{ action: string }>(sql`select action from audit_logs where organization_id = ${orgId} and action like 'support.%' order by created_at`);
     expect(trail.map((x) => x.action)).toEqual(expect.arrayContaining(['support.access_granted', 'support.details_viewed', 'support.access_revoked']));
+  });
+
+  it('should_accept_grants_of_1_to_72_hours_only_and_end_a_72_hour_grant_at_exactly_72_hours', async () => {
+    for (const hours of [0, 73, 1.5]) expect((await customer.post(o('/support-access'), { hours, reason: 'Edge check' })).status, `${hours} h`).toBe(400);
+    expect((await customer.post(o('/support-access'), { hours: 1, reason: 'Edge check' })).status).toBe(200);
+    expect((await customer.post(o('/support-access'), { hours: 72, reason: 'Long investigation' })).status).toBe(200);
+    t.clock.set(new Date(t.clock.now.getTime() + 72 * 3600_000 - 1_000));
+    expect((await staff.get(`/support/orgs/${orgId}/details`)).status).toBe(200);
+    t.clock.set(new Date(t.clock.now.getTime() + 1_000));
+    expect((await staff.get(`/support/orgs/${orgId}/details`)).status).toBe(403);
   });
 
   it('staff cannot use customer endpoints: they are not members', async () => {

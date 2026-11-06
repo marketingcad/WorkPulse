@@ -27,7 +27,7 @@ import {
 } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
-import { ColorDot, useOrgAction } from '@/components/workspace/shared';
+import { ColorDot, useOrgAction } from '@/components/workspace/basics';
 import { useMemberOptions } from '@/lib/members';
 import { MemberCell } from '@/lib/avatars';
 

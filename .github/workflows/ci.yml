@@ -22,7 +22,18 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r --filter "./packages/*" --filter @tallywork/web typecheck
-      - run: pnpm --filter @tallywork/domain --filter @tallywork/ui --filter @tallywork/db --filter @tallywork/api --filter @tallywork/web test
+      # Quality gates (docs/QUALITY_GATES.md): every test file belongs to one gate, and Gate 1 runs
+      # first so a business-correctness failure is named as such. Desktop tests run in the desktop job.
+      - name: Quality gates · every test file is in one gate
+        run: node scripts/quality-gates.mjs check
+      - name: Gate 1 · business correctness (critical) · unit, API, RLS
+        run: node scripts/quality-gates.mjs run 1 --unit --exclude=apps/desktop
+      - name: Gate 2 · product functionality (high) · unit, API
+        if: ${{ !cancelled() }}
+        run: node scripts/quality-gates.mjs run 2 --unit --exclude=apps/desktop
+      - name: Gate 3 · product quality (standard) · unit, API
+        if: ${{ !cancelled() }}
+        run: node scripts/quality-gates.mjs run 3 --unit --exclude=apps/desktop
       # Load smoke on its own (no competing test files): 20 agents, ingest p95 under 500 ms.
       - run: pnpm --filter @tallywork/api exec vitest run test/ops.test.ts -t "load smoke"
         env:
@@ -104,7 +115,24 @@ jobs:
       - run: pnpm --filter @tallywork/e2e typecheck
       - run: pnpm --filter @tallywork/e2e exec playwright install --with-deps chromium
       # The real Electron app needs a desktop session and an OS keychain: it runs in e2e-electron (Windows).
-      - run: pnpm test:e2e --project=web --project=desktop
+      # One step per quality gate; Gates 2 and 3 still run (and report) when Gate 1 fails, reusing the
+      # build the first step made. Each gate keeps its own report and traces (a run clears its folder).
+      - name: Gate 1 · business correctness (critical) · E2E
+        run: node scripts/quality-gates.mjs run 1 --e2e -- --project=web --project=desktop --output=test-results/gate-1
+        env:
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/gate-1
+      - name: Gate 2 · product functionality (high) · E2E
+        if: ${{ !cancelled() }}
+        run: node scripts/quality-gates.mjs run 2 --e2e -- --project=web --project=desktop --output=test-results/gate-2
+        env:
+          E2E_SKIP_BUILD: "1"
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/gate-2
+      - name: Gate 3 · product quality (standard) · E2E
+        if: ${{ !cancelled() }}
+        run: node scripts/quality-gates.mjs run 3 --e2e -- --project=web --project=desktop --output=test-results/gate-3
+        env:
+          E2E_SKIP_BUILD: "1"
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/gate-3
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
@@ -115,11 +143,20 @@ jobs:
           retention-days: 14
 
   e2e-electron:
-    # The real desktop app (Electron main process, preload, window) driven by Playwright. Windows runners
-    # have a desktop session and the OS keychain (DPAPI) the app requires to store its sign-in.
-    name: E2E desktop app (Electron, Windows)
-    runs-on: windows-latest
+    # The real desktop app (Electron main process, preload, window) driven by Playwright, on each OS the
+    # app ships for. It needs a desktop session and the OS keychain to store its sign-in: Windows (DPAPI)
+    # and macOS (Keychain) runners have both; Linux gets a virtual display (xvfb) and an unlocked
+    # gnome-keyring in a D-Bus session, as in desktop-linux-smoke.yml.
+    name: E2E desktop app (Electron, ${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, name: Windows }
+          - { os: macos-latest, name: macOS }
+          - { os: ubuntu-latest, name: Linux }
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -128,11 +165,27 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:e2e --project=electron
+      - name: Linux desktop session (display, keyring, window tools)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb gnome-keyring dbus-x11 x11-utils
+          # Electron's sandbox helper from npm must be owned by root to run with the sandbox on.
+          sandbox=$(dirname "$(node -p "require('./apps/desktop/node_modules/electron')")")/chrome-sandbox
+          sudo chown root:root "$sandbox" && sudo chmod 4755 "$sandbox"
+      - name: Electron E2E
+        if: runner.os != 'Linux'
+        run: pnpm test:e2e --project=electron
+      - name: Electron E2E (under xvfb, with an unlocked keyring)
+        if: runner.os == 'Linux'
+        run: |
+          dbus-run-session -- bash -c '
+            echo -n e2e | gnome-keyring-daemon --unlock --components=secrets >/dev/null
+            xvfb-run -a pnpm test:e2e --project=electron'
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: playwright-report-electron
+          name: playwright-report-electron-${{ matrix.name }}
           path: |
             e2e/playwright-report
             e2e/test-results

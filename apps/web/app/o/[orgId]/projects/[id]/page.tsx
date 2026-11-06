@@ -34,12 +34,13 @@ import { ApiError, errorMessage, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
 import { ColorDot, PriorityBadge, ProjectFields, ProjectStatusBadge, TaskDialog, TaskStatusSelect, clientsForProject, projectPayload, projectToForm, useHoursPerDay, useOrgAction, type ProjectForm } from '@/components/workspace/shared';
-import { BudgetDialog } from '@/components/finance/budget-dialog';
-import { ProjectDocumentsTab } from '@/components/workspace/project-documents';
 import { useMemberOptions } from '@/lib/members';
 import { MemberAvatar } from '@/lib/avatars';
 
 // Loaded when the tab opens (this page is already over the 250 KB first-load budget).
+// Opened from a button or a tab, so loaded then.
+const BudgetDialog = lazy(() => import('@/components/finance/budget-dialog').then((m) => ({ default: m.BudgetDialog })));
+const ProjectDocumentsTab = lazy(() => import('@/components/workspace/project-documents').then((m) => ({ default: m.ProjectDocumentsTab })));
 const ProjectMilestones = lazy(() => import('@/components/performance/project-milestones'));
 
 export default function ProjectDetailPage() {
@@ -178,9 +179,17 @@ export default function ProjectDetailPage() {
       )}
       {activeTab === 'plan' && <PlanTab project={p} budget={budget} onEditBudget={() => setBudgetOpen(true)} onEditPlan={() => setTab('settings')} />}
       {activeTab === 'members' && <MembersTab project={p} workers={workersQ.data} teams={teamsQ.data} canManage={canManage} />}
-      {activeTab === 'documents' && <ProjectDocumentsTab project={p} />}
+      {activeTab === 'documents' && (
+        <Suspense fallback={<SkeletonRows rows={4} cols={2} />}>
+          <ProjectDocumentsTab project={p} />
+        </Suspense>
+      )}
       {activeTab === 'settings' && canManage && <SettingsTab project={p} />}
-      {budgetOpen && <BudgetDialog value={budget ?? 'new'} preset={{ type: 'PROJECT', id: p.id, name: p.name }} onClose={() => setBudgetOpen(false)} />}
+      {budgetOpen && (
+        <Suspense fallback={null}>
+          <BudgetDialog value={budget ?? 'new'} preset={{ type: 'PROJECT', id: p.id, name: p.name }} onClose={() => setBudgetOpen(false)} />
+        </Suspense>
+      )}
     </>
   );
 }

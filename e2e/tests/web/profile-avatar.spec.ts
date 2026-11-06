@@ -8,6 +8,9 @@ import { ADMIN_STATE, WEB_URL, WORKER_STATE } from '../../support/env';
  * and the member list; private to whom may see it, and never across organizations.
  */
 test.use({ storageState: ADMIN_STATE });
+// Every test here changes the same account's picture (the shared admin), so they run one after the
+// other: in parallel, one test's upload replaced the preset another had just set and was checking.
+test.describe.configure({ mode: 'default' });
 
 /** A real picture, drawn in the browser (two colors, so a crop shows). */
 async function picture(page: Page, w = 900, h = 600): Promise<Buffer> {

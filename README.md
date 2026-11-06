@@ -49,6 +49,11 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🆕 New updates
 
+- **6 November 2026 (page weight back under budget):** every web page is under the 250 KB first-load JavaScript budget again (`apps/web/scripts/check-bundle-budget.mjs`, run in CI). 20 routes were over, up to 285 KB; the largest is now 248.9 KB.
+  - **Loaded when needed, not on every page:** the calculator's modes, the product tour, two-factor setup on the "two-factor required" screen, and the new-organization dialog. Every organization page now shares about 231 KB instead of 241 KB.
+  - **Tracking policies:** it imported one label helper from the root of `@tallywork/contracts`, which brought every schema and zod into the browser (about 35 KB). It now uses the `@tallywork/contracts/messages` subpath.
+  - **Workspace helpers** (`useOrgAction`, colour dots, status badges, hour conversions, the colour picker) moved to `components/workspace/basics.tsx`, so pages that need only them no longer load the task and project dialogs. The project page loads its budget dialog, Documents tab and "new client" dialog on demand.
+  - **Guarded by** `apps/web/test/bundle-imports.test.ts`, which fails when one of these modules is imported statically again, or when browser code imports the contracts package root.
 - **6 November 2026 (Performance Center, phases 2–6 and the screens):** achievements, leaderboards, goals, reviews, team and worker performance, and client Insights, on the web, in the desktop app and in the client portal. Status and remaining gaps: [Performance.md](Performance.md).
   - **Web:** a **Performance** group in the sidebar (marked New) with Performance overview, Achievements (appreciation from clients waits in "Waiting for approval"), Leaderboards, Team performance, Worker performance (a list, and a profile with score history, goals, badges, project contributions and manager reviews) and Goals & challenges. Projects get a **Milestones** tab. Only people with team or organization scope see the group.
   - **Desktop:** a **My performance** screen after Timesheet: this week's work, goals, the next badge, badges, recognition, milestones and reviews shared with the worker. The score shows only when the organization shares it. The last copy is kept for when the device is offline.
@@ -556,9 +561,11 @@ The session state machine lives in [packages/domain/src/session-machine.ts](pack
 
 ```mermaid
 stateDiagram-v2
-  [*] --> CREATED: start (web or agent)
-  CREATED --> ACTIVE: CONFIRM (first heartbeat) / opens WORK segment
-  CREATED --> STOPPED: CONFIRM_TIMEOUT (120s)
+  [*] --> CREATED: start in the desktop app
+  [*] --> ACTIVE: start on the web or API, or time recorded offline / opens WORK segment
+  CREATED --> ACTIVE: CONFIRM (heartbeat or any event from that app) / opens WORK from the start
+  CREATED --> STOPPED: CONFIRM_TIMEOUT (120s, the app online but not confirming) / no time
+  CREATED --> INTERRUPTED: the app silent since the start / no time yet
 
   ACTIVE --> PAUSED: PAUSE (user, idle, break) / opens IDLE or BREAK
   PAUSED --> ACTIVE: RESUME / opens WORK
@@ -574,7 +581,9 @@ stateDiagram-v2
   STOPPED --> [*]
 ```
 
-Default timings (these can be overridden per org through the tracking policy): confirm timeout 120s, heartbeat grace 180s, recovery window 15 min, max pause 4 h, max offline tracking 24 h.
+Default timings (these can be overridden per org through the tracking policy): confirm timeout 120s (`confirmTimeoutSeconds`, 60–900), heartbeat grace 180s, recovery window 15 min, max pause 4 h, max offline tracking 24 h.
+
+**The confirm window.** A timer started in the desktop app holds no time until that app confirms it: its heartbeat naming the session, or any event for it. Work then counts from the start, so confirming never loses the first seconds. The window runs from when the server received the start, so a start delayed by the network gets the full 120 s. Past it, unconfirmed: if the app kept talking to the server without confirming, it is not running this timer, and the session stops as `NEVER_CONFIRMED` with no time; anything sent for it later is refused and shown under "Time not added". If the app went silent right after the start (sleep, lost network), that proves nothing, so the offline rules apply: interrupted at the start, recovered with no gap if the app returns with its history within the offline window, otherwise stopped with no time.
 
 ### 4. Desktop tracking & offline sync
 

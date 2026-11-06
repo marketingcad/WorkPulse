@@ -32,7 +32,7 @@ import {
 import { ApiError, errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
-import { useOrgAction, type RoleDto } from '@/components/workspace/shared';
+import { useOrgAction, type RoleDto } from '@/components/workspace/basics';
 import { MemberCell } from '@/lib/avatars';
 
 interface InvitationRow {

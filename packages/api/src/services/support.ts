@@ -42,8 +42,9 @@ export async function assertSupportStaff(deps: Deps, principal: Principal | null
     .from(emailTokens)
     .where(and(eq(emailTokens.userId, principal.userId), inArray(emailTokens.purpose, ['VERIFY_EMAIL', 'RESET_PASSWORD']), isNotNull(emailTokens.usedAt)))
     .limit(1);
-  if (!proof) throw forbidden('Confirm your email address first: open the link in the verification or password reset email');
-  if (!principal.mfaVerified) throw forbidden('The support console needs a session verified with two-factor authentication');
+  // Each refusal has its own code, so the console can say which step is missing.
+  if (!proof) throw new DomainError('forbidden', 'support_email_unproven', 'Confirm your email address first: open the link in the verification or password reset email');
+  if (!principal.mfaVerified) throw new DomainError('forbidden', 'support_mfa_required', 'The support console needs a session verified with two-factor authentication');
   return { userId: principal.userId, email: u.email };
 }
 

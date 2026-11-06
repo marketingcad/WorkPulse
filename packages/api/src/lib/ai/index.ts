@@ -19,6 +19,9 @@ class UnavailableProvider implements AiProvider {
 export function createAiProvider(env: Record<string, string | undefined> = process.env): AiProvider {
   const key = env.ANTHROPIC_API_KEY?.trim();
   if (key && env.ASSISTANT_ENABLED !== 'false') return new AnthropicProvider(key, env.ASSISTANT_MODEL || DEFAULT_ASSISTANT_MODEL);
+  // The E2E server is a production build; it opts into the deterministic fake with both flags,
+  // which e2e/scripts/serve-web.mjs alone sets. A real deployment never has them.
+  if (env.ASSISTANT_FAKE === '1' && env.TALLYWORK_E2E === '1') return new FakeProvider();
   if (env.NODE_ENV === 'production') return new UnavailableProvider();
   return new FakeProvider();
 }

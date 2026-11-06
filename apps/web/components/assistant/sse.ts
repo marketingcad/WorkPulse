@@ -1,4 +1,4 @@
-import { assistantStreamEvent, type AssistantStreamEvent } from '@tallywork/contracts';
+import { assistantStreamEvent, type AssistantStreamEvent } from '@tallywork/contracts/assistant';
 
 /**
  * Incremental parser for the assistant's server-sent events. Chunks may split an event anywhere;

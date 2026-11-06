@@ -17,15 +17,23 @@ export async function streamAssistantMessage(
   if (!res.body) return;
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  const feed = createSseParser(onEvent);
+  // `done` and `error` end the turn: stop reading there rather than waiting for the connection to
+  // close, which a proxy or dev server may hold open.
+  let finished = false;
+  const feed = createSseParser((e) => {
+    if (finished) return;
+    onEvent(e);
+    if (e.event === 'done' || e.event === 'error') finished = true;
+  });
   try {
-    for (;;) {
+    while (!finished) {
       const { done, value } = await reader.read();
       if (done) break;
       feed(decoder.decode(value, { stream: true }));
     }
-    feed(decoder.decode() + '\n\n');
+    if (!finished) feed(decoder.decode() + '\n\n');
   } finally {
+    if (finished) await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }

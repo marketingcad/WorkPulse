@@ -16,6 +16,7 @@ import { HelpReturnBar } from '@/components/help/help-return';
 import { TimerBar } from './timer-bar';
 import { HelpLink } from '@/components/help/help-link';
 import { CalculatorLauncher } from '@/components/calculator/calculator-launcher';
+import { AssistantLauncher } from '@/components/assistant/assistant-launcher';
 import { MyAvatar } from '@/lib/avatars';
 
 // Opened from the organization switcher only, so not part of every page.
@@ -127,6 +128,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </div>
       <CalculatorLauncher />
+      <AssistantLauncher />
     </TourProvider>
   );
 }

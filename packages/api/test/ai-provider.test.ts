@@ -22,6 +22,13 @@ describe('createAiProvider', () => {
     expect(p.available).toBe(false);
     await expect(collect(run(p, userMsg('hi')))).rejects.toMatchObject({ code: 'ai_unavailable' });
   });
+  it('uses the fake in production only when the E2E server sets both flags', () => {
+    expect(createAiProvider({ NODE_ENV: 'production', ASSISTANT_FAKE: '1', TALLYWORK_E2E: '1' })).toBeInstanceOf(FakeProvider);
+    expect(createAiProvider({ NODE_ENV: 'production', ASSISTANT_FAKE: '1' }).available).toBe(false);
+    expect(createAiProvider({ NODE_ENV: 'production', TALLYWORK_E2E: '1' }).available).toBe(false);
+    // A real key always wins over the test flags.
+    expect(createAiProvider({ NODE_ENV: 'production', ANTHROPIC_API_KEY: 'sk-ant-x', ASSISTANT_FAKE: '1', TALLYWORK_E2E: '1' })).toBeInstanceOf(AnthropicProvider);
+  });
   it('uses Anthropic with a key unless disabled', () => {
     expect(createAiProvider({ ANTHROPIC_API_KEY: 'sk-ant-x' })).toBeInstanceOf(AnthropicProvider);
     expect(createAiProvider({ ANTHROPIC_API_KEY: 'sk-ant-x', ASSISTANT_ENABLED: 'false' })).toBeInstanceOf(FakeProvider);

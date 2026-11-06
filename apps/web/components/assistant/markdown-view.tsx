@@ -25,7 +25,7 @@ function Inlines({ parts }: { parts: Inline[] }) {
 export function Markdown({ text }: { text: string }) {
   const blocks = parseMarkdown(text);
   return (
-    <div className="space-y-2 break-words">
+    <div className="space-y-2 wrap-break-word">
       {blocks.map((b, i) => {
         if (b.t === 'h')
           return (

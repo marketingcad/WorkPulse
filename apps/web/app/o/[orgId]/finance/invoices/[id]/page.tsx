@@ -224,7 +224,11 @@ export default function InvoiceDetailPage() {
               <dt className="border-t border-border pt-1 font-semibold">Total</dt>
               <dd className="tabular border-t border-border pt-1 text-right font-semibold">{money(inv.total_minor)}</dd>
               <dt className="text-text-muted">Paid</dt>
-              <dd className="tabular text-right">−{money(inv.paid_minor)}</dd>
+              {/* Payments are subtracted from the total; nothing paid yet is just $0.00, not −$0.00. */}
+              <dd className="tabular text-right">
+                {inv.paid_minor > 0 ? '−' : ''}
+                {money(inv.paid_minor)}
+              </dd>
               <dt className="font-semibold">Balance due</dt>
               <dd className="tabular text-right text-base font-semibold">{money(inv.balance_minor)}</dd>
             </dl>

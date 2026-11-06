@@ -7,6 +7,10 @@ import { streamAssistantMessage } from './stream';
 
 export type Conversation = AssistantConversationDto & { messages: AssistantMessageDto[] };
 export interface Streaming {
+  /** The conversation this turn belongs to: it is shown only there. */
+  conversationId: string;
+  /** How many saved messages the conversation had when the turn started; later ones belong to this turn. */
+  baseCount: number;
   userText: string;
   text: string;
   toolStatus: string | null;
@@ -45,6 +49,9 @@ export function useAssistant(orgId: string, enabled: boolean) {
   const [lastUserText, setLastUserText] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const abortRef = useRef<AbortController | null>(null);
+  /** Set synchronously when a send starts, so a double click cannot start a second turn. */
+  const inFlight = useRef(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     setActiveIdState(readActive(orgId));
@@ -89,7 +96,9 @@ export function useAssistant(orgId: string, enabled: boolean) {
   const send = useCallback(
     async (content: string) => {
       const text = content.trim();
-      if (!text || streaming) return;
+      if (!text || inFlight.current) return;
+      inFlight.current = true;
+      setBusy(true);
       setError(null);
       setLastUserText(text);
       setAnnouncement('');
@@ -102,11 +111,14 @@ export function useAssistant(orgId: string, enabled: boolean) {
         }
       } catch (e) {
         setError({ code: e instanceof ApiError ? e.code : 'internal', retryable: true });
+        inFlight.current = false;
+        setBusy(false);
         return;
       }
       const controller = new AbortController();
       abortRef.current = controller;
-      const state: Streaming = { userText: text, text: '', toolStatus: null, nav: [] };
+      const baseCount = id === activeId ? (active.data?.messages.length ?? 0) : 0;
+      const state: Streaming = { conversationId: id, baseCount, userText: text, text: '', toolStatus: null, nav: [] };
       setStreaming({ ...state });
       let failed: AssistantError | null = null;
       const onEvent = (e: AssistantStreamEvent) => {
@@ -117,19 +129,26 @@ export function useAssistant(orgId: string, enabled: boolean) {
         setStreaming({ ...state });
       };
       try {
-        await streamAssistantMessage(orgId, id, { content: text, route: window.location.pathname }, onEvent, controller.signal);
+        const ended = await streamAssistantMessage(orgId, id, { content: text, route: window.location.pathname }, onEvent, controller.signal);
+        // The connection closed without the turn ending (a proxy or function timeout): say so.
+        if (!ended && !controller.signal.aborted) failed = { code: 'interrupted', retryable: true };
       } catch (e) {
         if (controller.signal.aborted) failed = null;
         else failed = { code: e instanceof ApiError ? e.code : 'internal', retryable: true };
       } finally {
         abortRef.current = null;
+        const aborted = controller.signal.aborted;
+        // An aborted turn (new chat, another conversation) leaves the screen at once.
+        if (aborted) setStreaming(null);
         await refresh(id);
         setStreaming(null);
         if (failed) setError(failed);
-        else if (state.text) setAnnouncement(state.text);
+        else if (state.text && !aborted) setAnnouncement(state.text);
+        inFlight.current = false;
+        setBusy(false);
       }
     },
-    [activeId, base, orgId, refresh, setActiveId, streaming],
+    [active.data, activeId, base, orgId, refresh, setActiveId],
   );
 
   const retry = useCallback(() => (lastUserText ? send(lastUserText) : undefined), [lastUserText, send]);
@@ -175,7 +194,10 @@ export function useAssistant(orgId: string, enabled: boolean) {
     activeLoading: !!activeId && active.isLoading,
     activeError: active.error && !(active.error instanceof ApiError && active.error.status === 404) ? active.error : null,
     reloadActive: () => active.refetch(),
-    streaming,
+    /** The live turn, only when it belongs to the conversation on screen. */
+    streaming: streaming && streaming.conversationId === activeId ? streaming : null,
+    /** A message is being sent or answered: suggestions and Send are disabled. */
+    busy,
     error,
     announcement,
     send,

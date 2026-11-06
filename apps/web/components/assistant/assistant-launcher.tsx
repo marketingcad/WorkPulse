@@ -16,7 +16,8 @@ const AssistantPanel = dynamic(() => import('./assistant-panel').then((m) => m.A
 });
 
 /**
- * WorkPulse AI launcher: a round button stacked above the calculator's, in the bottom-right corner.
+ * WorkPulse AI launcher: a round button just left of the calculator button, in the bottom row, so it
+ * never covers the calculator panel (which opens above its button).
  * Shown only when the assistant is configured and the person's role may use it.
  */
 export function AssistantLauncher() {
@@ -38,7 +39,7 @@ export function AssistantLauncher() {
           aria-label={t('assistant.launch')}
           title={t('assistant.launch')}
           onClick={() => setOpen(true)}
-          className="fixed bottom-[calc(max(1rem,env(safe-area-inset-bottom))+4rem)] right-4 z-40 flex size-12 items-center justify-center rounded-full border border-border bg-surface text-interactive shadow-overlay hover:bg-interactive-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:right-6"
+          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-20 z-40 flex size-12 items-center justify-center rounded-full border border-border bg-surface text-interactive shadow-overlay hover:bg-interactive-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:right-22"
         >
           <Sparkles className="size-5" aria-hidden />
         </button>

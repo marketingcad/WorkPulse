@@ -5,6 +5,7 @@ import { createSseParser } from './sse';
 /**
  * Sends one message and reads the reply stream. Errors before the stream starts (429, 409, 400,
  * 404) are thrown as ApiError by `api`; errors during the stream arrive as `error` events.
+ * Resolves true when the turn ended with `done` or `error`, false when the connection closed first.
  */
 export async function streamAssistantMessage(
   orgId: string,
@@ -12,9 +13,9 @@ export async function streamAssistantMessage(
   input: { content: string; route?: string },
   onEvent: (e: AssistantStreamEvent) => void,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<boolean> {
   const res = await api<Response>(`/orgs/${orgId}/assistant/conversations/${conversationId}/messages`, { body: input, signal, raw: true });
-  if (!res.body) return;
+  if (!res.body) return false;
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   // `done` and `error` end the turn: stop reading there rather than waiting for the connection to
@@ -36,4 +37,5 @@ export async function streamAssistantMessage(
     if (finished) await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
+  return finished;
 }

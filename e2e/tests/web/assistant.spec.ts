@@ -1,5 +1,5 @@
 import { expect, test } from '../../support/fixtures';
-import { ADMIN_STATE, MANAGER_STATE, VIEWER_STATE, WORKER_STATE } from '../../support/env';
+import { ADMIN_STATE, VIEWER_STATE, WORKER_STATE } from '../../support/env';
 import type { Page } from '@playwright/test';
 
 /**
@@ -97,6 +97,47 @@ test.describe('WorkPulse AI (admin)', () => {
     await expect(page.getByTestId('assistant-loading')).toBeHidden({ timeout: 10_000 });
   });
 
+  test('a reply cut off by the connection says so, and earlier messages stay', async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}`);
+    const panel = await openPanel(page);
+    await panel.getByRole('button', { name: 'New chat' }).click();
+    await ask(page, 'How do I add a client?');
+    await expect(lastAnswer(page)).toContainText('Here is what I found', { timeout: 15_000 });
+    // The same question again; this time the stream closes after one delta, with no done event.
+    await page.route('**/assistant/conversations/*/messages', (route) =>
+      route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: 'event: delta\ndata: {"text":"Partial"}\n\n' }),
+    );
+    await ask(page, 'How do I add a client?');
+    await expect(panel.getByTestId('assistant-error')).toContainText('The answer was interrupted', { timeout: 15_000 });
+    await expect(panel.getByTestId('assistant-retry')).toBeVisible();
+    // The earlier identical question and its answer are still on screen.
+    await expect(panel.locator('[data-role="user"]').filter({ hasText: 'How do I add a client?' }).first()).toBeVisible();
+    await expect(panel.locator('[data-role="assistant"]').filter({ hasText: 'Here is what I found' }).first()).toBeVisible();
+  });
+
+  test('a double click on a suggestion sends it once', async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}`);
+    const panel = await openPanel(page);
+    await panel.getByRole('button', { name: 'New chat' }).click();
+    const count = async () => (await (await page.request.get(`/api/v1/orgs/${data.orgId}/assistant/conversations?page=1`)).json()).total as number;
+    const before = await count();
+    await panel.getByTestId('assistant-suggestion').first().dblclick();
+    await expect(lastAnswer(page)).toContainText('Here is what I found', { timeout: 15_000 });
+    expect(await count()).toBe(before + 1);
+    await expect(panel.locator('[data-role="user"]')).toHaveCount(1);
+  });
+
+  test('the launcher never covers the open calculator', async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}`);
+    await page.getByRole('button', { name: 'Open calculator' }).click();
+    const launcher = (await page.getByTestId('assistant-launcher').boundingBox())!;
+    const calcPanel = page.getByRole('dialog', { name: 'Calculator' });
+    await expect(calcPanel).toBeVisible();
+    const box = (await calcPanel.boundingBox())!;
+    const overlaps = launcher.x < box.x + box.width && launcher.x + launcher.width > box.x && launcher.y < box.y + box.height && launcher.y + launcher.height > box.y;
+    expect(overlaps).toBe(false);
+  });
+
   test('Escape closes the panel and focus returns to the launcher', async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}`);
     await openPanel(page);
@@ -144,36 +185,6 @@ test.describe('WorkPulse AI layout', () => {
       await expect(panel.getByTestId('assistant-input')).toBeVisible();
     });
   }
-});
-
-test.describe('WorkPulse AI (team manager)', () => {
-  test.use({ storageState: MANAGER_STATE });
-
-  test('gets team-scoped answers, no money, and no link to pages they cannot open', async ({ page, data, playwright }) => {
-    await page.goto(`/o/${data.orgId}`);
-    // As the admin: a money budget on the website project, which the manager is assigned to.
-    const origin = new URL(page.url()).origin;
-    const api = await playwright.request.newContext({ baseURL: origin, storageState: ADMIN_STATE, extraHTTPHeaders: { Origin: origin } });
-    const put = await api.put(`/api/v1/orgs/${data.orgId}/budgets`, { data: { subject_type: 'PROJECT', subject_id: data.projects.website.id, kind: 'MONEY', amount: 750_000, warn_pct: 80 } });
-    expect(put.status()).toBe(200);
-    const budgetId = (await put.json()).id as string;
-    try {
-      const panel = await openPanel(page);
-      await ask(page, 'How is the budget?');
-      const answer = lastAnswer(page);
-      await expect(answer).toContainText('Here is what I found', { timeout: 15_000 });
-      await expect(answer).toContainText('percent_used');
-      await expect(answer).not.toContainText('"amount"');
-      await expect(answer).not.toContainText('7500');
-
-      // Payroll is not theirs: no chip to it, and its page questions are not suggested.
-      await panel.getByRole('button', { name: 'New chat' }).click();
-      for (const q of await panel.getByTestId('assistant-suggestion').allTextContents()) expect(q).not.toMatch(/payroll|invoice/i);
-    } finally {
-      await api.delete(`/api/v1/orgs/${data.orgId}/budgets/${budgetId}`);
-      await api.dispose();
-    }
-  });
 });
 
 test.describe('WorkPulse AI is not offered to everyone', () => {

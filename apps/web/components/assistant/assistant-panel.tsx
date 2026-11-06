@@ -100,7 +100,7 @@ export function AssistantPanel({ orgId, onClose }: { orgId: string; onClose: () 
 
   const submit = () => {
     const text = draft.trim();
-    if (!text || a.streaming || text.length > MAX_CHARS) return;
+    if (!text || a.busy || text.length > MAX_CHARS) return;
     setDraft('');
     void a.send(text);
   };
@@ -112,13 +112,9 @@ export function AssistantPanel({ orgId, onClose }: { orgId: string; onClose: () 
   };
 
   const stored = a.active?.messages ?? [];
-  // While a reply streams, the live copy of this turn is shown; hide the saved copy of the same
-  // turn (its user message, and a reply saved after it) if a refetch brings it in early.
-  const messages = (() => {
-    if (!a.streaming) return stored;
-    const i = stored.map((m) => m.role === 'user' && m.content === a.streaming!.userText).lastIndexOf(true);
-    return i === -1 ? stored : stored.slice(0, i);
-  })();
+  // While a reply streams, the live copy of this turn is shown; saved messages from this turn (past
+  // the count when it started) are hidden if a refetch brings them in early.
+  const messages = a.streaming ? stored.slice(0, a.streaming.baseCount) : stored;
   const empty = !messages.length && !a.streaming && !a.activeLoading;
   const title = a.active?.title ?? t('assistant.newChat');
 
@@ -158,16 +154,18 @@ export function AssistantPanel({ orgId, onClose }: { orgId: string; onClose: () 
             }}
             onBlur={() => setRenaming(null)}
           />
-        ) : (
+        ) : a.active && view === 'chat' ? (
+          // The title renames the conversation; with nothing to rename it is plain text.
           <button
             type="button"
-            className="min-w-0 flex-1 truncate rounded-sm px-1 text-left text-sm font-semibold hover:bg-surface-muted disabled:hover:bg-transparent"
-            disabled={!a.active}
-            title={a.active ? t('assistant.rename') : undefined}
-            onClick={() => a.active && setRenaming(a.active.id)}
+            className="min-w-0 flex-1 truncate rounded-sm px-1 text-left text-sm font-semibold hover:bg-surface-muted"
+            title={t('assistant.rename')}
+            onClick={() => setRenaming(a.active!.id)}
           >
-            {view === 'history' ? t('assistant.history') : title}
+            {title}
           </button>
+        ) : (
+          <p className="min-w-0 flex-1 truncate px-1 text-sm font-semibold">{view === 'history' ? t('assistant.history') : title}</p>
         )}
         <IconButton label={t('assistant.newChat')} onClick={() => (a.newChat(), setView('chat'), inputRef.current?.focus())}>
           <MessageSquarePlus className="size-4" />
@@ -239,6 +237,7 @@ export function AssistantPanel({ orgId, onClose }: { orgId: string; onClose: () 
                       key={q}
                       type="button"
                       data-testid="assistant-suggestion"
+                      disabled={a.busy}
                       onClick={() => void a.send(q)}
                       className="block w-full rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/40"
                     >
@@ -319,7 +318,7 @@ export function AssistantPanel({ orgId, onClose }: { orgId: string; onClose: () 
             data-testid="assistant-input"
             className="max-h-40 min-h-10 flex-1 resize-none rounded-md border border-border bg-surface px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/40"
           />
-          <IconButton label={t('assistant.send')} type="submit" variant="primary" disabled={!draft.trim() || !!a.streaming || draft.length > MAX_CHARS} data-testid="assistant-send">
+          <IconButton label={t('assistant.send')} type="submit" variant="primary" disabled={!draft.trim() || a.busy || draft.length > MAX_CHARS} data-testid="assistant-send">
             <ArrowUp className="size-4" />
           </IconButton>
         </div>

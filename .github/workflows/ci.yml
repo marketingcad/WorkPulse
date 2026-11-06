@@ -143,11 +143,20 @@ jobs:
           retention-days: 14
 
   e2e-electron:
-    # The real desktop app (Electron main process, preload, window) driven by Playwright. Windows runners
-    # have a desktop session and the OS keychain (DPAPI) the app requires to store its sign-in.
-    name: E2E desktop app (Electron, Windows)
-    runs-on: windows-latest
+    # The real desktop app (Electron main process, preload, window) driven by Playwright, on each OS the
+    # app ships for. It needs a desktop session and the OS keychain to store its sign-in: Windows (DPAPI)
+    # and macOS (Keychain) runners have both; Linux gets a virtual display (xvfb) and an unlocked
+    # gnome-keyring in a D-Bus session, as in desktop-linux-smoke.yml.
+    name: E2E desktop app (Electron, ${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, name: Windows }
+          - { os: macos-latest, name: macOS }
+          - { os: ubuntu-latest, name: Linux }
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -156,11 +165,27 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:e2e --project=electron
+      - name: Linux desktop session (display, keyring, window tools)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb gnome-keyring dbus-x11 x11-utils
+          # Electron's sandbox helper from npm must be owned by root to run with the sandbox on.
+          sandbox=$(dirname "$(node -p "require('./apps/desktop/node_modules/electron')")")/chrome-sandbox
+          sudo chown root:root "$sandbox" && sudo chmod 4755 "$sandbox"
+      - name: Electron E2E
+        if: runner.os != 'Linux'
+        run: pnpm test:e2e --project=electron
+      - name: Electron E2E (under xvfb, with an unlocked keyring)
+        if: runner.os == 'Linux'
+        run: |
+          dbus-run-session -- bash -c '
+            echo -n e2e | gnome-keyring-daemon --unlock --components=secrets >/dev/null
+            xvfb-run -a pnpm test:e2e --project=electron'
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: playwright-report-electron
+          name: playwright-report-electron-${{ matrix.name }}
           path: |
             e2e/playwright-report
             e2e/test-results

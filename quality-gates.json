@@ -15,7 +15,7 @@
           "session-timeouts", "staff-profile", "support", "time-accuracy", "time-integrity", "time-money", "time-overlap", "time-product",
           "timesheet-entry", "timesheet-rules", "timesheets", "tracking", "work-integrity", "work-scope"
         ],
-        "apps/desktop": ["agent", "agent-start", "agent-offline", "agent-force-stop", "agent-breaks", "offline", "permissions"]
+        "apps/desktop": ["agent", "agent-start", "agent-offline", "agent-force-stop", "agent-breaks", "offline", "permissions", "extension"]
       },
       "playwright": [
         "web/auth", "web/two-factor", "web/qa/api-security", "web/performance-permissions",
@@ -42,7 +42,7 @@
         "apps/web": [
           "api-errors", "avatar-crop", "calculator", "calculator-oracle", "calculator-position", "confirm-dialogs", "csv-import", "deps",
           "download-guides", "download-platform", "duration-input", "help", "invoice-extra-lines", "money-input", "nav", "page-help", "redirect",
-          "table-actions", "time-off-overlap", "unsaved", "url-range", "zoned"
+          "policy-fields", "table-actions", "time-off-overlap", "unsaved", "url-range", "zoned"
         ],
         "apps/desktop": ["agent-account", "agent-connect", "agent-monitoring-card", "disclosure", "errors", "nav", "updater", "urls"]
       },
@@ -53,7 +53,7 @@
         "web/performance-achievements", "web/performance-goals", "web/performance-leaderboards", "web/performance-overview", "web/performance-teams",
         "web/performance-workers", "web/portal", "web/portal-insights", "web/profile-avatar", "web/profiles", "web/project-milestones",
         "web/qa/activity-default", "web/qa/people-flows", "web/qa/public-auth", "web/qa/settings-integrations", "web/qa/work-flows",
-        "web/screenshot-retention", "web/simplified-nav", "web/time-paging", "web/work-forms",
+        "web/screenshot-retention", "web/simplified-nav", "web/support-console", "web/time-paging", "web/work-forms",
         "desktop/avatar", "desktop/navigation", "desktop/performance", "desktop/startup-transparency",
         "electron/sign-in-feedback"
       ]

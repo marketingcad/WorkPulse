@@ -118,10 +118,13 @@ function Composer() {
     return () => clearTimeout(t);
   }, [previewKey]);
 
+  // Check the body that is sent (the debounced one), not the live fields: choosing a client and going
+  // straight to Lines inside the debounce used to send client_id "" and flash a validation error.
+  const debounced = JSON.parse(debouncedKey) as Body;
   const previewQ = useQuery<InvoicePreview, ApiError>({
     queryKey: ['org', org.organization.id, 'invoice-preview', debouncedKey],
-    queryFn: ({ signal }) => api<InvoicePreview>(`/orgs/${org.organization.id}/invoices/preview`, { method: 'POST', body: { ...JSON.parse(debouncedKey), issue_date: today, due_date: today }, signal }),
-    enabled: step >= 1 && !!clientId && start <= end,
+    queryFn: ({ signal }) => api<InvoicePreview>(`/orgs/${org.organization.id}/invoices/preview`, { method: 'POST', body: { ...debounced, issue_date: today, due_date: today }, signal }),
+    enabled: step >= 1 && !!debounced.client_id && !!debounced.period_start && !!debounced.period_end && debounced.period_start <= debounced.period_end,
     placeholderData: (prev) => prev,
   });
   const preview = previewQ.data;

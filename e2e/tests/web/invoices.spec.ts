@@ -43,6 +43,9 @@ test.describe('Invoices (admin)', () => {
     expect(number).toMatch(/\w/);
     // No payment can be recorded on a draft.
     await expect(page.getByRole('button', { name: 'Record payment' })).toHaveCount(0);
+    // Nothing paid yet reads $0.00, not −$0.00.
+    const paidLine = page.locator('dt', { hasText: /^Paid$/ }).locator('xpath=following-sibling::dd[1]');
+    await expect(paidLine).toHaveText(usd(0));
 
     // The client has no email address, so "Send" marks it as sent.
     await page.getByRole('button', { name: 'Send' }).click();
@@ -58,6 +61,7 @@ test.describe('Invoices (admin)', () => {
     await pay.getByRole('button', { name: 'Record payment' }).click();
     await expect(page.getByText('Payment recorded')).toBeVisible();
     await expect(header).toContainText('Paid');
+    await expect(paidLine).toHaveText('−' + usd(150000));
     await expect(page.getByRole('button', { name: 'Record payment' })).toHaveCount(0);
 
     // Payments live in the same menu item, on the "Payments received" tab.
@@ -70,6 +74,25 @@ test.describe('Invoices (admin)', () => {
     await expect(payment).toContainText(`TX-${data.run}`);
     await expect(payment).toContainText(usd(150000));
     await expect(payment).toContainText(number);
+  });
+
+  test('choosing a client and going straight to the lines never asks for the preview without the client', async ({ page, data, adminApi }) => {
+    // Regression: the preview is debounced, and it was sent with the old (empty) client when Lines
+    // was opened within the debounce: a 400, and "Client: This field is required" briefly on screen.
+    const client = `Initech ${data.run} ${uid()}`;
+    await ok(await adminApi.api.post(adminApi.orgApi('/clients'), { data: { name: client } }), 'client');
+    const previews: Array<{ status: number; clientId: unknown }> = [];
+    page.on('response', (r) => {
+      if (r.url().endsWith('/invoices/preview')) previews.push({ status: r.status(), clientId: r.request().postDataJSON()?.client_id });
+    });
+    await page.goto(`/o/${data.orgId}/finance/invoices/new`);
+    await page.getByLabel('Client').selectOption({ label: client });
+    await page.getByRole('button', { name: 'Preview lines' }).click();
+
+    await expect(page.getByText('Nothing to invoice in this period')).toBeVisible();
+    await expect(page.getByText('This field is required')).toHaveCount(0);
+    expect(previews.length).toBeGreaterThan(0);
+    expect(previews.filter((p) => p.status !== 200 || !p.clientId)).toEqual([]);
   });
 
   test('the invoice composer checks the client, tax rate, lines and dates', async ({ page, data, adminApi }) => {

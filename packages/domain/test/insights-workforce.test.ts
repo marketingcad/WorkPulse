@@ -57,3 +57,10 @@ describe('workforceFindings', () => {
     for (const f of findings) for (const l of f.links) expect(NAV_TARGET_KEYS).toContain(l);
   });
 });
+
+describe('workforceFindings without approval data', () => {
+  it('leaves out the approved share when the person cannot see approvals', () => {
+    const { findings } = workforceFindings({ period, previous, totals: totals({ approvedSeconds: null }), groups: [], pending: 0, missing: 0, timeOff: { approvedDays: 0, pendingRequests: 0 } });
+    expect(findings.some((f) => f.category === 'approved_share')).toBe(false);
+  });
+});

@@ -19,7 +19,7 @@ const hours = (s: number) => Math.round(s / 36) / 100;
 export function workforceFindings(input: {
   period: Period;
   previous: Period;
-  totals: { seconds: number; previousSeconds: number | null; approvedSeconds: number; overtimeSeconds: number; previousOvertimeSeconds: number | null };
+  totals: { seconds: number; previousSeconds: number | null; /** null: the person cannot see approvals; no approved-share finding */ approvedSeconds: number | null; overtimeSeconds: number; previousOvertimeSeconds: number | null };
   groups: GroupHours[];
   pending: number;
   missing: number;
@@ -50,8 +50,8 @@ export function workforceFindings(input: {
     next_step: 'Open time entries to see where the hours went.',
   });
 
-  if (totals.seconds > 0) {
-    const share = Math.round((totals.approvedSeconds / totals.seconds) * 100);
+  if (totals.seconds > 0 && totals.approvedSeconds !== null) {
+    const share = Math.round((totals.approvedSeconds! / totals.seconds) * 100);
     findings.push({
       ...base,
       id: findingId('workforce', 'approved_share', period.from),
@@ -59,7 +59,7 @@ export function workforceFindings(input: {
       severity: share < 50 ? 'attention' : 'info',
       basis: 'observation',
       title: `${share} % of this period's time is approved`,
-      summary: `${hours(totals.approvedSeconds)} h of ${hours(totals.seconds)} h recorded are on approved timesheets.`,
+      summary: `${hours(totals.approvedSeconds!)} h of ${hours(totals.seconds)} h recorded are on approved timesheets.`,
       metrics: [{ label: 'Approved', value: share, unit: 'percent' }],
       refs: [],
       links: ['timesheets.approvals'],

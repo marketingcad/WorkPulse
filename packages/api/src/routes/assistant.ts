@@ -1,14 +1,16 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { streamSSE } from 'hono/streaming';
+import { validation } from '@tallywork/domain';
 import { sectionFor, suggestionsFor } from '@tallywork/domain/assistant';
-import { assistantCreateInput, assistantRenameInput, assistantSendInput, type AssistantErrorCode } from '@tallywork/contracts';
+import { assistantCreateInput, assistantRenameInput, assistantSendInput, insightQueryInput, insightSectionInput, type AssistantErrorCode } from '@tallywork/contracts';
 import type { AppEnv } from '../context';
 import { body, query } from '../lib/http';
 import { ctx } from '../services/ctx';
 import { assertAssistantAccess } from '../services/assistant/access';
 import { prepareTurn, runAssistantTurn, streamBudgetMs, turnStore } from '../services/assistant/orchestrator';
 import { buildSystemPrompt, historyToMessages } from '../services/assistant/prompt';
+import { getInsights } from '../services/ai-insights';
 import { createConversation, deleteConversation, getConversation, listConversations, renameConversation } from '../services/assistant/conversations';
 
 /**
@@ -25,6 +27,15 @@ const listQuery = z.object({ page: z.coerce.number().int().min(1).max(100_000).d
 const suggestionsQuery = z.object({ route: z.string().max(200).optional() });
 
 export const assistantRoutes = new Hono<AppEnv>()
+  /** AI Insights: findings computed from what the person may see; works without an AI key. */
+  .get('/insights/:section', async (c) => {
+    const x = ctx(c);
+    assertAssistantAccess(x);
+    const section = insightSectionInput.safeParse(c.req.param('section'));
+    if (!section.success) throw validation('Unknown insights section', { errors: [{ field: 'section', message: 'Use overview, workforce, timesheets or projects' }] });
+    const q = query(c, insightQueryInput);
+    return c.json(await getInsights(x, section.data, q));
+  })
   /** 3–4 suggested questions for the welcome screen, picked from the person's permissions and page. */
   .get('/suggestions', async (c) => {
     const x = ctx(c);

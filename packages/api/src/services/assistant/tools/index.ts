@@ -8,6 +8,7 @@ import { approvalsTool } from './approvals';
 import { budgetsTool } from './budgets';
 import { projectRisksTool, checkTimesheetsTool, workflowInsightsTool, workforceInsightsTool } from './insights';
 import { reportSummaryTool } from './report-summary';
+import { explainPerformanceTool } from './performance';
 import { docsTool } from './docs';
 import { hoursTool } from './hours';
 import { liveTool } from './live';
@@ -42,6 +43,7 @@ const ALL_TOOLS: AssistantTool<any>[] = [
   projectRisksTool,
   workflowInsightsTool,
   reportSummaryTool,
+  explainPerformanceTool,
 ];
 
 /** The tool set for one actor: a tool the actor may not use is never offered to the model. */

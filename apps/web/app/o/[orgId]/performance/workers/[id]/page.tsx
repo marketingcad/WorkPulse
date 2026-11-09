@@ -2,7 +2,8 @@
 import { Suspense, lazy, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Award, MessageSquarePlus, Target } from 'lucide-react';
+import { ArrowLeft, Award, MessageSquarePlus, Sparkles, Target } from 'lucide-react';
+import { askAssistant } from '@/lib/assistant-bridge';
 import { MemberAvatar } from '@/lib/avatars';
 import type { PerformanceSettingsDto } from '@tallywork/contracts';
 import type { PerformancePeriod } from '@tallywork/domain';
@@ -94,6 +95,11 @@ export default function WorkerProfilePage() {
         actions={
           data && (
             <>
+              {org.assistant_enabled && (
+                <Button icon={<Sparkles className="size-4" aria-hidden />} onClick={() => askAssistant(`Explain the performance score of ${data.member.name} for ${data.period.start} to ${data.period.end}.`)}>
+                  Explain with WorkPulse AI
+                </Button>
+              )}
               {canSetGoals && (
                 <Link href={`${org.base}/performance/goals?new=1&member=${data.member.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-sm font-medium hover:bg-surface-sunken">
                   <Target className="size-4" aria-hidden />

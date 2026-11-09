@@ -40,6 +40,7 @@ export const assistantEn = {
   'assistant.tool.getProjectRisks': 'Checking project health…',
   'assistant.tool.summarizeReport': 'Running the report…',
   'assistant.tool.getWorkflowInsights': 'Checking what waits for a decision…',
+  'assistant.tool.explainPerformance': 'Reading the Performance Center score…',
   'assistant.tool.searchWorkPulseDocumentation': 'Checking the WorkPulse help…',
   'assistant.tool.suggestNavigation': 'Finding the right page…',
   'assistant.tool.getOrganizationOverview': 'Checking your organization…',

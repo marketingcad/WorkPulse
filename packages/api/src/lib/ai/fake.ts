@@ -69,6 +69,8 @@ export class FakeProvider implements AiProvider {
     ];
     if (lower.includes('error-test')) throw new AiError('ai_unavailable');
     // Insight tools (AI Insights): checked before the plainer keywords below.
+    const score = /performance score of (.+?) for (\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2})/i.exec(text);
+    if (score) return tool('explainPerformance', { member: score[1], from: score[2], to: score[3] });
     if (lower.includes('bottleneck') || lower.includes('waiting for')) return tool('getWorkflowInsights', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });
     if (lower.includes('review')) return tool('checkTimesheets', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });
     if (lower.includes('insight')) return tool('getWorkforceInsights', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });

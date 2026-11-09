@@ -22,7 +22,7 @@ export const aiInsightsEn = {
   'aiInsights.severity.info': 'For information',
   'aiInsights.previous': 'previously {value}',
   'aiInsights.nextStep': 'Next step',
-  'aiInsights.ask': 'Ask WorkPulse AI',
+  'aiInsights.ask': 'Explain with WorkPulse AI',
   'aiInsights.askQuestion': 'Explain this insight and what I should do: "{title}" ({from} to {to}).',
   'aiInsights.limitations': 'Not included',
   'aiInsights.emptyTitle': 'Nothing needs your attention for this period',

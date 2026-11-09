@@ -49,6 +49,7 @@ const PAGES: Target[] = [
   { name: 'Payroll: Pay groups', path: '/finance/payroll', tab: 'Pay groups' },
   { name: 'Payroll run', path: (i) => `/finance/payroll/${i.payrollRun}` },
   { name: 'Summary', path: '/insights' },
+  { name: 'AI Insights', path: '/ai-insights' },
   { name: 'Performance overview', path: '/performance' },
   { name: 'Achievements', path: '/performance/achievements' },
   { name: 'Leaderboards', path: '/performance/leaderboards' },

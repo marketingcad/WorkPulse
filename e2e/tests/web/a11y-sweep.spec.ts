@@ -39,6 +39,7 @@ const PAGES = [
   '/finance/invoices/payments',
   '/finance/payroll',
   '/insights',
+  '/ai-insights',
   '/reports',
   '/performance',
   '/performance/achievements',

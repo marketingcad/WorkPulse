@@ -267,7 +267,7 @@ function ReportRunner() {
           <>
             {org.assistant_enabled && (
               <Button icon={<Sparkles className="size-3.5" />} disabled={!validRange} onClick={() => askAssistant(`Summarize the ${item.title} report for ${params.from} to ${params.to}.`)}>
-                Ask WorkPulse AI
+                Summarize with WorkPulse AI
               </Button>
             )}
             <Button icon={<Save className="size-3.5" />} onClick={() => setSaveOpen(true)}>

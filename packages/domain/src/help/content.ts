@@ -500,6 +500,25 @@ export const HELP_ARTICLES: HelpArticle[] = [
     keywords: ['summary', 'insights', 'totals', 'hours', 'chart'],
   },
   {
+    id: 'ai-insights',
+    category: 'reports',
+    title: 'See what needs your attention with AI Insights',
+    summary: 'Workforce, timesheet and project findings measured from your data, each labelled as measured, compared with the previous period, or an estimate.',
+    steps: [
+      'Open AI Insights under Reports.',
+      'Choose a period (this week, last week, this month or last month). Each finding is compared with the period of the same length just before it.',
+      'Use the tabs: Overview shows the most important findings; Workforce, Timesheets and Projects show everything for that area.',
+      'Open a finding’s link to act on it, or choose Explain with WorkPulse AI to ask about it.',
+    ],
+    points: [
+      'You only see people, teams and projects your role allows, and money only if you may see billing.',
+      'Findings are worked out by WorkPulse, not by the AI, and they never approve, reject or change anything.',
+      'Timesheet findings, such as overlapping entries or a long day, may simply need a look: they never mean someone did something wrong.',
+    ],
+    links: [{ label: 'Open AI Insights', href: '/ai-insights' }],
+    keywords: ['ai insights', 'insights', 'trends', 'overtime', 'workload', 'overlap', 'budget risk', 'deadline', 'attention', 'review'],
+  },
+  {
     id: 'reports',
     category: 'reports',
     title: 'Run, save and schedule a report',

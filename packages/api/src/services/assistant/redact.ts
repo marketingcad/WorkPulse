@@ -138,7 +138,7 @@ export function redactFinding(f: InsightFindingDto) {
 }
 
 /** Columns never sent to the model, whatever the report: monitoring data and free text about people. */
-const NEVER_COLUMN = /activity|email|apps?\b|url|screenshot|reason|note|comment/i;
+const NEVER_COLUMN = /activity|idle|break|email|apps?\b|url|screenshot|reason|note|comment/i;
 
 /**
  * A report for the model: its own columns (money only for people with reports:finance), the summary

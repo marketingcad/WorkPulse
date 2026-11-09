@@ -23,7 +23,8 @@ export function workforceFindings(input: {
   groups: GroupHours[];
   pending: number;
   missing: number;
-  timeOff: { approvedDays: number; pendingRequests: number };
+  /** People with approved time off overlapping the period, and requests waiting for a decision. */
+  timeOff: { peopleAway: number; pendingRequests: number };
 }): { findings: Finding[]; limitations: string[] } {
   const { period, totals } = input;
   const findings: Finding[] = [];
@@ -127,14 +128,14 @@ export function workforceFindings(input: {
       severity: 'attention',
       basis: 'fact',
       title: `${input.missing} ${input.missing === 1 ? 'person has' : 'people have'} not submitted a timesheet`,
-      summary: 'For the period that ended most recently.',
+      summary: 'For the pay periods in this range that have ended (the latest five at most).',
       metrics: [{ label: 'Not submitted', value: input.missing, unit: 'count' }],
       refs: [],
       links: ['timesheets.approvals'],
       next_step: 'See the Timesheets tab of AI Insights for names.',
     });
   }
-  if (input.timeOff.approvedDays > 0 || input.timeOff.pendingRequests > 0) {
+  if (input.timeOff.peopleAway > 0 || input.timeOff.pendingRequests > 0) {
     findings.push({
       ...base,
       id: findingId('workforce', 'time_off', period.from),
@@ -142,9 +143,9 @@ export function workforceFindings(input: {
       severity: 'info',
       basis: 'fact',
       title: 'Time off this period',
-      summary: `${input.timeOff.approvedDays} approved ${input.timeOff.approvedDays === 1 ? 'day' : 'days'} away, and ${input.timeOff.pendingRequests} ${input.timeOff.pendingRequests === 1 ? 'request' : 'requests'} waiting.`,
+      summary: `${input.timeOff.peopleAway} ${input.timeOff.peopleAway === 1 ? 'person has' : 'people have'} approved time off in this period, and ${input.timeOff.pendingRequests} ${input.timeOff.pendingRequests === 1 ? 'request' : 'requests'} waiting.`,
       metrics: [
-        { label: 'Days away', value: input.timeOff.approvedDays, unit: 'days' },
+        { label: 'People away', value: input.timeOff.peopleAway, unit: 'count' },
         { label: 'Requests waiting', value: input.timeOff.pendingRequests, unit: 'count' },
       ],
       refs: [],

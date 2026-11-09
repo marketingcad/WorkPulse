@@ -8,7 +8,7 @@ const previous = { from: '2026-10-26', to: '2026-11-01' };
 const team = (g: Partial<GroupHours>): GroupHours => ({ id: 't', name: 'Team', type: 'team', seconds: 0, previousSeconds: null, overtimeSeconds: 0, previousOvertimeSeconds: null, approvedSeconds: 0, ...g });
 const totals = (t: Partial<Parameters<typeof workforceFindings>[0]['totals']> = {}) => ({ seconds: 100 * H, previousSeconds: 80 * H, approvedSeconds: 60 * H, overtimeSeconds: 0, previousOvertimeSeconds: 0, ...t });
 const run = (over: Partial<Parameters<typeof workforceFindings>[0]> = {}) =>
-  workforceFindings({ period, previous, totals: totals(), groups: [], pending: 0, missing: 0, timeOff: { approvedDays: 0, pendingRequests: 0 }, ...over });
+  workforceFindings({ period, previous, totals: totals(), groups: [], pending: 0, missing: 0, timeOff: { peopleAway: 0, pendingRequests: 0 }, ...over });
 
 describe('workforceFindings', () => {
   it('reports the organization trend against the previous period', () => {
@@ -53,14 +53,23 @@ describe('workforceFindings', () => {
   });
 
   it('only links to known pages', () => {
-    const { findings } = run({ pending: 1, missing: 1, groups: [team({ seconds: 30 * H, previousSeconds: 10 * H, overtimeSeconds: 5 * H, previousOvertimeSeconds: 1 * H })], timeOff: { approvedDays: 2, pendingRequests: 1 } });
+    const { findings } = run({ pending: 1, missing: 1, groups: [team({ seconds: 30 * H, previousSeconds: 10 * H, overtimeSeconds: 5 * H, previousOvertimeSeconds: 1 * H })], timeOff: { peopleAway: 2, pendingRequests: 1 } });
     for (const f of findings) for (const l of f.links) expect(NAV_TARGET_KEYS).toContain(l);
   });
 });
 
 describe('workforceFindings without approval data', () => {
   it('leaves out the approved share when the person cannot see approvals', () => {
-    const { findings } = workforceFindings({ period, previous, totals: totals({ approvedSeconds: null }), groups: [], pending: 0, missing: 0, timeOff: { approvedDays: 0, pendingRequests: 0 } });
+    const { findings } = workforceFindings({ period, previous, totals: totals({ approvedSeconds: null }), groups: [], pending: 0, missing: 0, timeOff: { peopleAway: 0, pendingRequests: 0 } });
     expect(findings.some((f) => f.category === 'approved_share')).toBe(false);
+  });
+});
+
+describe('final review fixes (time off)', () => {
+  it('I6: counts people away, not calendar days (weekends and holidays are not days away)', () => {
+    const { findings } = workforceFindings({ period, previous, totals: totals(), groups: [], pending: 0, missing: 0, timeOff: { peopleAway: 3, pendingRequests: 1 } });
+    const f = findings.find((x) => x.category === 'time_off')!;
+    expect(f.metrics).toContainEqual({ label: 'People away', value: 3, unit: 'count' });
+    expect(f.summary).toContain('3 people');
   });
 });

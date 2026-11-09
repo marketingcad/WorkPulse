@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { timeEntries, withTenant } from '@tallywork/db';
 import { newId } from '@tallywork/domain';
 import { addMember, createHarness, signup, type Client, type Harness } from './harness';
@@ -119,5 +119,48 @@ describe('AI Insights endpoint', () => {
     expect((await insights(ada, 'payroll')).status).toBe(400);
     expect((await insights(ada, 'workforce', { from: '2026-11-08', to: '2026-11-02' })).status).toBe(400);
     expect((await insights(ada, 'workforce', { from: '2026-01-01', to: '2026-12-31' })).status).toBe(400);
+  });
+});
+
+describe('AI Insights: final review fixes', () => {
+  beforeEach(async () => (await import('../src/services/ai-insights/cache')).insightCache.clear());
+
+  it('I2: a period that runs past today is cut at today, and compared with the same number of days before', async () => {
+    const r = await insights(ada, 'workforce', { from: '2026-11-09', to: '2026-11-15' });
+    expect(r.status).toBe(200);
+    expect(r.body.period).toEqual({ from: '2026-11-09', to: '2026-11-09' });
+    expect(r.body.previous).toEqual({ from: '2026-11-08', to: '2026-11-08' });
+  });
+
+  it('I3: the approved share counts only approved time inside the period', async () => {
+    const sub = await walt.client.post<any>(o('/timesheets/submit'), { date: '2026-11-02' });
+    expect(sub.body.status).toBe('SUBMITTED');
+    expect((await ada.post(o(`/timesheets/${sub.body.id}/approve`), {})).status).toBe(200);
+    // Walt's approved week has no time from 4 to 8 November; Bea's 5 h there are not approved.
+    const r = await insights(ada, 'workforce', { from: '2026-11-04', to: '2026-11-08' });
+    const share = r.body.findings.find((f: any) => f.category === 'approved_share');
+    expect(share.metrics[0]).toMatchObject({ label: 'Approved', value: 0 });
+  });
+
+  it('I5: a manager who is also a plain member of another team never sees that team named', async () => {
+    const teams = (await ada.get<any>(o('/teams'))).body as Array<{ id: string; name: string; members: Array<{ membership_id: string; role: string }> }>;
+    const bravo = teams.find((x) => x.name === 'Team Bravo')!;
+    const miaId = teams.find((x) => x.name === 'Team Alpha')!.members.find((m) => m.role === 'MANAGER')!.membership_id;
+    expect((await ada.put(o(`/teams/${bravo.id}/members/${miaId}`), { role: 'MEMBER' })).status).toBe(200);
+    // The rules only name a team when it has a trend, so check the teams they are given.
+    const { workforceInputs } = await import('../src/services/ai-insights/gather');
+    const { actorCtx } = await import('./harness');
+    const m = await actorCtx(t, 'mia@i.test', orgId);
+    const input = await withTenant(t.deps.db, orgId, (tx) => workforceInputs({ ...m, tx }, { from: '2026-11-02', to: '2026-11-08' }, { from: '2026-10-26', to: '2026-11-01' }, '2026-11-09'));
+    expect(input.groups.map((g) => g.name)).toEqual(['Team Alpha']);
+  });
+
+  it('I8: project hours are summed in the database, per project, within the person’s scope', async () => {
+    const { timeEntryTotalsByProject } = await import('../src/services/timesheets');
+    const { actorCtx } = await import('./harness');
+    const admin = await actorCtx(t, 'ada@i.test', orgId);
+    const totals = await withTenant(t.deps.db, orgId, (tx) => timeEntryTotalsByProject({ ...admin, tx }, { from: '2026-11-02', to: '2026-11-08' }));
+    expect(totals.get(alpha)).toBe(4 * 3600); // 3 h manual + the 1 h overlapping entry
+    expect([...totals.values()].reduce((a, b) => a + b, 0)).toBe(9 * 3600);
   });
 });

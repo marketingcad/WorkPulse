@@ -1,5 +1,5 @@
-import { addDaysToDate, localDate, periodFor, type Period as PayPeriod } from '@tallywork/domain';
-import type { EntrySpan, GroupHours, Period, ProjectFacts, SheetSummary } from '@tallywork/domain/insights';
+import { localDate, addDaysToDate } from '@tallywork/domain';
+import { endedPayPeriods, previousPayPeriod, type EntrySpan, type GroupHours, type Period, type ProjectFacts, type SheetSummary } from '@tallywork/domain/insights';
 import type { Ctx } from '../ctx';
 import { getOvertimeRules, listTimeOffRequests } from '../operations';
 import { listMemberOptions } from '../org';
@@ -7,7 +7,7 @@ import { overtimeInRange } from '../pay-figures';
 import { listMilestones } from '../performance';
 import { runReport } from '../reports';
 import { canSeeMembership } from '../scope';
-import { approvalQueue, listTimeEntries, pageApprovalQueue, timeEntryTotals } from '../timesheets';
+import { approvalQueue, listTimeEntries, pageApprovalQueue, timeEntryTotals, timeEntryTotalsByProject } from '../timesheets';
 import { listBudgets } from '../finance';
 import { listProjects, listTasks, listTeams } from '../work';
 
@@ -35,21 +35,11 @@ function sumBy<T>(rows: T[], key: (r: T) => string, value: (r: T) => number): Ma
   return out;
 }
 
-/** Pay periods that overlap [from..to] and have ended before today: the ones a timesheet is due for. */
-function endedPeriods(x: Ctx, from: string, to: string, today: string): PayPeriod[] {
-  const out: PayPeriod[] = [];
-  let p = periodFor(from, x.org.payPeriod, x.org.weekStart);
-  while (p.start <= to && out.length < MAX_PERIODS) {
-    if (p.end < today) out.push(p);
-    p = periodFor(addDaysToDate(p.end, 1), x.org.payPeriod, x.org.weekStart);
-  }
-  return out;
-}
-
 /** Tracked members in scope without a submitted timesheet for a pay period that has ended. */
 export async function missingTimesheets(x: Ctx, period: Period, today: string, names: Awaited<ReturnType<typeof memberNames>>): Promise<Array<{ membershipId: string; memberName: string }> | null> {
   if (!has(x, 'timesheets:read') || !has(x, 'reports:read') || !has(x, 'members:read')) return null;
-  const periods = endedPeriods(x, period.from, period.to, today);
+  // The latest pay periods in the range that have ended (a timesheet is due for each).
+  const periods = endedPayPeriods(period.from, period.to, today, x.org.payPeriod, x.org.weekStart, MAX_PERIODS);
   if (!periods.length) return [];
   const report = await runReport(x, 'timesheet-approval', { from: periods[0]!.start, to: periods[periods.length - 1]!.end, billable: 'all' });
   const submitted = new Set(report.rows.filter((r) => r.status !== 'DRAFT').map((r) => `${r.membership_id}|${r.period_start}`));
@@ -78,8 +68,10 @@ export async function workforceInputs(x: Ctx, period: Period, previous: Period, 
   // those members' hours. A team made only of people outside their scope is not named at all.
   const groups: GroupHours[] = [];
   if (has(x, 'teams:read')) {
+    // A manager sees their own teams only (being a plain member of another team does not count).
+    const orgWide = x.actor.grants['time:read'] === 'org';
     for (const team of await listTeams(x)) {
-      if (team.archived_at) continue;
+      if (team.archived_at || (!orgWide && !x.actor.managedTeamIds.includes(team.id))) continue;
       const members = team.members.map((m) => m.membership_id).filter((id) => canSeeMembership(x.actor, 'time:read', id));
       if (!members.length) continue;
       const sum = (m: Map<string, number>) => members.reduce((s, id) => s + (m.get(id) ?? 0), 0);
@@ -98,21 +90,20 @@ export async function workforceInputs(x: Ctx, period: Period, previous: Period, 
 
   let approvedSeconds: number | null = null;
   if (has(x, 'timesheets:read') && has(x, 'reports:read')) {
+    // Time inside the period that sits on an approved timesheet (a sheet can run past the period's edges).
     const report = await runReport(x, 'timesheet-approval', { from: period.from, to: period.to, billable: 'all', status: 'APPROVED' });
-    approvedSeconds = report.rows.reduce((s, r) => s + Number(r.total ?? 0), 0);
+    const approved = report.rows.map((r) => ({ m: String(r.membership_id), start: String(r.period_start), end: String(r.period_end) }));
+    approvedSeconds = cur.filter((r) => approved.some((a) => a.m === r.membership_id && r.date >= a.start && r.date <= a.end)).reduce((s2, r) => s2 + r.seconds, 0);
   }
   const pending = has(x, 'timesheets:approve') ? (await pageApprovalQueue(x, { page: 1, pageSize: 1 })).total : 0;
   const names = await memberNames(x);
   const missing = (await missingTimesheets(x, period, today, names))?.length ?? 0;
 
-  let timeOff = { approvedDays: 0, pendingRequests: 0 };
+  let timeOff = { peopleAway: 0, pendingRequests: 0 };
   if (has(x, 'time_off:read')) {
     const reqs = await listTimeOffRequests(x, { from: period.from, to: period.to });
-    let days = 0;
-    for (const r of reqs.filter((q) => q.status === 'APPROVED')) {
-      for (let d = r.start_date < period.from ? period.from : r.start_date; d <= r.end_date && d <= period.to; d = addDaysToDate(d, 1)) days += r.half_day ? 0.5 : 1;
-    }
-    timeOff = { approvedDays: days, pendingRequests: reqs.filter((q) => q.status === 'PENDING').length };
+    const away = new Set(reqs.filter((q) => q.status === 'APPROVED').map((q) => q.membership_id));
+    timeOff = { peopleAway: away.size, pendingRequests: reqs.filter((q) => q.status === 'PENDING').length };
   }
 
   return {
@@ -144,7 +135,14 @@ export async function timesheetInputs(x: Ctx, period: Period, previous: Period, 
   let sheets: SheetSummary[] = [];
   if (has(x, 'timesheets:approve')) {
     const queue = (await approvalQueue(x, {})).filter((s) => s.period_start <= period.to && s.period_end >= period.from);
-    const prevBy = has(x, 'time:read') ? sumBy(await timeEntryTotals(x, previous), (r) => r.membership_id, (r) => r.seconds) : new Map<string, number>();
+    // Each sheet is compared with the same member's previous pay period (not the whole previous range).
+    const prevByPeriod = new Map<string, Map<string, number>>();
+    if (has(x, 'time:read')) {
+      for (const start of new Set(queue.map((s2) => s2.period_start))) {
+        const p = previousPayPeriod(start, x.org.payPeriod, x.org.weekStart);
+        prevByPeriod.set(start, sumBy(await timeEntryTotals(x, { from: p.start, to: p.end }), (r) => r.membership_id, (r) => r.seconds));
+      }
+    }
     sheets = queue.map((s) => ({
       timesheetId: s.timesheet_id,
       membershipId: s.membership_id,
@@ -153,7 +151,7 @@ export async function timesheetInputs(x: Ctx, period: Period, previous: Period, 
       status: s.status,
       totalSeconds: s.total_seconds,
       manualSeconds: s.manual_seconds,
-      previousTotalSeconds: prevBy.get(s.membership_id) ?? null,
+      previousTotalSeconds: prevByPeriod.get(s.period_start)?.get(s.membership_id) ?? null,
       flags: s.flags,
     }));
   } else limitations.push('Timesheets waiting for approval are shown to people who approve them.');
@@ -185,9 +183,7 @@ export async function projectInputs(x: Ctx, period: Period, previous: Period, to
   let hoursNow = new Map<string, number>();
   let hoursBefore = new Map<string, number>();
   if (has(x, 'time:read')) {
-    const [a, b] = await Promise.all([listTimeEntries(x, period), listTimeEntries(x, previous)]);
-    hoursNow = sumBy(a, (e) => e.project_id, (e) => e.duration_seconds);
-    hoursBefore = sumBy(b, (e) => e.project_id, (e) => e.duration_seconds);
+    [hoursNow, hoursBefore] = await Promise.all([timeEntryTotalsByProject(x, period), timeEntryTotalsByProject(x, previous)]);
   }
   const h = (s: number) => Math.round(s / 36) / 100;
 

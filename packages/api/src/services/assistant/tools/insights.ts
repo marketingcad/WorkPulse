@@ -13,6 +13,26 @@ import type { AssistantTool, NavLink } from './types';
  */
 const input = dateRange({});
 
+const RANK = { warning: 0, attention: 1, info: 2 } as const;
+type Redacted = ReturnType<typeof redactFinding>;
+
+/**
+ * The most important findings that fit in `maxBytes` of JSON (the tool result is capped at 8 KB and
+ * replaced wholesale when over it), warnings first, with how many were left out.
+ */
+export function fitFindings(findings: Redacted[], maxBytes: number): { findings: Redacted[]; omitted: number } {
+  const sorted = [...findings].sort((a, b) => RANK[a.severity] - RANK[b.severity]);
+  const out: Redacted[] = [];
+  let size = Buffer.byteLength(JSON.stringify({ findings: [], omitted: findings.length }));
+  for (const f of sorted) {
+    const add = Buffer.byteLength(JSON.stringify(f)) + 1;
+    if (size + add > maxBytes) break;
+    out.push(f);
+    size += add;
+  }
+  return { findings: out, omitted: findings.length - out.length };
+}
+
 function toToolOutput(x: Ctx, r: InsightResultDto): { data: unknown; nav: NavLink[] } {
   const nav = new Map<string, NavLink>();
   for (const f of r.findings) for (const k of f.links) {
@@ -20,7 +40,7 @@ function toToolOutput(x: Ctx, r: InsightResultDto): { data: unknown; nav: NavLin
     if (link) nav.set(link.key, link);
   }
   return {
-    data: { period: r.period, previous_period: r.previous, findings: r.findings.map(redactFinding), limitations: r.limitations },
+    data: { period: r.period, previous_period: r.previous, ...fitFindings(r.findings.map(redactFinding), 6500), limitations: r.limitations },
     nav: [...nav.values()].slice(0, 4),
   };
 }

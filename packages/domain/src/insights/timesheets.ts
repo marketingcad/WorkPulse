@@ -70,11 +70,11 @@ export function findDuplicates(entries: EntrySpan[]): EntrySpan[][] {
   return [...groups.values()].filter((g) => g.length > 1);
 }
 
+/** Approval-queue flags worth repeating. Never activity: monitoring data does not leave Approvals (and never reaches the AI). */
 const FLAG_TEXT: Record<string, string> = {
   high_manual: 'a high share of manual time',
   under_expected: 'fewer hours than expected',
   over_expected: 'more hours than expected',
-  low_activity: 'low recorded activity',
   late_time: 'time added late',
   needs_review: 'entries marked for review',
 };

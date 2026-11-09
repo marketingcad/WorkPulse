@@ -177,6 +177,21 @@ export async function timeEntryTotals(x: Ctx, q: TimeEntryQuery): Promise<TimeEn
   return rows.map((r) => ({ membership_id: r.membershipId, date: r.date, seconds: r.seconds, billable_seconds: r.billable, manual_seconds: r.manual }));
 }
 
+/** Seconds per project in [from..to], within the person's time:read scope; summed in the database (no row limit). */
+export async function timeEntryTotalsByProject(x: Ctx, q: TimeEntryQuery): Promise<Map<string, number>> {
+  const rows = await x.tx
+    .select({ projectId: timeEntries.projectId, seconds: sql<number>`coalesce(sum(${timeEntries.durationSeconds}), 0)::int` })
+    .from(timeEntries)
+    .innerJoin(projects, eq(projects.id, timeEntries.projectId))
+    .leftJoin(clients, eq(clients.id, projects.clientId))
+    .leftJoin(tasks, eq(tasks.id, timeEntries.taskId))
+    .innerJoin(memberships, eq(memberships.id, timeEntries.membershipId))
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .where(timeEntryWhere(x, q, 'time:read'))
+    .groupBy(timeEntries.projectId);
+  return new Map(rows.map((r) => [r.projectId, r.seconds]));
+}
+
 async function toTimeEntryDtos(x: Ctx, rows: Array<{ e: typeof timeEntries.$inferSelect; projectName: string; clientId: string | null; clientName: string | null; taskTitle: string | null; workerName: string }>): Promise<TimeEntryDto[]> {
   if (!rows.length) return [];
   const cutoff = await ownLockCutoff(x);

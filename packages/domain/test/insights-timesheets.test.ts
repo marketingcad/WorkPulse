@@ -109,3 +109,11 @@ describe('timesheetFindings', () => {
     expect(timesheetFindings({ period, entries: [], sheets: [sheet({ totalSeconds: 8 * 3600 })], missing: [] })).toEqual([]);
   });
 });
+
+describe('final review fixes (timesheets)', () => {
+  it('C2: never turns an activity flag into a finding', () => {
+    const f = timesheetFindings({ period, entries: [], sheets: [sheet({ totalSeconds: 8 * 3600, flags: ['low_activity'] })], missing: [] });
+    expect(JSON.stringify(f)).not.toMatch(/activity/i);
+    expect(f.find((x) => x.category === 'flagged')).toBeUndefined();
+  });
+});

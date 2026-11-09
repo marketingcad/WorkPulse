@@ -266,7 +266,7 @@ function ReportRunner() {
         actions={
           <>
             {org.assistant_enabled && (
-              <Button icon={<Sparkles className="size-3.5" />} disabled={!validRange} onClick={() => askAssistant(`Summarize the ${item.title} report for ${params.from} to ${params.to}.`)}>
+              <Button icon={<Sparkles className="size-3.5" />} disabled={!validRange} onClick={() => askAssistant(`Summarize the ${item.title} report (${item.key}) for ${params.from} to ${params.to}.`)}>
                 Summarize with WorkPulse AI
               </Button>
             )}

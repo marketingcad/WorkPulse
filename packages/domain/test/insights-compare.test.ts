@@ -31,3 +31,28 @@ describe('findingId', () => {
     expect(findingId('workforce', 'overtime_trend', 'team-1')).toBe('workforce:overtime_trend:team-1');
   });
 });
+
+describe('final review fixes (periods and caps)', () => {
+  it('I4: the pay period before a given one', async () => {
+    const { previousPayPeriod } = await import('../src/insights');
+    expect(previousPayPeriod('2026-11-02', { type: 'weekly' }, 1)).toEqual({ start: '2026-10-26', end: '2026-11-01' });
+  });
+  it('I9: the most recent ended pay periods in a range, newest last', async () => {
+    const { endedPayPeriods } = await import('../src/insights');
+    const p = endedPayPeriods('2026-08-01', '2026-11-08', '2026-11-09', { type: 'weekly' }, 1, 5);
+    expect(p).toHaveLength(5);
+    expect(p[4]).toEqual({ start: '2026-11-02', end: '2026-11-08' });
+    expect(p[0]!.start).toBe('2026-10-05');
+    expect(endedPayPeriods('2026-11-09', '2026-11-15', '2026-11-09', { type: 'weekly' }, 1, 5)).toEqual([]);
+  });
+  it('I7: keeps the most important findings and says how many were left out', async () => {
+    const { capFindings } = await import('../src/insights');
+    const mk = (i: number, severity: 'info' | 'warning') => ({ id: `x${i}`, severity });
+    const many = [...Array.from({ length: 70 }, (_, i) => mk(i, 'info')), mk(99, 'warning')];
+    const r = capFindings(many, 50);
+    expect(r.findings).toHaveLength(50);
+    expect(r.findings[0]!.id).toBe('x99');
+    expect(r.limitation).toBe('Showing the 50 most important of 71 findings.');
+    expect(capFindings(many.slice(0, 3), 50).limitation).toBeNull();
+  });
+});

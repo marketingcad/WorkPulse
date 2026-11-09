@@ -80,7 +80,7 @@ describe('insight tools', () => {
 
   it('summarizeReport refuses a report the person may not run, or that does not exist', async () => {
     expect((await executeTool(manager, toolsFor(manager.actor), 'summarizeReport', { key: 'payroll', ...PERIOD })).status).toBe('denied');
-    expect((await executeTool(admin, toolsFor(admin.actor), 'summarizeReport', { key: 'drop-tables', ...PERIOD })).status).toBe('denied');
+    expect(parse((await executeTool(admin, toolsFor(admin.actor), 'summarizeReport', { key: 'drop-tables', ...PERIOD })).content).error).toBe('Unknown report'); // I10: not a permission problem
     expect((await executeTool(admin, toolsFor(admin.actor), 'summarizeReport', { key: 'daily-totals', ...PERIOD })).status).toBe('denied'); // hidden
   });
 
@@ -95,5 +95,36 @@ describe('insight tools', () => {
     expect(events.some((e) => e.event === 'tool_status' && e.data.tool === 'checkTimesheets')).toBe(true);
     const text = events.filter((e) => e.event === 'delta').map((e) => (e.data as { text: string }).text).join('');
     expect(text).toContain('Here is what I found');
+  });
+});
+
+describe('insight tools: final review fixes', () => {
+  it('C1: summarizeReport never runs monitoring reports (apps and URLs, work sessions with idle time)', async () => {
+    for (const key of ['apps-urls', 'work-sessions', 'work-breaks', 'audit-log']) {
+      const r = await executeTool(admin, toolsFor(admin.actor), 'summarizeReport', { key, ...PERIOD });
+      expect(r.status, key).toBe('denied');
+    }
+  });
+
+  it('I10: an unknown report key says so and lists the reports available, instead of "not permitted"', async () => {
+    const r = await executeTool(admin, toolsFor(admin.actor), 'summarizeReport', { key: 'time-and-stuff', ...PERIOD });
+    expect(r.status).toBe('ok');
+    const data = parse(r.content);
+    expect(data.error).toBe('Unknown report');
+    expect(data.available.map((a: any) => a.key)).toContain('time-activity');
+    expect(data.available.map((a: any) => a.key)).not.toContain('apps-urls');
+  });
+
+  it('I1: many findings still fit the tool result, most important first, with a count of what was left out', async () => {
+    const { fitFindings } = await import('../src/services/assistant/tools/insights');
+    const f = (i: number, severity: 'info' | 'warning') => ({
+      title: `Finding ${i} ${'x'.repeat(80)}`, summary: 'y'.repeat(300), category: 'c', severity, basis: 'fact', period: PERIOD, metrics: [], refs: [], next_step: 'z'.repeat(60),
+    });
+    const many = [...Array.from({ length: 60 }, (_, i) => f(i, 'info')), f(999, 'warning')];
+    const out = fitFindings(many as never, 7000);
+    expect(Buffer.byteLength(JSON.stringify(out))).toBeLessThanOrEqual(7000);
+    expect(out.findings[0]!.title).toContain('Finding 999');
+    expect(out.omitted).toBe(61 - out.findings.length);
+    expect(out.omitted).toBeGreaterThan(0);
   });
 });

@@ -1,5 +1,5 @@
 import { localDate } from '@tallywork/domain';
-import { previousPeriod, projectFindings, timesheetFindings, workforceFindings, type Finding, type InsightSection, type Period } from '@tallywork/domain/insights';
+import { capFindings, previousPeriod, projectFindings, timesheetFindings, workforceFindings, type Finding, type InsightSection, type Period } from '@tallywork/domain/insights';
 import { insightResultSchema, type InsightResultDto, type InsightSectionParam } from '@tallywork/contracts';
 import type { Ctx } from '../ctx';
 import { insightCache, insightCacheKey } from './cache';
@@ -14,6 +14,8 @@ const has = (x: Ctx, p: string) => x.actor.grants[p as keyof typeof x.actor.gran
 const SEVERITY = { warning: 0, attention: 1, info: 2 } as const;
 const SECTIONS: InsightSection[] = ['workforce', 'timesheets', 'projects'];
 const OVERVIEW_MAX = 6;
+/** Per section: the most important findings, with a note when more were found (bounded output). */
+const SECTION_MAX = 50;
 
 type Part = { findings: Finding[]; limitations: string[] };
 
@@ -42,20 +44,29 @@ export async function getInsights(x: Ctx, which: InsightSectionParam, q: Period)
   const cached = insightCache.get(key, now);
   if (cached) return cached;
 
-  const previous = previousPeriod(q.from, q.to);
   const today = localDate(x.deps.now(), x.org.timezone);
+  // A period that runs past today is measured up to today, and compared with the same number of
+  // days just before it: a partial week is never compared with a whole one.
+  const future = q.from > today;
+  const period = { from: q.from, to: future ? q.from : q.to > today ? today : q.to };
+  const previous = previousPeriod(period.from, period.to);
   let part: Part;
-  if (which === 'overview') {
+  if (future) part = { findings: [], limitations: ['This period has not started yet.'] };
+  else if (which === 'overview') {
     const parts: Part[] = [];
-    for (const s of SECTIONS) parts.push(await section(x, s, q, previous, today));
+    for (const s of SECTIONS) parts.push(await section(x, s, period, previous, today));
     part = {
       findings: parts.flatMap((p) => p.findings).sort(bySeverity).slice(0, OVERVIEW_MAX),
       limitations: [...new Set(parts.flatMap((p) => p.limitations))],
     };
-  } else part = await section(x, which, q, previous, today);
+  } else {
+    const r = await section(x, which, period, previous, today);
+    const capped = capFindings(r.findings, SECTION_MAX);
+    part = { findings: capped.findings, limitations: capped.limitation ? [...r.limitations, capped.limitation] : r.limitations };
+  }
 
   // The contract is the gate on what leaves the service: a malformed finding fails loudly here.
-  const result = insightResultSchema.parse({ section: which, period: q, previous, findings: part.findings, limitations: part.limitations.slice(0, 20) });
+  const result = insightResultSchema.parse({ section: which, period, previous, findings: part.findings, limitations: part.limitations.slice(0, 20) });
   insightCache.set(key, result, now);
   return result;
 }

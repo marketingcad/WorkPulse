@@ -1,3 +1,5 @@
+import { addDaysToDate } from '../time';
+import { periodFor, type PayPeriodConfig, type Period as PayPeriod } from '../timesheet';
 import type { InsightSection, Period } from './types';
 
 const DAY = 86_400_000;
@@ -22,4 +24,29 @@ export function percentChange(current: number, previous: number | null, minBasel
 
 export function findingId(section: InsightSection, category: string, key: string): string {
   return `${section}:${category}:${key}`;
+}
+
+/** The pay period just before the one starting on `periodStart`. */
+export function previousPayPeriod(periodStart: string, config: PayPeriodConfig, weekStart: number): PayPeriod {
+  return periodFor(addDaysToDate(periodStart, -1), config, weekStart);
+}
+
+/** Pay periods overlapping [from..to] that ended before `today`: the latest `max` of them, oldest first. */
+export function endedPayPeriods(from: string, to: string, today: string, config: PayPeriodConfig, weekStart: number, max: number): PayPeriod[] {
+  const out: PayPeriod[] = [];
+  let p = periodFor(from, config, weekStart);
+  while (p.start <= to) {
+    if (p.end < today) out.push(p);
+    p = periodFor(addDaysToDate(p.end, 1), config, weekStart);
+  }
+  return out.slice(-max);
+}
+
+const RANK = { warning: 0, attention: 1, info: 2 } as const;
+
+/** The `max` most important findings (warnings first, order kept within a level), and a note when some were left out. */
+export function capFindings<F extends { severity: keyof typeof RANK }>(findings: F[], max: number): { findings: F[]; limitation: string | null } {
+  if (findings.length <= max) return { findings, limitation: null };
+  const sorted = findings.map((f, i) => ({ f, i })).sort((a, b) => RANK[a.f.severity] - RANK[b.f.severity] || a.i - b.i).map((x) => x.f);
+  return { findings: sorted.slice(0, max), limitation: `Showing the ${max} most important of ${findings.length} findings.` };
 }

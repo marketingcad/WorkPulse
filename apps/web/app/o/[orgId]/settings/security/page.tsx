@@ -36,6 +36,7 @@ const CLASS_INFO: Record<string, { label: string; help: string; unit: string }> 
   INVOICES: { label: 'Invoices & payments', help: 'Financial records. Kept at least 7 years.', unit: 'records' },
   AUDIT: { label: 'Audit log', help: 'Who changed what. Kept at least 1 year.', unit: 'audit entries' },
   LOCATION: { label: 'Location', help: 'Not collected today (requires the mobile app).', unit: 'records' },
+  AI_CONVERSATIONS: { label: 'AI assistant conversations', help: 'Chats with WorkPulse AI and their messages.', unit: 'conversations' },
 };
 
 function humanDays(d: number): string {

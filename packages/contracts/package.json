@@ -5,8 +5,8 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts", "./avatars": "./src/avatars.ts", "./messages": "./src/messages.ts" },
-  "scripts": { "typecheck": "tsc -p tsconfig.json" },
+  "exports": { ".": "./src/index.ts", "./avatars": "./src/avatars.ts", "./messages": "./src/messages.ts", "./assistant": "./src/assistant.ts" },
+  "scripts": { "typecheck": "tsc -p tsconfig.json", "test": "vitest run" },
   "dependencies": {
     "@tallywork/domain": "workspace:*",
     "zod": "^4.6.7"

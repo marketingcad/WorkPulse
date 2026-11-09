@@ -53,6 +53,7 @@ export const DEFAULT_RETENTION_DAYS = {
   INVOICES: 2555,
   AUDIT: 2555,
   LOCATION: 90,
+  AI_CONVERSATIONS: 90,
 } as const;
 
 const ROLE_NAMES: Record<BuiltinRole, { name: string; description: string }> = {

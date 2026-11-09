@@ -288,7 +288,9 @@ async function timesheetApproval(x: Ctx, p: ReportParams): Promise<ReportResult>
   const members = await scopedMembers(x, 'timesheets:read', p);
   const rows = await x.tx.select().from(timesheets).where(and(gte(timesheets.periodEnd, p.from), lte(timesheets.periodStart, p.to), inOrAll(timesheets.membershipId, members), p.status ? eq(timesheets.status, p.status as 'DRAFT') : undefined)).orderBy(desc(timesheets.periodStart));
   const names = await memberNames(x, [...new Set(rows.flatMap((r) => [r.membershipId, ...(r.decidedBy ? [r.decidedBy] : [])]))]);
-  const out = rows.map((r) => ({ worker: names.get(r.membershipId) ?? '', period_start: r.periodStart, period_end: r.periodEnd, status: r.status, total: r.totalSeconds, manual: r.manualSeconds, submitted_at: r.submittedAt?.toISOString() ?? null, decided_by: r.decidedBy ? (names.get(r.decidedBy) ?? '') : '', decided_at: r.decidedAt?.toISOString() ?? null }));
+  // membership_id is not a column (exports and the report screen show columns only); callers such as
+  // the assistant's timesheet status tool join on it instead of the display name.
+  const out = rows.map((r) => ({ membership_id: r.membershipId, worker: names.get(r.membershipId) ?? '', period_start: r.periodStart, period_end: r.periodEnd, status: r.status, total: r.totalSeconds, manual: r.manualSeconds, submitted_at: r.submittedAt?.toISOString() ?? null, decided_by: r.decidedBy ? (names.get(r.decidedBy) ?? '') : '', decided_at: r.decidedAt?.toISOString() ?? null }));
   return {
     columns: [{ key: 'worker', label: 'Member', type: 'text' }, { key: 'period_start', label: 'Period start', type: 'date' }, { key: 'period_end', label: 'Period end', type: 'date' }, { key: 'status', label: 'Status', type: 'status' }, { key: 'total', label: 'Total', type: 'duration' }, { key: 'manual', label: 'Manual', type: 'duration' }, { key: 'submitted_at', label: 'Submitted', type: 'datetime' }, { key: 'decided_by', label: 'Decided by', type: 'text' }, { key: 'decided_at', label: 'Decided', type: 'datetime' }],
     rows: out,

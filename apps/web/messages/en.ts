@@ -380,6 +380,9 @@ export const webEn = {
   'avatar.picker.cancel': 'Cancel',
   'avatar.picker.preview': 'Preview',
   // Floating calculator: the button and panel frame. The panel's own strings load with it (components/calculator/messages.ts).
+  // WorkPulse AI: the launcher only. The panel's strings load with it (components/assistant/messages.ts).
+  'assistant.launch': 'Ask WorkPulse AI',
+
   'calc.title': 'Calculator',
   'calc.subtitle': 'Check hours and pay. Nothing is saved.',
   'calc.open': 'Open calculator',

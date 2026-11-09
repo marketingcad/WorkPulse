@@ -49,6 +49,11 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🆕 New updates
 
+- **7 November 2026 (WorkPulse AI assistant):** admins and managers can ask questions in a side panel (the ✨ button above the calculator) about how WorkPulse works and about their organization's data. Design: [spec](docs/superpowers/specs/2026-11-07-workpulse-ai-assistant-design.md), ADR-134.
+  - **What it can answer:** product questions, from the same help articles as the Help Center. Read-only data questions through 12 server-side tools that call the existing scoped services: members, who is tracking now, hours, pending approvals, timesheet status per pay period, projects, budgets, teams, time off, and an organization overview. It suggests pages only from a fixed allowlist of links.
+  - **What it never does:** write anything; see more than the person asking; reach another organization; send emails, rates, pay, screenshots, activity, URLs, reasons or review notes to the model. Money (budgets) is sent only to people who may see it, in major units.
+  - **Model:** Claude through the Anthropic API (`ANTHROPIC_API_KEY`). Without a key it is hidden in production, and tests and E2E use a deterministic fake.
+  - **Conversations** are private to the member, kept 90 days by default (retention class `AI_CONVERSATIONS`, adjustable in Settings → Security), deleted when a member is anonymized, and included in their data export. Tool results are never stored.
 - **6 November 2026 (page weight back under budget):** every web page is under the 250 KB first-load JavaScript budget again (`apps/web/scripts/check-bundle-budget.mjs`, run in CI). 20 routes were over, up to 285 KB; the largest is now 248.9 KB.
   - **Loaded when needed, not on every page:** the calculator's modes, the product tour, two-factor setup on the "two-factor required" screen, and the new-organization dialog. Every organization page now shares about 231 KB instead of 241 KB.
   - **Tracking policies:** it imported one label helper from the root of `@tallywork/contracts`, which brought every schema and zod into the browser (about 35 KB). It now uses the `@tallywork/contracts/messages` subpath.
@@ -1169,7 +1174,7 @@ Run from the repo root unless noted.
 | `pnpm install` | Install all workspace dependencies |
 | `pnpm dev` | Start the web app + API (`next dev` on port 3000) |
 | `pnpm build` | Build every package / app via Turborepo |
-| `pnpm typecheck` | Type-check every workspace |
+| `pnpm typecheck` | Type-check every workspace. The root `@opentelemetry/api` devDependency pins an optional peer that `@anthropic-ai/sdk` brings in, so all workspaces resolve one `drizzle-orm` instance (two instances break typecheck) |
 | `pnpm test` | Run all Vitest suites |
 | `pnpm test:e2e` | Run the Playwright E2E suite: builds, starts isolated servers on :3100/:3101, runs, reports ([e2e/README.md](e2e/README.md)) |
 | `pnpm test:e2e:smoke` | Only the critical E2E journeys (`@smoke`) |
@@ -1223,6 +1228,9 @@ Run from the repo root unless noted.
 | `MAIL_FROM` | No | Sender address (default `WorkPulse <no-reply@tallywork.app>`, or `WorkPulse <SMTP_USER>` with SMTP) |
 | `REQUIRE_EMAIL_VERIFICATION` | No | `true`: new accounts stay signed out until they open the emailed link (which then signs them in, unless they use 2FA); unverified accounts cannot sign in on the web or the desktop app (`email_not_verified`). Invited people are verified when they accept |
 | `SESSION_TTL_HOURS` | No | Web session lifetime (default 336 = 14 days) |
+| `ANTHROPIC_API_KEY` | No | Enables the WorkPulse AI assistant (Claude). Server only, never stored in config or logged. Without it the assistant is hidden in production; local dev and tests use a deterministic fake |
+| `ASSISTANT_MODEL` | No | Claude model id for the assistant (default `claude-sonnet-5-5`) |
+| `ASSISTANT_ENABLED` | No | `false` turns the assistant off even with a key |
 | `MIN_AGENT_VERSION` | No | Oldest desktop agent version the API accepts (default `0.1.0`) |
 | `DESKTOP_DOWNLOAD_URL_WINDOWS` / `_MACOS` / `_LINUX` (the `.deb`) / `_LINUX_APPIMAGE` | No | Installer links shown on `/download`, where Workers land after accepting an invitation (Workers use the desktop app only). Read at request time, so no rebuild is needed. Use the always-latest links, e.g. `https://github.com/marketingcad/tallywork-desktop/releases/latest/download/Tallywork-Setup.exe` (`Tallywork-mac.dmg`, `Tallywork-linux.deb`, `Tallywork-linux.AppImage`). Without them the page asks the worker to get the installer from their administrator |
 

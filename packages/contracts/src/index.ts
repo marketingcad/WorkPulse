@@ -5,3 +5,4 @@ export * from './dto';
 export * from './messages';
 export * from './avatars';
 export * from './performance';
+export * from './assistant';

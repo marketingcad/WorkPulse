@@ -34,6 +34,11 @@ const env = {
   RESEND_API_KEY: '',
   SMTP_HOST: '',
   REQUIRE_EMAIL_VERIFICATION: 'false',
+  // WorkPulse AI: never a real model. The deterministic fake answers (assistant.spec.ts).
+  ANTHROPIC_API_KEY: '',
+  ASSISTANT_ENABLED: 'true',
+  ASSISTANT_FAKE: '1',
+  TALLYWORK_E2E: '1',
   // A fixed, test-only secret: never reuse a real APP_SECRET here.
   APP_SECRET: 'e2e-only-secret-0123456789abcdef0123456789abcdef',
   APP_URL: `http://localhost:${port}`,

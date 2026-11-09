@@ -34,6 +34,8 @@ export interface OrgContextDto {
   membership: { id: string; role_key: string; role_name: string; is_owner: boolean; timezone: string; tracking_enabled: boolean };
   grants: Grants;
   managed_team_ids: string[];
+  /** WorkPulse AI is configured for this deployment and this person may use it. */
+  assistant_enabled: boolean;
 }
 
 export interface WorkerDto {

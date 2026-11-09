@@ -10,6 +10,8 @@ export interface Deps {
   config: Config;
   storage: Storage;
   mailer: Mailer;
+  /** AI assistant provider (absent when not wired). */
+  ai?: import('./lib/ai').AiProvider;
   /** Run work after the response is sent (Next.js `after()` in production). */
   defer: (task: () => Promise<void>) => void;
   now: () => Date;

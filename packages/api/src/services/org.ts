@@ -24,6 +24,7 @@ import { ipAllowed, parseCidr } from '../lib/cidr';
 import { audit } from './events';
 import { applyScopedRates, currentScopedRates, rateChanges } from './finance';
 import { membershipFilter, narrowMemberships } from './scope';
+import { mayUseAssistant } from './assistant/access';
 import { randomToken, sha256 } from '../lib/crypto';
 import { iso } from '../lib/http';
 import { isUuid, likePattern } from '../lib/search';
@@ -62,6 +63,7 @@ export async function orgContext(x: Ctx): Promise<OrgContextDto> {
     },
     grants: x.actor.grants,
     managed_team_ids: x.actor.managedTeamIds,
+    assistant_enabled: x.deps.ai?.available === true && x.deps.config.assistantEnabled && mayUseAssistant(x),
   };
 }
 

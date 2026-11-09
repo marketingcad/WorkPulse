@@ -25,6 +25,7 @@ import { financeRoutes, opsRoutes } from './routes/ops-finance';
 import { insightRoutes, platformRoutes } from './routes/insight-platform';
 import { agentRoutes } from './routes/agent';
 import { performanceRoutes } from './routes/performance';
+import { assistantRoutes } from './routes/assistant';
 import { dispatchOutbox, runDaily, runTick } from './jobs';
 import { opsMetrics, readiness } from './services/ops';
 
@@ -117,6 +118,12 @@ export function createApp(deps: Deps) {
   app.use('/orgs/:orgId/*', (c, next) => (c.var.principal?.type === 'api_key' ? apiKeyLimit(c, next) : next()));
   app.route('/support', supportRoutes);
   app.route('/portal', portalRoutes);
+  // Before tenant: the limiter writes outside the tenant transaction (see routes/assistant.ts).
+  app.use('/orgs/:orgId/assistant/*', rateLimit('assistant:crud', 120, 60));
+  // Sending a message also counts against assistant:crud (120/min), which is looser than these.
+  const msgLimit = rateLimit('assistant:msg', 20, 60);
+  const dayLimit = rateLimit('assistant:day', 300, 86_400);
+  app.use('/orgs/:orgId/assistant/conversations/:id/messages', (c, next) => (c.req.method === 'POST' ? msgLimit(c, async () => void (await dayLimit(c, next))) : next()));
   app.use('/orgs/:orgId/*', tenant);
   app.route('/orgs/:orgId', orgRoutes);
   app.route('/orgs/:orgId', timeRoutes);
@@ -125,6 +132,7 @@ export function createApp(deps: Deps) {
   app.route('/orgs/:orgId', insightRoutes);
   app.route('/orgs/:orgId', platformRoutes);
   app.route('/orgs/:orgId', performanceRoutes);
+  app.route('/orgs/:orgId/assistant', assistantRoutes);
 
   return app;
 }

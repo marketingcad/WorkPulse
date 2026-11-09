@@ -1,8 +1,14 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { and, eq, sql } from 'drizzle-orm';
+import { memberships, users, withTenant } from '@tallywork/db';
 import { createDb, type DbHandle } from '@tallywork/db/client';
+import type { AssistantStreamEvent } from '@tallywork/contracts';
+import type { Ctx } from '../src/services/ctx';
+import { loadActor, loadOrg } from '../src/middleware/tenant';
 import { createApp } from '../src/app';
 import type { Deps } from '../src/context';
 import { loadConfig } from '../src/config';
+import { FakeProvider } from '../src/lib/ai';
 import { MemoryMailer } from '../src/lib/mailer';
 import { MemoryStorage } from '../src/lib/storage';
 import { dispatchOutbox } from '../src/jobs';
@@ -12,6 +18,7 @@ export interface Harness {
   deps: Deps;
   app: ReturnType<typeof createApp>;
   mailer: MemoryMailer;
+  ai: FakeProvider;
   storage: MemoryStorage;
   clock: { now: Date; advance(ms: number): void; set(d: Date): void };
   flush(): Promise<void>;
@@ -22,6 +29,7 @@ export async function createHarness(): Promise<Harness> {
   const h = createDb('pglite://memory');
   await h.migrate();
   const mailer = new MemoryMailer();
+  const ai = new FakeProvider(() => clock.now);
   const storage = new MemoryStorage();
   const clock = {
     now: new Date(),
@@ -38,6 +46,7 @@ export async function createHarness(): Promise<Harness> {
     config: { ...loadConfig({ NODE_ENV: 'test', APP_URL: 'http://localhost:3000' }), cronSecret: 'cron-secret' },
     storage,
     mailer,
+    ai,
     defer: (t) => {
       deferred.push(t);
     },
@@ -49,6 +58,7 @@ export async function createHarness(): Promise<Harness> {
     deps,
     app,
     mailer,
+    ai,
     storage,
     clock,
     async flush() {
@@ -92,6 +102,23 @@ export class Client {
     return { status: res.status, body: parsed as T, headers: res.headers };
   }
 
+  /** The raw Response, unread: for streams (see readSse). */
+  raw(method: string, path: string, body?: unknown, init: { signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<Response> {
+    return Promise.resolve(
+      this.t.app.request(`/api/v1${path}`, {
+        method,
+        signal: init.signal,
+        headers: {
+          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          Origin: 'http://localhost:3000',
+          ...(this.cookie ? { Cookie: this.cookie } : {}),
+          ...(init.headers ?? {}),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
+    );
+  }
+
   get<T = any>(path: string) {
     return this.req<T>('GET', path);
   }
@@ -107,6 +134,25 @@ export class Client {
   del<T = any>(path: string) {
     return this.req<T>('DELETE', path);
   }
+}
+
+/** Parse a whole server-sent event stream into assistant stream events (reads the body to the end). */
+export async function readSse(res: Response): Promise<AssistantStreamEvent[]> {
+  return parseSse(await res.text());
+}
+
+export function parseSse(text: string): AssistantStreamEvent[] {
+  const out: AssistantStreamEvent[] = [];
+  for (const block of text.split(/\r?\n\r?\n/)) {
+    let event = '';
+    const data: string[] = [];
+    for (const line of block.split(/\r?\n/)) {
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
+    }
+    if (event) out.push({ event, data: data.length ? JSON.parse(data.join('\n')) : {} } as AssistantStreamEvent);
+  }
+  return out;
 }
 
 export function pkce() {
@@ -133,4 +179,23 @@ export async function addMember(t: Harness, admin: Client, orgId: string, name: 
   const acc = await c.post('/auth/invitations/accept', { token, name, password: 'correct-horse-battery' });
   if (acc.status !== 200) throw new Error(`accept failed ${JSON.stringify(acc.body)}`);
   return { client: c, membershipId: (acc.body as { membership_id: string }).membership_id };
+}
+
+/**
+ * A Ctx for tool tests, built outside any request (PGlite is one connection: executeTool opens its
+ * own transaction, so it must not run inside a request transaction). `tx` is unused by design.
+ */
+export async function actorCtx(t: Harness, email: string, orgId: string): Promise<Ctx> {
+  return withTenant(t.deps.db, orgId, async (tx) => {
+    const [row] = await tx
+      .select({ userId: users.id, membershipId: memberships.id })
+      .from(users)
+      .innerJoin(memberships, eq(memberships.userId, users.id))
+      .where(and(sql`lower(${users.email}) = ${email.toLowerCase()}`, eq(memberships.organizationId, orgId)))
+      .limit(1);
+    if (!row) throw new Error(`no membership for ${email}`);
+    const actor = await loadActor(tx, { type: 'user', userId: row.userId, sessionId: 'test', mfaVerified: true }, orgId, row.membershipId);
+    const org = await loadOrg(tx, orgId);
+    return { tx, actor, org, deps: t.deps, requestId: 'test', ip: null, userAgent: null, policyCache: new Map() };
+  });
 }

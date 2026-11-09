@@ -35,6 +35,7 @@
     "tutorial:publish": "pnpm --filter @tallywork/e2e tutorial:publish"
   },
   "devDependencies": {
+    "@opentelemetry/api": "1.10.0",
     "@playwright/test": "1.64.0",
     "@types/node": "^24.13.6",
     "tsx": "^4.23.15",

@@ -524,7 +524,7 @@ export const webhookInput = z.object({
 export const retentionInput = z.object({
   policies: z.array(
     z.object({
-      data_class: z.enum(['SCREENSHOTS', 'ACTIVITY', 'APPS', 'URLS', 'SESSIONS', 'TIMESHEETS', 'INVOICES', 'AUDIT', 'LOCATION']),
+      data_class: z.enum(['SCREENSHOTS', 'ACTIVITY', 'APPS', 'URLS', 'SESSIONS', 'TIMESHEETS', 'INVOICES', 'AUDIT', 'LOCATION', 'AI_CONVERSATIONS']),
       keep_days: z.number().int().min(1).max(36500),
     }),
   ),

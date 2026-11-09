@@ -56,6 +56,11 @@ export class FakeProvider implements AiProvider {
       { type: 'stop', reason: 'tool_use' },
     ];
     if (lower.includes('error-test')) throw new AiError('ai_unavailable');
+    // Insight tools (AI Insights): checked before the plainer keywords below.
+    if (lower.includes('review')) return tool('checkTimesheets', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });
+    if (lower.includes('insight')) return tool('getWorkforceInsights', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });
+    if (lower.includes('risk')) return tool('getProjectRisks', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });
+    if (lower.includes('report')) return tool('summarizeReport', { key: 'time-activity', from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });
     if (lower.includes('hours')) {
       const now = this.now();
       return tool('getHoursSummary', { from: mondayUtc(now), to: now.toISOString().slice(0, 10), group: 'member' });

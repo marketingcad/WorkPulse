@@ -49,6 +49,12 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🆕 New updates
 
+- **10 November 2026 (AI Insights, phase 1):** a new **AI Insights** page (Reports › AI Insights) and four new WorkPulse AI tools. Design: [gap analysis](docs/superpowers/specs/2026-11-10-ai-intelligence-gap-analysis.md), [plan](docs/superpowers/plans/2026-11-10-ai-intelligence-phase1.md), ADR-135.
+  - **Workforce:** hours against the previous period, overtime and workload by team, approved share, approvals waiting, missing timesheets, time off.
+  - **Timesheets:** overlapping and repeated entries (found on read), very long days, mostly manual time, large changes, approval-queue flags, timesheets not submitted. Neutral wording; nothing is approved or changed.
+  - **Projects:** budgets exceeded or near their limit, budget projections (labelled estimates), overdue tasks and milestones, possible deadline risks (estimates), and projects with no warning signs.
+  - **Report summaries:** "Summarize with WorkPulse AI" on the report runner; the assistant runs the same report with the same permissions.
+  - **How it works:** findings are computed by WorkPulse from what the person may see (`@tallywork/domain/insights`, `services/ai-insights`, `GET /assistant/insights/:section`), labelled measured / compared / estimate, and cached 5 minutes per member. The AI only explains them, so the page works without `ANTHROPIC_API_KEY`.
 - **7 November 2026 (WorkPulse AI assistant):** admins and managers can ask questions in a side panel (the ✨ button above the calculator) about how WorkPulse works and about their organization's data. Design: [spec](docs/superpowers/specs/2026-11-07-workpulse-ai-assistant-design.md), ADR-134.
   - **What it can answer:** product questions, from the same help articles as the Help Center. Read-only data questions through 12 server-side tools that call the existing scoped services: members, who is tracking now, hours, pending approvals, timesheet status per pay period, projects, budgets, teams, time off, and an organization overview. It suggests pages only from a fixed allowlist of links.
   - **What it never does:** write anything; see more than the person asking; reach another organization; send emails, rates, pay, screenshots, activity, URLs, reasons or review notes to the model. Money (budgets) is sent only to people who may see it, in major units.

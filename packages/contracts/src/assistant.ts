@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { id, nonEmpty } from './common';
+import { id, isoDate, nonEmpty } from './common';
+import { NAV_TARGET_KEYS } from '@tallywork/domain/assistant';
 
 // ─── Inputs ──────────────────────────────────────────────────────────────────
 export const assistantSendInput = z.object({
@@ -52,3 +53,39 @@ export const assistantStreamEvent = z.discriminatedUnion('event', [
   z.object({ event: z.literal('error'), data: z.object({ code: z.enum(ASSISTANT_ERROR_CODES), retryable: z.boolean() }) }),
 ]);
 export type AssistantStreamEvent = z.infer<typeof assistantStreamEvent>;
+
+// ─── AI Insights ─────────────────────────────────────────────────────────────
+/** The AI Insights page and tools: findings computed in code (never by the model), see @tallywork/domain/insights. */
+export const insightSectionInput = z.enum(['overview', 'workforce', 'timesheets', 'projects']);
+export type InsightSectionParam = z.infer<typeof insightSectionInput>;
+
+const MAX_INSIGHT_DAYS = 93;
+export const insightQueryInput = z
+  .object({ from: isoDate, to: isoDate })
+  .refine((q) => q.to >= q.from, { message: 'The end must be on or after the start', path: ['to'] })
+  .refine((q) => (Date.parse(q.to) - Date.parse(q.from)) / 86_400_000 + 1 <= MAX_INSIGHT_DAYS, { message: `At most ${MAX_INSIGHT_DAYS} days`, path: ['to'] });
+
+const period = z.object({ from: isoDate, to: isoDate });
+export const insightFindingSchema = z.object({
+  id: z.string().max(400),
+  section: z.enum(['workforce', 'timesheets', 'projects']),
+  category: z.string().max(60),
+  severity: z.enum(['info', 'attention', 'warning']),
+  basis: z.enum(['fact', 'observation', 'estimate']),
+  title: z.string().max(300),
+  summary: z.string().max(2000),
+  period,
+  metrics: z.array(z.object({ label: z.string().max(80), value: z.number().finite(), unit: z.enum(['hours', 'percent', 'count', 'days']), previous: z.number().finite().nullable().optional() })).max(10),
+  refs: z.array(z.object({ type: z.enum(['member', 'team', 'project', 'timesheet', 'task']), id: z.string().max(200), name: z.string().max(200) })).max(25),
+  links: z.array(z.enum(NAV_TARGET_KEYS as [string, ...string[]])).max(5),
+  next_step: z.string().max(500),
+});
+export const insightResultSchema = z.object({
+  section: insightSectionInput,
+  period,
+  previous: period,
+  findings: z.array(insightFindingSchema).max(200),
+  limitations: z.array(z.string().max(300)).max(20),
+});
+export type InsightFindingDto = z.infer<typeof insightFindingSchema>;
+export type InsightResultDto = z.infer<typeof insightResultSchema>;

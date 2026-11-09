@@ -74,7 +74,8 @@ function Bubble({ role, children }: { role: 'user' | 'assistant'; children: Reac
   );
 }
 
-export function AssistantPanel({ orgId, onClose }: { orgId: string; onClose: () => void }) {
+/** `ask`: a question from an "Ask WorkPulse AI" button, sent once in a new conversation (`seq` tells repeats apart). */
+export function AssistantPanel({ orgId, onClose, ask }: { orgId: string; onClose: () => void; ask?: { seq: number; question: string } | null }) {
   const a = useAssistant(orgId, true);
   const pathname = usePathname();
   const [view, setView] = useState<'chat' | 'history'>('chat');
@@ -98,6 +99,15 @@ export function AssistantPanel({ orgId, onClose }: { orgId: string; onClose: () 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
   }, [a.active?.messages.length, a.streaming?.text, a.error]);
+
+  const asked = useRef(0);
+  useEffect(() => {
+    if (!ask || asked.current === ask.seq) return;
+    asked.current = ask.seq;
+    setView('chat');
+    void a.send(ask.question, { fresh: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ask?.seq]);
 
   const submit = () => {
     const text = draft.trim();

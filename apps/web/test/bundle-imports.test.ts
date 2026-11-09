@@ -73,6 +73,8 @@ describe('what every page loads', () => {
     'components/assistant/assistant-launcher.tsx',
     'components/assistant/assistant-panel.tsx',
     'components/assistant/messages.ts',
+    'components/insights-ai/insights-view.tsx',
+    'components/insights-ai/messages.ts',
   ])('does not include %s, which loads when it is needed', (file) => {
     expect(shell).not.toContain(file);
   });
@@ -112,5 +114,11 @@ describe('the contracts package in the browser', () => {
   it('is imported for values only through a subpath: its root brings every schema and zod (~35 KB)', () => {
     const offenders = ['app', 'components', 'lib'].flatMap((d) => [...sources(path.join(web, d))]).filter((f) => staticImports(f).includes('@tallywork/contracts'));
     expect(offenders.map(rel)).toEqual([]);
+  });
+});
+
+describe('time entries page', () => {
+  it('opens its entry dialogs on demand (edit, split, delete, manual time, history)', () => {
+    expect(reachable('app/o/[orgId]/timesheets/all/page.tsx')).not.toContain('components/timesheets/entry-dialogs.tsx');
   });
 });

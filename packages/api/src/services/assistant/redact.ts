@@ -1,5 +1,6 @@
 import type { HelpArticle } from '@tallywork/domain/help';
-import type { ApprovalQueueItemDto, BudgetStatusDto, LiveWorkerDto, ManualTimeDto, MemberOptionDto, ProjectDto, TeamDto } from '@tallywork/contracts';
+import type { ApprovalQueueItemDto, BudgetStatusDto, InsightFindingDto, LiveWorkerDto, ManualTimeDto, MemberOptionDto, ProjectDto, TeamDto } from '@tallywork/contracts';
+import type { ReportResult } from '../reports';
 
 /*
  * Output allowlists for the organization data tools. Each one builds a new object from the fields
@@ -116,4 +117,45 @@ export function redactTeam(t: TeamDto) {
 /** getTimeOffSummary: name, policy name, dates, status. Never the reason or decision comment. */
 export function redactTimeOff(r: { worker_name: string; policy_name: string; start_date: string; end_date: string; half_day: boolean; status: string }) {
   return { name: r.worker_name, policy: r.policy_name, start_date: r.start_date, end_date: r.end_date, half_day: r.half_day, status: r.status };
+}
+
+/**
+ * Insight findings for the model: what was found and on what basis. Ref ids stay out of model
+ * input (pages are offered through `nav`, built from the finding's allowlisted link keys).
+ */
+export function redactFinding(f: InsightFindingDto) {
+  return {
+    title: f.title,
+    summary: f.summary,
+    category: f.category,
+    severity: f.severity,
+    basis: f.basis,
+    period: f.period,
+    metrics: f.metrics,
+    refs: f.refs.map((r) => ({ type: r.type, name: r.name })),
+    next_step: f.next_step,
+  };
+}
+
+/** Columns never sent to the model, whatever the report: monitoring data and free text about people. */
+const NEVER_COLUMN = /activity|idle|break|email|apps?\b|url|screenshot|reason|note|comment/i;
+
+/**
+ * A report for the model: its own columns (money only for people with reports:finance), the summary
+ * and totals it already computes, and at most `maxRows` rows restricted to those columns.
+ */
+export function redactReport(r: ReportResult & { title: string; key: string }, period: { from: string; to: string }, finance: boolean, maxRows = 15) {
+  const columns = r.columns.filter((c) => !NEVER_COLUMN.test(c.key) && !NEVER_COLUMN.test(c.label) && (finance || c.type !== 'money'));
+  const keys = columns.map((c) => c.key);
+  const keep = (row: Record<string, unknown>) => Object.fromEntries(keys.filter((k) => k in row).map((k) => [k, row[k]]));
+  return {
+    title: r.title,
+    period,
+    columns: columns.map((c) => ({ key: c.key, label: c.label, type: c.type })),
+    summary: r.summary.filter((s) => (finance || s.type !== 'money') && !NEVER_COLUMN.test(s.label)).map((s) => ({ label: s.label, value: s.value, type: s.type })),
+    totals: r.totals ? keep(r.totals as Record<string, unknown>) : null,
+    row_count: r.rows.length,
+    top_rows: r.rows.slice(0, maxRows).map((row) => keep(row as Record<string, unknown>)),
+    truncated: r.rows.length > maxRows,
+  };
 }

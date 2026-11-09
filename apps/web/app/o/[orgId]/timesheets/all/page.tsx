@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowDown, ArrowUp, CalendarOff, Copy, Download, History, Lock, MoreHorizontal, Pencil, Plus, Save, Scissors, Trash2 } from 'lucide-react';
 import type { ClientDto, InsightsDto, OffsetPage, ProjectDto, TaskDto, TimeEntryDto, TimeEntryPageSummary, TimeTypeDto } from '@tallywork/contracts';
@@ -38,11 +38,18 @@ import { downloadText, toCsv } from '@/lib/csv';
 import { useClampPage, useServerPage } from '@/lib/paging';
 import { useUrlParams } from '@/components/timesheets/use-url-params';
 import { isId, useUrlSearch } from '@/lib/url-state';
-import { DeleteEntryDialog, EditEntryDialog, ManualTimeDialog, RevisionsDrawer, SplitEntryDialog } from '@/components/timesheets/entry-dialogs';
 import { TimeTypeBadge } from '@/components/settings/time-type-badge';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemberOptions } from '@/lib/members';
 import { MemberAvatar } from '@/lib/avatars';
+
+// Opened only after a click: loaded on demand, not on the page's first load (the 250 KB budget).
+const entryDialogs = () => import('@/components/timesheets/entry-dialogs');
+const ManualTimeDialog = lazy(() => entryDialogs().then((m) => ({ default: m.ManualTimeDialog })));
+const EditEntryDialog = lazy(() => entryDialogs().then((m) => ({ default: m.EditEntryDialog })));
+const SplitEntryDialog = lazy(() => entryDialogs().then((m) => ({ default: m.SplitEntryDialog })));
+const DeleteEntryDialog = lazy(() => entryDialogs().then((m) => ({ default: m.DeleteEntryDialog })));
+const RevisionsDrawer = lazy(() => entryDialogs().then((m) => ({ default: m.RevisionsDrawer })));
 
 type Preset = 'today' | 'yesterday' | 'this_week' | 'prev_week' | 'this_month' | 'prev_month' | 'custom';
 type Action = {
@@ -567,6 +574,7 @@ export default function AllTimeEntriesPage() {
         )}
       </Panel>
 
+      <Suspense fallback={null}>
       {adding && <ManualTimeDialog membershipId={member || undefined} defaultDate={adding} onClose={() => setAdding(null)} />}
       {action?.kind === 'edit' && <EditEntryDialog entry={action.entry} onClose={() => setAction(null)} />}
       {action?.kind === 'split' && <SplitEntryDialog entry={action.entry} onClose={() => setAction(null)} />}
@@ -586,6 +594,7 @@ export default function AllTimeEntriesPage() {
           onClose={() => setAction(null)}
         />
       )}
+      </Suspense>
       <ConfirmDialog
         open={bulk !== null}
         onOpenChange={(o) => !o && setBulk(null)}

@@ -9,7 +9,7 @@
         "packages/domain": ["domain", "overtime"],
         "packages/db": ["rls", "migrations", "performance", "assistant"],
         "packages/api": [
-          "access-consistency", "agent-login", "assistant", "assistant-security", "assistant-tools", "agent-me", "audit-oct28", "audit-phase1", "breaks-eod", "compliance", "confirm-window", "device-approval",
+          "access-consistency", "agent-login", "ai-insights", "assistant-insight-tools", "assistant", "assistant-security", "assistant-tools", "agent-me", "audit-oct28", "audit-phase1", "breaks-eod", "compliance", "confirm-window", "device-approval",
           "finance", "flow", "forms-phase4", "integrations", "invitations", "mfa-hardening", "money-p0", "money-p1-safety", "money-phase3", "multi-monitor",
           "offline-sync", "offline-sync.property", "payroll", "refused-time", "route-boundaries", "security", "security-auth", "security-authz",
           "session-timeouts", "staff-profile", "support", "time-accuracy", "time-integrity", "time-money", "time-overlap", "time-product",
@@ -30,7 +30,7 @@
       "severity": "High",
       "covers": "Web workflows, desktop screens, integrations, reports, notifications, the client portal, the Performance Center and the support console.",
       "vitest": {
-        "packages/domain": ["performance", "screenshot-retention", "assistant-navigation", "help-search"],
+        "packages/domain": ["performance", "screenshot-retention", "insights-compare", "insights-timesheets", "insights-workforce", "insights-projects", "assistant-navigation", "help-search"],
         "packages/contracts": ["assistant"],
         "packages/api": [
           "agent-time-off-cancel", "ai-provider", "assistant-retention", "assistant-stream", "avatar", "client-delete", "clients", "dashboard", "email", "email-verification", "expense-rejection",
@@ -41,14 +41,14 @@
         ],
         "packages/ui": ["avatar", "catalog", "chart-math", "i18n", "pagination", "table"],
         "apps/web": [
-          "api-errors", "assistant-nav-parity", "assistant-stream-client", "avatar-crop", "calculator", "calculator-oracle", "calculator-position", "confirm-dialogs", "csv-import", "deps",
+          "api-errors", "assistant-bridge", "assistant-nav-parity", "assistant-stream-client", "avatar-crop", "calculator", "calculator-oracle", "calculator-position", "confirm-dialogs", "csv-import", "deps",
           "download-guides", "download-platform", "duration-input", "help", "invoice-extra-lines", "money-input", "multi-monitor", "nav", "page-help", "redirect",
           "policy-fields", "table-actions", "time-off-overlap", "unsaved", "url-range", "zoned"
         ],
         "apps/desktop": ["agent-account", "agent-connect", "agent-monitoring-card", "disclosure", "errors", "nav", "updater", "urls"]
       },
       "playwright": [
-        "web/assistant", "web/tracking-policies", "web/webhooks", "web/report-exports", "web/schedules", "web/time-off", "web/attendance-scheduled", "web/breaks-eod", "web/budgets", "web/calculator", "web/calculator-accuracy", "web/charts", "web/client-delete",
+        "web/assistant", "web/ai-insights", "web/tracking-policies", "web/webhooks", "web/report-exports", "web/schedules", "web/time-off", "web/attendance-scheduled", "web/breaks-eod", "web/budgets", "web/calculator", "web/calculator-accuracy", "web/charts", "web/client-delete",
         "web/csv-import", "web/data-export", "web/download", "web/finance-paging", "web/help", "web/help-video", "web/insights", "web/invitations",
         "web/member-profile", "web/monitoring-card-setting", "web/multi-monitor", "web/navigation", "web/navigation-flows", "web/organizations", "web/people-paging",
         "web/performance-achievements", "web/performance-goals", "web/performance-leaderboards", "web/performance-overview", "web/performance-teams",

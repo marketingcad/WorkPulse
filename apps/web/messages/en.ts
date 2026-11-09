@@ -31,6 +31,7 @@ export const webEn = {
   'nav.item.teamWeek': 'Team week',
   'nav.item.schedulesAttendance': 'Schedules & attendance',
   'nav.item.summary': 'Summary',
+  'nav.item.aiInsights': 'AI Insights',
   'nav.item.reportLibrary': 'Report library',
   'nav.item.settings': 'Settings',
   'nav.item.help': 'Help',

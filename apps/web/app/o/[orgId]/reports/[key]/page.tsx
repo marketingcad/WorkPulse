@@ -3,7 +3,8 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, FileSpreadsheet, FileText, History, Hourglass, Save, Sheet, X } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, History, Hourglass, Save, Sheet, Sparkles, X } from 'lucide-react';
+import { askAssistant } from '@/lib/assistant-bridge';
 import type { ClientDto, ProjectDto, TeamDto } from '@tallywork/contracts';
 import { resolveRange } from '@tallywork/domain';
 import {
@@ -264,6 +265,11 @@ function ReportRunner() {
         description={savedName ? `${item.title} · ${item.question}` : item.question}
         actions={
           <>
+            {org.assistant_enabled && (
+              <Button icon={<Sparkles className="size-3.5" />} disabled={!validRange} onClick={() => askAssistant(`Summarize the ${item.title} report (${item.key}) for ${params.from} to ${params.to}.`)}>
+                Summarize with WorkPulse AI
+              </Button>
+            )}
             <Button icon={<Save className="size-3.5" />} onClick={() => setSaveOpen(true)}>
               Save report
             </Button>

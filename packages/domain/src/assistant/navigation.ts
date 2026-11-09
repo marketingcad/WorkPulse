@@ -8,7 +8,7 @@ export type NavTargetKey =
   | 'timesheets.team' | 'timesheets.not_added' | 'workers' | 'teams' | 'schedules' | 'attendance'
   | 'time_off' | 'clients' | 'projects' | 'tasks' | 'finance.budgets' | 'finance.expenses' | 'finance.invoices'
   | 'finance.payroll' | 'reports' | 'insights' | 'performance' | 'settings' | 'settings.time' | 'settings.policies'
-  | 'settings.roles' | 'devices' | 'settings.security' | 'help';
+  | 'settings.roles' | 'devices' | 'settings.security' | 'help' | 'ai.insights';
 
 /**
  * The only dashboard pages the assistant may link to. Paths are relative to /o/<orgId> and copy
@@ -45,6 +45,7 @@ export const NAV_TARGETS: Record<NavTargetKey, { path: string; label: string } &
   devices: { path: '/devices', label: 'Devices', perms: ['devices:read'] },
   'settings.security': { path: '/settings/security', label: 'Security', perms: ['retention:manage', 'settings:security'] },
   help: { path: '/help', label: 'Help' },
+  'ai.insights': { path: '/ai-insights', label: 'AI Insights', perms: ['org:read'], minScope: 'team_or_org' },
 };
 
 export const NAV_TARGET_KEYS = Object.keys(NAV_TARGETS) as NavTargetKey[];

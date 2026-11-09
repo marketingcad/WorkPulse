@@ -89,3 +89,20 @@ export const insightResultSchema = z.object({
 });
 export type InsightFindingDto = z.infer<typeof insightFindingSchema>;
 export type InsightResultDto = z.infer<typeof insightResultSchema>;
+
+// ─── Drafts ──────────────────────────────────────────────────────────────────
+/** WorkPulse AI drafts: text the person edits and sends themselves. Nothing is stored, sent or published. */
+export const DRAFT_STYLES = ['improve', 'shorter', 'longer', 'professional', 'friendly', 'translate'] as const;
+export const assistantDraftInput = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('project_description'), project_id: id }),
+  z.object({ kind: z.literal('task_description'), task_id: id }),
+  z.object({ kind: z.literal('timesheet_reminder'), from: isoDate, to: isoDate }),
+  z.object({ kind: z.literal('project_update'), project_id: id, from: isoDate, to: isoDate }),
+  z.object({ kind: z.literal('rewrite'), text: nonEmpty(4000), style: z.enum(DRAFT_STYLES), language: z.string().trim().min(2).max(40).optional() }),
+]);
+export type AssistantDraftInput = z.infer<typeof assistantDraftInput>;
+export interface AssistantDraftDto {
+  text: string;
+  /** The facts the draft was written from, so the person can check it. */
+  facts_used: string[];
+}

@@ -28,11 +28,22 @@ export class FakeProvider implements AiProvider {
 
   async *streamTurn(i: AiTurnInput): AsyncIterable<AiChunk> {
     this.calls.push(structuredClone({ system: i.system, messages: i.messages, tools: i.tools, ...(i.toolChoice ? { toolChoice: i.toolChoice } : {}) }));
-    const chunks = this.queue.length ? this.queue.shift()! : this.respond(i.messages);
+    const chunks = this.queue.length ? this.queue.shift()! : i.tools.length ? this.respond(i.messages) : this.draft(i.messages);
     for (const chunk of chunks) {
       if (i.signal.aborted) return;
       yield chunk;
     }
+  }
+
+  /** No tools offered (a draft): plain text "Draft: <first line of the instruction>". "error-test" fails. */
+  private draft(messages: AiMessage[]): AiChunk[] {
+    const text = lastText(messages);
+    if (text.toLowerCase().includes('error-test')) throw new AiError('ai_unavailable');
+    return [
+      { type: 'text_delta', text: `Draft: ${text.split('\n')[0]!.slice(0, 60)}` },
+      { type: 'usage', inputTokens: 10, outputTokens: 5 },
+      { type: 'stop', reason: 'end_turn' },
+    ];
   }
 
   private respond(messages: AiMessage[]): AiChunk[] {

@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { streamSSE } from 'hono/streaming';
 import { validation } from '@tallywork/domain';
 import { sectionFor, suggestionsFor } from '@tallywork/domain/assistant';
-import { assistantCreateInput, assistantRenameInput, assistantSendInput, insightQueryInput, insightSectionInput, type AssistantErrorCode } from '@tallywork/contracts';
+import { assistantCreateInput, assistantDraftInput, assistantRenameInput, assistantSendInput, insightQueryInput, insightSectionInput, type AssistantErrorCode } from '@tallywork/contracts';
+import { AiError } from '../lib/ai/provider';
+import { createDraft } from '../services/assistant/drafts';
 import type { AppEnv } from '../context';
 import { body, query } from '../lib/http';
 import { ctx } from '../services/ctx';
@@ -27,6 +29,19 @@ const listQuery = z.object({ page: z.coerce.number().int().min(1).max(100_000).d
 const suggestionsQuery = z.object({ route: z.string().max(200).optional() });
 
 export const assistantRoutes = new Hono<AppEnv>()
+  /** A draft the person edits and sends themselves; nothing is stored or sent. AI errors are 503/429 with no text. */
+  .post('/drafts', async (c) => {
+    const x = ctx(c);
+    assertAssistantAccess(x);
+    const input = await body(c, assistantDraftInput);
+    try {
+      return c.json(await createDraft(x, input));
+    } catch (e) {
+      if (!(e instanceof AiError)) throw e;
+      const status = e.code === 'ai_rate_limited' ? 429 : 503;
+      return c.json({ type: 'about:blank', title: e.message, status, code: e.code, request_id: x.requestId }, status);
+    }
+  })
   /** AI Insights: findings computed from what the person may see; works without an AI key. */
   .get('/insights/:section', async (c) => {
     const x = ctx(c);

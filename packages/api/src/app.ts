@@ -124,6 +124,8 @@ export function createApp(deps: Deps) {
   const msgLimit = rateLimit('assistant:msg', 20, 60);
   const dayLimit = rateLimit('assistant:day', 300, 86_400);
   app.use('/orgs/:orgId/assistant/conversations/:id/messages', (c, next) => (c.req.method === 'POST' ? msgLimit(c, async () => void (await dayLimit(c, next))) : next()));
+  // A draft is one model call, so it counts like a message.
+  app.use('/orgs/:orgId/assistant/drafts', (c, next) => (c.req.method === 'POST' ? msgLimit(c, async () => void (await dayLimit(c, next))) : next()));
   app.use('/orgs/:orgId/*', tenant);
   app.route('/orgs/:orgId', orgRoutes);
   app.route('/orgs/:orgId', timeRoutes);

@@ -124,6 +124,9 @@ export const webEn = {
   'timer.today': 'Today',
 
   // Auth shell and pages
+  'help.about.title': 'About WorkPulse',
+  'help.about.body':
+    'WorkPulse brings time tracking, approvals, pay, billing and performance together in one place. WorkPulse AI helps you read the numbers, and only ever uses what your role can already see.',
   'auth.brand.headline1': 'Turn Work',
   'auth.brand.headline2': 'into',
   'auth.brand.headlineAccent': 'Progress',

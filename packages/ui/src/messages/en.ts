@@ -62,4 +62,9 @@ export const uiEn = {
   'activity.split': 'Keyboard {keyboard}% · Mouse {mouse}%',
   'budget.used': '{pct}% of budget used',
   'budget.projected': 'Projected {pct}%',
+  // Brand (logo.tsx). The product name stays WorkPulse; "Powered by AI" is always secondary to it.
+  'brand.name': 'WorkPulse',
+  'brand.descriptor': 'Powered by AI',
+  'brand.tagline': 'Smarter Workforce. Better Business.',
+  'brand.signature': 'WorkPulse – Powered by AI',
 } as const;

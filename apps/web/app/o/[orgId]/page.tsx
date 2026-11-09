@@ -142,6 +142,7 @@ export default function OverviewPage() {
   return (
     <>
       <PageHeader
+        eyebrow={<span data-testid="dashboard-tagline">{tr('brand.tagline')}</span>}
         title={org.isManagerView ? 'Overview' : 'Today'}
         description={org.isManagerView ? `${greeting}. Here is what needs attention across ${scope === 'ME' ? 'your own work' : org.grants['tracking:read'] === 'org' ? 'your organization' : 'your team'}.` : `${greeting}. Your time and tasks at a glance.`}
         actions={

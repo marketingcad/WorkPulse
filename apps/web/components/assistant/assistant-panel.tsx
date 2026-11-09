@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUp, Check, Copy, History, MessageSquarePlus, RotateCcw, Sparkles, Trash2, X } from 'lucide-react';
-import { Button, ConfirmDialog, IconButton, Spinner, cx, useToast } from '@tallywork/ui';
+import { AiBadge, Button, ConfirmDialog, IconButton, Spinner, cx, useToast } from '@tallywork/ui';
 import type { AssistantMessageDto } from '@tallywork/contracts';
 import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
@@ -143,8 +143,12 @@ export function AssistantPanel({ orgId, onClose, ask }: { orgId: string; onClose
       }}
       className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l md:top-14 md:border-t border-border bg-surface shadow-overlay md:w-100"
     >
-      <header className="flex items-center gap-1 border-b border-border px-3 py-2.5">
-        <Sparkles className="size-4 shrink-0 text-interactive" aria-hidden />
+      {/* Product identity (WorkPulse AI + the badge) above the conversation's own header row. */}
+      <div className="flex items-center gap-2 px-4 pt-3" data-testid="assistant-brand">
+        <span className="text-xs font-semibold tracking-wide text-text">{t('assistant.title')}</span>
+        <AiBadge />
+      </div>
+      <header className="flex items-center gap-1 border-b border-border px-3 pb-2.5 pt-1">
         {renaming && a.active ? (
           <input
             autoFocus

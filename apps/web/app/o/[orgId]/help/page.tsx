@@ -3,7 +3,7 @@ import { Suspense, use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, ChevronRight, Compass, Film, LifeBuoy, PlayCircle, Search, X } from 'lucide-react';
-import { Button, EmptyState, Input, PageHeader, SkeletonRows, cx } from '@tallywork/ui';
+import { BrandLockup, Button, EmptyState, Input, PageHeader, SkeletonRows, cx } from '@tallywork/ui';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
 import { activeNav, filterNav, type NavItem } from '@/components/shell/nav';
@@ -197,6 +197,14 @@ function HelpCenter() {
               <p className="text-sm text-text-muted">
                 Still stuck? Ask your WorkPulse administrator: they can check your role, your devices and your organization’s settings. Members who track time use the desktop app; this site is for admins and managers.
               </p>
+            </section>
+
+            <section aria-labelledby="help-about-title" data-testid="help-about" className="flex flex-col gap-3 border-t border-border pt-8">
+              <h2 id="help-about-title" className="sr-only">
+                {t('help.about.title')}
+              </h2>
+              <BrandLockup size={32} descriptor tagline />
+              <p className="max-w-2xl text-sm text-text-muted">{t('help.about.body')}</p>
             </section>
           </div>
         </div>

@@ -56,7 +56,7 @@ export type AssistantStreamEvent = z.infer<typeof assistantStreamEvent>;
 
 // ─── AI Insights ─────────────────────────────────────────────────────────────
 /** The AI Insights page and tools: findings computed in code (never by the model), see @tallywork/domain/insights. */
-export const insightSectionInput = z.enum(['overview', 'workforce', 'timesheets', 'projects']);
+export const insightSectionInput = z.enum(['overview', 'workforce', 'timesheets', 'projects', 'workflow']);
 export type InsightSectionParam = z.infer<typeof insightSectionInput>;
 
 const MAX_INSIGHT_DAYS = 93;
@@ -68,7 +68,7 @@ export const insightQueryInput = z
 const period = z.object({ from: isoDate, to: isoDate });
 export const insightFindingSchema = z.object({
   id: z.string().max(400),
-  section: z.enum(['workforce', 'timesheets', 'projects']),
+  section: z.enum(['workforce', 'timesheets', 'projects', 'workflow']),
   category: z.string().max(60),
   severity: z.enum(['info', 'attention', 'warning']),
   basis: z.enum(['fact', 'observation', 'estimate']),

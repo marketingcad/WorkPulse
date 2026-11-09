@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -52,7 +52,19 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
   await closed;
 }
 
-export const test = base.extend<{ desktopApp: DesktopApp }>({
+export const test = base.extend<
+  {
+    desktopApp: DesktopApp;
+    /**
+     * Opens the app already signed in as the shared worker, from a fresh copy of a signed-in install
+     * (like a restart). Device sign-ins are rate limited per address (20 every 15 minutes) across the
+     * whole run, so only tests about signing in or out use the form; the rest start here.
+     * Called when the test is ready, so data it creates first is what the app loads.
+     */
+    openSignedIn: () => Promise<DesktopApp>;
+  },
+  { signedInInstall: { dir: string } }
+>({
   desktopApp: async ({}, use, testInfo) => {
     test.skip(process.platform === 'linux' && !process.env.DISPLAY, 'Electron needs a display: run under xvfb-run on Linux');
     const d = await launch();
@@ -60,6 +72,41 @@ export const test = base.extend<{ desktopApp: DesktopApp }>({
     if (testInfo.status !== testInfo.expectedStatus) await testInfo.attach('app-window', { body: await d.window.screenshot().catch(() => Buffer.alloc(0)), contentType: 'image/png' });
     await closeApp(d.app);
     rmSync(d.userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  },
+  // One sign-in through the form per test worker; its user-data folder is the template. The server
+  // rotates the device's refresh token when the app connects and refuses an old one, so after each
+  // test the template becomes that test's folder, which holds the newest token. Electron tests in a
+  // worker run one at a time, so the template is never used by two apps at once.
+  signedInInstall: [
+    async ({ data }, use) => {
+      if (process.platform === 'linux' && !process.env.DISPLAY) return use({ dir: '' });
+      const d = await launch();
+      await signIn(d.window, data.worker.email);
+      await closeApp(d.app);
+      const install = { dir: d.userData };
+      await use(install);
+      rmSync(install.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    },
+    { scope: 'worker', timeout: 120_000 },
+  ],
+  openSignedIn: async ({ signedInInstall }, use, testInfo) => {
+    test.skip(process.platform === 'linux' && !process.env.DISPLAY, 'Electron needs a display: run under xvfb-run on Linux');
+    const opened: DesktopApp[] = [];
+    await use(async () => {
+      const userData = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'workpulse-e2e-')));
+      cpSync(signedInInstall.dir, userData, { recursive: true });
+      const d = await launch({ userData });
+      opened.push(d);
+      await expect(d.window.getByRole('button', { name: 'Profile' })).toBeVisible({ timeout: 30_000 });
+      return d;
+    });
+    for (const d of opened) {
+      if (testInfo.status !== testInfo.expectedStatus) await testInfo.attach('app-window', { body: await d.window.screenshot().catch(() => Buffer.alloc(0)), contentType: 'image/png' });
+      await closeApp(d.app);
+      // Hand the newest token on to the next test; the previous template is no longer valid.
+      rmSync(signedInInstall.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      signedInInstall.dir = d.userData;
+    }
   },
 });
 

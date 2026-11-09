@@ -41,6 +41,8 @@ export const assistantEn = {
   'assistant.tool.summarizeReport': 'Running the report…',
   'assistant.tool.getWorkflowInsights': 'Checking what waits for a decision…',
   'assistant.tool.explainPerformance': 'Reading the Performance Center score…',
+  'assistant.tool.getFinancialInsights': 'Checking payroll and billing…',
+  'assistant.tool.getCapacityInsights': 'Checking team capacity…',
   'assistant.tool.searchWorkPulseDocumentation': 'Checking the WorkPulse help…',
   'assistant.tool.suggestNavigation': 'Finding the right page…',
   'assistant.tool.getOrganizationOverview': 'Checking your organization…',

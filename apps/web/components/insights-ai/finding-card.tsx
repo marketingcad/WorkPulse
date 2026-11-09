@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { AlertTriangle, Info, Sparkles, TriangleAlert } from 'lucide-react';
 import type { InsightFindingDto } from '@tallywork/contracts/assistant';
 import { resolveNav } from '@tallywork/domain/assistant';
-import { Badge, Button, cx } from '@tallywork/ui';
+import { Badge, Button, cx, fmtMoney } from '@tallywork/ui';
 import { t } from '@/lib/i18n';
 import { useOrg } from '@/lib/org';
 import { askAssistant } from '@/lib/assistant-bridge';
@@ -20,7 +20,9 @@ const SEVERITY = {
 } as const;
 const BASIS_TONE = { fact: 'neutral', observation: 'secondary', estimate: 'brand' } as const;
 
-const fmt = (unit: InsightFindingDto['metrics'][number]['unit'], value: number) => t(`aiInsights.unit.${unit}`, { value: value.toLocaleString() });
+type FindingMetric = InsightFindingDto['metrics'][number];
+/** Money is minor units in its own currency (never mixed); everything else uses its unit. */
+const fmt = (m: FindingMetric, value: number) => (m.unit === 'money' ? fmtMoney(value, m.currency) : t(`aiInsights.unit.${m.unit}`, { value: value.toLocaleString() }));
 
 /** One finding: what was found, on what basis, the measures behind it, and where to act. */
 export function FindingCard({ finding: f }: { finding: InsightFindingDto }) {
@@ -49,8 +51,8 @@ export function FindingCard({ finding: f }: { finding: InsightFindingDto }) {
             <div key={m.label} className="min-w-0">
               <dt className="truncate text-2xs uppercase tracking-wide text-text-faint">{m.label}</dt>
               <dd className="tabular text-sm font-semibold">
-                {fmt(m.unit, m.value)}
-                {m.previous !== undefined && m.previous !== null && <span className="ml-1 text-xs font-normal text-text-muted">({t('aiInsights.previous', { value: fmt(m.unit, m.previous) })})</span>}
+                {fmt(m, m.value)}
+                {m.previous !== undefined && m.previous !== null && <span className="ml-1 text-xs font-normal text-text-muted">({t('aiInsights.previous', { value: fmt(m, m.previous) })})</span>}
               </dd>
             </div>
           ))}

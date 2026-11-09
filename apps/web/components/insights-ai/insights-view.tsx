@@ -10,7 +10,8 @@ import { useUrlParams } from '@/components/timesheets/use-url-params';
 import { FindingCard } from './finding-card';
 import './messages';
 
-const TABS = ['overview', 'workforce', 'timesheets', 'projects', 'workflow'] as const;
+const TABS = ['overview', 'workforce', 'timesheets', 'projects', 'workflow', 'capacity', 'finance'] as const;
+const FINANCE_PERMS = ['payroll:read', 'invoices:read', 'payments:read', 'billing:read', 'rates:read'] as const;
 type Tab = (typeof TABS)[number];
 const PERIODS = ['this_week', 'last_week', 'this_month', 'last_month'] as const;
 type PeriodKey = (typeof PERIODS)[number];
@@ -23,7 +24,9 @@ type PeriodKey = (typeof PERIODS)[number];
 export default function InsightsView() {
   const org = useOrg();
   const [url, setUrl] = useUrlParams(['tab', 'period'] as const);
-  const tab: Tab = (TABS as readonly string[]).includes(url.tab ?? '') ? (url.tab as Tab) : 'overview';
+  // The Finance tab exists only for finance roles (the API refuses everyone else anyway).
+  const tabs = TABS.filter((v) => v !== 'finance' || FINANCE_PERMS.some((p) => org.can(p)));
+  const tab: Tab = (tabs as readonly string[]).includes(url.tab ?? '') ? (url.tab as Tab) : 'overview';
   const period: PeriodKey = (PERIODS as readonly string[]).includes(url.period ?? '') ? (url.period as PeriodKey) : 'this_week';
   const range = rangeFor(period, org.membership.timezone || org.organization.timezone, org.organization.week_start);
   const q = useOrgQuery<InsightResultDto>(`/assistant/insights/${tab}?from=${range.from}&to=${range.to}`);
@@ -44,7 +47,7 @@ export default function InsightsView() {
           </span>
         )}
       </div>
-      <Tabs value={tab} onValueChange={(v) => setUrl({ tab: v })} items={TABS.map((v) => ({ value: v, label: t(`aiInsights.tab.${v}`) }))} />
+      <Tabs value={tab} onValueChange={(v) => setUrl({ tab: v })} items={tabs.map((v) => ({ value: v, label: t(`aiInsights.tab.${v}`) }))} />
 
       {q.error ? (
         <ErrorState error={q.error} onRetry={() => q.refetch()} />

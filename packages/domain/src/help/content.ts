@@ -500,6 +500,21 @@ export const HELP_ARTICLES: HelpArticle[] = [
     keywords: ['summary', 'insights', 'totals', 'hours', 'chart'],
   },
   {
+    id: 'write-with-ai',
+    category: 'reports',
+    title: 'Write with AI',
+    summary: 'Let WorkPulse AI draft or rewrite project and task descriptions, and timesheet reminders. You always edit and send it yourself.',
+    steps: [
+      'In a project or task, choose Write with AI under Description.',
+      'For a saved project or task, choose Draft from what WorkPulse knows. Otherwise type something and choose Improve writing, Make shorter, Make longer, More professional or More friendly.',
+      'Read the result in the field, change what you need, and save. Undo puts your previous text back.',
+      'For timesheet reminders, open AI Insights › Timesheets and choose Draft reminder on the missing timesheets finding, then Copy.',
+    ],
+    points: ['Drafts use only facts you may see; anything missing appears as a [placeholder].', 'WorkPulse never sends or saves a draft for you.'],
+    links: [{ label: 'Open AI Insights', href: '/ai-insights' }],
+    keywords: ['write with ai', 'draft', 'rewrite', 'reminder', 'email', 'description', 'improve', 'tone'],
+  },
+  {
     id: 'ai-insights',
     category: 'reports',
     title: 'See what needs your attention with AI Insights',

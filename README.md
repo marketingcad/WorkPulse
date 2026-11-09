@@ -291,7 +291,7 @@ Everything built through 27 October (PR #72) is merged into `main` (see New upda
 - **Monitoring notice:** the desktop app no longer shows workers what is monitored or records their acknowledgement. The `/agent/policy/ack` endpoint and the web `/me/monitoring` page still exist, but the desktop doesn't use them. Make sure workers are told about monitoring some other way where the law requires it. The server's "Tracking settings were updated" notification no longer links anywhere (workers cannot open the web page); by decision, the desktop app will not show what is monitored again.
 - **Paging:** person pickers load every member (a light list with no rates or teams). For very large organizations, a search-as-you-type picker would avoid that. A few plain tables (Schedules, Roles, invoice lines, the client portal) have no paging.
 - **Check whether Preview builds can reach the production database:** in Vercel → Settings → Environment Variables, `DATABASE_URL` should be set for **Production** only. If Preview has it, every pull request's preview build runs migrations on the live database before anything is merged (the likely cause of the 20 October failed deploy).
-- **End-to-end tests still missing** for time off, report exports from the Report library, API keys and webhooks, and schedules (see the audit). Roles and tracking policies are covered since 9 November 2026 (`e2e/tests/web/roles.spec.ts`, `tracking-policies.spec.ts`).
+- **End-to-end coverage added in November 2026** for roles and tracking policies (9 November), and for API keys (scopes, revoke), webhooks (secret, rotate, private addresses), Report library exports (CSV, Excel, PDF, background), schedules and time-off decisions (10 November). See `e2e/tests/web/`.
 
 **Next / planned**
 

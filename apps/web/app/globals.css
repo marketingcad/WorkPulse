@@ -78,3 +78,9 @@
     transition: none;
   }
 }
+
+/* The floating calculator and WorkPulse AI buttons cover the bottom right corner (about 64px): a
+   control scrolled into view (keyboard focus, a link to an anchor) stops above them. */
+html {
+  scroll-padding-bottom: 6rem;
+}

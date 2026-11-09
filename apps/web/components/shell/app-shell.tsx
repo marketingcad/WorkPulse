@@ -122,7 +122,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Notifications />
             <UserMenu />
           </header>
-          <main id="main" className="mx-auto w-full max-w-[1480px] flex-1 px-4 py-6 sm:px-6">
+          {/* pb-24: room to scroll the last row above the floating calculator and WorkPulse AI buttons. */}
+          <main id="main" className="mx-auto w-full max-w-[1480px] flex-1 px-4 pb-24 pt-6 sm:px-6">
             <HelpReturnBar />
             <SectionTabs />
             {children}

@@ -325,8 +325,9 @@ test.describe('moving the calculator', () => {
 
     await page.reload();
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect.poll(async () => Math.round((await boxOf(button)).x)).toBe(Math.round(moved.x));
-    expect(Math.round((await boxOf(button)).y)).toBe(Math.round(moved.y));
+    // The position is restored from storage: allow sub-pixel rounding (it was 375.5 → 375 or 376), not a real move.
+    await expect.poll(async () => Math.abs((await boxOf(button)).x - moved.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs((await boxOf(button)).y - moved.y)).toBeLessThanOrEqual(1);
 
     await button.click();
     await panel(page).getByRole('button', { name: 'Move to corner' }).click();
@@ -334,7 +335,7 @@ test.describe('moving the calculator', () => {
     await expect(panel(page).getByRole('button', { name: 'Move to corner' })).toHaveCount(0);
     await page.reload();
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    expect(Math.round((await boxOf(button)).y)).toBe(Math.round(corner.y));
+    expect(Math.abs((await boxOf(button)).y - corner.y)).toBeLessThanOrEqual(1);
   });
 
   test('moves with Alt and the arrow keys, for people who cannot drag', async ({ page, data }) => {

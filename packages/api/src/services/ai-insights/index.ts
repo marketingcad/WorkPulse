@@ -1,8 +1,10 @@
 import { localDate } from '@tallywork/domain';
-import { capFindings, previousPeriod, projectFindings, timesheetFindings, workflowFindings, workforceFindings, type Finding, type InsightSection, type Period } from '@tallywork/domain/insights';
+import { capFindings, financeFindings, previousPeriod, projectFindings, timesheetFindings, workflowFindings, workforceFindings, type Finding, type InsightSection, type Period } from '@tallywork/domain/insights';
 import { insightResultSchema, type InsightResultDto, type InsightSectionParam } from '@tallywork/contracts';
 import type { Ctx } from '../ctx';
 import { insightCache, insightCacheKey } from './cache';
+import { financeInputs, mayReadFinance } from './finance-inputs';
+import { audit } from '../events';
 import { projectInputs, timesheetInputs, workflowInputs, workforceInputs } from './gather';
 
 /**
@@ -29,6 +31,14 @@ async function section(x: Ctx, s: InsightSection, period: Period, previous: Peri
     if (!has(x, 'timesheets:read')) return { findings: [], limitations: ['Timesheet insights need access to timesheets.'] };
     const input = await timesheetInputs(x, period, previous, today);
     return { findings: timesheetFindings({ period, entries: input.entries, sheets: input.sheets, missing: input.missing, dayOf: input.dayOf }), limitations: input.limitations };
+  }
+  if (s === 'finance') {
+    // Each part only with its own permission; without any, no data is read and nothing is audited.
+    if (!mayReadFinance(x)) return { findings: [], limitations: ['Payroll insights need payroll access.', 'Invoice and payment insights need invoice or payment access.'] };
+    const input = await financeInputs(x, period, previous, today);
+    // Sensitive data: every computation is audited (which section and period; never amounts).
+    await audit(x, { action: 'insights.finance_viewed', targetType: 'insights', metadata: { section: 'finance', from: period.from, to: period.to } });
+    return financeFindings({ period, previous, ...input });
   }
   if (s === 'workflow') {
     const input = await workflowInputs(x, period, previous, today);

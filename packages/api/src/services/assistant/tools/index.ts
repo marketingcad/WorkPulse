@@ -6,7 +6,7 @@ import type { Actor } from '../../../context';
 import type { Ctx } from '../../ctx';
 import { approvalsTool } from './approvals';
 import { budgetsTool } from './budgets';
-import { projectRisksTool, checkTimesheetsTool, workflowInsightsTool, workforceInsightsTool } from './insights';
+import { financialInsightsTool, projectRisksTool, checkTimesheetsTool, workflowInsightsTool, workforceInsightsTool } from './insights';
 import { reportSummaryTool } from './report-summary';
 import { explainPerformanceTool } from './performance';
 import { docsTool } from './docs';
@@ -44,6 +44,7 @@ const ALL_TOOLS: AssistantTool<any>[] = [
   workflowInsightsTool,
   reportSummaryTool,
   explainPerformanceTool,
+  financialInsightsTool,
 ];
 
 /** The tool set for one actor: a tool the actor may not use is never offered to the model. */

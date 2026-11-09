@@ -87,3 +87,14 @@ export const workflowInsightsTool: AssistantTool<z.infer<typeof input>> = {
   statusKey: 'checking_workflow',
   run: async (x, q) => toToolOutput(x, await getInsights(x, 'workflow', q)),
 };
+
+/** Finance roles only (payroll, invoices, payments, billing or rates); every use is audited by the section. */
+export const financialInsightsTool: AssistantTool<z.infer<typeof input>> = {
+  name: 'getFinancialInsights',
+  description:
+    'Payroll and billing for people with finance access: payroll compared with the run before (per currency), overtime hours in payroll, an estimate of the current period\'s pay from approved and unapproved time (labelled an estimate; the payroll run stays the official figure), overdue invoices and payments received. Amounts are minor units with their currency.',
+  input,
+  allowed: (a) => has(a, 'payroll:read') || has(a, 'invoices:read') || has(a, 'payments:read') || has(a, 'billing:read') || has(a, 'rates:read'),
+  statusKey: 'checking_finance',
+  run: async (x, q) => toToolOutput(x, await getInsights(x, 'finance', q)),
+};

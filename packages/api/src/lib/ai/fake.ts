@@ -57,6 +57,7 @@ export class FakeProvider implements AiProvider {
     ];
     if (lower.includes('error-test')) throw new AiError('ai_unavailable');
     // Insight tools (AI Insights): checked before the plainer keywords below.
+    if (lower.includes('bottleneck') || lower.includes('waiting for')) return tool('getWorkflowInsights', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });
     if (lower.includes('review')) return tool('checkTimesheets', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });
     if (lower.includes('insight')) return tool('getWorkforceInsights', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });
     if (lower.includes('risk')) return tool('getProjectRisks', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });

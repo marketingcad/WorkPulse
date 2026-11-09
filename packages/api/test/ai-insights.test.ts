@@ -164,3 +164,36 @@ describe('AI Insights: final review fixes', () => {
     expect([...totals.values()].reduce((a, b) => a + b, 0)).toBe(9 * 3600);
   });
 });
+
+describe('AI Insights: workflow (Phase 2)', () => {
+  beforeEach(async () => (await import('../src/services/ai-insights/cache')).insightCache.clear());
+
+  it('lists what is waiting for a decision, for someone who approves', async () => {
+    const sub = await walt.client.post<any>(o('/timesheets/submit'), { date: '2026-10-26' });
+    expect(sub.body.status).toBe('SUBMITTED');
+    const r = await insights(ada, 'workflow', { from: '2026-11-02', to: '2026-11-08' });
+    expect(r.status).toBe(200);
+    expect(r.body.section).toBe('workflow');
+    const first = r.body.findings.find((f: any) => f.category === 'review_first');
+    expect(first.summary).toContain('Walt Worker');
+    expect(first.basis).toBe('fact');
+    expect(r.body.findings.find((f: any) => f.category === 'backlog_mix').metrics[0]).toMatchObject({ label: 'Timesheets', value: 1 });
+  });
+
+  it('gives a member who approves nothing no workflow findings, and says why', async () => {
+    const { workflowInputs } = await import('../src/services/ai-insights/gather');
+    const { actorCtx } = await import('./harness');
+    const w = await actorCtx(t, 'walt@i.test', orgId);
+    const input = await withTenant(t.deps.db, orgId, (tx) => workflowInputs({ ...w, tx }, { from: '2026-11-02', to: '2026-11-08' }, { from: '2026-10-26', to: '2026-11-01' }, '2026-11-09'));
+    expect(input.waiting).toEqual([]);
+    expect(input.limitations).toContain('Workflow insights are for people who approve timesheets, time off or expenses.');
+  });
+
+  it('a manager sees only their team waiting, never their own requests', async () => {
+    const { workflowInputs } = await import('../src/services/ai-insights/gather');
+    const { actorCtx } = await import('./harness');
+    const m = await actorCtx(t, 'mia@i.test', orgId);
+    const input = await withTenant(t.deps.db, orgId, (tx) => workflowInputs({ ...m, tx }, { from: '2026-11-02', to: '2026-11-08' }, { from: '2026-10-26', to: '2026-11-01' }, '2026-11-09'));
+    expect(input.waiting.every((w) => w.memberName !== 'Bea Bravo' && w.memberName !== 'Mia Manager')).toBe(true);
+  });
+});

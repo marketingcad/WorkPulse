@@ -77,3 +77,13 @@ export const projectRisksTool = insightTool(
   'projects:read',
   'checking_project_risks',
 );
+
+export const workflowInsightsTool: AssistantTool<z.infer<typeof input>> = {
+  name: 'getWorkflowInsights',
+  description:
+    'Approval workflow for a date range: what waits for the person to decide (timesheets, manual time, time off, expenses) in a suggested review order, what has waited more than 3 days, and the average days to decide a timesheet against the previous period. Never approves or changes anything.',
+  input,
+  allowed: (a) => has(a, 'timesheets:approve') || has(a, 'manual_time:approve') || has(a, 'time_off:approve') || has(a, 'expenses:approve'),
+  statusKey: 'checking_workflow',
+  run: async (x, q) => toToolOutput(x, await getInsights(x, 'workflow', q)),
+};

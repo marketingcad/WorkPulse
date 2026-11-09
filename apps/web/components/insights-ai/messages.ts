@@ -13,6 +13,7 @@ export const aiInsightsEn = {
   'aiInsights.tab.workforce': 'Workforce',
   'aiInsights.tab.timesheets': 'Timesheets',
   'aiInsights.tab.projects': 'Projects',
+  'aiInsights.tab.workflow': 'Workflow',
   'aiInsights.comparedWith': 'Compared with {from} – {to}',
   'aiInsights.basis.fact': 'Measured',
   'aiInsights.basis.observation': 'Compared with previous period',

@@ -20,6 +20,7 @@ const BY_SECTION: Partial<Record<NavTargetKey, Suggestion[]>> = {
     { q: 'Who is working right now?', gate: LIVE },
     { q: 'Which timesheets are awaiting approval?', gate: { perms: ['timesheets:approve'] } },
     { q: 'How many hours did the team log this week?', gate: TEAM_TIME },
+    { q: 'What needs my attention this week?', gate: TEAM_TIME },
   ],
   'timesheets.approvals': [
     { q: 'Which timesheets are awaiting approval?', gate: { perms: ['timesheets:approve'] } },

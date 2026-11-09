@@ -98,3 +98,13 @@ export const financialInsightsTool: AssistantTool<z.infer<typeof input>> = {
   statusKey: 'checking_finance',
   run: async (x, q) => toToolOutput(x, await getInsights(x, 'finance', q)),
 };
+
+export const capacityInsightsTool: AssistantTool<z.infer<typeof input>> = {
+  name: 'getCapacityInsights',
+  description:
+    'Workload and capacity for the next two weeks, per team the person manages: scheduled hours minus approved time off, against the recent pace and open task estimates. Flags overloaded and underused teams and suggests sharing work (a suggestion only; nobody is reassigned). The date range is ignored: it always covers the next 14 days.',
+  input,
+  allowed: (a) => (a.grants['schedules:read'] === 'team' || a.grants['schedules:read'] === 'org') && (a.grants['time:read'] === 'team' || a.grants['time:read'] === 'org'),
+  statusKey: 'checking_capacity',
+  run: async (x, q) => toToolOutput(x, await getInsights(x, 'capacity', q)),
+};

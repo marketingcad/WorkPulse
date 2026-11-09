@@ -1,9 +1,10 @@
 import { localDate } from '@tallywork/domain';
-import { capFindings, financeFindings, previousPeriod, projectFindings, timesheetFindings, workflowFindings, workforceFindings, type Finding, type InsightSection, type Period } from '@tallywork/domain/insights';
+import { capacityFindings, capFindings, financeFindings, previousPeriod, projectFindings, timesheetFindings, workflowFindings, workforceFindings, type Finding, type InsightSection, type Period } from '@tallywork/domain/insights';
 import { insightResultSchema, type InsightResultDto, type InsightSectionParam } from '@tallywork/contracts';
 import type { Ctx } from '../ctx';
 import { insightCache, insightCacheKey } from './cache';
 import { financeInputs, mayReadFinance } from './finance-inputs';
+import { capacityInputs, capacityPeriod, mayReadCapacity } from './capacity-inputs';
 import { audit } from '../events';
 import { projectInputs, timesheetInputs, workflowInputs, workforceInputs } from './gather';
 
@@ -60,6 +61,15 @@ export async function getInsights(x: Ctx, which: InsightSectionParam, q: Period)
   if (cached) return cached;
 
   const today = localDate(x.deps.now(), x.org.timezone);
+  // Capacity always looks at the next two weeks from today, whatever period was asked for.
+  if (which === 'capacity') {
+    const ahead = capacityPeriod(today);
+    const r = mayReadCapacity(x) ? capacityFindings({ period: ahead, teams: (await capacityInputs(x, ahead, today)).teams }) : { findings: [], limitations: ['Capacity insights need access to schedules and time for a team or the organization.'] };
+    const capped = capFindings(r.findings, SECTION_MAX);
+    const result = insightResultSchema.parse({ section: which, period: ahead, previous: previousPeriod(ahead.from, ahead.to), findings: capped.findings, limitations: [...r.limitations, ...(capped.limitation ? [capped.limitation] : [])].slice(0, 20) });
+    insightCache.set(key, result, now);
+    return result;
+  }
   // A period that runs past today is measured up to today, and compared with the same number of
   // days just before it: a partial week is never compared with a whole one.
   const future = q.from > today;

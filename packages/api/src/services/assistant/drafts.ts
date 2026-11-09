@@ -1,4 +1,4 @@
-import { addDaysToDate, forbidden, notFound } from '@tallywork/domain';
+import { addDaysToDate, forbidden, localDate, notFound } from '@tallywork/domain';
 import type { AssistantDraftDto, AssistantDraftInput } from '@tallywork/contracts';
 import { AiError } from '../../lib/ai/provider';
 import type { Ctx } from '../ctx';
@@ -45,7 +45,8 @@ async function factsFor(x: Ctx, i: AssistantDraftInput): Promise<{ instruction: 
     }
     case 'task_description': {
       if (!has(x, 'tasks:read')) throw forbidden();
-      const task = (await listTasks(x, { includeArchived: true })).find((t) => t.id === i.task_id);
+      // Looked up by id within the person's scope (never "the first 2000, then find").
+      const [task] = await listTasks(x, { includeArchived: true, ids: [i.task_id] });
       if (!task) throw notFound('task');
       return {
         instruction: 'Write a clear task description: what to do and what done looks like, in 2 to 5 sentences or a short list.',
@@ -55,8 +56,11 @@ async function factsFor(x: Ctx, i: AssistantDraftInput): Promise<{ instruction: 
     case 'timesheet_reminder': {
       if (!has(x, 'timesheets:read') || !has(x, 'members:read')) throw forbidden();
       const names = new Map((await listMemberOptions(x, { includeRemoved: true })).map((m) => [m.id, { name: m.name, active: m.status === 'ACTIVE', tracked: !!m.tracking_enabled }]));
-      // Pay periods that ended by the end of the range are the ones a timesheet is due for.
-      const missing = (await missingTimesheets(x, { from: i.from, to: i.to }, addDaysToDate(i.to, 1), names)) ?? [];
+      // A pay period is due once it has ended: by the end of the range, and never later than today
+      // in the organization's time zone (a period ending today is not late yet).
+      const dayAfter = addDaysToDate(i.to, 1);
+      const today = localDate(x.deps.now(), x.org.timezone);
+      const missing = (await missingTimesheets(x, { from: i.from, to: i.to }, dayAfter < today ? dayAfter : today, names)) ?? [];
       return {
         instruction: 'Write a short, friendly reminder email asking these people to submit their timesheets. Start with a subject line.',
         facts: [`Period: ${i.from} to ${i.to}`, missing.length ? `Not submitted: ${missing.map((m) => m.memberName).join(', ')}` : 'Not submitted: [nobody found; add the names]'],

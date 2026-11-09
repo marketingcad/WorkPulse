@@ -83,3 +83,36 @@ describe('drafts', () => {
     expect((await draft(walt, { kind: 'rewrite', text: 'hello', style: 'improve' })).status).toBe(403);
   });
 });
+
+describe('drafts: final review fixes', () => {
+  it('I3: drafts a task description by looking the task up directly, within scope', async () => {
+    const task = (await ada.post<any>(o(`/projects/${alpha}/tasks`), { title: 'Fix the login page' })).body;
+    expect(task.id).toBeTruthy();
+    const r = await draft(ada, { kind: 'task_description', task_id: task.id });
+    expect(r.status).toBe(200);
+    expect(r.body.facts_used.join(' ')).toContain('Fix the login page');
+    const hidden = (await ada.post<any>(o(`/projects/${beta}/tasks`), { title: 'Secret task' })).body;
+    const before = t.ai.calls.length;
+    expect((await draft(mia, { kind: 'task_description', task_id: hidden.id })).status).toBe(404);
+    expect(t.ai.calls.length).toBe(before);
+  });
+
+  it('I4: refuses a backwards range or one longer than 93 days', async () => {
+    expect((await draft(ada, { kind: 'timesheet_reminder', from: '2026-11-08', to: '2026-11-02' })).status).toBe(400);
+    expect((await draft(ada, { kind: 'project_update', project_id: alpha, from: '2000-01-01', to: '2026-12-31' })).status).toBe(400);
+  });
+
+  it('I5: a pay period that ends today is not yet late', async () => {
+    // Sunday 15 November (New York): the week of 9 November ends today. Walt worked that week.
+    await ada.post(o('/manual-time'), { membership_id: (await ada.get<any>(o('/workers'))).body.find((w: any) => w.name === 'Walt Worker')?.id, project_id: alpha, started_at: '2026-11-10T14:00:00Z', ended_at: '2026-11-10T15:00:00Z', reason: 'Entered by admin' });
+    const saved = new Date(t.clock.now);
+    t.clock.set(new Date('2026-11-15T15:00:00Z'));
+    try {
+      const r = await draft(ada, { kind: 'timesheet_reminder', from: '2026-11-09', to: '2026-11-15' });
+      expect(r.status).toBe(200);
+      expect(r.body.facts_used.join(' ')).not.toContain('Walt Worker');
+    } finally {
+      t.clock.set(saved);
+    }
+  });
+});

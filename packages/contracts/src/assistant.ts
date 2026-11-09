@@ -99,7 +99,12 @@ export const assistantDraftInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('timesheet_reminder'), from: isoDate, to: isoDate }),
   z.object({ kind: z.literal('project_update'), project_id: id, from: isoDate, to: isoDate }),
   z.object({ kind: z.literal('rewrite'), text: nonEmpty(4000), style: z.enum(DRAFT_STYLES), language: z.string().trim().min(2).max(40).optional() }),
-]);
+]).superRefine((v, ctx) => {
+  // The same bounds as AI Insights: a forward range of at most 93 days.
+  if (!('from' in v)) return;
+  if (v.to < v.from) ctx.addIssue({ code: 'custom', message: 'The end must be on or after the start', path: ['to'] });
+  else if ((Date.parse(v.to) - Date.parse(v.from)) / 86_400_000 + 1 > MAX_INSIGHT_DAYS) ctx.addIssue({ code: 'custom', message: `At most ${MAX_INSIGHT_DAYS} days`, path: ['to'] });
+});
 export type AssistantDraftInput = z.infer<typeof assistantDraftInput>;
 export interface AssistantDraftDto {
   text: string;

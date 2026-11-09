@@ -45,6 +45,26 @@ test.describe('AI workflow (system admin)', () => {
     await expect(desc).toHaveValue(typed);
   });
 
+  test('a draft that arrives late changes only the description, never fields edited meanwhile', async ({ page, data }) => {
+    // Hold the draft back so the person can keep editing while it is written.
+    await page.route('**/assistant/drafts', async (route) => {
+      await new Promise((r) => setTimeout(r, 1500));
+      await route.continue();
+    });
+    await page.goto(`/o/${data.orgId}/projects/${data.projects.website.id}`);
+    await page.getByRole('button', { name: /New task/ }).first().click();
+    const dialog = page.getByRole('dialog').filter({ has: page.getByLabel('Description') });
+    await dialog.getByLabel('Title').fill(`Late draft ${uid()}`);
+    await dialog.getByLabel('Description').fill('make the button blue');
+    await dialog.getByRole('button', { name: 'Write with AI' }).click();
+    await page.getByRole('menuitem', { name: 'Improve writing' }).click();
+    // While it is written, the description cannot be typed over, and other fields can still change.
+    await expect(dialog.getByLabel('Description')).toHaveAttribute('readonly', '');
+    await dialog.getByLabel('Priority').selectOption('HIGH');
+    await expect(dialog.getByLabel('Description')).toHaveValue(/^Draft: /);
+    await expect(dialog.getByLabel('Priority')).toHaveValue('HIGH');
+  });
+
   test('when WorkPulse AI fails, the field keeps what was typed and says so', async ({ page, data }) => {
     await page.route('**/assistant/drafts', (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ title: 'The AI service is unavailable.', status: 503, code: 'ai_unavailable' }) }));
     await page.goto(`/o/${data.orgId}/projects/${data.projects.website.id}`);
@@ -120,6 +140,10 @@ test.describe('AI workflow (system admin)', () => {
     await expect(page.getByText('Wade submitted a timesheet')).toHaveCount(0);
     await more.click();
     await expect(page.getByText(/Wade submitted a timesheet/)).toBeVisible();
+    // Opening the group marks every notification in it read, not only the first.
+    const read = page.waitForRequest((r) => r.url().endsWith('/notifications/read') && r.method() === 'POST');
+    await page.getByText('Nina submitted a timesheet').click();
+    expect((await read).postDataJSON()).toEqual({ ids: ['n2', 'n3', 'n4'] });
   });
 });
 

@@ -62,3 +62,28 @@ describe('weekly AI Insights summary', () => {
     expect(await weekly(zedOrg, weekStartDay)).toBe(0);
   });
 });
+
+describe('weekly summary: final review fixes', () => {
+  it('I1: one member failing never undoes or re-sends another member’s summary', async () => {
+    const { client: lead, orgId: org2 } = await signup(t, 'Lia', 'lia@w2.test', 'Second Org');
+    const sam = await addMember(t, lead, org2, 'Sam Admin', 'sam@w2.test', 'SYSTEM_ADMIN');
+    const wade = await addMember(t, lead, org2, 'Wade Worker', 'wade@w2.test');
+    const p = (await lead.post<any>(`/orgs/${org2}/projects`, { name: 'Beta', member_ids: [wade.membershipId] })).body.id as string;
+    await lead.post(`/orgs/${org2}/manual-time`, { membership_id: wade.membershipId, project_id: p, started_at: '2026-11-03T14:00:00Z', ended_at: '2026-11-03T17:00:00Z', reason: 'Entered by admin' });
+    expect((await lead.put(`/orgs/${org2}/notification-preferences`, { preferences: [{ type: 'insights.weekly', in_app: true, email: true }] })).status).toBe(200);
+    const liaId = (await lead.get<any>(`/orgs/${org2}`)).body.membership.id as string;
+    insightCache.clear();
+    const { getInsights } = await import('../src/services/ai-insights');
+    const failing: typeof getInsights = async (x, s, q) => {
+      if (x.actor.membershipId === sam.membershipId) throw new Error('boom');
+      return getInsights(x, s, q);
+    };
+    const mails = t.mailer.sent.length;
+    const run = () => withTenant(t.deps.db, org2, (tx) => sendWeeklyInsights(tx, t.deps, org2, weekStartDay, failing));
+    await run();
+    await run();
+    expect(await mine(org2, liaId)).toHaveLength(1);
+    expect(await mine(org2, sam.membershipId)).toHaveLength(0);
+    expect(t.mailer.sent.length).toBe(mails + 1);
+  });
+});

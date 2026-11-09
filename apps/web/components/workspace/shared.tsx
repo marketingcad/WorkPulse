@@ -73,6 +73,8 @@ export function TaskDialog({
   const toast = useToast();
   const org = useOrg();
   const [f, setF] = useState({ project_id: '', title: '', description: '', status: 'TODO', priority: 'MEDIUM', due_date: '', estimate: '', assignee_ids: [] as string[] });
+  /** WorkPulse AI is writing the description: it is read-only until the draft arrives. */
+  const [draftingDesc, setDraftingDesc] = useState(false);
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   // Set synchronously: two quick Enter presses both run before `busy` re-renders.
@@ -202,10 +204,10 @@ export function TaskDialog({
           </Field>
         )}
         <Field label="Description" htmlFor="task-desc" className="sm:col-span-2">
-          <Textarea id="task-desc" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} maxLength={5000} />
+          <Textarea id="task-desc" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} maxLength={5000} readOnly={draftingDesc} />
           {org.assistant_enabled && (
             <Suspense fallback={null}>
-              <DraftButton value={f.description} onChange={(text) => setF({ ...f, description: text.slice(0, 5000) })} source={task ? { kind: 'task_description', task_id: task.id } : undefined} />
+              <DraftButton value={f.description} onChange={(text) => setF((cur) => ({ ...cur, description: text.slice(0, 5000) }))} onBusy={setDraftingDesc} source={task ? { kind: 'task_description', task_id: task.id } : undefined} />
             </Suspense>
           )}
         </Field>
@@ -385,7 +387,8 @@ export function ProjectFields({
   f: ProjectForm;
   /** The saved project, when editing: Write with AI can draft from its details. */
   projectId?: string;
-  setF: (f: ProjectForm) => void;
+  /** A state setter: Write with AI applies its draft as an update to the latest form. */
+  setF: React.Dispatch<React.SetStateAction<ProjectForm>>;
   err: ApiError | null;
   clients?: ClientDto[];
   workers?: MemberOptionDto[];
@@ -394,6 +397,7 @@ export function ProjectFields({
 }) {
   const org = useOrg();
   const [newClient, setNewClient] = useState(false);
+  const [draftingDesc, setDraftingDesc] = useState(false);
   const [created, setCreated] = useState<ClientDto[]>([]);
   const clientList = [...(clients ?? []), ...created.filter((c) => !(clients ?? []).some((x) => x.id === c.id))];
   const currency = clientList.find((c) => c.id === f.client_id)?.currency ?? org.organization.currency;
@@ -465,10 +469,10 @@ export function ProjectFields({
           </Field>
         )}
         <Field label="Description" htmlFor="proj-desc" className="sm:col-span-2">
-          <Textarea id="proj-desc" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} maxLength={2000} className="min-h-16" />
+          <Textarea id="proj-desc" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} maxLength={2000} className="min-h-16" readOnly={draftingDesc} />
           {org.assistant_enabled && (
             <Suspense fallback={null}>
-              <DraftButton value={f.description} onChange={(text) => setF({ ...f, description: text.slice(0, 2000) })} source={projectId ? { kind: 'project_description', project_id: projectId } : undefined} />
+              <DraftButton value={f.description} onChange={(text) => setF((cur) => ({ ...cur, description: text.slice(0, 2000) }))} onBusy={setDraftingDesc} source={projectId ? { kind: 'project_description', project_id: projectId } : undefined} />
             </Suspense>
           )}
         </Field>

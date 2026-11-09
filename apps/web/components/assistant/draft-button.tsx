@@ -20,9 +20,17 @@ const STYLES: Array<{ style: Style; label: string }> = [
  * what is typed. The result goes into the field to edit; nothing is saved until the person saves,
  * and Undo puts the previous text back. Loaded on demand; shown only when WorkPulse AI is on.
  */
-export default function DraftButton({ value, onChange, source }: { value: string; onChange: (text: string) => void; source?: { kind: 'project_description'; project_id: string } | { kind: 'task_description'; task_id: string } }) {
+/**
+ * `onChange` must set only the field (an updater on the latest form state): a draft can arrive
+ * after the person changed other fields. `onBusy` lets the field be read-only while it is written.
+ */
+export default function DraftButton({ value, onChange, onBusy, source }: { value: string; onChange: (text: string) => void; onBusy?: (busy: boolean) => void; source?: { kind: 'project_description'; project_id: string } | { kind: 'task_description'; task_id: string } }) {
   const org = useOrg();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyState] = useState(false);
+  const setBusy = (b: boolean) => {
+    setBusyState(b);
+    onBusy?.(b);
+  };
   const [previous, setPrevious] = useState<string | null>(null);
   const [facts, setFacts] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);

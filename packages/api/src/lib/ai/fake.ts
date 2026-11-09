@@ -28,7 +28,8 @@ export class FakeProvider implements AiProvider {
 
   async *streamTurn(i: AiTurnInput): AsyncIterable<AiChunk> {
     this.calls.push(structuredClone({ system: i.system, messages: i.messages, tools: i.tools, ...(i.toolChoice ? { toolChoice: i.toolChoice } : {}) }));
-    const chunks = this.queue.length ? this.queue.shift()! : i.tools.length ? this.respond(i.messages) : this.draft(i.messages);
+    // A draft (services/assistant/drafts.ts, DRAFT_SYSTEM) gets plain text; everything else the rules.
+    const chunks = this.queue.length ? this.queue.shift()! : i.system.startsWith('Write the requested text for WorkPulse users.') ? this.draft(i.messages) : this.respond(i.messages);
     for (const chunk of chunks) {
       if (i.signal.aborted) return;
       yield chunk;

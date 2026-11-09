@@ -16,11 +16,13 @@ import { HelpReturnBar } from '@/components/help/help-return';
 import { TimerBar } from './timer-bar';
 import { HelpLink } from '@/components/help/help-link';
 import { CalculatorLauncher } from '@/components/calculator/calculator-launcher';
-import { AssistantLauncher } from '@/components/assistant/assistant-launcher';
 import { MyAvatar } from '@/lib/avatars';
 
 // Opened from the organization switcher only, so not part of every page.
 const NewOrgDialog = lazy(() => import('./new-org-dialog').then((m) => ({ default: m.NewOrgDialog })));
+// Fetched only when the assistant is on for this person, after the page loads, so it adds nothing
+// to every page's first-load JavaScript (apps/web/scripts/check-bundle-budget.mjs).
+const AssistantLauncher = lazy(() => import('@/components/assistant/assistant-launcher').then((m) => ({ default: m.AssistantLauncher })));
 
 /**
  * The phone navigation drawer, as a modal dialog (audit QA-04): focus moves in and stays in while it
@@ -128,7 +130,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </div>
       <CalculatorLauncher />
-      <AssistantLauncher />
+      {org.assistant_enabled && (
+        <Suspense fallback={null}>
+          <AssistantLauncher />
+        </Suspense>
+      )}
     </TourProvider>
   );
 }

@@ -70,6 +70,9 @@ describe('what every page loads', () => {
     'components/shell/new-org-dialog.tsx',
     'components/workspace/shared.tsx',
     'components/workspace/client-dialog.tsx',
+    'components/assistant/assistant-launcher.tsx',
+    'components/assistant/assistant-panel.tsx',
+    'components/assistant/messages.ts',
   ])('does not include %s, which loads when it is needed', (file) => {
     expect(shell).not.toContain(file);
   });

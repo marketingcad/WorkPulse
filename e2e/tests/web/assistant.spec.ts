@@ -18,6 +18,8 @@ async function openPanel(page: Page) {
 async function ask(page: Page, text: string) {
   const panel = page.getByTestId('assistant-panel');
   await panel.getByTestId('assistant-input').fill(text);
+  // Send stays disabled until the previous turn is saved; Enter before then is ignored, as for a person.
+  await expect(panel.getByTestId('assistant-send')).toBeEnabled({ timeout: 15_000 });
   await panel.getByTestId('assistant-input').press('Enter');
 }
 

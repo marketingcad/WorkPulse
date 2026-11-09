@@ -8,6 +8,7 @@ import { Button, ConfirmDialog, IconButton, Spinner, cx, useToast } from '@tally
 import type { AssistantMessageDto } from '@tallywork/contracts';
 import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
+import './messages';
 import { Markdown } from './markdown-view';
 import { useAssistant, type AssistantError } from './use-assistant';
 

@@ -8,6 +8,8 @@ import { useOrg } from '@/lib/org';
 import { fromMinor, toMinor } from '@/components/finance/types';
 import { RateNote } from '@/components/finance/rate-note';
 import { MultiSelect } from './multi-select';
+// Write with AI: loaded on demand, only when WorkPulse AI is on.
+const DraftButton = lazy(() => import('@/components/assistant/draft-button'));
 import { ColorPicker, PRIORITIES, PROJECT_COLORS, PROJECT_STATUSES, TASK_STATUSES, hoursToSeconds, secondsToHours, useOrgAction } from './basics';
 
 export * from './basics';
@@ -69,6 +71,7 @@ export function TaskDialog({
 }) {
   const run = useOrgAction();
   const toast = useToast();
+  const org = useOrg();
   const [f, setF] = useState({ project_id: '', title: '', description: '', status: 'TODO', priority: 'MEDIUM', due_date: '', estimate: '', assignee_ids: [] as string[] });
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -200,6 +203,11 @@ export function TaskDialog({
         )}
         <Field label="Description" htmlFor="task-desc" className="sm:col-span-2">
           <Textarea id="task-desc" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} maxLength={5000} />
+          {org.assistant_enabled && (
+            <Suspense fallback={null}>
+              <DraftButton value={f.description} onChange={(text) => setF({ ...f, description: text.slice(0, 5000) })} source={task ? { kind: 'task_description', task_id: task.id } : undefined} />
+            </Suspense>
+          )}
         </Field>
         <button type="submit" hidden />
       </form>
@@ -372,8 +380,11 @@ export function ProjectFields({
   workers,
   teams,
   showAssignments = true,
+  projectId,
 }: {
   f: ProjectForm;
+  /** The saved project, when editing: Write with AI can draft from its details. */
+  projectId?: string;
   setF: (f: ProjectForm) => void;
   err: ApiError | null;
   clients?: ClientDto[];
@@ -455,6 +466,11 @@ export function ProjectFields({
         )}
         <Field label="Description" htmlFor="proj-desc" className="sm:col-span-2">
           <Textarea id="proj-desc" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} maxLength={2000} className="min-h-16" />
+          {org.assistant_enabled && (
+            <Suspense fallback={null}>
+              <DraftButton value={f.description} onChange={(text) => setF({ ...f, description: text.slice(0, 2000) })} source={projectId ? { kind: 'project_description', project_id: projectId } : undefined} />
+            </Suspense>
+          )}
         </Field>
         <ProjectBreaksField breaks={f.breaks} onChange={(breaks) => setF({ ...f, breaks })} err={err} />
       </div>
@@ -637,7 +653,7 @@ export function ProjectDialog({
         </>
       }
     >
-      <ProjectFields f={f} setF={setF} err={err} clients={clientsForProject(clients, project)} workers={workers} teams={teams} />
+      <ProjectFields f={f} setF={setF} err={err} clients={clientsForProject(clients, project)} workers={workers} teams={teams} projectId={project?.id} />
     </Dialog>
   );
 }

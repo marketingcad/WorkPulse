@@ -598,7 +598,7 @@ function SettingsTab({ project }: { project: ProjectDto }) {
             void save();
           }}
         >
-          <ProjectFields f={f} setF={setF} err={err} clients={clients} showAssignments={false} />
+          <ProjectFields f={f} setF={setF} err={err} clients={clients} showAssignments={false} projectId={project.id} />
           <div className="mt-4 flex justify-end gap-2">
             <Button onClick={() => setF(projectToForm(project, hoursPerDay))}>Reset</Button>
             <Button type="submit" variant="primary" loading={busy} disabled={!f.name.trim()}>

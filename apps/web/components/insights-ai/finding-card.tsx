@@ -1,4 +1,5 @@
 'use client';
+import { Suspense, lazy, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Info, Sparkles, TriangleAlert } from 'lucide-react';
 import type { InsightFindingDto } from '@tallywork/contracts/assistant';
@@ -8,6 +9,9 @@ import { t } from '@/lib/i18n';
 import { useOrg } from '@/lib/org';
 import { askAssistant } from '@/lib/assistant-bridge';
 import './messages';
+
+// Opened from the missing-timesheets finding only: loaded on demand.
+const ReminderDraftDialog = lazy(() => import('./reminder-draft-dialog'));
 
 const SEVERITY = {
   warning: { tone: 'danger', icon: TriangleAlert },
@@ -22,6 +26,7 @@ const fmt = (unit: InsightFindingDto['metrics'][number]['unit'], value: number) 
 export function FindingCard({ finding: f }: { finding: InsightFindingDto }) {
   const org = useOrg();
   const sev = SEVERITY[f.severity];
+  const [drafting, setDrafting] = useState(false);
   const links = f.links.map((k) => resolveNav(org.grants, org.organization.id, k)).filter((l): l is NonNullable<typeof l> => !!l);
   return (
     <article data-testid="insight-card" data-category={f.category} data-basis={f.basis} className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4 shadow-sm">
@@ -61,12 +66,22 @@ export function FindingCard({ finding: f }: { finding: InsightFindingDto }) {
               {l.label}
             </Link>
           ))}
+          {org.assistant_enabled && f.category === 'missing' && (
+            <Button size="xs" variant="ghost" onClick={() => setDrafting(true)}>
+              {t('aiInsights.draftReminder')}
+            </Button>
+          )}
           {org.assistant_enabled && (
             <Button size="xs" variant="ghost" className="ml-auto" icon={<Sparkles className="size-3" aria-hidden />} onClick={() => askAssistant(t('aiInsights.askQuestion', { title: f.title, from: f.period.from, to: f.period.to }))}>
               {t('aiInsights.ask')}
             </Button>
           )}
         </footer>
+      )}
+      {drafting && (
+        <Suspense fallback={null}>
+          <ReminderDraftDialog period={f.period} onClose={() => setDrafting(false)} />
+        </Suspense>
       )}
     </article>
   );

@@ -128,3 +128,14 @@ describe('notification bell', () => {
     expect(reachable('app/o/[orgId]/layout.tsx')).not.toContain('components/shell/notification-list.tsx');
   });
 });
+
+describe('Write with AI', () => {
+  it('loads on demand: neither the shell nor the project and task dialogs import it', () => {
+    expect(reachable('app/o/[orgId]/layout.tsx')).not.toContain('components/assistant/draft-button.tsx');
+    expect(reachable('components/workspace/shared.tsx')).not.toContain('components/assistant/draft-button.tsx');
+    expect(reachable('components/insights-ai/finding-card.tsx')).not.toContain('components/insights-ai/reminder-draft-dialog.tsx');
+  });
+  it('is actually wired into the project and task dialogs', () => {
+    expect(readFileSync(path.join(web, 'components/workspace/shared.tsx'), 'utf8')).toContain("import('@/components/assistant/draft-button')");
+  });
+});

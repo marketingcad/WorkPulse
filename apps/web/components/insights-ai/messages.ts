@@ -24,6 +24,7 @@ export const aiInsightsEn = {
   'aiInsights.previous': 'previously {value}',
   'aiInsights.nextStep': 'Next step',
   'aiInsights.ask': 'Explain with WorkPulse AI',
+  'aiInsights.draftReminder': 'Draft reminder',
   'aiInsights.askQuestion': 'Explain this insight and what I should do: "{title}" ({from} to {to}).',
   'aiInsights.limitations': 'Not included',
   'aiInsights.emptyTitle': 'Nothing needs your attention for this period',

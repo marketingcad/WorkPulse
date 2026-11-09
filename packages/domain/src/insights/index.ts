@@ -4,3 +4,6 @@ export * from './timesheets';
 export * from './workforce';
 export * from './projects';
 export * from './workflow';
+export * from './performance';
+export * from './finance';
+export * from './capacity';

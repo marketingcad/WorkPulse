@@ -83,3 +83,17 @@ describe('insight schemas', () => {
     expect(insightSectionInput.safeParse('payroll').success).toBe(false);
   });
 });
+
+describe('insight money metrics (Phase 3)', () => {
+  const f = (metric: Record<string, unknown>, section = 'finance') => ({
+    id: 'finance:x:1', section, category: 'x', severity: 'info', basis: 'fact', title: 't', summary: 's',
+    period: { from: '2026-10-01', to: '2026-10-31' }, metrics: [metric], refs: [], links: [], next_step: 'n',
+  });
+  it('accepts money with a currency and rejects money without one', async () => {
+    const { insightFindingSchema } = await import('../src/assistant');
+    expect(insightFindingSchema.safeParse(f({ label: 'Gross pay', value: 12000, unit: 'money', currency: 'USD' })).success).toBe(true);
+    expect(insightFindingSchema.safeParse(f({ label: 'Gross pay', value: 12000, unit: 'money' })).success).toBe(false);
+    expect(insightFindingSchema.safeParse(f({ label: 'Gross pay', value: 12000, unit: 'money', currency: 'usd' })).success).toBe(false);
+    expect(insightFindingSchema.safeParse(f({ label: 'Hours', value: 1, unit: 'hours' }, 'capacity')).success).toBe(true);
+  });
+});

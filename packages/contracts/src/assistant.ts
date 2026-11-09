@@ -56,7 +56,7 @@ export type AssistantStreamEvent = z.infer<typeof assistantStreamEvent>;
 
 // ─── AI Insights ─────────────────────────────────────────────────────────────
 /** The AI Insights page and tools: findings computed in code (never by the model), see @tallywork/domain/insights. */
-export const insightSectionInput = z.enum(['overview', 'workforce', 'timesheets', 'projects', 'workflow']);
+export const insightSectionInput = z.enum(['overview', 'workforce', 'timesheets', 'projects', 'workflow', 'finance', 'capacity']);
 export type InsightSectionParam = z.infer<typeof insightSectionInput>;
 
 const MAX_INSIGHT_DAYS = 93;
@@ -68,15 +68,28 @@ export const insightQueryInput = z
 const period = z.object({ from: isoDate, to: isoDate });
 export const insightFindingSchema = z.object({
   id: z.string().max(400),
-  section: z.enum(['workforce', 'timesheets', 'projects', 'workflow']),
+  section: z.enum(['workforce', 'timesheets', 'projects', 'workflow', 'finance', 'capacity', 'performance']),
   category: z.string().max(60),
   severity: z.enum(['info', 'attention', 'warning']),
   basis: z.enum(['fact', 'observation', 'estimate']),
   title: z.string().max(300),
   summary: z.string().max(2000),
   period,
-  metrics: z.array(z.object({ label: z.string().max(80), value: z.number().finite(), unit: z.enum(['hours', 'percent', 'count', 'days']), previous: z.number().finite().nullable().optional() })).max(10),
-  refs: z.array(z.object({ type: z.enum(['member', 'team', 'project', 'timesheet', 'task']), id: z.string().max(200), name: z.string().max(200) })).max(25),
+  metrics: z
+    .array(
+      z
+        .object({
+          label: z.string().max(80),
+          value: z.number().finite(),
+          unit: z.enum(['hours', 'percent', 'count', 'days', 'money']),
+          /** ISO 4217; money values are integer minor units in this currency, never summed across currencies. */
+          currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+          previous: z.number().finite().nullable().optional(),
+        })
+        .refine((m) => m.unit !== 'money' || (m.currency !== undefined && Number.isInteger(m.value)), { message: 'Money needs a currency and minor units', path: ['currency'] }),
+    )
+    .max(10),
+  refs: z.array(z.object({ type: z.enum(['member', 'team', 'project', 'timesheet', 'task', 'payroll_run', 'invoice']), id: z.string().max(200), name: z.string().max(200) })).max(25),
   links: z.array(z.enum(NAV_TARGET_KEYS as [string, ...string[]])).max(5),
   next_step: z.string().max(500),
 });

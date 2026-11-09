@@ -10,18 +10,20 @@ import type { NavTargetKey } from '../assistant/navigation';
  */
 export type Basis = 'fact' | 'observation' | 'estimate';
 export type Severity = 'info' | 'attention' | 'warning';
-export type InsightSection = 'workforce' | 'timesheets' | 'projects' | 'workflow';
+export type InsightSection = 'workforce' | 'timesheets' | 'projects' | 'workflow' | 'finance' | 'capacity' | 'performance';
 
 export interface Metric {
   label: string;
   value: number;
-  unit: 'hours' | 'percent' | 'count' | 'days';
+  unit: 'hours' | 'percent' | 'count' | 'days' | 'money';
+  /** ISO 4217, required when unit is 'money' (values are then integer minor units). */
+  currency?: string;
   /** The same measure in the previous period; null when there is none to compare with. */
   previous?: number | null;
 }
 
 export interface InsightRef {
-  type: 'member' | 'team' | 'project' | 'timesheet' | 'task';
+  type: 'member' | 'team' | 'project' | 'timesheet' | 'task' | 'payroll_run' | 'invoice';
   id: string;
   name: string;
 }

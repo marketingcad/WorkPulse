@@ -11,6 +11,8 @@ export const ADMIN_STATE = path.join(AUTH_DIR, 'admin.json');
 export const WORKER_STATE = path.join(AUTH_DIR, 'worker.json');
 /** A web user who may read budgets and their own time and profile, but nothing about money (custom role). */
 export const VIEWER_STATE = path.join(AUTH_DIR, 'viewer.json');
+/** A team manager of the Design team (built-in TEAM_MANAGER role): team-scoped, no money. */
+export const MANAGER_STATE = path.join(AUTH_DIR, 'manager.json');
 export const DATA_FILE = path.join(AUTH_DIR, 'data.json');
 
 /** Every account the suite creates uses this password (test-only data in a throwaway database). */

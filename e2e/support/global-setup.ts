@@ -1,7 +1,7 @@
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { request, type APIRequestContext } from '@playwright/test';
-import { ADMIN_STATE, AUTH_DIR, DATA_FILE, PASSWORD, VIEWER_STATE, WEB_URL, WORKER_STATE } from './env';
+import { ADMIN_STATE, AUTH_DIR, DATA_FILE, MANAGER_STATE, PASSWORD, VIEWER_STATE, WEB_URL, WORKER_STATE } from './env';
 
 /**
  * Builds this run's test data through the public API, the same way a customer would:
@@ -21,6 +21,8 @@ export interface E2EData {
   newcomer: { email: string; name: string; membershipId: string };
   /** Custom role: budgets (without amounts), and their own time and profile. Nothing about money elsewhere. */
   viewer: { email: string; name: string; membershipId: string };
+  /** Built-in TEAM_MANAGER: manager of the Design team, assigned to the website project. */
+  manager: { email: string; name: string; membershipId: string };
   teamName: string;
   projects: { website: { id: string; name: string }; app: { id: string; name: string } };
   payStub: { id: string; periodStart: string; periodEnd: string; netMinor: number; grossMinor: number };
@@ -73,6 +75,8 @@ export default async function globalSetup(): Promise<void> {
   const newcomer = await accept((await invite('nina', 'Nina Newcomer')).invite_url, 'Nina Newcomer');
   const viewerRole = await json(await admin.post(o('/roles'), { data: { name: `Budget viewer ${run}`, grants: { 'budgets:read': 'org', 'time:read': 'own', 'members:read': 'own' } } }), 'viewer role');
   const viewer = await accept((await json(await admin.post(o('/invitations'), { data: { email: email('vera'), name: 'Vera Viewer', role_id: viewerRole.id } }), 'invite vera')).invite_url, 'Vera Viewer');
+  const manager = await accept((await json(await admin.post(o('/invitations'), { data: { email: email('mona'), name: 'Mona Manager', role_id: roleId('TEAM_MANAGER'), team_ids: [team.id], project_ids: [website.id] } }), 'invite mona')).invite_url, 'Mona Manager');
+  await json(await admin.put(o(`/teams/${team.id}/members/${manager.membershipId}`), { data: { role: 'MANAGER' } }), 'mona manages the team');
 
   // A finalized weekly payroll for Wade: 3 h approved time at $25/h, plus a bonus and a deduction.
   await json(await admin.post(o('/rates'), { data: { kind: 'PAY', scope: 'WORKER', scope_id: worker.membershipId, amount_minor: 2500, currency: 'USD', effective_from: '2020-01-01' } }), 'pay rate');
@@ -97,6 +101,7 @@ export default async function globalSetup(): Promise<void> {
     worker: { email: email('wade'), name: 'Wade Worker', membershipId: worker.membershipId },
     newcomer: { email: email('nina'), name: 'Nina Newcomer', membershipId: newcomer.membershipId },
     viewer: { email: email('vera'), name: 'Vera Viewer', membershipId: viewer.membershipId },
+    manager: { email: email('mona'), name: 'Mona Manager', membershipId: manager.membershipId },
     teamName,
     projects: { website: { id: website.id, name: website.name }, app: { id: app.id, name: app.name } },
     payStub: { id: stub.id, periodStart: finalized.period_start, periodEnd: finalized.period_end, netMinor: stub.net_minor, grossMinor: stub.gross_minor },
@@ -104,7 +109,7 @@ export default async function globalSetup(): Promise<void> {
 
   // These accounts are new, so the product tour would start on their first Overview and cover the
   // page in every spec. Mark it as seen, like a returning user (tests/web/help.spec.ts covers the tour).
-  for (const ctx of [admin, worker.ctx, newcomer.ctx, viewer.ctx]) await json(await ctx.patch('/api/v1/me', { data: { tour: 'done' } }), 'tour seen');
+  for (const ctx of [admin, worker.ctx, newcomer.ctx, viewer.ctx, manager.ctx])await json(await ctx.patch('/api/v1/me', { data: { tour: 'done' } }), 'tour seen');
 
   mkdirSync(AUTH_DIR, { recursive: true });
   // Device sign-ins cached by an earlier run (support/fixtures.ts) belong to accounts that no longer exist.
@@ -117,6 +122,9 @@ export default async function globalSetup(): Promise<void> {
   const viewerState = await viewer.ctx.storageState();
   viewerState.origins = [{ origin: WEB_URL, localStorage: [{ name: 'tw.lastOrg', value: orgId }] }];
   writeFileSync(VIEWER_STATE, JSON.stringify(viewerState));
+  const managerState = await manager.ctx.storageState();
+  managerState.origins = [{ origin: WEB_URL, localStorage: [{ name: 'tw.lastOrg', value: orgId }] }];
+  writeFileSync(MANAGER_STATE, JSON.stringify(managerState));
   writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await Promise.all([admin.dispose(), worker.ctx.dispose(), newcomer.ctx.dispose(), viewer.ctx.dispose()]);
+  await Promise.all([admin.dispose(), worker.ctx.dispose(), newcomer.ctx.dispose(), viewer.ctx.dispose(), manager.ctx.dispose()]);
 }

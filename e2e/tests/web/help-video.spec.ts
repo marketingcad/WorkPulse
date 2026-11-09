@@ -1,6 +1,6 @@
 import { request, type Page } from '@playwright/test';
-import { expect, ok, test, uid } from '../../support/fixtures';
-import { ADMIN_STATE, PASSWORD, VIEWER_STATE, WEB_URL } from '../../support/env';
+import { expect, test } from '../../support/fixtures';
+import { ADMIN_STATE, MANAGER_STATE, VIEWER_STATE, WEB_URL } from '../../support/env';
 
 /**
  * The video tutorial in the Help Center: system admins (who may change the organization) watch it
@@ -123,17 +123,15 @@ test.describe('Help Center video tutorial is for system admins only', () => {
     await Promise.all([api.dispose(), ctx.close()]);
   });
 
-  test('a team manager never sees it, and the API refuses them', async ({ browser, data, adminApi }) => {
-    const email = `max+${data.run}-${uid()}@e2e.test`;
-    const roles = await ok<Array<{ id: string; key: string }>>(await adminApi.api.get(adminApi.orgApi('/roles')), 'roles');
-    const invite = await ok<{ invite_url: string }>(await adminApi.api.post(adminApi.orgApi('/invitations'), { data: { email, name: 'Max Manager', role_id: roles.find((r) => r.key === 'TEAM_MANAGER')!.id } }), 'invite');
-    const max = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL }, storageState: { cookies: [], origins: [] } });
-    await ok(await max.post('/api/v1/auth/invitations/accept', { data: { token: new URL(invite.invite_url).searchParams.get('token'), name: 'Max Manager', password: PASSWORD } }), 'accept');
-    await ok(await max.patch('/api/v1/me', { data: { tour: 'done' } }), 'tour seen');
+  test('a team manager never sees it, and the API refuses them', async ({ browser, data }) => {
+    // The run's shared team manager (support/global-setup.ts): no extra invitation acceptance, which
+    // is rate limited per address across the whole run.
+    const max = await request.newContext({ baseURL: WEB_URL, storageState: MANAGER_STATE });
     expect((await max.get(`/api/v1/orgs/${data.orgId}/help/tutorial`)).status()).toBe(403);
     expect((await max.get(`/api/v1/orgs/${data.orgId}/help/tutorial/files/ch01-aaaa1111.mp4`)).status()).toBe(403);
+    await max.dispose();
 
-    const ctx = await browser.newContext({ storageState: await max.storageState() });
+    const ctx = await browser.newContext({ storageState: MANAGER_STATE });
     const page = await ctx.newPage();
     await published(page);
     await page.goto(`/o/${data.orgId}/help`);

@@ -1,5 +1,5 @@
 import { expect, test } from '../../support/fixtures';
-import { ADMIN_STATE, VIEWER_STATE, WORKER_STATE } from '../../support/env';
+import { ADMIN_STATE, MANAGER_STATE, VIEWER_STATE, WORKER_STATE } from '../../support/env';
 import type { Page } from '@playwright/test';
 
 /**
@@ -185,6 +185,34 @@ test.describe('WorkPulse AI layout', () => {
       await expect(panel.getByTestId('assistant-input')).toBeVisible();
     });
   }
+});
+
+test.describe('WorkPulse AI (team manager)', () => {
+  test.use({ storageState: MANAGER_STATE });
+
+  test('gets team-scoped answers, no money, and no link to pages they cannot open', async ({ page, data, adminApi }) => {
+    const { api, orgApi } = adminApi;
+    // As the admin: a money budget on the website project, which the manager is assigned to.
+    const put = await api.put(orgApi('/budgets'), { data: { subject_type: 'PROJECT', subject_id: data.projects.website.id, kind: 'MONEY', amount: 750_000, warn_pct: 80 } });
+    expect(put.status()).toBe(200);
+    const budgetId = (await put.json()).id as string;
+    try {
+      await page.goto(`/o/${data.orgId}`);
+      const panel = await openPanel(page);
+      await ask(page, 'How is the budget?');
+      const answer = lastAnswer(page);
+      await expect(answer).toContainText('Here is what I found', { timeout: 15_000 });
+      await expect(answer).toContainText('percent_used');
+      await expect(answer).not.toContainText('"amount"');
+      await expect(answer).not.toContainText('7500');
+
+      // Payroll and invoices are not theirs: their questions are not suggested.
+      await panel.getByRole('button', { name: 'New chat' }).click();
+      for (const q of await panel.getByTestId('assistant-suggestion').allTextContents()) expect(q).not.toMatch(/payroll|invoice/i);
+    } finally {
+      await api.delete(orgApi(`/budgets/${budgetId}`));
+    }
+  });
 });
 
 test.describe('WorkPulse AI is not offered to everyone', () => {

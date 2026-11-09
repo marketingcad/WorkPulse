@@ -28,11 +28,23 @@ export class FakeProvider implements AiProvider {
 
   async *streamTurn(i: AiTurnInput): AsyncIterable<AiChunk> {
     this.calls.push(structuredClone({ system: i.system, messages: i.messages, tools: i.tools, ...(i.toolChoice ? { toolChoice: i.toolChoice } : {}) }));
-    const chunks = this.queue.length ? this.queue.shift()! : this.respond(i.messages);
+    // A draft (services/assistant/drafts.ts, DRAFT_SYSTEM) gets plain text; everything else the rules.
+    const chunks = this.queue.length ? this.queue.shift()! : i.system.startsWith('Write the requested text for WorkPulse users.') ? this.draft(i.messages) : this.respond(i.messages);
     for (const chunk of chunks) {
       if (i.signal.aborted) return;
       yield chunk;
     }
+  }
+
+  /** No tools offered (a draft): plain text "Draft: <first line of the instruction>". "error-test" fails. */
+  private draft(messages: AiMessage[]): AiChunk[] {
+    const text = lastText(messages);
+    if (text.toLowerCase().includes('error-test')) throw new AiError('ai_unavailable');
+    return [
+      { type: 'text_delta', text: `Draft: ${text.split('\n')[0]!.slice(0, 60)}` },
+      { type: 'usage', inputTokens: 10, outputTokens: 5 },
+      { type: 'stop', reason: 'end_turn' },
+    ];
   }
 
   private respond(messages: AiMessage[]): AiChunk[] {
@@ -57,6 +69,7 @@ export class FakeProvider implements AiProvider {
     ];
     if (lower.includes('error-test')) throw new AiError('ai_unavailable');
     // Insight tools (AI Insights): checked before the plainer keywords below.
+    if (lower.includes('bottleneck') || lower.includes('waiting for')) return tool('getWorkflowInsights', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });
     if (lower.includes('review')) return tool('checkTimesheets', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });
     if (lower.includes('insight')) return tool('getWorkforceInsights', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });
     if (lower.includes('risk')) return tool('getProjectRisks', { from: mondayUtc(this.now()), to: this.now().toISOString().slice(0, 10) });

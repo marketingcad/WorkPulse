@@ -24,6 +24,7 @@ import { addDaysToDate, confirmationExpired, localDate, splitAtLocalMidnight, ty
 import type { Deps } from '../context';
 import { auditSystem, emit } from '../services/events';
 import { sendDigests } from '../services/digest';
+import { sendWeeklyInsights } from '../services/insights-weekly';
 import { runMissingTimeReminders } from '../services/reminders';
 import { applyRetention } from '../services/retention';
 import { checkOverdueCleanups, runScreenshotCleanup } from '../services/screenshot-cleanup';
@@ -420,6 +421,14 @@ export async function runDaily(deps: Deps) {
       const digests = await sendDigests(tx, deps, o.id, today);
       summary[o.id] = { deleted, accrued, overdue: overdue.length, rollups, digests };
     });
+    // Weekly AI Insights summary (first day of the week only), in its own transaction: a failure here
+    // never rolls back the steps above. Claimed per member and week, so a rerun sends nothing twice.
+    try {
+      const weekly = await withTenant(deps.db, o.id, (tx) => sendWeeklyInsights(tx, deps, o.id, today));
+      summary[o.id] = { ...(summary[o.id] as object), weekly };
+    } catch (err) {
+      console.error(`[jobs] weekly insights failed for organization ${o.id}`, err);
+    }
     // Its own transaction: a Performance Center failure never rolls back the organization's retention
     // cleanup, accruals or overdue invoices above. It is idempotent, so tomorrow's run catches up.
     try {

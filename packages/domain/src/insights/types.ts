@@ -10,7 +10,7 @@ import type { NavTargetKey } from '../assistant/navigation';
  */
 export type Basis = 'fact' | 'observation' | 'estimate';
 export type Severity = 'info' | 'attention' | 'warning';
-export type InsightSection = 'workforce' | 'timesheets' | 'projects';
+export type InsightSection = 'workforce' | 'timesheets' | 'projects' | 'workflow';
 
 export interface Metric {
   label: string;

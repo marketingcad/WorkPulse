@@ -8,7 +8,7 @@
 - **Voice:** direct and specific. "3 timesheets need approval", not "You've got things to do! 🎉".
 
 ### Brand identity (as built, ADR-125)
-- **Name:** **WorkPulse**, with the descriptor **"Powered by AI"** and the tagline **"Smarter Workforce. Better Business."** (ADR-136; it replaced "Track • Focus • Achieve"). The name is always primary; the descriptor is a small secondary badge (`AiBadge`), never larger than the name, and the tagline appears once per screen at most. All three live in `packages/ui/src/logo.tsx` and the `brand.*` keys of the ui catalog. This is the name people read in the web app, the desktop app, emails and notifications. Technical identifiers (packages, env vars, webhook headers, installer files, the desktop app's system name) stay "Tallywork".
+- **Name:** **WorkPulse**, with the descriptor **"Powered by AI"** and the tagline **"Smarter Workforce. Better Business."** (ADR-137; it replaced "Track • Focus • Achieve"). The name is always primary; the descriptor is a small secondary badge (`AiBadge`), never larger than the name, and the tagline appears once per screen at most. All three live in `packages/ui/src/logo.tsx` and the `brand.*` keys of the ui catalog. This is the name people read in the web app, the desktop app, emails and notifications. Technical identifiers (packages, env vars, webhook headers, installer files, the desktop app's system name) stay "Tallywork".
 - **Mark:** a hexagon "pulse": an outer hexagon in `#1766FF`, an inner hexagon in `#0B2A66`, and a white pulse line clipped to the inner hexagon. It replaces the earlier working concept (a tally-mark monogram).
 - **Components** (`packages/ui/src/logo.tsx`):
   - `Logo`: the mark alone, at any size (`size`, accessible `title`, default "WorkPulse").

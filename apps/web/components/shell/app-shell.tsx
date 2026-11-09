@@ -18,6 +18,8 @@ import { HelpLink } from '@/components/help/help-link';
 import { CalculatorLauncher } from '@/components/calculator/calculator-launcher';
 import { MyAvatar } from '@/lib/avatars';
 
+// The bell's list (grouping, priority labels): loaded when the bell is first opened.
+const NotificationList = lazy(() => import('./notification-list'));
 // Opened from the organization switcher only, so not part of every page.
 const NewOrgDialog = lazy(() => import('./new-org-dialog').then((m) => ({ default: m.NewOrgDialog })));
 // Fetched only when the assistant is on for this person, after the page loads, so it adds nothing
@@ -484,9 +486,11 @@ function Notifications() {
     await api(`/orgs/${org.organization.id}/notifications/read`, { body: { ids: 'all' } });
     void qc.invalidateQueries({ queryKey: ['org', org.organization.id, '/notifications'] });
   };
-  const markOne = (n: NotificationDto) => {
-    if (n.read_at) return;
-    void api(`/orgs/${org.organization.id}/notifications/read`, { body: { ids: [n.id] } })
+  // Opening a group marks every notification in it read.
+  const markOne = (items: NotificationDto[]) => {
+    const ids = items.filter((i) => !i.read_at).map((i) => i.id);
+    if (!ids.length) return;
+    void api(`/orgs/${org.organization.id}/notifications/read`, { body: { ids } })
       .then(() => qc.invalidateQueries({ queryKey: ['org', org.organization.id, '/notifications'] }))
       .catch(() => undefined);
   };
@@ -512,19 +516,11 @@ function Notifications() {
       <ul className="max-h-96 divide-y divide-border overflow-y-auto">
         {isLoading && <li className="px-4 py-8 text-center text-sm text-text-muted">{t('shell.notificationsLoading')}</li>}
         {isError && !data && <li className="px-4 py-8 text-center text-sm text-danger">{t('shell.notificationsError')}</li>}
-        {data && !data.data.length && <li className="px-4 py-8 text-center text-sm text-text-muted">{t('shell.allCaughtUp')}</li>}
-        {data?.data.map((n) => (
-          <li key={n.id}>
-            <Link href={n.link ? `${org.base}${n.link}` : org.base} onClick={() => markOne(n)} className={cx('flex gap-3 px-4 py-3 hover:bg-surface-muted', !n.read_at && 'bg-interactive-soft/40')}>
-              <span className={cx('mt-1.5 size-2 shrink-0 rounded-full', n.read_at ? 'bg-transparent' : 'bg-interactive')} />
-              <span className="min-w-0">
-                <span className="block text-sm font-medium">{n.title}</span>
-                {n.body && <span className="block truncate text-xs text-text-muted">{n.body}</span>}
-                <span className="mt-0.5 block text-2xs text-text-faint">{fmtRelative(n.created_at)}</span>
-              </span>
-            </Link>
-          </li>
-        ))}
+        {data && (
+          <Suspense fallback={<li className="px-4 py-8 text-center text-sm text-text-muted">{t('shell.notificationsLoading')}</li>}>
+            <NotificationList data={data} base={org.base} onOpen={markOne} />
+          </Suspense>
+        )}
       </ul>
     </Popover>
   );

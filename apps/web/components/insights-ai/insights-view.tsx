@@ -10,7 +10,7 @@ import { useUrlParams } from '@/components/timesheets/use-url-params';
 import { FindingCard } from './finding-card';
 import './messages';
 
-const TABS = ['overview', 'workforce', 'timesheets', 'projects'] as const;
+const TABS = ['overview', 'workforce', 'timesheets', 'projects', 'workflow'] as const;
 type Tab = (typeof TABS)[number];
 const PERIODS = ['this_week', 'last_week', 'this_month', 'last_month'] as const;
 type PeriodKey = (typeof PERIODS)[number];

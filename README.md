@@ -49,6 +49,11 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🆕 New updates
 
+- **10 November 2026 (AI Intelligence, phase 2):** workflow assistance, drafts and smarter notifications. Plan: [phase 2](docs/superpowers/plans/2026-11-10-ai-intelligence-phase2.md), ADR-136.
+  - **Workflow:** AI Insights › Workflow lists what waits for your decision (timesheets, manual time, time off, expenses) in a suggested order, what has waited over 3 days, and the average days to decide a timesheet. Tool `getWorkflowInsights`.
+  - **Write with AI:** in project and task descriptions (draft from the saved record, or rewrite what you typed), and Draft reminder on missing timesheets. Editable, with Undo; never sent or saved for you (`POST /assistant/drafts`).
+  - **Notifications:** each type has a fixed priority (urgent, important, info); the bell groups notifications of one kind ("+N more") and loads its list when opened. A weekly "needs your attention" summary from AI Insights, in-app, by email if you opt in (`insights.weekly`).
+  - **Expenses:** a suggested category from the description (keyword rules), only while the category is empty.
 - **10 November 2026 (AI Insights, phase 1):** a new **AI Insights** page (Reports › AI Insights) and four new WorkPulse AI tools. Design: [gap analysis](docs/superpowers/specs/2026-11-10-ai-intelligence-gap-analysis.md), [plan](docs/superpowers/plans/2026-11-10-ai-intelligence-phase1.md), ADR-135.
   - **Workforce:** hours against the previous period, overtime and workload by team, approved share, approvals waiting, missing timesheets, time off.
   - **Timesheets:** overlapping and repeated entries (found on read), very long days, mostly manual time, large changes, approval-queue flags, timesheets not submitted. Neutral wording; nothing is approved or changed.

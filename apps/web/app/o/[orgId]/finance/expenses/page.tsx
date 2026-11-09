@@ -1,4 +1,5 @@
 'use client';
+import { suggestExpenseCategory } from '@tallywork/domain/expense-categories';
 import { useEffect, useRef, useState } from 'react';
 import { Check, Paperclip, Plus, Receipt, Wallet, X } from 'lucide-react';
 import type { ExpensePageSummary, OffsetPage, ProjectDto } from '@tallywork/contracts';
@@ -272,6 +273,7 @@ function ExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
   const projectsQ = useOrgQuery<ProjectDto[]>(open ? '/projects' : null);
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
+  const suggestion = category.trim() ? null : suggestExpenseCategory(description, CATEGORIES);
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState(org.organization.currency);
   const [date, setDate] = useState('');
@@ -364,6 +366,15 @@ function ExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
               <option key={c} value={c} />
             ))}
           </datalist>
+          {/* A keyword suggestion from the description, only while the category is empty: never overwrites. */}
+          {suggestion && (
+            <p className="mt-1 text-xs text-text-muted" data-testid="category-suggestion">
+              Suggested category: <span className="font-medium text-text">{suggestion.category}</span>{' '}
+              <button type="button" className="font-medium text-interactive hover:underline" onClick={() => setCategory(suggestion.category)}>
+                Use
+              </button>
+            </p>
+          )}
         </Field>
         <Field label="Date" htmlFor="ex-date" required error={err?.field('spent_on')}>
           <Input id="ex-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />

@@ -624,6 +624,8 @@ export interface TimesheetDueDto {
 export interface NotificationDto {
   id: string;
   type: string;
+  /** Fixed per type (@tallywork/domain notificationPriority): critical, important or info. Never hides anything. */
+  priority: 'critical' | 'important' | 'info';
   title: string;
   body: string | null;
   link: string | null;

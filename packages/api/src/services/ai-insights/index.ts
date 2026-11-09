@@ -1,9 +1,9 @@
 import { localDate } from '@tallywork/domain';
-import { capFindings, previousPeriod, projectFindings, timesheetFindings, workforceFindings, type Finding, type InsightSection, type Period } from '@tallywork/domain/insights';
+import { capFindings, previousPeriod, projectFindings, timesheetFindings, workflowFindings, workforceFindings, type Finding, type InsightSection, type Period } from '@tallywork/domain/insights';
 import { insightResultSchema, type InsightResultDto, type InsightSectionParam } from '@tallywork/contracts';
 import type { Ctx } from '../ctx';
 import { insightCache, insightCacheKey } from './cache';
-import { projectInputs, timesheetInputs, workforceInputs } from './gather';
+import { projectInputs, timesheetInputs, workflowInputs, workforceInputs } from './gather';
 
 /**
  * WorkPulse AI Insights: findings computed in code from what this person may see. No AI provider is
@@ -12,7 +12,7 @@ import { projectInputs, timesheetInputs, workforceInputs } from './gather';
 
 const has = (x: Ctx, p: string) => x.actor.grants[p as keyof typeof x.actor.grants] !== undefined;
 const SEVERITY = { warning: 0, attention: 1, info: 2 } as const;
-const SECTIONS: InsightSection[] = ['workforce', 'timesheets', 'projects'];
+const SECTIONS: InsightSection[] = ['workforce', 'timesheets', 'projects', 'workflow'];
 const OVERVIEW_MAX = 6;
 /** Per section: the most important findings, with a note when more were found (bounded output). */
 const SECTION_MAX = 50;
@@ -29,6 +29,11 @@ async function section(x: Ctx, s: InsightSection, period: Period, previous: Peri
     if (!has(x, 'timesheets:read')) return { findings: [], limitations: ['Timesheet insights need access to timesheets.'] };
     const input = await timesheetInputs(x, period, previous, today);
     return { findings: timesheetFindings({ period, entries: input.entries, sheets: input.sheets, missing: input.missing, dayOf: input.dayOf }), limitations: input.limitations };
+  }
+  if (s === 'workflow') {
+    const input = await workflowInputs(x, period, previous, today);
+    const r = workflowFindings({ period, today, waiting: input.waiting, decisionDays: input.decisionDays });
+    return { findings: r.findings, limitations: [...input.limitations, ...r.limitations] };
   }
   if (!has(x, 'projects:read')) return { findings: [], limitations: ['Project insights need access to projects.'] };
   const input = await projectInputs(x, period, previous, today);

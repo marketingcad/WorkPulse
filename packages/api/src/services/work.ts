@@ -558,6 +558,8 @@ export async function workerCanTrackProject(x: Pick<Ctx, 'tx'>, membershipId: st
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
 type TaskQuery = {
+  /** only these tasks (still within the person's scope) */
+  ids?: string[];
   projectId?: string;
   status?: string;
   assigneeId?: string;
@@ -581,6 +583,7 @@ function taskWhere(x: Ctx, opts: TaskQuery, withStatus = true) {
     opts.includeArchived || opts.archivedOnly ? undefined : isNull(projects.archivedAt),
     opts.trackableOnly ? eq(projects.status, 'ACTIVE') : undefined,
     opts.projectId ? eq(tasks.projectId, opts.projectId) : undefined,
+    opts.ids ? inArray(tasks.id, opts.ids.length ? opts.ids : ['00000000-0000-7000-8000-000000000000']) : undefined,
     withStatus && opts.status ? eq(tasks.status, opts.status as 'TODO') : undefined,
     opts.assigneeId || opts.mine
       ? inArray(tasks.id, x.tx.select({ id: taskAssignees.taskId }).from(taskAssignees).where(eq(taskAssignees.membershipId, opts.assigneeId ?? x.actor.membershipId)) as never)

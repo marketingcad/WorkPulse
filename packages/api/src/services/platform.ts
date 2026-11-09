@@ -19,7 +19,7 @@ import {
   type Tx,
   withSystem,
 } from '@tallywork/db';
-import { API_KEY_SCOPES, can, forbidden, newId, notFound, resolvePolicy, validation, type DeepPartial, type TrackingPolicy } from '@tallywork/domain';
+import { API_KEY_SCOPES, can, forbidden, newId, notFound, notificationPriority, resolvePolicy, validation, type DeepPartial, type TrackingPolicy } from '@tallywork/domain';
 import type { AuditLogDto, DeviceDto, EffectivePolicyDto, NotificationDto, OffsetPage, apiKeyInput, policyDocInput, retentionInput, webhookInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
@@ -439,7 +439,7 @@ export async function listNotifications(x: Ctx, unreadOnly: boolean): Promise<{ 
     .orderBy(desc(notifications.createdAt))
     .limit(50);
   const [u] = await x.tx.select({ n: sql<number>`count(*)::int` }).from(notifications).where(and(eq(notifications.membershipId, x.actor.membershipId), isNull(notifications.readAt)));
-  return { data: rows.map((n) => ({ id: n.id, type: n.type, title: n.title, body: n.body, link: n.link, read_at: iso(n.readAt), created_at: n.createdAt.toISOString() })), unread: u?.n ?? 0 };
+  return { data: rows.map((n) => ({ id: n.id, type: n.type, priority: notificationPriority(n.type), title: n.title, body: n.body, link: n.link, read_at: iso(n.readAt), created_at: n.createdAt.toISOString() })), unread: u?.n ?? 0 };
 }
 
 export async function markNotificationsRead(x: Ctx, ids: string[] | 'all') {

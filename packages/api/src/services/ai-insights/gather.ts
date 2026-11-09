@@ -7,8 +7,8 @@ import { overtimeInRange } from '../pay-figures';
 import { listMilestones } from '../performance';
 import { runReport } from '../reports';
 import { canSeeMembership } from '../scope';
-import { approvalQueue, listTimeEntries, pageApprovalQueue, timeEntryTotals, timeEntryTotalsByProject } from '../timesheets';
-import { listBudgets } from '../finance';
+import { approvalQueue, listManualTime, listTimeEntries, pageApprovalQueue, timeEntryTotals, timeEntryTotalsByProject } from '../timesheets';
+import { listBudgets, listExpenses } from '../finance';
 import { listProjects, listTasks, listTeams } from '../work';
 
 /**
@@ -213,4 +213,61 @@ export async function projectInputs(x: Ctx, period: Period, previous: Period, to
     });
   }
   return { projects: out, limitations };
+}
+
+/** Flags from the approval queue that count as "something to check". Never activity (monitoring data). */
+const CONCERN_FLAGS = new Set(['high_manual', 'under_expected', 'over_expected', 'late_time', 'needs_review']);
+const APPROVE_PERMS = ['timesheets:approve', 'manual_time:approve', 'time_off:approve', 'expenses:approve'] as const;
+
+/** Average days from submission to decision for timesheets decided in [from..to]; null when none were. */
+async function averageDecisionDays(x: Ctx, p: Period): Promise<number | null> {
+  const r = await runReport(x, 'timesheet-approval', { from: p.from, to: p.to, billable: 'all' });
+  const days = r.rows
+    .filter((row) => (row.status === 'APPROVED' || row.status === 'REJECTED') && row.submitted_at && row.decided_at && String(row.decided_at).slice(0, 10) >= p.from && String(row.decided_at).slice(0, 10) <= p.to)
+    .map((row) => (Date.parse(String(row.decided_at)) - Date.parse(String(row.submitted_at))) / 86_400_000);
+  if (!days.length) return null;
+  return Math.round((days.reduce((a, b) => a + b, 0) / days.length) * 10) / 10;
+}
+
+/**
+ * What waits for this person's decision, within what they may decide (never their own requests),
+ * and how quickly timesheets get decided.
+ */
+export async function workflowInputs(x: Ctx, period: Period, previous: Period, today: string) {
+  const limitations: string[] = [];
+  const waiting: Array<{ kind: 'timesheet' | 'manual_time' | 'time_off' | 'expense'; id: string; memberName: string; submittedOn: string; concerns: number }> = [];
+  if (!APPROVE_PERMS.some((p) => has(x, p))) {
+    limitations.push('Workflow insights are for people who approve timesheets, time off or expenses.');
+    return { waiting, decisionDays: { current: null, previous: null }, limitations };
+  }
+  const mine = (id: string) => id === x.actor.membershipId;
+  const dayOf = (iso: string | null | undefined) => (iso ? localDate(new Date(iso), x.org.timezone) : today);
+  if (has(x, 'timesheets:approve')) {
+    for (const s of await approvalQueue(x, {})) {
+      if (s.status !== 'SUBMITTED' || mine(s.membership_id)) continue;
+      waiting.push({ kind: 'timesheet', id: s.timesheet_id, memberName: s.worker_name, submittedOn: dayOf(s.submitted_at), concerns: s.flags.filter((f) => CONCERN_FLAGS.has(f)).length });
+    }
+  }
+  if (has(x, 'manual_time:approve')) {
+    for (const r of await listManualTime(x, { status: 'PENDING' })) {
+      if (mine(r.membership_id) || !canSeeMembership(x.actor, 'manual_time:approve', r.membership_id)) continue;
+      waiting.push({ kind: 'manual_time', id: r.id, memberName: r.worker_name, submittedOn: dayOf(r.created_at), concerns: 0 });
+    }
+  }
+  if (has(x, 'time_off:approve')) {
+    for (const r of await listTimeOffRequests(x, { status: 'PENDING' })) {
+      if (mine(r.membership_id) || !canSeeMembership(x.actor, 'time_off:approve', r.membership_id)) continue;
+      waiting.push({ kind: 'time_off', id: r.id, memberName: r.worker_name, submittedOn: dayOf(r.created_at), concerns: 0 });
+    }
+  }
+  if (has(x, 'expenses:approve')) {
+    for (const e of await listExpenses(x, { status: 'SUBMITTED' })) {
+      if (mine(e.membership_id) || !canSeeMembership(x.actor, 'expenses:approve', e.membership_id)) continue;
+      waiting.push({ kind: 'expense', id: e.id, memberName: e.worker_name, submittedOn: dayOf(e.created_at), concerns: 0 });
+    }
+  }
+  let decisionDays: { current: number | null; previous: number | null } = { current: null, previous: null };
+  if (has(x, 'timesheets:read') && has(x, 'reports:read')) decisionDays = { current: await averageDecisionDays(x, period), previous: await averageDecisionDays(x, previous) };
+  else limitations.push('Decision times need access to timesheets and reports.');
+  return { waiting, decisionDays, limitations };
 }

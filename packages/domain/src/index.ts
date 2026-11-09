@@ -12,3 +12,5 @@ export * from './schedule';
 export * from './screenshot-retention';
 export * from './refused';
 export * from './performance';
+export * from './notifications';
+export * from './expense-categories';

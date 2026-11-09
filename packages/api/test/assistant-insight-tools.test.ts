@@ -128,3 +128,13 @@ describe('insight tools: final review fixes', () => {
     expect(out.omitted).toBeGreaterThan(0);
   });
 });
+
+describe('workflow tool (Phase 2)', () => {
+  it('getWorkflowInsights is offered to approvers only, and answers with the workflow findings', async () => {
+    expect(toolsFor(admin.actor).map((x) => x.name)).toContain('getWorkflowInsights');
+    expect(toolsFor({ ...admin.actor, grants: { 'org:read': 'org', 'time:read': 'org' } }).map((x) => x.name)).not.toContain('getWorkflowInsights');
+    const r = await executeTool(admin, toolsFor(admin.actor), 'getWorkflowInsights', PERIOD);
+    expect(r.status).toBe('ok');
+    expect(parse(r.content)).toHaveProperty('limitations');
+  });
+});

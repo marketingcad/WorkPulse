@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { expect, test } from '../../support/fixtures';
+import { expect, ok, test, uid } from '../../support/fixtures';
 import { ADMIN_STATE } from '../../support/env';
 
 /**
@@ -325,8 +325,9 @@ test.describe('moving the calculator', () => {
 
     await page.reload();
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect.poll(async () => Math.round((await boxOf(button)).x)).toBe(Math.round(moved.x));
-    expect(Math.round((await boxOf(button)).y)).toBe(Math.round(moved.y));
+    // The position is restored from storage: allow sub-pixel rounding (it was 375.5 → 375 or 376), not a real move.
+    await expect.poll(async () => Math.abs((await boxOf(button)).x - moved.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs((await boxOf(button)).y - moved.y)).toBeLessThanOrEqual(1);
 
     await button.click();
     await panel(page).getByRole('button', { name: 'Move to corner' }).click();
@@ -334,7 +335,7 @@ test.describe('moving the calculator', () => {
     await expect(panel(page).getByRole('button', { name: 'Move to corner' })).toHaveCount(0);
     await page.reload();
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    expect(Math.round((await boxOf(button)).y)).toBe(Math.round(corner.y));
+    expect(Math.abs((await boxOf(button)).y - corner.y)).toBeLessThanOrEqual(1);
   });
 
   test('moves with Alt and the arrow keys, for people who cannot drag', async ({ page, data }) => {
@@ -460,5 +461,39 @@ test.describe('calculator open and close animation', () => {
     await expect(p).toHaveCSS('animation-name', 'none');
     await page.keyboard.press('Escape');
     await expect(page.locator('#calculator-panel')).toHaveCount(0);
+  });
+});
+
+// Known issue (Nov 2026): on a short window, the last row's Cancel sat under the floating calculator
+// button, so a click on it opened the calculator. Pages now leave room to scroll past both buttons.
+test.describe('the floating buttons never cover the end of a page', () => {
+  test('your last time-off request’s Cancel stays clickable at the bottom of a short window', async ({ page, data, adminApi }) => {
+    const name = `QA bottom ${uid()}`;
+    const policy = await ok<{ id: string }>(await adminApi.api.post(adminApi.orgApi('/time-off/policies'), { data: { name, accrual: { type: 'none', amountHours: 0, maxBalanceHours: null, carryOverHours: null }, applies_to_all: false, member_ids: [data.admin.membershipId] } }), 'policy');
+    await ok(await adminApi.api.post(adminApi.orgApi('/time-off/requests'), { data: { policy_id: policy.id, start_date: '2031-01-06', end_date: '2031-01-06', half_day: false, reason: `${name} trip` } }), 'request');
+    await page.setViewportSize({ width: 1280, height: 480 });
+    await page.goto(`/o/${data.orgId}/time-off?tab=mine`);
+    const cancel = page.getByRole('row').filter({ hasText: `${name} trip` }).getByRole('button', { name: 'Cancel' });
+    await expect(cancel).toBeVisible();
+    await expect(launcher(page)).toBeVisible();
+
+    // At the very bottom of the page, everything in the content area ends above the floating buttons.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const lastContentBottom = await page.locator('#main').evaluate((main) => {
+      const pad = parseFloat(getComputedStyle(main).paddingBottom);
+      return main.getBoundingClientRect().bottom - pad;
+    });
+    const buttonTop = (await launcher(page).boundingBox())!.y;
+    expect(lastContentBottom).toBeLessThanOrEqual(buttonTop);
+
+    // And the row's own Cancel is what a click there reaches, wherever the row sits.
+    await cancel.evaluate((el) => el.scrollIntoView({ block: 'end' }));
+    const hit = await cancel.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return !!top && el.contains(top);
+    });
+    expect(hit).toBe(true);
+    await cancel.click({ trial: true, timeout: 2_000 });
   });
 });

@@ -47,9 +47,8 @@ test('a worker signs in with email and password and reaches Home', { tag: '@smok
   await attachScreen(window, 'home');
 });
 
-test('downloads a pay stub through the main process to where the worker chose', { tag: '@smoke' }, async ({ desktopApp, data }) => {
-  const { app, window } = desktopApp;
-  await signIn(window, data.worker.email);
+test('downloads a pay stub through the main process to where the worker chose', { tag: '@smoke' }, async ({ openSignedIn, data }) => {
+  const { app, window } = await openSignedIn();
   await openPage(window, 'Pay stubs');
   await expect(window.getByRole('listitem').filter({ hasText: usd(data.payStub.netMinor) })).toBeVisible();
 
@@ -68,9 +67,8 @@ test('downloads a pay stub through the main process to where the worker chose', 
   await attachScreen(window, 'pay-stubs');
 });
 
-test('cancelling the Save dialog writes nothing and shows no error', async ({ desktopApp, data }) => {
-  const { app, window } = desktopApp;
-  await signIn(window, data.worker.email);
+test('cancelling the Save dialog writes nothing and shows no error', async ({ openSignedIn, data }) => {
+  const { app, window } = await openSignedIn();
   await openPage(window, 'Pay stubs');
   const save = await stubSaveDialog(app, { canceled: true });
   await window.getByRole('button', { name: 'PDF' }).click();
@@ -80,9 +78,8 @@ test('cancelling the Save dialog writes nothing and shows no error', async ({ de
   await expect(window.getByText('Could not download the pay stub')).toHaveCount(0);
 });
 
-test('the window has no Node access and the main process rejects invalid requests', async ({ desktopApp, data }) => {
-  const { window } = desktopApp;
-  await signIn(window, data.worker.email);
+test('the window has no Node access and the main process rejects invalid requests', async ({ openSignedIn, data }) => {
+  const { window } = await openSignedIn();
   const result = await window.evaluate(async () => {
     const w = window as unknown as { require?: unknown; process?: unknown; ipcRenderer?: unknown; tallywork: { me(r: string): Promise<unknown>; savePayStub(id: string): Promise<unknown> } };
     const fails = async (p: Promise<unknown>) => p.then(() => 'resolved', (e: Error) => e.message);
@@ -119,12 +116,11 @@ test('the sign-in screen can show and hide the password', async ({ desktopApp })
   await expect(password).toHaveAttribute('type', 'password');
 });
 
-test('a running timer stops on the desktop when an admin force-stops it', { tag: '@smoke' }, async ({ desktopApp, data, adminApi }) => {
+test('a running timer stops on the desktop when an admin force-stops it', { tag: '@smoke' }, async ({ openSignedIn, data, adminApi }) => {
   // The desktop learns of it on its next heartbeat or sync: within about a minute.
   test.setTimeout(180_000);
-  const { window } = desktopApp;
   const { api, orgApi } = adminApi;
-  await signIn(window, data.worker.email);
+  const { window } = await openSignedIn();
   const timer = window.getByLabel('Timer');
   // Choosing a project only selects it; Clock in starts tracking.
   await timer.getByLabel('Project').selectOption(data.projects.website.id);
@@ -153,16 +149,15 @@ test('a running timer stops on the desktop when an admin force-stops it', { tag:
   expect(after.find((w) => w.membership_id === data.worker.membershipId)?.session_id ?? null).toBeNull();
 });
 
-test('clicking the running project in Track › Projects keeps the Home timer running', { tag: '@smoke' }, async ({ desktopApp, data, adminApi }) => {
+test('clicking the running project in Track › Projects keeps the Home timer running', { tag: '@smoke' }, async ({ openSignedIn, data, adminApi }) => {
   test.setTimeout(120_000);
-  const { window } = desktopApp;
   const { api, orgApi } = adminApi;
   const liveSession = async () => (await ok<Array<{ membership_id: string; session_id: string | null }>>(await api.get(orgApi('/tracking/live')), 'live')).find((w) => w.membership_id === data.worker.membershipId)?.session_id ?? '';
   const seconds = async () => {
     const [h, m, s] = (await window.getByLabel('Timer').locator('.font-mono').innerText()).trim().split(':').map(Number);
     return h! * 3600 + m! * 60 + s!;
   };
-  await signIn(window, data.worker.email);
+  const { window } = await openSignedIn();
   await window.getByLabel('Timer').getByLabel('Project').selectOption(data.projects.website.id);
   await window.getByLabel('Timer').getByRole('button', { name: `Clock in to ${data.projects.website.name}` }).click();
   await expect(window.getByLabel('Timer').getByText('Clocked in', { exact: true })).toBeVisible();
@@ -201,6 +196,7 @@ async function clockOut(window: Page, report: string, opts: { finished?: boolean
 
 test('a worker clocks in, takes the project’s planned breaks and clocks out with an end-of-day report', { tag: '@smoke' }, async ({ desktopApp, data, adminApi }) => {
   test.setTimeout(120_000);
+  // A fresh install (signed in through the form): it starts with no project chosen.
   const { window } = desktopApp;
   const { api, orgApi } = adminApi;
   // The admin plans Coffee and Lunch on a project the worker is on (before the app signs in and loads it).

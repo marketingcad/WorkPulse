@@ -21,7 +21,7 @@ export interface E2EData {
   newcomer: { email: string; name: string; membershipId: string };
   /** Custom role: budgets (without amounts), and their own time and profile. Nothing about money elsewhere. */
   viewer: { email: string; name: string; membershipId: string };
-  /** Built-in TEAM_MANAGER: manager of the Design team, assigned to the website project. */
+  /** Built-in TEAM_MANAGER: manager of the Design team, assigned to the website project. Named "Mona Lead": organizations.spec.ts invites a "Mona Manager" of its own. */
   manager: { email: string; name: string; membershipId: string };
   teamName: string;
   projects: { website: { id: string; name: string }; app: { id: string; name: string } };
@@ -75,7 +75,7 @@ export default async function globalSetup(): Promise<void> {
   const newcomer = await accept((await invite('nina', 'Nina Newcomer')).invite_url, 'Nina Newcomer');
   const viewerRole = await json(await admin.post(o('/roles'), { data: { name: `Budget viewer ${run}`, grants: { 'budgets:read': 'org', 'time:read': 'own', 'members:read': 'own' } } }), 'viewer role');
   const viewer = await accept((await json(await admin.post(o('/invitations'), { data: { email: email('vera'), name: 'Vera Viewer', role_id: viewerRole.id } }), 'invite vera')).invite_url, 'Vera Viewer');
-  const manager = await accept((await json(await admin.post(o('/invitations'), { data: { email: email('mona'), name: 'Mona Manager', role_id: roleId('TEAM_MANAGER'), team_ids: [team.id], project_ids: [website.id] } }), 'invite mona')).invite_url, 'Mona Manager');
+  const manager = await accept((await json(await admin.post(o('/invitations'), { data: { email: email('mona'), name: 'Mona Lead', role_id: roleId('TEAM_MANAGER'), team_ids: [team.id], project_ids: [website.id] } }), 'invite mona')).invite_url, 'Mona Lead');
   await json(await admin.put(o(`/teams/${team.id}/members/${manager.membershipId}`), { data: { role: 'MANAGER' } }), 'mona manages the team');
 
   // A finalized weekly payroll for Wade: 3 h approved time at $25/h, plus a bonus and a deduction.
@@ -101,7 +101,7 @@ export default async function globalSetup(): Promise<void> {
     worker: { email: email('wade'), name: 'Wade Worker', membershipId: worker.membershipId },
     newcomer: { email: email('nina'), name: 'Nina Newcomer', membershipId: newcomer.membershipId },
     viewer: { email: email('vera'), name: 'Vera Viewer', membershipId: viewer.membershipId },
-    manager: { email: email('mona'), name: 'Mona Manager', membershipId: manager.membershipId },
+    manager: { email: email('mona'), name: 'Mona Lead', membershipId: manager.membershipId },
     teamName,
     projects: { website: { id: website.id, name: website.name }, app: { id: app.id, name: app.name } },
     payStub: { id: stub.id, periodStart: finalized.period_start, periodEnd: finalized.period_end, netMinor: stub.net_minor, grossMinor: stub.gross_minor },

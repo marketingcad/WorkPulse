@@ -122,3 +122,9 @@ describe('time entries page', () => {
     expect(reachable('app/o/[orgId]/timesheets/all/page.tsx')).not.toContain('components/timesheets/entry-dialogs.tsx');
   });
 });
+
+describe('notification bell', () => {
+  it('loads its list (grouping and priority labels) when opened, not with every page', () => {
+    expect(reachable('app/o/[orgId]/layout.tsx')).not.toContain('components/shell/notification-list.tsx');
+  });
+});

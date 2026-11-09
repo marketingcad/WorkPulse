@@ -94,7 +94,8 @@ export function useAssistant(orgId: string, enabled: boolean) {
   );
 
   const send = useCallback(
-    async (content: string) => {
+    /** `fresh`: start a new conversation for it (an "Ask WorkPulse AI" button), whatever is on screen. */
+    async (content: string, opts: { fresh?: boolean } = {}) => {
       const text = content.trim();
       if (!text || inFlight.current) return;
       inFlight.current = true;
@@ -102,7 +103,7 @@ export function useAssistant(orgId: string, enabled: boolean) {
       setError(null);
       setLastUserText(text);
       setAnnouncement('');
-      let id = activeId;
+      let id = opts.fresh ? null : activeId;
       try {
         if (!id) {
           const created = await api<AssistantConversationDto>(`${base}/conversations`, { body: {} });

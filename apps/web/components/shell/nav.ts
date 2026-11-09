@@ -163,6 +163,8 @@ export const NAV: NavGroup[] = [
     label: 'nav.group.reports',
     items: [
       { label: 'nav.item.summary', href: '/insights', icon: PieChart, perms: ['time:read'], minScope: 'team_or_org' },
+      // AI Insights: findings computed from the person's own scope; no AI key needed. Reuses an icon already on every page.
+      { label: 'nav.item.aiInsights', href: '/ai-insights', icon: Eye, perms: ['org:read'], minScope: 'team_or_org' },
       { label: 'nav.item.reportLibrary', href: '/reports', icon: BarChart3, perms: ['reports:read'] },
     ],
   },

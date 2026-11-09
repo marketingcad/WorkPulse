@@ -790,6 +790,7 @@ export const NAV_GUIDE: Record<string, string> = {
   'nav.item.invoices': 'Invoices to clients, and payments received.',
   'nav.item.payroll': 'Payroll runs, what members are owed, and pay groups.',
   'nav.item.summary': 'Totals of time and money for any period.',
+  'nav.item.aiInsights': 'Findings from your data, with next steps.',
   'nav.item.reportLibrary': 'Reports you can filter, save, schedule and download.',
   'nav.item.performanceOverview': 'Scores from goals, delivery, approved work, reviews and attendance, with recognition. Never activity or screenshots.',
   'nav.item.achievements': 'Badges people earn from their work, recognition you give with a reason, and client appreciation to approve.',

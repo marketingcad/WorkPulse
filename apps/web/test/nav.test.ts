@@ -26,13 +26,13 @@ describe('admin sidebar', () => {
       ['nav.group.people', ['nav.item.members', 'nav.item.schedulesAttendance', 'nav.item.timeOff']],
       ['nav.group.work', ['nav.item.clients', 'nav.item.projects', 'nav.item.tasks']],
       ['nav.group.money', ['nav.item.rates', 'nav.item.budgets', 'nav.item.expenses', 'nav.item.invoices', 'nav.item.payroll']],
-      ['nav.group.reports', ['nav.item.summary', 'nav.item.reportLibrary']],
+      ['nav.group.reports', ['nav.item.summary', 'nav.item.aiInsights', 'nav.item.reportLibrary']],
       ['nav.group.performance', ['nav.item.performanceOverview', 'nav.item.achievements', 'nav.item.leaderboards', 'nav.item.teamPerformance', 'nav.item.workerPerformance', 'nav.item.goals']],
       // UX remediation: personal pages were only behind the avatar menu.
       ['nav.group.me', ['nav.item.myTimesheet', 'nav.item.myPayStubs', 'nav.item.whatIsMonitored']],
       [null, ['nav.item.settings', 'nav.item.help']],
     ]);
-    expect(nav.flatMap((g) => g.items)).toHaveLength(30);
+    expect(nav.flatMap((g) => g.items)).toHaveLength(31);
   });
 
   it('Settings holds every settings page, Devices and the Developer pages as tabs, in one place', () => {

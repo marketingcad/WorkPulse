@@ -1,10 +1,11 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Sparkles } from 'lucide-react';
 import { Spinner } from '@tallywork/ui';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
+import { onAskAssistant } from '@/lib/assistant-bridge';
 
 const AssistantPanel = dynamic(() => import('./assistant-panel').then((m) => m.AssistantPanel), {
   ssr: false,
@@ -23,7 +24,17 @@ const AssistantPanel = dynamic(() => import('./assistant-panel').then((m) => m.A
 export function AssistantLauncher() {
   const org = useOrg();
   const [open, setOpen] = useState(false);
+  const [ask, setAsk] = useState<{ seq: number; question: string } | null>(null);
   const button = useRef<HTMLButtonElement>(null);
+  // "Ask WorkPulse AI" buttons elsewhere on the page: open the panel with that question.
+  useEffect(
+    () =>
+      onAskAssistant((question) => {
+        setAsk((prev) => ({ seq: (prev?.seq ?? 0) + 1, question }));
+        setOpen(true);
+      }),
+    [],
+  );
   if (!org.assistant_enabled) return null;
   const close = () => {
     setOpen(false);
@@ -44,7 +55,7 @@ export function AssistantLauncher() {
           <Sparkles className="size-5" aria-hidden />
         </button>
       )}
-      {open && <AssistantPanel orgId={org.organization.id} onClose={close} />}
+      {open && <AssistantPanel orgId={org.organization.id} onClose={close} ask={ask} />}
     </>
   );
 }

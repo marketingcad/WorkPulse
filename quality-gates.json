@@ -18,7 +18,7 @@
         "apps/desktop": ["agent", "agent-start", "agent-offline", "agent-force-stop", "agent-breaks", "offline", "permissions", "extension", "multi-monitor"]
       },
       "playwright": [
-        "web/auth", "web/two-factor", "web/qa/api-security", "web/performance-permissions",
+        "web/auth", "web/two-factor", "web/qa/api-security", "web/performance-permissions", "web/api-keys",
         "web/time-entries", "web/time-rules", "web/timesheet-decisions", "web/consolidated", "web/offline-sync",
         "web/money-p0", "web/invoices", "web/payroll",
         "desktop/clock-breaks", "desktop/worker-status", "desktop/pay-stubs",
@@ -48,7 +48,7 @@
         "apps/desktop": ["agent-account", "agent-connect", "agent-monitoring-card", "disclosure", "errors", "nav", "updater", "urls"]
       },
       "playwright": [
-        "web/assistant", "web/attendance-scheduled", "web/breaks-eod", "web/budgets", "web/calculator", "web/calculator-accuracy", "web/charts", "web/client-delete",
+        "web/assistant", "web/webhooks", "web/report-exports", "web/schedules", "web/time-off", "web/attendance-scheduled", "web/breaks-eod", "web/budgets", "web/calculator", "web/calculator-accuracy", "web/charts", "web/client-delete",
         "web/csv-import", "web/data-export", "web/download", "web/finance-paging", "web/help", "web/help-video", "web/insights", "web/invitations",
         "web/member-profile", "web/monitoring-card-setting", "web/multi-monitor", "web/navigation", "web/navigation-flows", "web/organizations", "web/people-paging",
         "web/performance-achievements", "web/performance-goals", "web/performance-leaderboards", "web/performance-overview", "web/performance-teams",

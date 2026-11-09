@@ -48,3 +48,38 @@ describe('assistantStreamEvent', () => {
     expect(assistantStreamEvent.safeParse({ event: 'error', data: { code: 'nope', retryable: true } }).success).toBe(false);
   });
 });
+
+describe('insight schemas', () => {
+  const finding = {
+    id: 'workforce:hours_trend:2026-11-02',
+    section: 'workforce',
+    category: 'hours_trend',
+    severity: 'info',
+    basis: 'observation',
+    title: 'Hours up 25 %',
+    summary: '100 h against 80 h.',
+    period: { from: '2026-11-02', to: '2026-11-08' },
+    metrics: [{ label: 'Hours', value: 100, unit: 'hours', previous: 80 }],
+    refs: [{ type: 'team', id: 't1', name: 'Design' }],
+    links: ['timesheets.all'],
+    next_step: 'Open time entries.',
+  };
+  const result = { section: 'overview', period: { from: '2026-11-02', to: '2026-11-08' }, previous: { from: '2026-10-26', to: '2026-11-01' }, findings: [finding], limitations: [] };
+
+  it('accepts a valid result', async () => {
+    const { insightResultSchema } = await import('../src/assistant');
+    expect(insightResultSchema.safeParse(result).success).toBe(true);
+  });
+  it('rejects an unknown basis or an unknown link', async () => {
+    const { insightResultSchema } = await import('../src/assistant');
+    expect(insightResultSchema.safeParse({ ...result, findings: [{ ...finding, basis: 'guess' }] }).success).toBe(false);
+    expect(insightResultSchema.safeParse({ ...result, findings: [{ ...finding, links: ['../admin'] }] }).success).toBe(false);
+  });
+  it('limits the period to 93 days and to a forward range', async () => {
+    const { insightQueryInput, insightSectionInput } = await import('../src/assistant');
+    expect(insightQueryInput.safeParse({ from: '2026-01-01', to: '2026-04-03' }).success).toBe(true);
+    expect(insightQueryInput.safeParse({ from: '2026-01-01', to: '2026-04-04' }).success).toBe(false);
+    expect(insightQueryInput.safeParse({ from: '2026-02-01', to: '2026-01-31' }).success).toBe(false);
+    expect(insightSectionInput.safeParse('payroll').success).toBe(false);
+  });
+});

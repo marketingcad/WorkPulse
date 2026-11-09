@@ -32,6 +32,7 @@ const NOTIFICATION_TYPES: Array<{ type: string; label: string; manager?: boolean
   { type: 'timesheet.late_time', label: 'Time was added to a submitted or approved timesheet', manager: true },
   { type: 'time.needs_review', label: 'Time was kept but needs review (recorded offline, or mixed duration-only and tracked)', manager: true },
   { type: 'digest.daily', label: 'Daily summary (email)' },
+  { type: 'insights.weekly', label: 'Weekly summary of what needs my attention (AI Insights)', manager: true },
 ];
 
 export default function ProfilePage() {

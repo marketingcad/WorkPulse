@@ -593,6 +593,43 @@ export const HELP_ARTICLES: HelpArticle[] = [
     keywords: ['finance', 'payroll', 'invoices', 'overdue', 'forecast', 'capacity', 'workload', 'overloaded', 'performance score', 'explain'],
   },
   {
+    id: 'ai-forecasts',
+    category: 'reports',
+    title: 'AI Insights: project finish dates and month-end estimates',
+    summary: 'When each project is likely to finish at its recent pace, and this month’s hours and pay projected to the end of the month.',
+    steps: [
+      'Open AI Insights under Reports and choose Projects: a project with open tasks and recent progress shows when it is estimated to finish, and is flagged if that is after its end date.',
+      'Choose Workforce to see this month’s hours so far and the projected total at month end.',
+      'If you may see pay, the Finance tab shows this month’s pay so far and the projected total, per currency.',
+    ],
+    points: [
+      'Every forecast is an estimate from what has been recorded, never a promise. The finish date uses the tasks completed in the last four weeks; month-end figures scale the weekdays so far to the whole month.',
+      'Without recent progress, or in the first working days of a month, WorkPulse says it cannot estimate yet instead of guessing.',
+    ],
+    links: [{ label: 'Open AI Insights', href: '/ai-insights' }],
+    keywords: ['forecast', 'estimate', 'finish date', 'deadline', 'month end', 'projection', 'pace'],
+  },
+  {
+    id: 'ai-client-summary',
+    category: 'work',
+    title: 'Share an AI summary with a client',
+    summary: 'A short summary of a client’s projects, written by WorkPulse AI and shown at the top of their portal.',
+    steps: [
+      'Open Clients, use the ⋯ menu on the client and choose Client portal.',
+      'Under What the client sees, turn on A short summary written by WorkPulse AI.',
+      'The client sees the summary at the top of their dashboard the next time they open it.',
+    ],
+    points: [
+      'It uses only the progress the client already sees: tasks done, milestones and an estimated finish date. Never money, rates, hours, people’s names or activity.',
+      'It is written at most once a day, and every portal user of that client sees the same summary.',
+      'If WorkPulse AI is not available, the client sees a plain summary of the same facts instead.',
+      'It is off for every client until you turn it on.',
+    ],
+    links: [{ label: 'Open Clients', href: '/clients' }],
+    keywords: ['client', 'portal', 'summary', 'ai', 'progress', 'report to client'],
+    perms: ['clients:manage'],
+  },
+  {
     id: 'reports',
     category: 'reports',
     title: 'Run, save and schedule a report',

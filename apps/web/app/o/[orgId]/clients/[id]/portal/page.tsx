@@ -11,8 +11,8 @@ import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
-type Section = 'hours' | 'tasks' | 'activity' | 'screenshots';
-const SECTIONS: Section[] = ['hours', 'tasks', 'activity', 'screenshots'];
+type Section = 'hours' | 'tasks' | 'activity' | 'screenshots' | 'ai_summary';
+const SECTIONS: Section[] = ['hours', 'tasks', 'activity', 'screenshots', 'ai_summary'];
 type Access = ClientPortalSettingsDto['access'][number];
 
 export default function ClientPortalSettingsPage() {
@@ -119,6 +119,7 @@ export default function ClientPortalSettingsPage() {
             <Checkbox key={k} label={t(`portal.admin.${k}`)} checked={s.sections[k]} disabled={saving || disabledSection(k)} onChange={() => askOrToggle(k)} />
           ))}
           <p className="mt-1 text-xs text-text-muted">{t('portal.admin.monitoringNote')}</p>
+          <p className="text-xs text-text-muted">{t(s.can_enable.ai_summary ? 'portal.admin.aiSummaryNote' : 'portal.admin.aiSummaryPlain')}</p>
         </fieldset>
 
         <fieldset className="flex flex-col gap-2 border-t border-border pt-4">

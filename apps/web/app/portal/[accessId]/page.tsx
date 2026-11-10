@@ -11,6 +11,8 @@ import { t } from '@/lib/i18n';
 
 // Insights (delivery facts and appreciation) load when the tab opens.
 const PortalInsightsTab = lazy(() => import('@/components/portal/portal-insights'));
+// The AI summary, only when the organization shares it.
+const PortalAiSummary = lazy(() => import('@/components/portal/portal-ai-summary'));
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -48,6 +50,13 @@ export default function PortalPage() {
           ]}
         />
       </div>
+      {tab === 'dashboard' && summary.data.sections.ai_summary && (
+        <div className="mx-auto max-w-6xl px-4 pt-6">
+          <Suspense fallback={null}>
+            <PortalAiSummary accessId={accessId} />
+          </Suspense>
+        </div>
+      )}
       {tab === 'dashboard' ? (
         <PortalDashboard
           summary={summary.data}

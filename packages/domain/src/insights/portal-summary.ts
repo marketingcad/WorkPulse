@@ -10,7 +10,8 @@ export interface PortalSummaryInput {
     /** null when tasks are not shared on this dashboard */
     tasks: { done: number; open: number } | null;
     milestones: { done: number; total: number };
-    delivery: 'DONE' | 'BEHIND' | 'ON_TRACK' | null;
+    /** 'DONE', 'BEHIND', 'ON_TRACK' or null */
+    delivery: string | null;
     next_milestone: { title: string; due_date: string } | null;
   }>;
   milestones: Array<{ overdue: boolean }>;

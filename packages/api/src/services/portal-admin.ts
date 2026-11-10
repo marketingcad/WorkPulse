@@ -48,7 +48,7 @@ export async function getPortalSettings(x: Ctx, clientId: string): Promise<Clien
     project_ids: s.projectIds,
     projects: ps,
     access: access.map((a) => ({ id: a.id, email: a.email, name: a.name, status: a.status, accepted_at: a.acceptedAt?.toISOString() ?? null, last_viewed_at: a.lastViewedAt?.toISOString() ?? null })),
-    can_enable: { activity: x.actor.grants['activity:read'] === 'org', screenshots: x.actor.grants['screenshots:read'] === 'org' },
+    can_enable: { activity: x.actor.grants['activity:read'] === 'org', screenshots: x.actor.grants['screenshots:read'] === 'org', ai_summary: x.deps.ai?.available === true && x.deps.config.assistantEnabled },
   };
 }
 

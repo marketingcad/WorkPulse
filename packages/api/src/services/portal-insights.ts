@@ -15,6 +15,7 @@ import {
   type Tx,
 } from '@tallywork/db';
 import { addDaysToDate, businessRule, can, forbidden, localDate, newId, notFound, periodBounds, ratioScore } from '@tallywork/domain';
+import { finishForecast } from '@tallywork/domain/insights';
 import type { appreciationInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
@@ -36,6 +37,13 @@ export async function portalInsights(deps: Deps, access: PortalAccess) {
 }
 
 export async function portalInsightsTx(tx: Tx, deps: Deps, access: PortalAccess) {
+  const { insights } = await portalInsightsFacts(tx, deps, access);
+  await logPortalView(tx, access, 'portal.insights_viewed');
+  return insights;
+}
+
+/** The portal's delivery facts, without recording a view (the caller does). */
+export async function portalInsightsFacts(tx: Tx, deps: Deps, access: PortalAccess) {
   const [org] = await tx.select({ timezone: organizations.timezone, weekStart: organizations.weekStart }).from(organizations).where(eq(organizations.id, access.organizationId));
   const tz = org!.timezone;
   const today = localDate(deps.now(), tz);
@@ -82,8 +90,7 @@ export async function portalInsightsTx(tx: Tx, deps: Deps, access: PortalAccess)
   const contributorRows = ids.length
     ? await tx.selectDistinct({ id: memberships.id, name: users.name, projectId: projectMembers.projectId }).from(projectMembers).innerJoin(memberships, eq(memberships.id, projectMembers.membershipId)).innerJoin(users, eq(users.id, memberships.userId)).where(and(inArray(projectMembers.projectId, ids), eq(memberships.status, 'ACTIVE')))
     : [];
-  await logPortalView(tx, access, 'portal.insights_viewed');
-  return {
+  const insights = {
     totals: {
       completion_pct: ownTasks.length ? ratioScore(allDone, ownTasks.length) : ownMs.length ? ratioScore(ownMs.filter((m) => m.completedAt).length, ownMs.length) : null,
       tasks_done: access.sections.tasks ? allDone : null,
@@ -99,6 +106,16 @@ export async function portalInsightsTx(tx: Tx, deps: Deps, access: PortalAccess)
     weeks: access.sections.tasks ? weeks : [],
     contributors: contributorRows.map((c) => ({ membership_id: c.id, name: c.name, project_id: c.projectId })),
   };
+  // Finish estimates from the client's own tasks (only when tasks are shared): the AI summary uses them.
+  const finish = access.sections.tasks
+    ? perProject.map((p) => {
+        const ts = ownTasks.filter((t) => t.projectId === p.id);
+        const doneLast28 = ts.filter((t) => t.completedAt && localDate(t.completedAt, tz) > addDaysToDate(today, -28)).length;
+        const fc = finishForecast({ open: ts.filter((t) => t.status !== 'DONE').length, doneLast28, today, endDate: null });
+        return { project: p.name, finishDate: fc?.finishDate ?? null, late: false };
+      })
+    : [];
+  return { insights, finish, today };
 }
 
 /** A client thanks a project team or one of its members. Held for the organization's approval. */

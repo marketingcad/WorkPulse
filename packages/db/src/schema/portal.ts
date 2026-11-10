@@ -10,8 +10,29 @@ export interface ClientPortalSections {
   tasks: boolean;
   activity: boolean;
   screenshots: boolean;
+  /** A short summary written by WorkPulse AI from the dashboard's delivery facts (opt-in). */
+  ai_summary: boolean;
 }
-export const DEFAULT_PORTAL_SECTIONS: ClientPortalSections = { hours: true, tasks: true, activity: false, screenshots: false };
+export const DEFAULT_PORTAL_SECTIONS: ClientPortalSections = { hours: true, tasks: true, activity: false, screenshots: false, ai_summary: false };
+
+/**
+ * The client's AI summary, written at most once a day per client (all of the client's portal users
+ * share it). Only the latest day is kept.
+ */
+export const portalAiSummaries = pgTable(
+  'portal_ai_summaries',
+  {
+    organizationId: orgId(),
+    clientId: uuid().notNull(),
+    day: text().notNull(),
+    text: text().notNull(),
+    createdAt: tstz().notNull().default(sql`now()`),
+  },
+  (t) => [
+    primaryKey({ columns: [t.organizationId, t.clientId, t.day] }),
+    foreignKey({ columns: [t.organizationId, t.clientId], foreignColumns: [clients.organizationId, clients.id] }).onDelete('cascade'),
+  ],
+);
 
 export const clientPortalSettings = pgTable(
   'client_portal_settings',

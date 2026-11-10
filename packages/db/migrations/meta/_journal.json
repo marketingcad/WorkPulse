@@ -225,6 +225,13 @@
       "when": 1793996245202,
       "tag": "0031_assistant",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794328338844,
+      "tag": "0032_portal_ai_summary",
+      "breakpoints": true
     }
   ]
 }

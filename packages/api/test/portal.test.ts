@@ -47,7 +47,7 @@ describe('portal admin', () => {
     expect((await manager.put(o(`/clients/${clientId}/portal`), { enabled: true })).status).toBe(403);
     const r = await admin.put(o(`/clients/${clientId}/portal`), { enabled: true, sections: { activity: true } });
     expect(r.status).toBe(200);
-    expect(r.body.sections).toEqual({ hours: true, tasks: true, activity: true, screenshots: false });
+    expect(r.body.sections).toEqual({ hours: true, tasks: true, activity: true, screenshots: false, ai_summary: false });
   });
 
   it('rejects projects that belong to another client', async () => {

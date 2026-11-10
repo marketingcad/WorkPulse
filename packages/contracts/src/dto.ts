@@ -653,6 +653,16 @@ export interface PortalSectionsDto {
   tasks: boolean;
   activity: boolean;
   screenshots: boolean;
+  /** A short summary written by WorkPulse AI from the dashboard's delivery facts (opt-in). */
+  ai_summary: boolean;
+}
+
+/** The client's summary: `ai` when written by WorkPulse AI (stored for the day), `plain` otherwise. */
+export interface PortalAiSummaryDto {
+  text: string;
+  source: 'ai' | 'plain';
+  day: string;
+  facts: string[];
 }
 
 export interface ClientPortalSettingsDto {
@@ -663,7 +673,8 @@ export interface ClientPortalSettingsDto {
   projects: Array<{ id: string; name: string }>;
   access: Array<{ id: string; email: string; name: string | null; status: 'INVITED' | 'ACTIVE' | 'REVOKED'; accepted_at: string | null; last_viewed_at: string | null }>;
   /** what the current admin may switch on */
-  can_enable: { activity: boolean; screenshots: boolean };
+  /** ai_summary: WorkPulse AI is available, so the summary would be written by AI (else plain). */
+  can_enable: { activity: boolean; screenshots: boolean; ai_summary: boolean };
 }
 
 export interface PortalListItemDto {

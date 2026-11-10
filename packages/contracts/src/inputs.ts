@@ -211,7 +211,7 @@ export const taskInput = z.object({
 });
 
 // ─── Client portal ───────────────────────────────────────────────────────────
-export const portalSectionsInput = z.object({ hours: z.boolean(), tasks: z.boolean(), activity: z.boolean(), screenshots: z.boolean() });
+export const portalSectionsInput = z.object({ hours: z.boolean(), tasks: z.boolean(), activity: z.boolean(), screenshots: z.boolean(), ai_summary: z.boolean() });
 
 export const clientPortalSettingsInput = z.object({
   enabled: z.boolean().optional(),

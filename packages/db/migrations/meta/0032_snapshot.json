@@ -1,5 +1,5 @@
 {
-  "id": "5134f797-1993-49dd-b686-c2560d03506c",
+  "id": "a872b52e-0b31-481d-9bcf-cfe393598882",
   "prevId": "1909987f-7bb5-4907-a922-b9083a4e0ed9",
   "version": "7",
   "dialect": "postgresql",
@@ -11463,11 +11463,26 @@
           "primaryKey": false,
           "notNull": true
         },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'READY'"
+        },
         "text": {
           "name": "text",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "''"
         },
         "created_at": {
           "name": "created_at",

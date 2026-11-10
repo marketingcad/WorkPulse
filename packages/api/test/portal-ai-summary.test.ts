@@ -17,6 +17,7 @@ let carla: Client;
 let carlaAccess: string;
 let gary: Client;
 let garyAccess: string;
+let mobile: string;
 const o = (p: string) => `/orgs/${orgId}${p}`;
 const PASSWORD = 'correct-horse-battery';
 const tokenOf = (url: string) => new URL(url).searchParams.get('token');
@@ -41,6 +42,8 @@ beforeAll(async () => {
   acme = (await admin.post<any>(o('/clients'), { name: 'Acme' })).body.id;
   const globex = (await admin.post<any>(o('/clients'), { name: 'Globex' })).body.id;
   const site = (await admin.post<any>(o('/projects'), { name: 'Website', client_id: acme, member_ids: [walt.membershipId] })).body.id;
+  mobile = (await admin.post<any>(o('/projects'), { name: 'Mobile app', client_id: acme, member_ids: [walt.membershipId] })).body.id;
+  await admin.post(o(`/projects/${mobile}/tasks`), { title: 'Login screen', assignee_ids: [walt.membershipId] });
   const plan = (await admin.post<any>(o('/projects'), { name: 'Secret Globex plan', client_id: globex, member_ids: [walt.membershipId] })).body.id;
   await admin.post(o(`/projects/${plan}/tasks`), { title: 'Draft', assignee_ids: [walt.membershipId] });
   for (let i = 0; i < 4; i++) {
@@ -126,5 +129,55 @@ describe('portal AI summary', () => {
     let last = 0;
     for (let i = 0; i < 125 && last !== 429; i++) last = (await summary(carla, carlaAccess, { 'x-test-rate-limit': 'on' })).status;
     expect(last).toBe(429);
+  });
+});
+
+describe('portal AI summary: changes, concurrency and failures', () => {
+  const lastSent = () => JSON.stringify(portalCalls().at(-1)!.messages);
+
+  it('is rewritten when the admin narrows what the client sees, never showing hidden projects', async () => {
+    t.clock.advance(86_400_000);
+    await summary(carla, carlaAccess);
+    expect(lastSent()).toContain('Website');
+    const before = portalCalls().length;
+    expect((await admin.put(o(`/clients/${acme}/portal`), { project_ids: [mobile] })).status).toBe(200);
+    const r = await summary(carla, carlaAccess);
+    expect(r.body.source).toBe('ai');
+    expect(portalCalls().length).toBe(before + 1);
+    expect(lastSent()).not.toContain('Website');
+    expect(JSON.stringify(r.body.facts)).not.toContain('Website');
+    // Same scope again: the stored text is served, no new call.
+    await summary(carla, carlaAccess);
+    expect(portalCalls().length).toBe(before + 1);
+    expect((await admin.put(o(`/clients/${acme}/portal`), { project_ids: null })).status).toBe(200);
+  });
+
+  it('two first visits at the same moment make one model call', async () => {
+    t.clock.advance(86_400_000);
+    const before = portalCalls().length;
+    const { c: erin, access: erinAccess } = await invite(acme, 'erin@acme.test');
+    const [a, b] = await Promise.all([summary(carla, carlaAccess), summary(erin, erinAccess)]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(portalCalls().length).toBe(before + 1);
+  });
+
+  it('after a provider error: plain summary, a 10-minute pause before trying again, then AI', async () => {
+    t.clock.advance(86_400_000);
+    const ai = t.ai as unknown as { streamTurn: (...a: unknown[]) => AsyncIterable<unknown> };
+    const original = ai.streamTurn;
+    let attempts = 0;
+    ai.streamTurn = async function* () {
+      attempts++;
+      throw new Error('provider down');
+    };
+    try {
+      expect((await summary(carla, carlaAccess)).body.source).toBe('plain');
+      expect((await summary(carla, carlaAccess)).body.source).toBe('plain');
+      expect(attempts).toBe(1);
+    } finally {
+      ai.streamTurn = original;
+    }
+    t.clock.advance(11 * 60_000);
+    expect((await summary(carla, carlaAccess)).body.source).toBe('ai');
   });
 });

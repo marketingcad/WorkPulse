@@ -25,7 +25,11 @@ export const portalAiSummaries = pgTable(
     organizationId: orgId(),
     clientId: uuid().notNull(),
     day: text().notNull(),
-    text: text().notNull(),
+    /** What the client was allowed to see when it was written: a change of scope rewrites it. */
+    scope: text().notNull().default(''),
+    /** PENDING while one request writes it (others get the plain summary), READY, or FAILED (retried after a pause). */
+    status: text().notNull().default('READY'),
+    text: text().notNull().default(''),
     createdAt: tstz().notNull().default(sql`now()`),
   },
   (t) => [

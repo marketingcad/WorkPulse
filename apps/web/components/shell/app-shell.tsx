@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Check, ChevronRight, ChevronsUpDown, Clock, Eye, LogOut, Menu as MenuIcon, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Plus, Sun, UserRound, Wallet, X } from 'lucide-react';
 import type { MeDto, NotificationDto } from '@tallywork/contracts';
-import { IconButton, Logo, Menu, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, Popover, cx, fmtRelative } from '@tallywork/ui';
+import { AiBadge, IconButton, Logo,Menu, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, Popover, cx, fmtRelative } from '@tallywork/ui';
 import { api, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { t } from '@/lib/i18n';
@@ -273,6 +273,17 @@ function Sidebar({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggl
           );
         })}
       </nav>
+      {/* Product brand, kept quiet: the organization owns the top of the sidebar. */}
+      <div data-testid="sidebar-brand" className={cx('flex h-9 shrink-0 items-center border-t border-white/10', collapsed ? 'justify-center' : 'gap-2 px-4')}>
+        {collapsed ? (
+          <AiBadge tone="onDark" iconOnly />
+        ) : (
+          <>
+            <span className="text-xs font-semibold tracking-wide text-nav-fg">{t('brand.name')}</span>
+            <AiBadge tone="onDark" />
+          </>
+        )}
+      </div>
       {onToggle && (
         <button onClick={onToggle} className={cx('flex h-10 shrink-0 items-center gap-2 border-t border-white/10 text-xs text-nav-muted hover:text-nav-fg', collapsed ? 'justify-center' : 'px-4')} aria-label={collapsed ? t('nav.expand') : t('nav.collapseLabel')}>
           {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}

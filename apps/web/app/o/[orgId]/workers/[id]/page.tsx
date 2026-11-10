@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Activity, ArrowRight, Check, Clock, Eraser, KeyRound, Lock, Pencil, UserX, X } from 'lucide-react';
@@ -35,9 +35,10 @@ import { ApiError, errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
 import { ColorDot, ProjectStatusBadge, hoursToSeconds, secondsToHours, useOrgAction, type RoleDto } from '@/components/workspace/basics';
 import { RateNote } from '@/components/finance/rate-note';
-import { AnonymizeDialog } from '@/components/security/anonymize-dialog';
 import { DataExportAction } from '@/components/security/data-export';
-import { MfaResetDialog } from '@/components/security/mfa-reset-dialog';
+
+const AnonymizeDialog = lazy(() => import('@/components/security/anonymize-dialog').then((m) => ({ default: m.AnonymizeDialog })));
+const MfaResetDialog = lazy(() => import('@/components/security/mfa-reset-dialog').then((m) => ({ default: m.MfaResetDialog })));
 import { fromMinor, toMinor } from '@/components/finance/types';
 import { useUrlValue } from '@/lib/url-state';
 import { MemberAvatar } from '@/lib/avatars';
@@ -271,18 +272,27 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
         )}
       </div>
 
-      <MfaResetDialog open={resettingMfa} onOpenChange={setResettingMfa} member={w} />
+      {/* Rarely used admin dialogs: loaded on first open, not in the page's first-load JavaScript. */}
+      {resettingMfa && (
+        <Suspense fallback={null}>
+          <MfaResetDialog open onOpenChange={setResettingMfa} member={w} />
+        </Suspense>
+      )}
 
-      <AnonymizeDialog
-        open={erasing}
-        onOpenChange={setErasing}
-        member={w}
-        onDone={(r) => {
-          setErasing(false);
-          toast.success(r.account_anonymized ? `${w.name}’s data was erased and their account anonymized` : `${w.name}’s data in this organization was erased`);
-          router.push(`${org.base}/workers`);
-        }}
-      />
+      {erasing && (
+        <Suspense fallback={null}>
+          <AnonymizeDialog
+            open
+            onOpenChange={setErasing}
+            member={w}
+            onDone={(r) => {
+              setErasing(false);
+              toast.success(r.account_anonymized ? `${w.name}’s data was erased and their account anonymized` : `${w.name}’s data in this organization was erased`);
+              router.push(`${org.base}/workers`);
+            }}
+          />
+        </Suspense>
+      )}
 
       <ConfirmDialog
         open={confirm !== null}

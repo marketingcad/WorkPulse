@@ -2,7 +2,7 @@
 import { forwardRef, useEffect, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import Link from 'next/link';
 import { BarChart3, Clock3, FileText, LayoutDashboard, Pause, Settings, ShieldCheck, TrendingUp, Users, type LucideIcon } from 'lucide-react';
-import { BrandLockup, Logo, cx, fmtClock, useFieldAria } from '@tallywork/ui';
+import { BrandLockup, BrandSignature, Logo, cx, fmtClock, useFieldAria } from '@tallywork/ui';
 import { t, useBrowserLocale } from '@/lib/i18n';
 
 /**
@@ -19,29 +19,35 @@ export function AuthShell({ title, subtitle, children, footer, secureNote = fals
         {/* Soft brand light behind the card. */}
         <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_85%_0%,rgba(23,102,255,0.10),transparent_70%),radial-gradient(50%_40%_at_10%_100%,rgba(99,102,241,0.08),transparent_70%)]" />
         <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 hidden size-64 rotate-12 rounded-[38%] bg-[linear-gradient(140deg,#4f7dff_0%,#1766ff_45%,#5b3df5_100%)] opacity-90 blur-[1px] sm:block" />
-        <div className="relative w-full max-w-[460px] rounded-2xl border border-border bg-surface p-7 shadow-[0_24px_60px_-28px_rgba(15,34,64,0.35)] sm:p-10">
-          <Logo size={44} />
-          <h1 className="mt-5 text-[28px] font-bold leading-tight tracking-tight text-text">{title}</h1>
-          {subtitle && <p className="mt-2 text-[15px] leading-relaxed text-text-muted">{subtitle}</p>}
-          <div className="mt-8 [&_button[type=submit]]:h-11 [&_button[type=submit]]:rounded-lg [&_button[type=submit]]:text-[15px] [&_input:not([type=checkbox]):not([data-auth-input])]:h-11 [&_input:not([type=checkbox]):not([data-auth-input])]:rounded-lg [&_select]:h-11 [&_select]:rounded-lg [&_label]:text-[13px] [&_label]:font-semibold [&_label]:text-text">
-            {children}
-          </div>
-          {footer && (
-            <div className="mt-8 flex items-start gap-3 text-[13px] leading-5 text-text-muted">
-              <span aria-hidden className="mt-2.5 h-px min-w-6 flex-1 bg-border" />
-              <span className="max-w-[80%] text-center">{footer}</span>
-              <span aria-hidden className="mt-2.5 h-px min-w-6 flex-1 bg-border" />
+        <div className="relative flex w-full max-w-[460px] flex-col gap-6">
+          <div className="w-full rounded-2xl border border-border bg-surface p-7 shadow-[0_24px_60px_-28px_rgba(15,34,64,0.35)] sm:p-10">
+            <Logo size={44} />
+            <h1 className="mt-5 text-[28px] font-bold leading-tight tracking-tight text-text">{title}</h1>
+            {subtitle && <p className="mt-2 text-[15px] leading-relaxed text-text-muted">{subtitle}</p>}
+            <div className="mt-8 [&_button[type=submit]]:h-11 [&_button[type=submit]]:rounded-lg [&_button[type=submit]]:text-[15px] [&_input:not([type=checkbox]):not([data-auth-input])]:h-11 [&_input:not([type=checkbox]):not([data-auth-input])]:rounded-lg [&_select]:h-11 [&_select]:rounded-lg [&_label]:text-[13px] [&_label]:font-semibold [&_label]:text-text">
+              {children}
             </div>
-          )}
-          {secureNote && (
-            <div className="mt-6 flex items-start gap-3 rounded-xl bg-surface-muted px-4 py-3.5">
-              <ShieldCheck className="mt-0.5 size-5 shrink-0 text-interactive" aria-hidden />
-              <div className="text-xs leading-relaxed">
-                <p className="font-semibold text-text">{t('auth.secure.title')}</p>
-                <p className="text-text-muted">{t('auth.secure.body')}</p>
+            {footer && (
+              <div className="mt-8 flex items-start gap-3 text-[13px] leading-5 text-text-muted">
+                <span aria-hidden className="mt-2.5 h-px min-w-6 flex-1 bg-border" />
+                <span className="max-w-[80%] text-center">{footer}</span>
+                <span aria-hidden className="mt-2.5 h-px min-w-6 flex-1 bg-border" />
               </div>
-            </div>
-          )}
+            )}
+            {secureNote && (
+              <div className="mt-6 flex items-start gap-3 rounded-xl bg-surface-muted px-4 py-3.5">
+                <ShieldCheck className="mt-0.5 size-5 shrink-0 text-interactive" aria-hidden />
+                <div className="text-xs leading-relaxed">
+                  <p className="font-semibold text-text">{t('auth.secure.title')}</p>
+                  <p className="text-text-muted">{t('auth.secure.body')}</p>
+                </div>
+              </div>
+            )}
+          </div>
+          {/* The brand panel is hidden below lg, so the brand line under the card carries it on every size. */}
+          <footer>
+            <BrandSignature />
+          </footer>
         </div>
       </main>
     </div>
@@ -87,7 +93,7 @@ function BrandPanel() {
       </svg>
       <div className="relative flex flex-1 flex-col px-12 pb-10 pt-11 xl:px-16">
         <Link href="/" className="self-start" aria-label="WorkPulse home">
-          <BrandLockup size={56} tagline tone="onDark" />
+          <BrandLockup size={56} descriptor tagline tone="onDark" />
         </Link>
         <h2 className="mt-14 text-[44px] font-extrabold leading-[1.08] tracking-tight xl:text-[52px]">
           {t('auth.brand.headline1')}

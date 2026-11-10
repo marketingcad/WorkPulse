@@ -35,6 +35,11 @@ describe('email layout', () => {
     expect(mail.html).toContain('This email was sent to client@example.com.');
   });
 
+  it('signs off with the brand: WorkPulse – Powered by AI and the tagline (not the old one)', () => {
+    expect(mail.html).toContain('>WorkPulse</a> – Powered by AI · Smarter Workforce. Better Business.');
+    expect(mail.html).not.toContain('Track • Focus • Achieve');
+  });
+
   it('has a plain-text version with the same content and the full link', () => {
     expect(mail.text).toContain('Invoice INV-1');
     expect(mail.text).toContain('Amount due: $10.00');

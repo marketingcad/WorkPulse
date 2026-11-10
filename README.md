@@ -1,6 +1,6 @@
 # WorkPulse
 
-**Track • Focus • Achieve.** WorkPulse is a workforce time tracking platform: activity monitoring, timesheets and billing, with a web app for admins and managers and a desktop app that workers use to track time on their own machine.
+**WorkPulse – Powered by AI. Smarter Workforce. Better Business.** WorkPulse is a workforce time tracking platform: activity monitoring, timesheets and billing, with a web app for admins and managers and a desktop app that workers use to track time on their own machine.
 
 > WorkPulse is the product name people see. Technical names still say Tallywork and did not change: the repo, the `@tallywork/*` packages, the `TALLYWORK_*` variables, the `Tallywork-*` webhook headers, the `tallywork.app` domain, the desktop installers and installed app ("Tallywork", so existing installs keep their sign-in and update path), the Linux `tallywork` executable, and the browser extension.
 
@@ -49,7 +49,7 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🆕 New updates
 
-- **10 November 2026 (AI Intelligence, phase 3):** finance, capacity and performance explanations. Plan: [phase 3](docs/superpowers/plans/2026-11-10-ai-intelligence-phase3.md), ADR-137.
+- **10 November 2026 (AI Intelligence, phase 3):** finance, capacity and performance explanations. Plan: [phase 3](docs/superpowers/plans/2026-11-10-ai-intelligence-phase3.md), ADR-138.
   - **Finance:** AI Insights › Finance (payroll, invoice or payment access only) shows the payroll change per currency, overtime cost share, an estimate of the current pay period's payroll from approved time, overdue invoices and payments collected. Each view is audited as `insights.finance_viewed` (period only, never amounts). Not part of the overview. Tool `getFinancialInsights`.
   - **Capacity:** AI Insights › Capacity compares each team's scheduled hours (minus approved time off) for the next two weeks with its recent pace and open task estimates: overloaded, underused, a time-off dip, and where work could move. A team without schedules is reported as such, never as zero. Tool `getCapacityInsights`.
   - **Performance:** "Explain with WorkPulse AI" on a worker's performance profile explains the Performance Center score: the change, the two biggest drivers, one development suggestion. No private notes. Tool `explainPerformance`.

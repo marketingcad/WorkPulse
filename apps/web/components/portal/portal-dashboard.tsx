@@ -1,7 +1,7 @@
 'use client';
 import { BriefcaseBusiness, CalendarRange, Clock3, HandCoins, Users } from 'lucide-react';
 import type { PortalScreenshotDto, PortalSummaryDto } from '@tallywork/contracts';
-import { ActivityBar, BrandLockup, KpiStrip, Panel, PersonCell, Spinner, StatusBadge, type Kpi } from '@tallywork/ui';
+import { ActivityBar, BrandLockup, BrandSignature, KpiStrip, Panel, PersonCell, Spinner, StatusBadge, type Kpi } from '@tallywork/ui';
 import { t } from '@/lib/i18n';
 
 const hours = (s: number) => `${(s / 3600).toFixed(1)} h`;
@@ -204,6 +204,10 @@ export function PortalDashboard({
           )}
         </Panel>
       )}
+
+      <footer className="pt-2">
+        <BrandSignature />
+      </footer>
     </div>
   );
 }

@@ -437,12 +437,13 @@ export function Pagination({ page, pageSize, total, onPageChange, onPageSizeChan
   );
 }
 
-export function PageHeader({ title, description, actions, breadcrumbs, children }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; breadcrumbs?: ReactNode; children?: ReactNode }) {
+export function PageHeader({ title, description, actions, breadcrumbs, eyebrow, children }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; breadcrumbs?: ReactNode; /** A short line above the title (e.g. the brand tagline on the dashboard). */ eyebrow?: ReactNode; children?: ReactNode }) {
   return (
     <div className="mb-6 flex flex-col gap-3">
       {breadcrumbs && <nav aria-label={t('common.breadcrumb')} className="text-xs text-text-muted">{breadcrumbs}</nav>}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
+          {eyebrow && <p className="mb-1 text-xs font-medium tracking-wide text-text-muted">{eyebrow}</p>}
           <h1 className="truncate text-[28px] font-bold leading-tight tracking-tight">{title}</h1>
           {description && <p className="mt-1.5 text-[15px] text-text-muted">{description}</p>}
         </div>

@@ -189,7 +189,7 @@
 
 **Files:**
 - Create: `e2e/tests/web/ai-advanced.spec.ts`
-- Modify: `quality-gates.json`; `README.md`; `docs/plan/08-decisions.md` (ADR-137); help article "AI Insights: finance and capacity"
+- Modify: `quality-gates.json`; `README.md`; `docs/plan/08-decisions.md` (ADR-138); help article "AI Insights: finance and capacity"
 
 **E2E tests:**
 1. **`@smoke`:** the admin opens AI Insights › Capacity and sees findings or the "no schedules" limitation.

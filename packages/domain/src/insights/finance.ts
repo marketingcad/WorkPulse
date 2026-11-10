@@ -16,6 +16,9 @@ export interface PayrollRunFacts {
   grossMinor: number;
   netMinor: number;
   overtimeSeconds: number;
+  /** The pay group (payroll profile): runs are only compared within one group. */
+  groupId: string;
+  groupName: string;
 }
 
 const hours = (s: number) => Math.round(s / 36) / 100;
@@ -37,19 +40,25 @@ export function financeFindings(input: {
 
   if (input.payroll === null) limitations.push('Payroll insights need payroll access.');
   else {
-    const byCurrency = new Map<string, PayrollRunFacts[]>();
-    for (const r of input.payroll.filter((x) => x.status === 'FINALIZED' || x.status === 'PAID')) byCurrency.set(r.currency, [...(byCurrency.get(r.currency) ?? []), r]);
-    for (const [currency, runs] of byCurrency) {
+    // Per pay group and currency: a weekly group is never compared with a monthly one.
+    const byGroup = new Map<string, PayrollRunFacts[]>();
+    for (const r of input.payroll.filter((x) => x.status === 'FINALIZED' || x.status === 'PAID')) {
+      const k = `${r.groupId}:${r.currency}`;
+      byGroup.set(k, [...(byGroup.get(k) ?? []), r]);
+    }
+    for (const [key, runs] of byGroup) {
       const [latest, prior] = [...runs].sort((a, b) => b.periodStart.localeCompare(a.periodStart));
       if (!latest || !prior) continue;
+      const currency = latest.currency;
+      const label = `${latest.groupName} (${currency})`;
       const change = percentChange(latest.grossMinor, prior.grossMinor, 1);
       findings.push({
         ...base,
-        id: findingId('finance', 'payroll_change', currency),
+        id: findingId('finance', 'payroll_change', key),
         category: 'payroll_change',
         severity: change !== null && change >= 15 ? 'attention' : 'info',
         basis: 'observation',
-        title: `Payroll (${currency}) ${change === null ? 'compared with the run before' : `${change >= 0 ? 'up' : 'down'} ${Math.abs(change)} %`}`,
+        title: `Payroll – ${label} ${change === null ? 'compared with the run before' : `${change >= 0 ? 'up' : 'down'} ${Math.abs(change)} %`}`,
         summary: `Gross pay for the run starting ${latest.periodStart}, against the run starting ${prior.periodStart}, as finalized in Payroll.`,
         metrics: [{ label: 'Gross pay', value: latest.grossMinor, unit: 'money', currency, previous: prior.grossMinor }, ...(change === null ? [] : [{ label: 'Change', value: change, unit: 'percent' as const }])],
         refs: [{ type: 'payroll_run', id: latest.id, name: `Payroll ${latest.periodStart}` }],
@@ -59,11 +68,11 @@ export function financeFindings(input: {
       if (latest.overtimeSeconds > 0 || prior.overtimeSeconds > 0) {
         findings.push({
           ...base,
-          id: findingId('finance', 'overtime_cost_share', currency),
+          id: findingId('finance', 'overtime_cost_share', key),
           category: 'overtime_cost_share',
           severity: latest.overtimeSeconds > prior.overtimeSeconds * 1.25 && latest.overtimeSeconds >= 2 * 3600 ? 'attention' : 'info',
           basis: 'observation',
-          title: `Overtime in the latest ${currency} payroll`,
+          title: `Overtime in the latest payroll – ${label}`,
           summary: `${hours(latest.overtimeSeconds)} h of overtime against ${hours(prior.overtimeSeconds)} h in the run before.`,
           metrics: [{ label: 'Overtime hours', value: hours(latest.overtimeSeconds), unit: 'hours', previous: hours(prior.overtimeSeconds) }],
           refs: [{ type: 'payroll_run', id: latest.id, name: `Payroll ${latest.periodStart}` }],

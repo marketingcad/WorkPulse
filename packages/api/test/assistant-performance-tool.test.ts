@@ -66,3 +66,15 @@ describe('explainPerformance', () => {
     if (r.status === 'ok') expect(parse(r.content).note).toBe('No matching member you can see.');
   });
 });
+
+describe('explainPerformance with an ambiguous name', () => {
+  it('asks which person is meant instead of explaining the first match', async () => {
+    // "er" matches both Mia Manager and Walt Worker.
+    const r = await executeTool(admin, toolsFor(admin.actor), 'explainPerformance', { ...PERIOD, member: 'er' });
+    expect(r.status).toBe('ok');
+    const data = parse(r.content);
+    expect(data.findings).toBeUndefined();
+    expect(data.note).toMatch(/more than one/i);
+    expect(data.matches.sort()).toEqual(['Mia Manager', 'Walt Worker']);
+  });
+});

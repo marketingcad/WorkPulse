@@ -26,7 +26,10 @@ export const explainPerformanceTool: AssistantTool<z.infer<typeof input>> = {
     if (!q.member) return { data: { note: 'Name the person whose score you want explained.' } };
     // Only people whose performance this person may see.
     const visible = (has(x.actor, 'members:read') ? await listMemberOptions(x, { includeRemoved: true }) : []).filter((m) => canSeeMembership(x.actor, 'performance:read', m.id));
-    const [m] = matchByName(visible, q.member);
+    const found = matchByName(visible, q.member);
+    // Several people match: ask, never explain someone else's score by guessing.
+    if (found.length > 1) return { data: { note: 'More than one person matches that name. Ask which one, using their full name.', matches: found.slice(0, 10).map((x) => x.name) } };
+    const [m] = found;
     if (!m) return { data: { note: NO_MEMBER } };
     const prev = previousPeriod(q.from, q.to);
     const current = await memberScore(x, m.id, q.from, q.to);

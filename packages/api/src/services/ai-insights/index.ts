@@ -22,6 +22,9 @@ const SECTION_MAX = 50;
 
 type Part = { findings: Finding[]; limitations: string[] };
 
+/** Which section and period were viewed; never any amount. */
+const auditFinanceView = (x: Ctx, period: Period) => audit(x, { action: 'insights.finance_viewed', targetType: 'insights', metadata: { section: 'finance', from: period.from, to: period.to } });
+
 async function section(x: Ctx, s: InsightSection, period: Period, previous: Period, today: string): Promise<Part> {
   if (s === 'workforce') {
     if (!has(x, 'time:read')) return { findings: [], limitations: ['Workforce insights need access to time entries.'] };
@@ -38,7 +41,7 @@ async function section(x: Ctx, s: InsightSection, period: Period, previous: Peri
     if (!mayReadFinance(x)) return { findings: [], limitations: ['Payroll insights need payroll access.', 'Invoice and payment insights need invoice or payment access.'] };
     const input = await financeInputs(x, period, previous, today);
     // Sensitive data: every computation is audited (which section and period; never amounts).
-    await audit(x, { action: 'insights.finance_viewed', targetType: 'insights', metadata: { section: 'finance', from: period.from, to: period.to } });
+    await auditFinanceView(x, period);
     return financeFindings({ period, previous, ...input });
   }
   if (s === 'workflow') {
@@ -55,10 +58,14 @@ async function section(x: Ctx, s: InsightSection, period: Period, previous: Peri
 const bySeverity = (a: Finding, b: Finding) => SEVERITY[a.severity] - SEVERITY[b.severity] || SECTIONS.indexOf(a.section) - SECTIONS.indexOf(b.section);
 
 export async function getInsights(x: Ctx, which: InsightSectionParam, q: Period): Promise<InsightResultDto> {
-  const key = insightCacheKey(x.org.id, x.actor.membershipId, which, q.from, q.to);
+  const key = insightCacheKey(x.org.id, x.actor.membershipId, which, q.from, q.to, x.actor.grants);
   const now = x.deps.now().getTime();
   const cached = insightCache.get(key, now);
-  if (cached) return cached;
+  if (cached) {
+    // Finance is sensitive: a view served from the cache is still a view, and is audited.
+    if (which === 'finance' && mayReadFinance(x)) await auditFinanceView(x, cached.period);
+    return cached;
+  }
 
   const today = localDate(x.deps.now(), x.org.timezone);
   // Capacity always looks at the next two weeks from today, whatever period was asked for.

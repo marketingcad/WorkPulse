@@ -14,6 +14,7 @@ let orgId: string;
 let ada: Client;
 let mia: Client;
 let ivy: Client;
+let roleId: string;
 const THIS = { from: '2026-11-02', to: '2026-11-08' };
 const o = (p: string) => `/orgs/${orgId}${p}`;
 const finance = (c: Client) => c.get<any>(o(`/assistant/insights/finance?from=${THIS.from}&to=${THIS.to}`));
@@ -25,7 +26,7 @@ beforeAll(async () => {
   mia = (await addMember(t, ada, orgId, 'Mia Manager', 'mia@fi.test', 'TEAM_MANAGER')).client;
   const walt = await addMember(t, ada, orgId, 'Walt Worker', 'walt@fi.test');
   // A custom role that may read invoices, but not payroll, rates or billing.
-  const role = (await ada.post<any>(o('/roles'), { name: 'Invoices only', grants: { 'org:read': 'org', 'invoices:read': 'org' } })).body.id as string;
+  const role = (roleId = (await ada.post<any>(o('/roles'), { name: 'Invoices only', grants: { 'org:read': 'org', 'invoices:read': 'org' } })).body.id as string);
   const inv = await ada.post<any>(o('/invitations'), { email: 'ivy@fi.test', name: 'Ivy Invoices', role_id: role });
   ivy = new Client(t);
   const token = new URL(inv.body.invite_url).searchParams.get('token');
@@ -59,6 +60,7 @@ describe('finance insights', () => {
     const before = (await audits()).length;
     const r = await finance(mia);
     expect(r.status).toBe(200);
+    expect(r.status).toBe(200);
     expect(r.body.findings).toEqual([]);
     expect(r.body.limitations).toContain('Payroll insights need payroll access.');
     expect(JSON.stringify(r.body)).not.toMatch(/_minor|"money"|USD/);
@@ -71,6 +73,27 @@ describe('finance insights', () => {
     expect(r.body.limitations).toContain('Payroll insights need payroll access.');
     expect(r.body.limitations).not.toContain('Invoice and payment insights need invoice or payment access.');
     expect(r.body.findings.some((f: any) => f.category.startsWith('payroll'))).toBe(false);
+  });
+});
+
+describe('finance insights and the 5-minute cache', () => {
+  it('audits every view, also when the answer comes from the cache', async () => {
+    const before = (await audits()).length;
+    await finance(ada);
+    await finance(ada);
+    expect((await audits()).length).toBe(before + 2);
+  });
+
+  it('never serves a cached answer after the person loses access', async () => {
+    expect((await finance(ivy)).body.limitations).not.toContain('Invoice and payment insights need invoice or payment access.');
+    expect((await ada.put(o(`/roles/${roleId}`), { name: 'Invoices only', grants: { 'org:read': 'org', 'projects:read': 'org' } })).status).toBe(200);
+    const r = await finance(ivy);
+    expect(r.status).toBe(200);
+    expect(r.body.findings).toEqual([]);
+    expect(r.body.limitations).toContain('Invoice and payment insights need invoice or payment access.');
+    expect(JSON.stringify(r.body)).not.toMatch(/"money"|_minor/);
+    // Restore the role for the tests that follow.
+    expect((await ada.put(o(`/roles/${roleId}`), { name: 'Invoices only', grants: { 'org:read': 'org', 'invoices:read': 'org' } })).status).toBe(200);
   });
 });
 

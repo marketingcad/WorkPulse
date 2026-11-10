@@ -48,7 +48,9 @@ export async function capacityInputs(x: Ctx, period: Period, today: string): Pro
   const recent = new Map<string, number>();
   for (const r of await timeEntryTotals(x, { from: recentFrom, to: addDaysToDate(today, -1), membershipIds: all })) recent.set(r.membership_id, (recent.get(r.membership_id) ?? 0) + r.seconds);
 
-  const tasks = has(x, 'tasks:read') ? (await listTasks(x, {})).filter((t) => t.status !== 'DONE') : [];
+  // Open work due within the window, or already overdue: the whole backlog (or work with no due date)
+  // cannot be placed in these two weeks, and counting it would call every team overloaded.
+  const tasks = has(x, 'tasks:read') ? (await listTasks(x, {})).filter((t) => t.status !== 'DONE' && t.due_date !== null && t.due_date <= period.to) : [];
 
   return {
     teams: teams.map((t) => {
@@ -61,7 +63,9 @@ export async function capacityInputs(x: Ctx, period: Period, today: string): Pro
         // No shifts at all means no schedules: capacity cannot be estimated (never assumed to be zero).
         scheduledSeconds: scheduled > 0 ? scheduled : null,
         timeOffSeconds: Math.round(ids.reduce((s, id) => s + (away.get(id) ?? 0), 0)),
-        recentWeeklySeconds: Math.round(ids.reduce((s, id) => s + (recent.get(id) ?? 0), 0) / 4),
+        // Nothing tracked in four weeks: the pace is unknown (a new team, or one that does not track
+        // time), never zero, so no "room for more work" is invented.
+        recentWeeklySeconds: ids.some((id) => (recent.get(id) ?? 0) > 0) ? Math.round(ids.reduce((s, id) => s + (recent.get(id) ?? 0), 0) / 4) : null,
         openEstimateSeconds: open,
       };
     }),

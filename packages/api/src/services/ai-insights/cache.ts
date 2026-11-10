@@ -9,7 +9,12 @@ const TTL_MS = 5 * 60_000;
 const MAX_KEYS = 500;
 const store = new Map<string, { at: number; value: InsightResultDto }>();
 
-export const insightCacheKey = (orgId: string, membershipId: string, section: string, from: string, to: string) => `${orgId}:${membershipId}:${section}:${from}:${to}`;
+/**
+ * The key also carries the person's current grants: after a role change, nothing computed under the
+ * old access is served again (a removed finance permission takes effect at once).
+ */
+export const insightCacheKey = (orgId: string, membershipId: string, section: string, from: string, to: string, grants: Record<string, unknown> = {}) =>
+  `${orgId}:${membershipId}:${section}:${from}:${to}:${JSON.stringify(Object.entries(grants).sort(([a], [b]) => a.localeCompare(b)))}`;
 
 export const insightCache = {
   get(key: string, now: number): InsightResultDto | null {

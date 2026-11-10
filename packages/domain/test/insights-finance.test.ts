@@ -3,7 +3,7 @@ import { financeFindings } from '../src/insights';
 
 const period = { from: '2026-10-01', to: '2026-10-31' };
 const previous = { from: '2026-09-01', to: '2026-09-30' };
-const run = (id: string, periodStart: string, currency: string, grossMinor: number, overtimeSeconds = 0) => ({ id, periodStart, periodEnd: periodStart, status: 'FINALIZED', currency, grossMinor, netMinor: grossMinor, overtimeSeconds });
+const run = (id: string, periodStart: string, currency: string, grossMinor: number, overtimeSeconds = 0, groupId = `g-${currency}`, groupName = 'Staff') => ({ id, periodStart, periodEnd: periodStart, status: 'FINALIZED', currency, grossMinor, netMinor: grossMinor, overtimeSeconds, groupId, groupName });
 
 describe('financeFindings', () => {
   it('compares payroll runs per currency and never adds currencies together', () => {
@@ -21,6 +21,25 @@ describe('financeFindings', () => {
     expect(usd.metrics).toContainEqual({ label: 'Change', value: 20, unit: 'percent' });
     for (const f of findings) for (const m of f.metrics) if (m.unit === 'money') expect(m.currency).toMatch(/^[A-Z]{3}$/);
     expect(findings.find((f) => f.category === 'overtime_cost_share')!.metrics).toContainEqual({ label: 'Overtime hours', value: 10, unit: 'hours', previous: 4 });
+  });
+
+  it('compares runs within one pay group, never a weekly group with a monthly one in the same currency', () => {
+    const { findings } = financeFindings({
+      period,
+      previous,
+      payroll: [
+        run('w2', '2026-10-08', 'USD', 10_000_00, 0, 'weekly', 'Weekly staff'),
+        run('w1', '2026-10-01', 'USD', 10_000_00, 0, 'weekly', 'Weekly staff'),
+        run('m2', '2026-10-01', 'USD', 40_000_00, 0, 'monthly', 'Monthly contractors'),
+        run('m1', '2026-09-01', 'USD', 40_000_00, 0, 'monthly', 'Monthly contractors'),
+      ],
+      owedEstimate: null,
+      billing: null,
+    });
+    const changes = findings.filter((f) => f.category === 'payroll_change');
+    expect(changes.map((f) => f.title).sort()).toEqual(['Payroll – Monthly contractors (USD) up 0 %', 'Payroll – Weekly staff (USD) up 0 %']);
+    expect(new Set(changes.map((f) => f.id)).size).toBe(2);
+    for (const f of changes) expect(f.severity).toBe('info');
   });
 
   it('labels the payroll forecast as an estimate, from existing pricing', () => {

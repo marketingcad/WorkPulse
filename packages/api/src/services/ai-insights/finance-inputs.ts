@@ -18,18 +18,20 @@ export async function financeInputs(x: Ctx, period: Period, previous: Period, to
   if (has(x, 'payroll:read')) {
     const year = Number(today.slice(0, 4));
     const runs = [...(await listPayrollRuns(x, { year })), ...(await listPayrollRuns(x, { year: year - 1 }))].filter((r) => r.status === 'FINALIZED' || r.status === 'PAID');
-    // The latest two runs per currency, with overtime from their lines (only those runs are opened).
+    // The latest two runs per pay group and currency, with overtime from their lines (only those runs
+    // are opened). Groups are never mixed: a weekly and a monthly group are compared separately.
     const latest = new Map<string, typeof runs>();
     for (const r of [...runs].sort((a, b) => b.period_start.localeCompare(a.period_start))) {
-      const list = latest.get(r.currency) ?? [];
-      if (list.length < 2) latest.set(r.currency, [...list, r]);
+      const k = `${r.profile_id}:${r.currency}`;
+      const list = latest.get(k) ?? [];
+      if (list.length < 2) latest.set(k, [...list, r]);
     }
     payroll = [];
     for (const list of latest.values()) {
       for (const r of list) {
         const full = await getPayrollRun(x, r.id);
         const overtimeSeconds = (full.lines ?? []).reduce((s, l) => s + (l.overtime_seconds ?? 0), 0);
-        payroll.push({ id: r.id, periodStart: r.period_start, periodEnd: r.period_end, status: r.status, currency: r.currency, grossMinor: r.gross_minor, netMinor: r.net_minor, overtimeSeconds });
+        payroll.push({ id: r.id, periodStart: r.period_start, periodEnd: r.period_end, status: r.status, currency: r.currency, grossMinor: r.gross_minor, netMinor: r.net_minor, overtimeSeconds, groupId: r.profile_id, groupName: r.profile_name });
       }
     }
   }

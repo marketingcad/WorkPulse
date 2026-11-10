@@ -29,7 +29,15 @@ beforeAll(async () => {
   await ada.put(o(`/teams/${teamB}/members/${bea.membershipId}`), { role: 'MEMBER' });
   expect((await ada.post(o('/schedules'), { membership_id: walt.membershipId, name: 'Weekdays', timezone: 'America/New_York', days: [1, 2, 3, 4, 5].map((dow) => ({ dow, start: '09:00', end: '17:00' })), effective_from: '2026-01-05' })).status).toBe(201);
   const p = (await ada.post<any>(o('/projects'), { name: 'Alpha', member_ids: [walt.membershipId], team_ids: [teamA] })).body.id as string;
-  expect((await ada.post(o(`/projects/${p}/tasks`), { title: 'Rebuild the site', estimate_seconds: 100 * 3600, assignee_ids: [walt.membershipId] })).status).toBe(201);
+  // Team Charlie: Cleo is scheduled, has no open work and has tracked nothing yet.
+  const cleo = await addMember(t, ada, orgId, "Cleo Charlie", "cleo@cap.test");
+  const teamC = (await ada.post<any>(o("/teams"), { name: "Team Charlie" })).body.id as string;
+  await ada.put(o(`/teams/${teamC}/members/${cleo.membershipId}`), { role: "MEMBER" });
+  expect((await ada.post(o("/schedules"), { membership_id: cleo.membershipId, name: "Weekdays", timezone: "America/New_York", days: [1, 2, 3, 4, 5].map((dow) => ({ dow, start: "09:00", end: "17:00" })), effective_from: "2026-01-05" })).status).toBe(201);
+  expect((await ada.post(o(`/projects/${p}/tasks`), { title: 'Rebuild the site', estimate_seconds: 100 * 3600, due_date: '2026-11-20', assignee_ids: [walt.membershipId] })).status).toBe(201);
+  // Work due long after the two weeks, or with no due date, is not part of this window.
+  expect((await ada.post(o(`/projects/${p}/tasks`), { title: "Next year's rewrite", estimate_seconds: 500 * 3600, due_date: "2027-03-01", assignee_ids: [walt.membershipId] })).status).toBe(201);
+  expect((await ada.post(o(`/projects/${p}/tasks`), { title: "Someday", estimate_seconds: 300 * 3600, assignee_ids: [walt.membershipId] })).status).toBe(201);
 });
 afterAll(() => t.close());
 beforeEach(() => insightCache.clear());
@@ -60,5 +68,18 @@ describe('capacity insights', () => {
     expect(toolsFor({ ...admin.actor, grants: { 'org:read': 'org', 'time:read': 'org' } }).map((x) => x.name)).not.toContain('getCapacityInsights');
     const r = await executeTool(admin, toolsFor(admin.actor), 'getCapacityInsights', { from: '2026-11-10', to: '2026-11-10' });
     expect(r.status).toBe('ok');
+  });
+});
+
+describe('capacity insights, what counts', () => {
+  it('counts only open work due within the two weeks (or overdue), not the whole backlog', async () => {
+    const over = (await capacity(ada)).body.findings.find((f: any) => f.category === 'overloaded');
+    expect(over.metrics).toContainEqual({ label: 'Open estimates', value: 100, unit: 'hours' });
+  });
+
+  it('a team with no tracked time in the last four weeks is never called underused', async () => {
+    // Cleo (Team Charlie) is scheduled with no work and no tracked time: her pace is unknown, not zero.
+    const r = (await capacity(ada)).body;
+    expect(r.findings.filter((f: any) => f.category === 'underused' || f.category === 'redistribute')).toEqual([]);
   });
 });

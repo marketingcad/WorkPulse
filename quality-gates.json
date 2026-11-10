@@ -66,13 +66,13 @@
       "vitest": {
         "packages/db": ["pool-settings", "query-stats"],
         "packages/api": ["ops", "server-timing", "validation-feedback"],
-        "packages/ui": ["field-aria"],
+        "packages/ui": ["field-aria", "brand"],
         "apps/web": ["bundle-imports"]
       },
       "playwright": [
         "web/a11y-sweep", "web/qa/a11y", "web/account-menu-theme", "web/menu-layout-shift", "web/mobile-dialogs", "web/mobile-sweep",
         "web/mobile-tables", "web/qa/responsive", "web/qa/page-health", "web/qa/forms", "web/qa/naming", "web/qa/validation-feedback",
-        "web/forms-feedback",
+        "web/forms-feedback", "web/branding",
         "desktop/a11y", "desktop/accessibility"
       ]
     }

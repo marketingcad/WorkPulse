@@ -118,7 +118,16 @@ export async function workforceInputs(x: Ctx, period: Period, previous: Period, 
     pending,
     missing,
     timeOff,
+    monthToDate: { today, seconds: await monthToDateSeconds(x, today) },
   };
+}
+
+/** Seconds recorded from the 1st of this month up to yesterday (0 on the 1st), within the person's scope. */
+async function monthToDateSeconds(x: Ctx, today: string): Promise<number> {
+  const from = `${today.slice(0, 7)}-01`;
+  const to = addDaysToDate(today, -1);
+  if (to < from) return 0;
+  return (await timeEntryTotals(x, { from, to })).reduce((s, r) => s + r.seconds, 0);
 }
 
 export async function timesheetInputs(x: Ctx, period: Period, previous: Period, today: string) {
@@ -210,6 +219,8 @@ export async function projectInputs(x: Ctx, period: Period, previous: Period, to
       },
       hoursThisPeriod: h(hoursNow.get(p.id) ?? 0),
       hoursPreviousPeriod: has(x, 'time:read') ? h(hoursBefore.get(p.id) ?? 0) : null,
+      // For the finish forecast: progress over the last four weeks (only with task access).
+      ...(has(x, 'tasks:read') ? { tasksDoneLast28: mine.filter((t) => t.completed_at && localDate(new Date(t.completed_at), x.org.timezone) > addDaysToDate(today, -28)).length, endDate: p.end_date } : {}),
     });
   }
   return { projects: out, limitations };

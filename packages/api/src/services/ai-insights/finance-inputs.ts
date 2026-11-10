@@ -1,4 +1,4 @@
-import { periodFor } from '@tallywork/domain';
+import { addDaysToDate, periodFor } from '@tallywork/domain';
 import type { Period, PayrollRunFacts } from '@tallywork/domain/insights';
 import type { Ctx } from '../ctx';
 import { amountsOwed, listPayments, pageInvoices } from '../finance';
@@ -37,6 +37,7 @@ export async function financeInputs(x: Ctx, period: Period, previous: Period, to
   }
 
   let owedEstimate: Array<{ currency: string; approvedMinor: number; estimatedMinor: number }> | null = null;
+  let monthToDatePay: Array<{ currency: string; minor: number }> | null = null;
   if (has(x, 'billing:read') || has(x, 'rates:read')) {
     // The current pay period, priced by the existing rules: approved time at its approved amount, the
     // rest at today's effective rates. `estimated_amount_minor` already includes the approved part.
@@ -50,6 +51,16 @@ export async function financeInputs(x: Ctx, period: Period, previous: Period, to
       byCurrency.set(r.currency, cur);
     }
     owedEstimate = [...byCurrency].map(([currency, v]) => ({ currency, ...v }));
+
+    // Pay for the time recorded this month before today, priced the same way, per currency: the
+    // month-end projection scales it (estimate). Nothing on the 1st.
+    const monthStart = `${today.slice(0, 7)}-01`;
+    const yesterday = addDaysToDate(today, -1);
+    if (yesterday >= monthStart) {
+      const mtd = new Map<string, number>();
+      for (const r of await amountsOwed(x, monthStart, yesterday)) mtd.set(r.currency, (mtd.get(r.currency) ?? 0) + r.estimated_amount_minor);
+      monthToDatePay = [...mtd].map(([currency, minor]) => ({ currency, minor }));
+    } else monthToDatePay = [];
   }
 
   let billing: { currency: string; outstandingMinor: number; overdueMinor: number; overdueCount: number; collectedMinor: number; previousCollectedMinor: number } | null = null;
@@ -66,5 +77,5 @@ export async function financeInputs(x: Ctx, period: Period, previous: Period, to
       billing = { ...billing, collectedMinor: await sum(period), previousCollectedMinor: await sum(previous) };
     }
   }
-  return { payroll, owedEstimate, billing };
+  return { payroll, owedEstimate, billing, monthToDatePay, today };
 }

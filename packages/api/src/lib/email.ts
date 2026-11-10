@@ -93,7 +93,7 @@ export function renderEmail(c: EmailContent, opts: { appUrl: string; to: string 
       <tr><td style="padding:24px 8px 0;font-family:${FONT};font-size:12px;line-height:18px;color:${C.muted}" align="center">
         ${para(c.reason)}<br>
         This email was sent to ${escapeHtml(opts.to)}.<br>
-        <a href="${base}" style="color:${C.muted}">WorkPulse</a> · Track • Focus • Achieve
+        <a href="${base}" style="color:${C.muted}">WorkPulse</a> – Powered by AI · Smarter Workforce. Better Business.
       </td></tr>
     </table>
   </td></tr>

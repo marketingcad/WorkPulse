@@ -8,8 +8,8 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'sw
 const brand = Poppins({ subsets: ['latin'], weight: '700', variable: '--font-brand', display: 'swap' });
 
 export const metadata: Metadata = {
-  title: { default: 'WorkPulse', template: '%s · WorkPulse' },
-  description: 'Time tracking, activity, timesheets and billing for teams.',
+  title: { default: 'WorkPulse – Powered by AI', template: '%s · WorkPulse' },
+  description: 'Smarter Workforce. Better Business. Time tracking, timesheets, pay and billing for teams, with WorkPulse AI.',
   robots: { index: false, follow: false },
 };
 

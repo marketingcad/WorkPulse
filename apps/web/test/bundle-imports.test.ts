@@ -95,6 +95,13 @@ describe('pages that only need workspace helpers', () => {
     expect(page).not.toContain('components/workspace/client-dialog.tsx');
   });
 
+  // The member page was at 250.4 KB (10 Nov 2026) with these in its first load; they open from a button.
+  it('the member page opens its erase-data and reset-two-factor dialogs on demand', () => {
+    const page = reachable('app/o/[orgId]/workers/[id]/page.tsx');
+    expect(page).not.toContain('components/security/anonymize-dialog.tsx');
+    expect(page).not.toContain('components/security/mfa-reset-dialog.tsx');
+  });
+
   // The manual is about 13 KB gzip; inside the first load it put Help over budget (250.7 KB, 6 Nov 2026).
   it('the Help page loads the manual alongside it, not in its first load', () => {
     expect(reachable('app/o/[orgId]/help/page.tsx')).not.toContain('components/help/content.ts');

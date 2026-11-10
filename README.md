@@ -49,6 +49,10 @@ Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywor
 
 ### 🆕 New updates
 
+- **10 November 2026 (AI Intelligence, phase 3):** finance, capacity and performance explanations. Plan: [phase 3](docs/superpowers/plans/2026-11-10-ai-intelligence-phase3.md), ADR-137.
+  - **Finance:** AI Insights › Finance (payroll, invoice or payment access only) shows the payroll change per currency, overtime cost share, an estimate of the current pay period's payroll from approved time, overdue invoices and payments collected. Each view is audited as `insights.finance_viewed` (period only, never amounts). Not part of the overview. Tool `getFinancialInsights`.
+  - **Capacity:** AI Insights › Capacity compares each team's scheduled hours (minus approved time off) for the next two weeks with its recent pace and open task estimates: overloaded, underused, a time-off dip, and where work could move. A team without schedules is reported as such, never as zero. Tool `getCapacityInsights`.
+  - **Performance:** "Explain with WorkPulse AI" on a worker's performance profile explains the Performance Center score: the change, the two biggest drivers, one development suggestion. No private notes. Tool `explainPerformance`.
 - **10 November 2026 (AI Intelligence, phase 2):** workflow assistance, drafts and smarter notifications. Plan: [phase 2](docs/superpowers/plans/2026-11-10-ai-intelligence-phase2.md), ADR-136.
   - **Workflow:** AI Insights › Workflow lists what waits for your decision (timesheets, manual time, time off, expenses) in a suggested order, what has waited over 3 days, and the average days to decide a timesheet. Tool `getWorkflowInsights`.
   - **Write with AI:** in project and task descriptions (draft from the saved record, or rewrite what you typed), and Draft reminder on missing timesheets. Editable, with Undo; never sent or saved for you (`POST /assistant/drafts`).

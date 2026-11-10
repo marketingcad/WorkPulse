@@ -534,6 +534,25 @@ export const HELP_ARTICLES: HelpArticle[] = [
     keywords: ['ai insights', 'insights', 'trends', 'overtime', 'workload', 'overlap', 'budget risk', 'deadline', 'attention', 'review'],
   },
   {
+    id: 'ai-insights-finance-capacity',
+    category: 'reports',
+    title: 'AI Insights: finance and capacity',
+    summary: 'Payroll and invoice trends for finance roles, workload for the next two weeks, and plain explanations of performance scores.',
+    steps: [
+      'Open AI Insights under Reports and choose the Finance tab to see payroll changes, overtime cost, a payroll estimate for the current pay period, overdue invoices and payments collected.',
+      'Choose the Capacity tab to see, team by team, scheduled hours against recent pace and open work for the next two weeks.',
+      'On a worker’s performance profile, choose Explain with WorkPulse AI to see what moved the score and one thing to work on.',
+    ],
+    points: [
+      'The Finance tab appears only if you may see payroll, invoices or payments, and every visit to it is recorded in the audit log (never the amounts).',
+      'Amounts are shown in their own currency and never added across currencies. A forecast is always labelled as an estimate.',
+      'A team without schedules is listed as such: its capacity is never assumed to be zero.',
+      'Score explanations use the Performance Center score only, never private notes, and suggest development, not discipline.',
+    ],
+    links: [{ label: 'Open AI Insights', href: '/ai-insights' }],
+    keywords: ['finance', 'payroll', 'invoices', 'overdue', 'forecast', 'capacity', 'workload', 'overloaded', 'performance score', 'explain'],
+  },
+  {
     id: 'reports',
     category: 'reports',
     title: 'Run, save and schedule a report',

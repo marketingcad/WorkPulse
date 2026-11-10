@@ -7,3 +7,5 @@ export * from './workflow';
 export * from './performance';
 export * from './finance';
 export * from './capacity';
+export * from './forecast';
+export * from './portal-summary';

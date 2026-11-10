@@ -1,4 +1,5 @@
 import { findingId, percentChange } from './compare';
+import { monthEndProjection } from './forecast';
 import type { Finding, Period } from './types';
 
 /**
@@ -32,11 +33,42 @@ export function financeFindings(input: {
   owedEstimate: Array<{ currency: string; approvedMinor: number; estimatedMinor: number }> | null;
   /** null: the person may not see invoices or payments. Organization currency only. */
   billing: null | { currency: string; outstandingMinor: number; overdueMinor: number; overdueCount: number; collectedMinor: number; previousCollectedMinor: number };
+  /** Pay for time recorded this calendar month before today, per currency (absent or null: none). */
+  monthToDatePay?: Array<{ currency: string; minor: number }> | null;
+  today?: string;
 }): { findings: Finding[]; limitations: string[] } {
   const { period } = input;
   const findings: Finding[] = [];
   const limitations: string[] = [];
   const base = { section: 'finance' as const, period };
+
+  if (input.monthToDatePay && input.today) {
+    for (const p of input.monthToDatePay) {
+      if (p.minor <= 0) continue;
+      const m = monthEndProjection({ today: input.today, soFar: p.minor });
+      if (!m) {
+        if (!limitations.includes('Too early in the month to project month-end pay.')) limitations.push('Too early in the month to project month-end pay.');
+        continue;
+      }
+      findings.push({
+        ...base,
+        period: { from: m.monthStart, to: m.monthEnd },
+        id: findingId('finance', 'month_end_pay', `${m.monthStart}:${p.currency}`),
+        category: 'month_end_pay',
+        severity: 'info',
+        basis: 'estimate',
+        title: `Expected pay this month (${p.currency})`,
+        summary: `Pay for the time recorded in the first ${m.elapsedWeekdays} of ${m.totalWeekdays} working days, priced by the existing rates and projected to the end of the month. This is an estimate, not a certainty.`,
+        metrics: [
+          { label: 'So far', value: p.minor, unit: 'money', currency: p.currency },
+          { label: 'Projected', value: m.projected, unit: 'money', currency: p.currency },
+        ],
+        refs: [],
+        links: ['finance.payroll'],
+        next_step: 'No action needed.',
+      });
+    }
+  }
 
   if (input.payroll === null) limitations.push('Payroll insights need payroll access.');
   else {

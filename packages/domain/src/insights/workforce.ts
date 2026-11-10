@@ -1,4 +1,5 @@
 import { findingId, percentChange } from './compare';
+import { monthEndProjection } from './forecast';
 import type { Finding, Period } from './types';
 
 /** Hours of one team, project or member for the period and the one before (seconds). */
@@ -25,6 +26,8 @@ export function workforceFindings(input: {
   missing: number;
   /** People with approved time off overlapping the period, and requests waiting for a decision. */
   timeOff: { peopleAway: number; pendingRequests: number };
+  /** Seconds recorded this calendar month before today (absent: no month-end projection). */
+  monthToDate?: { today: string; seconds: number } | null;
 }): { findings: Finding[]; limitations: string[] } {
   const { period, totals } = input;
   const findings: Finding[] = [];
@@ -152,6 +155,29 @@ export function workforceFindings(input: {
       links: ['time_off'],
       next_step: input.timeOff.pendingRequests > 0 ? 'Decide the waiting requests.' : 'No action needed.',
     });
+  }
+  if (input.monthToDate) {
+    // This calendar month, whatever period was asked for: what was recorded so far, projected.
+    const m = monthEndProjection({ today: input.monthToDate.today, soFar: input.monthToDate.seconds });
+    if (!m) limitations.push('Too early in the month to project month-end hours.');
+    else
+      findings.push({
+        ...base,
+        period: { from: m.monthStart, to: m.monthEnd },
+        id: findingId('workforce', 'month_end_hours', m.monthStart),
+        category: 'month_end_hours',
+        severity: 'info',
+        basis: 'estimate',
+        title: `About ${Math.round(m.projected / H)} h expected this month`,
+        summary: `${hours(input.monthToDate.seconds)} h recorded in the first ${m.elapsedWeekdays} of ${m.totalWeekdays} working days, projected to the end of the month at the same pace. This is an estimate, not a certainty.`,
+        metrics: [
+          { label: 'So far', value: hours(input.monthToDate.seconds), unit: 'hours' },
+          { label: 'Projected', value: hours(m.projected), unit: 'hours' },
+        ],
+        refs: [],
+        links: ['timesheets.all'],
+        next_step: 'No action needed.',
+      });
   }
   return { findings, limitations };
 }

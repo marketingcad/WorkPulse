@@ -1,4 +1,5 @@
 import { findingId, percentChange } from './compare';
+import { finishForecast } from './forecast';
 import type { Finding, Period } from './types';
 
 export interface ProjectFacts {
@@ -11,6 +12,10 @@ export interface ProjectFacts {
   /** Hours (not seconds) recorded on the project in this and the previous period. */
   hoursThisPeriod: number;
   hoursPreviousPeriod: number | null;
+  /** Tasks completed in the last 28 days, for the finish forecast (absent: no forecast). */
+  tasksDoneLast28?: number;
+  /** The project's planned end date, if any. */
+  endDate?: string | null;
 }
 
 const MAX_HEALTHY_NAMES = 10;
@@ -107,7 +112,34 @@ export function projectFindings(input: { period: Period; today: string; projects
         next_step: 'Confirm who is working on the due tasks this week.',
       });
     }
+    // Finish forecast (estimate): a likely late finish needs attention; an on-time one is information
+    // and does not stop the project counting as healthy.
+    let finish: Finding | null = null;
+    if (p.tasksDoneLast28 !== undefined && p.tasks.open > 0) {
+      const fc = finishForecast({ open: p.tasks.open, doneLast28: p.tasksDoneLast28, today: input.today, endDate: p.endDate ?? null });
+      if (!fc) limitations.push(`Not enough recent progress to estimate when ${p.name} will finish.`);
+      else {
+        const days = Math.ceil(fc.weeks * 7);
+        finish = {
+          ...base,
+          id: findingId('projects', 'finish_forecast', p.id),
+          category: 'finish_forecast',
+          severity: fc.late ? 'attention' : 'info',
+          basis: 'estimate',
+          title: fc.late ? `${p.name} may finish after its end date` : `${p.name} is estimated to finish around ${fc.finishDate}`,
+          summary: `At the pace of the last four weeks, the ${p.tasks.open} open tasks would be done around ${fc.finishDate}${fc.late ? `, after the planned end date ${p.endDate}` : ''}. This is an estimate, not a certainty.`,
+          metrics: [
+            { label: 'Open tasks', value: p.tasks.open, unit: 'count' },
+            { label: 'Days to finish', value: days, unit: 'days' },
+          ],
+          links: ['projects', 'tasks'],
+          next_step: fc.late ? 'Review the scope, the end date or who works on it.' : 'No action needed.',
+        };
+        if (fc.late) findings.push(finish);
+      }
+    }
     if (findings.length === before) healthy.push(p);
+    if (finish && finish.severity === 'info') findings.push(finish);
   }
 
   if (healthy.length) {

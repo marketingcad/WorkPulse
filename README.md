@@ -1198,7 +1198,7 @@ Run from the repo root unless noted.
 | `pnpm lint` | Run lint tasks |
 | `pnpm db:generate` | Generate a new SQL migration from schema changes (`drizzle-kit generate`) |
 | `pnpm db:migrate` | Apply migrations, RLS policies and app-role grants to `DATABASE_URL` |
-| `pnpm --filter @tallywork/web seed` | Seed the demo organization (`SEED_DAYS`, `SEED_WORKERS`, `SEED_SCREENSHOT_DAYS` tune the size; `SEED_PASSWORD` sets a private password for every demo account, required for any database reachable from the internet) |
+| `pnpm --filter @tallywork/web seed` | Seed the demo organization (`SEED_DAYS`, `SEED_WORKERS` (default 30, e.g. 100 for a fuller demo, up to 900), `SEED_SCREENSHOT_DAYS` tune the size; `SEED_PASSWORD` sets a private password for every demo account, required for any database reachable from the internet) |
 | `pnpm --filter @tallywork/web start` | Serve a production build |
 | `pnpm --filter @tallywork/desktop dev` | Run the Electron agent with hot reload |
 | `pnpm --filter @tallywork/desktop build` | Build the agent (`out/`) |

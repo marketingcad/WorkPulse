@@ -3,6 +3,7 @@
  *   pnpm --filter @tallywork/web seed            (local PGlite; stop `next dev` first)
  *   DATABASE_URL=... BLOB_READ_WRITE_TOKEN=... pnpm --filter @tallywork/web seed
  *
+ * SEED_WORKERS sets the number of demo people (default 30, up to 900), e.g. SEED_WORKERS=100.
  * SEED_PASSWORD sets the password of every demo account. Use a private one for any database that
  * is reachable from the internet; the default is the public local-demo password from the README.
  */

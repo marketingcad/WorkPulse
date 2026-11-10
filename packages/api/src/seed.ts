@@ -41,6 +41,21 @@ const SITES: Record<string, string[]> = {
 };
 const ZONES = ['America/New_York', 'America/New_York', 'America/Chicago', 'Europe/London', 'Asia/Manila'];
 
+/**
+ * Demo people. The first FIRST.length keep their original pairing (FIRST[i] LAST[i]); later ones
+ * shift the surname by 7 per round of first names. 7 and 30 share no factor, so every pair is
+ * unique up to FIRST.length × LAST.length people, and so are the derived email addresses.
+ */
+export const MAX_DEMO_WORKERS = FIRST.length * LAST.length;
+export function demoPeople(count: number): Array<{ name: string; email: string }> {
+  const n = Math.max(0, Math.min(Math.floor(count), MAX_DEMO_WORKERS));
+  return Array.from({ length: n }, (_, i) => {
+    const first = FIRST[i % FIRST.length]!;
+    const last = LAST[(i + Math.floor(i / FIRST.length) * 7) % LAST.length]!;
+    return { name: `${first} ${last}`, email: `${first.toLowerCase()}.${last.toLowerCase().replace(/[^a-z]/g, '')}@demo.tallywork.app` };
+  });
+}
+
 /** Deterministic PRNG so the demo looks the same every time. */
 function rng(seed: number) {
   let s = seed >>> 0;
@@ -74,7 +89,8 @@ export interface SeedOptions {
 
 export async function seedDemo(baseDeps: Deps, opts: SeedOptions = {}): Promise<{ organizationId: string }> {
   const days = opts.days ?? 14;
-  const workerCount = Math.min(opts.workers ?? 30, FIRST.length);
+  const people = demoPeople(opts.workers ?? 30);
+  const workerCount = people.length;
   const shotDays = opts.screenshotDays ?? 2;
   const password = opts.password ?? DEMO_ADMIN.password;
   const log = opts.log ?? (() => undefined);
@@ -132,8 +148,7 @@ export async function seedDemo(baseDeps: Deps, opts: SeedOptions = {}): Promise<
   for (let i = 0; i < workerCount; i++) {
     const team = TEAMS[i % TEAMS.length]!;
     const manager = i < TEAMS.length; // first of each team leads it
-    const name = `${FIRST[i]} ${LAST[i]}`;
-    const email = `${FIRST[i]!.toLowerCase()}.${LAST[i]!.toLowerCase().replace(/[^a-z]/g, '')}@demo.tallywork.app`;
+    const { name, email } = people[i]!;
     const inv = await call('POST', `${o}/invitations`, { email, name, role_id: roleId(manager ? 'TEAM_MANAGER' : 'WORKER'), team_ids: [teamIds[team]] }, admin);
     const token = new URL(inv.json.invite_url as string).searchParams.get('token')!;
     const acc = await call('POST', '/auth/invitations/accept', { token, name, password });
@@ -328,7 +343,7 @@ export async function seedDemo(baseDeps: Deps, opts: SeedOptions = {}): Promise<
   log('timesheets');
 
   // ── Time off requests, expenses ──
-  for (const [i, w] of workers.slice(0, 10).entries()) {
+  for (const [i, w] of workers.slice(0, Math.ceil(workers.length / 3)).entries()) {
     const s = addDaysToDate(today, 5 + i * 2);
     try {
       const req = await call('POST', `${o}/time-off/requests`, { policy_id: pto, start_date: s, end_date: addDaysToDate(s, i % 3), reason: ['Family trip', 'Personal day', 'Moving house', 'Medical appointment'][i % 4] }, w.auth);
@@ -338,7 +353,7 @@ export async function seedDemo(baseDeps: Deps, opts: SeedOptions = {}): Promise<
     }
   }
   const categories = ['Software', 'Travel', 'Meals', 'Equipment', 'Stock photos'];
-  for (const [i, w] of workers.slice(0, 12).entries()) {
+  for (const [i, w] of workers.slice(0, Math.ceil(workers.length * 0.4)).entries()) {
     const p = projects.find((pp) => pp.team === w.team)!;
     const e = await call('POST', `${o}/expenses`, { project_id: p.id, category: categories[i % categories.length], description: ['Figma seat', 'Train to client site', 'Team lunch with client', 'USB-C dock', 'Hero image license'][i % 5], amount_minor: (20 + Math.floor(r() * 400)) * 100, currency: 'USD', spent_on: addDaysToDate(today, -Math.floor(r() * 10)), billable: i % 2 === 0 }, w.auth);
     if (i % 3 !== 2) await call('POST', `${o}/expenses/${e.json.id}/approve`, {}, admin);

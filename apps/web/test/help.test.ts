@@ -34,6 +34,28 @@ describe('help search', () => {
     expect(faq.points!.join(' ')).toContain('cannot be reopened');
   });
 
+  it('finds the guides for Performance, the calculator, the theme, integrations and the Settings menu', () => {
+    const ids = (q: string) => searchArticles(asSearchable, q).map((a) => a.id);
+    expect(ids('performance score')[0]).toBe('performance-scores');
+    expect(ids('new goal')).toContain('performance-goals');
+    expect(ids('client appreciation')).toContain('performance-recognition');
+    expect(ids('manager review')).toContain('performance-reviews');
+    expect(ids('leaderboard')[0]).toBe('performance-leaderboards');
+    expect(ids('milestone')).toContain('project-milestones');
+    expect(ids('calculator')[0]).toBe('calculator');
+    expect(ids('dark mode')[0]).toBe('theme');
+    expect(ids('api key')[0]).toBe('api-keys');
+    expect(ids('webhook')[0]).toBe('webhooks');
+    expect(ids('where settings')).toContain('faq-settings-menu');
+  });
+
+  it('the Performance guides keep the app’s promise: scores never use activity or screenshots', () => {
+    const scores = HELP_ARTICLES.find((a) => a.id === 'performance-scores')!;
+    expect(scores.points!.join(' ')).toContain('Activity levels, keystrokes and screenshots are never part of a score');
+    // Every Performance guide is limited to people who may use the Performance Center.
+    for (const a of HELP_ARTICLES.filter((x) => x.category === 'performance')) expect(a.perms?.length, a.id).toBeGreaterThan(0);
+  });
+
   it('every word must match; nonsense finds nothing; an empty search shows everything', () => {
     expect(searchArticles(asSearchable, 'invoice zzzqqq')).toEqual([]);
     expect(searchArticles(asSearchable, '   ')).toHaveLength(HELP_ARTICLES.length);
@@ -82,6 +104,12 @@ describe('product tour', () => {
     // A phone: no sidebar, but the menu button.
     const phone = new Set(['nav-menu', 'overview-customize', 'notifications', 'account-menu']);
     expect(visibleSteps(TOUR_STEPS, (t) => phone.has(t)).map((s) => s.id)).toEqual(['welcome', 'menu', 'customize', 'notifications', 'account']);
+  });
+
+  it('every step that points at the menu points at a real menu group or item, Performance included', () => {
+    const menu = new Set(NAV.flatMap((g) => [g.label, ...g.items.map((i) => i.label)]).filter(Boolean));
+    for (const s of TOUR_STEPS) if (s.target?.startsWith('nav.')) expect(menu.has(s.target), s.id).toBe(true);
+    expect(TOUR_STEPS.map((s) => s.target)).toContain('nav.group.performance');
   });
 
   it('every step has a short title and text', () => {

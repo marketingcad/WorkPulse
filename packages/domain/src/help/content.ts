@@ -6,7 +6,7 @@ import type { Permission } from '../permissions';
  * shows only to people who can open that page, and a guide whose pages someone cannot open is
  * hidden from them. Keep this in step with the app: the help tests check every link is a real page.
  */
-export type HelpCategoryId = 'start' | 'time' | 'people' | 'work' | 'money' | 'reports' | 'settings' | 'faq' | 'tips' | 'troubleshooting';
+export type HelpCategoryId = 'start' | 'time' | 'people' | 'work' | 'money' | 'reports' | 'performance' | 'settings' | 'faq' | 'tips' | 'troubleshooting';
 
 export const HELP_CATEGORIES: Array<{ id: HelpCategoryId; title: string; description: string }> = [
   { id: 'start', title: 'Getting started', description: 'Your first steps: setting up the organization and getting your team tracking time.' },
@@ -15,7 +15,8 @@ export const HELP_CATEGORIES: Array<{ id: HelpCategoryId; title: string; descrip
   { id: 'work', title: 'Project Management', description: 'What people work on, and the breaks planned for each project.' },
   { id: 'money', title: 'Finance', description: 'Rates, budgets, expenses, invoices and payroll.' },
   { id: 'reports', title: 'Reports and exports', description: 'Totals for any period, reports you can save, and downloads.' },
-  { id: 'settings', title: 'Settings', description: 'Your organization, what is tracked, devices, roles and security.' },
+  { id: 'performance', title: 'Performance', description: 'Scores, goals, recognition, reviews and leaderboards, measured from real work.' },
+  { id: 'settings', title: 'Settings', description: 'Your organization, what is tracked, devices, roles, security and integrations.' },
   { id: 'faq', title: 'Frequently asked questions', description: 'Short answers to common questions.' },
   { id: 'tips', title: 'Tips and good habits', description: 'Small things that make WorkPulse easier to run.' },
   { id: 'troubleshooting', title: 'Troubleshooting', description: 'What to do when something does not work as expected.' },
@@ -120,6 +121,26 @@ export const HELP_ARTICLES: HelpArticle[] = [
     summary: 'A one-minute walk through the menu and the main buttons.',
     steps: ['Click Start the tour at the top of this page.', 'Use Next and Previous to move through the steps, or Skip tour to leave at any time.', 'The tour starts by itself only on your very first visit; after that, start it from here whenever you like.'],
     keywords: ['tour', 'walkthrough', 'introduction', 'guide'],
+  },
+  {
+    id: 'calculator',
+    category: 'start',
+    title: 'Work out hours and pay with the calculator',
+    summary: 'A quick calculator for shifts, hours and pay, on every page. Nothing is saved.',
+    steps: [
+      'Click the round calculator button at the bottom right of the page (Open calculator). Click it again, or press Escape, to close it.',
+      'Under What to work out, choose Hours, Add time, Pay or Convert.',
+      'Hours: enter each shift’s Start, End and Break. An end before the start counts as past midnight. Add shift adds another; Total worked and In decimal hours show the result.',
+      'Add time: add or take away lines of time, such as a week of days less unpaid time. Press the + or − on a line to switch it between adding and taking away.',
+      'From Hours or Add time, click Work out pay for these hours to carry the total into Pay. Enter a pay rate and a bill rate to see Pay, Bill, Margin, Margin % and Markup %.',
+      'Convert: type hours as 7:45, 7h 45m, 7.75 or 465m to see them as hours and minutes, decimal hours and minutes.',
+    ],
+    points: [
+      'Hours can be typed as 7:30, 7h 30m, 7.5 or .5. Use the copy button next to a result to paste the number elsewhere, and Clear to empty the current mode.',
+      'Pay is an estimate, not a pay run or invoice: payroll rounds each time entry, so a real pay run can differ by a few cents, and no overtime premium is added. Rates are in your organization’s currency and are typed in by hand.',
+      'Drag the button or the panel’s header to move it (or focus the button and press Alt and an arrow key). Move to corner puts it back.',
+    ],
+    keywords: ['calculator', 'calculate', 'hours', 'shift', 'decimal', 'convert', 'margin', 'markup', 'pay', 'add time'],
   },
 
   // ─── Time and timesheets ──────────────────────────────────────────────────
@@ -380,6 +401,25 @@ export const HELP_ARTICLES: HelpArticle[] = [
     keywords: ['client', 'customer', 'portal', 'share', 'archive', 'restore', 'currency'],
     perms: ['clients:manage'],
   },
+  {
+    id: 'project-milestones',
+    category: 'work',
+    title: 'Add milestones to a project',
+    summary: 'The dates a project must deliver on. They feed delivery scores and the client portal.',
+    steps: [
+      'Open the project and its Milestones tab, then click Add milestone.',
+      'Enter the Milestone and its Due date, and optionally a Description.',
+      'Tick Show in the client portal if the client should see it. They see its title, due date and whether it is done, never who did what.',
+      'Click Save milestone. When it is delivered, tick its box to mark it done; tick it again to reopen it.',
+    ],
+    points: [
+      'Each milestone shows as Done on time, Done late, Overdue or Open. Done on time counts towards the delivery score of the people and teams on the project.',
+      'A done milestone’s due date cannot be changed: reopen it first. Milestones of an archived project cannot be changed until the project is restored.',
+    ],
+    links: [{ label: 'Open Projects', href: '/projects' }],
+    keywords: ['milestone', 'delivery', 'due date', 'deadline', 'client portal', 'on time'],
+    perms: ['projects:manage'],
+  },
 
   // ─── Money ─────────────────────────────────────────────────────────────────
   {
@@ -584,7 +624,126 @@ export const HELP_ARTICLES: HelpArticle[] = [
     keywords: ['export', 'download', 'csv', 'excel', 'pdf', 'spreadsheet'],
   },
 
+  // ─── Performance ───────────────────────────────────────────────────────────
+  {
+    id: 'performance-scores',
+    category: 'performance',
+    title: 'How performance scores work',
+    summary: 'A 0–100 score for each person and team, from outcomes only. Never activity or screenshots.',
+    steps: [
+      'Open Performance overview (under Performance). Use the arrows and Week, Month, Quarter or Year to choose the period; Current brings you back.',
+      'Narrow it down with Team and Project. The top band shows the score for the period and how it changed since the previous one.',
+      'Open Team performance to compare up to three teams side by side, or Worker performance to see each person’s score. Click a person for their profile.',
+      'Click Scoring rules to see what each part weighs.',
+    ],
+    points: [
+      'The score is made of five parts: Goal completion (30%), Project delivery (25%), Approved-work consistency (20%), Quality from final manager reviews (15%) and Attendance (10%).',
+      'Activity levels, keystrokes and screenshots are never part of a score. A part with no data is left out and the others are re-weighted; it never counts as zero.',
+      'Scores stay open for two weeks after a period ends, so late approvals count. Then they are final and never change. A profile’s Score history shows each period as Final or Still open.',
+      'A team’s score is the average of its members’ scores, weighted by approved days.',
+      'Admins can change the weights in Scoring rules (they must add up to 100%). Saving creates a new version; final scores keep the version they were calculated with. Recalculate updates the scores of the period you are looking at.',
+    ],
+    links: [
+      { label: 'Open Performance overview', href: '/performance' },
+      { label: 'Team performance', href: '/performance/teams' },
+      { label: 'Worker performance', href: '/performance/workers' },
+    ],
+    keywords: ['performance', 'score', 'kpi', 'weights', 'scoring rules', 'recalculate', 'team performance', 'final', 'still open'],
+    perms: ['performance:read'],
+  },
+  {
+    id: 'performance-goals',
+    category: 'performance',
+    title: 'Set a goal or a team challenge',
+    summary: 'Goals for people, teams, projects or the organization. Progress is measured from real work; nobody types it in.',
+    steps: [
+      'Open Goals & challenges and click New goal (or Set a goal on someone’s profile).',
+      'Name the goal, then choose For (Person, Team, Project or Organization) and Who or what.',
+      'Choose Measured by: Tasks completed, Milestones completed, Approved hours or Delivered on time. Only measures that fit this kind of goal are offered.',
+      'Enter the Target, the Starts and Ends dates, and click Save goal.',
+    ],
+    points: [
+      'Each goal shows as Ahead, On track or At risk while it runs, then Completed or Missed. Click it to see its Progress history and what moved it (a task completed, a timesheet approved…).',
+      'When two or more team goals are active, Team challenges shows them side by side, furthest along first.',
+      'After saving, For, Who or what, Measured by and Starts cannot be changed. Organization goals are for admins.',
+      'Archive a goal to take it off the list and out of scores; its history is kept.',
+    ],
+    links: [{ label: 'Open Goals & challenges', href: '/performance/goals' }],
+    keywords: ['goal', 'challenge', 'target', 'objective', 'okr', 'at risk', 'team challenge'],
+    perms: ['goals:manage'],
+  },
+  {
+    id: 'performance-recognition',
+    category: 'performance',
+    title: 'Recognize someone, and approve client appreciation',
+    summary: 'Badges earned from work, recognition you give with a reason, and thanks sent by clients.',
+    steps: [
+      'Open Achievements. The Catalog tab lists every achievement: Automatic ones are earned from work; Manager-awarded ones are given by you.',
+      'To recognize someone, click Recognize someone (or Recognize on their profile). Choose a person or a team you manage, the achievement and the Reason they will see.',
+      'Choose Who sees it: Everyone in the organization (it shows in Recent recognition) or Private. Tick Tell them in the app to notify them, then click Award recognition.',
+      'When a client thanks your team from the client portal, it waits on the Waiting for approval tab and you are notified. Click Approve and share or Decline. Nobody sees it until you approve it, and approving gives the person Client Hero.',
+    ],
+    points: [
+      'You cannot recognize yourself, and the same achievement can be given once per recipient per period. Every award is saved to the audit log.',
+      'An award given by mistake can be revoked from the Awarded tab, with a reason.',
+      'Admins can click Create achievement to add your own, automatic (with Bronze to Platinum levels) or manager-awarded, and archive custom ones. Past awards stay.',
+    ],
+    links: [{ label: 'Open Achievements', href: '/performance/achievements' }],
+    keywords: ['achievement', 'badge', 'recognition', 'award', 'kudos', 'appreciation', 'client hero', 'revoke', 'thank you'],
+    perms: ['achievements:award', 'achievements:manage'],
+  },
+  {
+    id: 'performance-reviews',
+    category: 'performance',
+    title: 'Write a manager review',
+    summary: 'Feedback on a person’s work. Final reviews with a rating count towards the quality part of their score.',
+    steps: [
+      'Open Worker performance and click the person, then click Add review.',
+      'Choose the period, a Quality rating from 1 to 5 (or No rating), and write the Summary, Strengths, Areas to grow and Development plan.',
+      'Set Status to Draft while you work on it, or Final when it is done. Only final reviews count towards the score.',
+      'Tick Share with them to let them read it in the desktop app, and click Save review.',
+    ],
+    points: [
+      'The Private note is never shown to the person, to clients or in the audit log; only people who may read their reviews see it.',
+      'Reviews are under Manager feedback on the profile, seen only by their managers and admins. Deleting one takes it out of the quality score.',
+    ],
+    links: [{ label: 'Open Worker performance', href: '/performance/workers' }],
+    keywords: ['review', 'feedback', 'appraisal', 'rating', 'quality', 'strengths', 'development plan'],
+    perms: ['reviews:manage'],
+  },
+  {
+    id: 'performance-leaderboards',
+    category: 'performance',
+    title: 'Leaderboards and who can see them',
+    summary: 'People, teams and projects ranked by score, compared fairly. Never by hours or activity.',
+    steps: [
+      'Open Leaderboards and choose to Rank People, Teams or Projects, and the period.',
+      'For people, Compare within Role family (people with the same job) or Everyone.',
+      'Click a person to open their profile.',
+    ],
+    points: [
+      'People with fewer than the minimum approved days in the period (10 to start) show as Not ranked. Ties share a rank.',
+      'Who can see this: admins always see everything. Admins choose whether team managers see the rankings of the people and teams they manage, and whether workers see names and scores in the desktop app.',
+      'Rankings settle with the scores: two weeks after a period ends, then they never change.',
+    ],
+    links: [{ label: 'Open Leaderboards', href: '/performance/leaderboards' }],
+    keywords: ['leaderboard', 'ranking', 'rank', 'top', 'role family', 'not ranked', 'visibility'],
+    perms: ['performance:read'],
+  },
+
   // ─── Settings ──────────────────────────────────────────────────────────────
+  {
+    id: 'theme',
+    category: 'settings',
+    title: 'Switch between light and dark',
+    summary: 'Choose a light or dark look, or follow your computer’s setting.',
+    steps: [
+      'Open the account menu (your picture or initials, at the top right).',
+      'Under Theme, choose the sun for light, the moon for dark, or the screen to follow your computer’s setting (the default).',
+    ],
+    points: ['The choice is remembered on this computer and browser only, so another device keeps its own.'],
+    keywords: ['theme', 'dark mode', 'light mode', 'dark', 'night', 'appearance', 'colours', 'colors'],
+  },
   {
     id: 'profile-picture',
     category: 'settings',
@@ -700,6 +859,47 @@ export const HELP_ARTICLES: HelpArticle[] = [
     links: [{ label: 'Screenshot retention', href: '/settings/screenshot-retention' }],
     keywords: ['screenshot', 'retention', 'cleanup', 'delete', 'storage', 'space', 'old'],
   },
+  {
+    id: 'api-keys',
+    category: 'settings',
+    title: 'Create an API key for an integration',
+    summary: 'Let your own scripts and tools read or change data in this organization.',
+    steps: [
+      'Open Settings › API keys and click Create API key.',
+      'Give it a Name (for example “Payroll sync”) and tick only the Scopes the integration needs. Scopes you do not hold yourself are greyed out.',
+      'Choose when it Expires (90 days to start), and click Create key.',
+      'Copy the key and store it somewhere safe, such as a secret manager, then click I have stored the key. It is shown only once.',
+    ],
+    points: [
+      'A key never has more access than the person who created it, and it cannot reach the Performance Center, payroll or client portals.',
+      'To stop a key, click its bin icon and Revoke key: integrations using it stop working straight away. Expired keys stop too. A key set to Never expire should be replaced at least once a year.',
+      'Every key action is written to the audit log. Using a key shows how to send it.',
+    ],
+    links: [{ label: 'Open API keys', href: '/developer/api-keys' }],
+    keywords: ['api', 'api key', 'token', 'integration', 'developer', 'scope', 'revoke', 'bearer'],
+    perms: ['api_keys:manage'],
+  },
+  {
+    id: 'webhooks',
+    category: 'settings',
+    title: 'Send events to another system (webhooks)',
+    summary: 'WorkPulse tells your system when something happens, such as a timesheet approved or an invoice paid.',
+    steps: [
+      'Open Settings › Webhooks and click Add endpoint.',
+      'Enter the Endpoint URL (a public https:// address) and, if you like, a Description.',
+      'Under Events, tick All events, including future ones, or only the events you need, and click Add endpoint.',
+      'Copy the Signing secret, which your system uses to check that events really come from WorkPulse, and click I have stored the secret. It is shown only once.',
+      'Use the ⋯ menu and Send test event, then open Deliveries to check it arrived.',
+    ],
+    points: [
+      'Failed deliveries are retried for about a day. Deliveries shows each attempt; Replay sends one again.',
+      'After 50 failed deliveries an endpoint is disabled. Fix it, then turn Enabled back on in Edit.',
+      'Rotate signing secret stops the old secret straight away: update your system with the new one. Delete stops all events and discards pending retries.',
+    ],
+    links: [{ label: 'Open Webhooks', href: '/developer/webhooks' }],
+    keywords: ['webhook', 'endpoint', 'event', 'integration', 'developer', 'signing secret', 'delivery', 'retry'],
+    perms: ['webhooks:manage'],
+  },
 
   // ─── FAQ ───────────────────────────────────────────────────────────────────
   {
@@ -717,6 +917,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
     summary: 'Your menu only shows what your role allows.',
     points: ['Each role decides what you can open; team managers, for example, see their own team but not payroll.', 'If you need more access, ask an admin to change your role or create a custom one.'],
     keywords: ['missing', 'permission', 'access denied', 'role', 'menu'],
+  },
+  {
+    id: 'faq-settings-menu',
+    category: 'faq',
+    title: 'Where are the Settings pages?',
+    summary: 'In the menu: Settings opens a list of its pages, grouped by topic.',
+    points: [
+      'Click Settings near the bottom of the menu to open its pages, under General, Time and attendance, People and access, Data and privacy, and Integrations. It stays open while you are on a Settings page.',
+      'With the menu collapsed to icons, the Settings icon opens the same list as a pop-out. On a phone, open the menu with the button at the top left, then tap Settings.',
+      'You only see the Settings pages your role can open. If you can open just one, Settings goes straight to it.',
+    ],
+    keywords: ['settings', 'menu', 'sidebar', 'where', 'find', 'organization settings', 'integrations'],
   },
   {
     id: 'faq-approved-change',
@@ -851,7 +1063,7 @@ export const NAV_GUIDE: Record<string, string> = {
   'nav.item.teamPerformance': 'Up to three teams side by side: score over time, goals, delivery, attendance and their people.',
   'nav.item.workerPerformance': 'Each person’s score, what it is made of, their work, goals and badges, and manager reviews.',
   'nav.item.goals': 'Goals for people, teams, projects and the organization, measured from real work.',
-  'nav.item.settings': 'Organization, time & pay, tracking, devices, roles, security, integrations and the audit log.',
+  'nav.item.settings': 'Opens a list of settings by topic: organization, time & pay, tracking, roles, devices, security, the audit log, and API keys and webhooks.',
   'nav.item.myTimesheet': 'Your own timesheet: your time this period, and submitting it.',
   'nav.item.myPayStubs': 'Your own pay stubs, to read or download.',
   'nav.item.whatIsMonitored': 'What the desktop app records about your own work, set by your organization.',

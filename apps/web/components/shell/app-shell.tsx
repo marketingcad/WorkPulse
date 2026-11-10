@@ -17,6 +17,7 @@ import { TimerBar } from './timer-bar';
 import { HelpLink } from '@/components/help/help-link';
 import { CalculatorLauncher } from '@/components/calculator/calculator-launcher';
 import { MyAvatar } from '@/lib/avatars';
+import { noteRoute } from '@/lib/in-app-history';
 
 // The bell's list (grouping, priority labels): loaded when the bell is first opened.
 const NotificationList = lazy(() => import('./notification-list'));
@@ -86,6 +87,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
   useEffect(() => setMobileOpen(false), [pathname]);
+  // So "Back" buttons know whether the previous page was inside the app.
+  useEffect(() => noteRoute(pathname), [pathname]);
   useEffect(() => {
     try {
       setCollapsed(localStorage.getItem('tw.nav.collapsed') === '1');

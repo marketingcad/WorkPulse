@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, ChevronRight, Compass, Film, LifeBuoy, PlayCircle, Search, X } from 'lucide-react';
 import { BrandLockup, Button, EmptyState, Input, PageHeader, SkeletonRows, cx } from '@tallywork/ui';
 import { useOrg } from '@/lib/org';
+import { hasInAppHistory } from '@/lib/in-app-history';
 import { t } from '@/lib/i18n';
 import { activeNav, filterNav, type NavItem } from '@/components/shell/nav';
 import type { HelpArticle, HelpCategoryId } from '@/components/help/content';
@@ -75,7 +76,8 @@ function HelpCenter() {
         description="How to use WorkPulse, step by step, in plain language."
         actions={
           <>
-            <Button icon={<ArrowLeft className="size-3.5" />} onClick={() => (window.history.length > 1 ? router.back() : router.push(org.base))}>
+            {/* Back to the previous page only if it was inside WorkPulse; opened from elsewhere, to the Overview. */}
+            <Button icon={<ArrowLeft className="size-3.5" />} onClick={() => (hasInAppHistory() ? router.back() : router.push(org.base))}>
               Back
             </Button>
             {tutorial.data && (
@@ -219,11 +221,16 @@ function Article({ a, open, onToggle, canOpen }: { a: HelpArticle & { body: stri
   return (
     <article id={a.id} className="scroll-mt-20 rounded-md border border-border bg-surface">
       <h3>
-        <button onClick={onToggle} aria-expanded={open} aria-controls={`${a.id}-body`} className="flex w-full items-start gap-3 rounded-md px-4 py-3 text-left hover:bg-surface-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-interactive">
+        {/* Named by the title alone; the summary is its description, so screen readers hear the title first. */}
+        <button onClick={onToggle} aria-expanded={open} aria-controls={`${a.id}-body`} aria-labelledby={`${a.id}-title`} aria-describedby={`${a.id}-summary`} className="flex w-full items-start gap-3 rounded-md px-4 py-3 text-left hover:bg-surface-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-interactive">
           <ChevronRight className={cx('mt-0.5 size-4 shrink-0 text-text-faint transition-transform motion-reduce:transition-none', open && 'rotate-90')} aria-hidden />
           <span className="min-w-0">
-            <span className="block text-sm font-semibold">{a.title}</span>
-            <span className="block text-sm text-text-muted">{a.summary}</span>
+            <span id={`${a.id}-title`} className="block text-sm font-semibold">
+              {a.title}
+            </span>
+            <span id={`${a.id}-summary`} className="block text-sm text-text-muted">
+              {a.summary}
+            </span>
           </span>
         </button>
       </h3>

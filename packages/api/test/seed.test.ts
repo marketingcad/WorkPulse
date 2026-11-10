@@ -1,6 +1,26 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, Client, type Harness } from './harness';
-import { seedDemo, DEMO_ADMIN } from '../src/seed';
+import { seedDemo, DEMO_ADMIN, demoPeople, MAX_DEMO_WORKERS } from '../src/seed';
+
+describe('demo people', () => {
+  it('gives 100 people unique names and emails, keeping the original first 30', () => {
+    const people = demoPeople(100);
+    expect(people).toHaveLength(100);
+    expect(new Set(people.map((p) => p.name)).size).toBe(100);
+    expect(new Set(people.map((p) => p.email)).size).toBe(100);
+    expect(people[0]).toEqual({ name: 'Maya Chen', email: 'maya.chen@demo.tallywork.app' });
+    expect(people[24]).toEqual({ name: "Grace O'Neill", email: 'grace.oneill@demo.tallywork.app' });
+    for (const p of people) expect(p.email).toMatch(/^[a-z]+\.[a-z]+@demo\.tallywork\.app$/);
+  });
+
+  it('stays unique up to the maximum and never goes past it', () => {
+    const all = demoPeople(MAX_DEMO_WORKERS + 50);
+    expect(all).toHaveLength(MAX_DEMO_WORKERS);
+    expect(new Set(all.map((p) => p.email)).size).toBe(MAX_DEMO_WORKERS);
+    expect(demoPeople(0)).toEqual([]);
+    expect(demoPeople(-5)).toEqual([]);
+  });
+});
 
 let t: Harness;
 let orgId: string;

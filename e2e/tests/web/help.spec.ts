@@ -25,8 +25,28 @@ test.describe('Help Center', () => {
     // No tour: this account has seen it.
     await expect(page.getByTestId('product-tour')).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Back' }).click();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/clients$`));
+  });
+
+  test('Back never leaves WorkPulse: Help opened from elsewhere goes back to the Overview', async ({ page, data }) => {
+    // Regression: Back used the browser history whenever there was any, so it returned to the
+    // page outside the app that Help was opened from (an email link, another site).
+    await page.goto('about:blank');
+    await page.goto(`/o/${data.orgId}/help`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Help Center' })).toBeVisible();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}$`));
+    await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
+  });
+
+  test('each guide is named by its title, with its summary as the description', async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}/help`);
+    const guide = page.getByRole('button', { name: 'Write a manager review', exact: true });
+    await expect(guide).toBeVisible();
+    await expect(guide).toHaveAccessibleDescription('Feedback on a person’s work. Final reviews with a rating count towards the quality part of their score.');
+    // The summary no longer leaks into the name, so a word in it (“Feedback”) matches no other button.
+    await expect(page.getByRole('button', { name: /Back/ })).toHaveCount(1);
   });
 
   test('search finds guides by keyword, and says so when nothing matches', { tag: '@smoke' }, async ({ page, data }) => {
@@ -58,6 +78,53 @@ test.describe('Help Center', () => {
     await expect(results.getByText(/Archiving a client archives its projects too/)).toBeVisible();
     await search.fill('approved time changed');
     await expect(results.getByText(/paid in a finalized payroll cannot be reopened/)).toBeVisible();
+  });
+
+  test('covers Performance, the calculator, the theme, integrations and the Settings menu', { tag: '@smoke' }, async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}/help`);
+    const topic = page.getByRole('region', { name: 'Performance', exact: true });
+    await expect(page.getByRole('heading', { level: 2, name: 'Performance', exact: true })).toBeVisible();
+    for (const guide of ['How performance scores work', 'Set a goal or a team challenge', 'Recognize someone, and approve client appreciation', 'Write a manager review', 'Leaderboards and who can see them']) {
+      await expect(topic.getByRole('button', { name: new RegExp(guide) })).toBeVisible();
+    }
+    // The guide opens the page it explains.
+    await topic.getByRole('button', { name: /How performance scores work/ }).click();
+    await expect(topic.getByText(/Activity levels, keystrokes and screenshots are never part of a score/)).toBeVisible();
+    await topic.getByRole('link', { name: 'Open Performance overview' }).click();
+    await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/performance$`));
+    await expect(page.getByRole('heading', { level: 1, name: 'Performance overview' })).toBeVisible();
+
+    await page.goto(`/o/${data.orgId}/help`);
+    const search = page.getByRole('searchbox', { name: 'Search help' });
+    const results = page.getByRole('region', { name: 'Search results' });
+    for (const [q, guide, step] of [
+      ['calculator', 'Work out hours and pay with the calculator', /Work out pay for these hours/],
+      ['dark mode', 'Switch between light and dark', /Under Theme, choose the sun for light/],
+      ['milestone', 'Add milestones to a project', /Tick Show in the client portal/],
+      ['api key', 'Create an API key for an integration', /It is shown only once/],
+      ['webhook', 'Send events to another system', /Send test event/],
+      ['where settings', 'Where are the Settings pages?', /Settings opens a list of its pages/],
+    ] as const) {
+      await search.fill(q);
+      await expect(results.getByRole('button', { name: new RegExp(guide.replace('?', '\\?')) })).toBeVisible();
+      await expect(results.getByText(step).first()).toBeVisible();
+    }
+    await search.fill('webhook');
+    await results.getByRole('link', { name: 'Open Webhooks' }).click();
+    await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/developer/webhooks$`));
+  });
+
+  test('the Performance pages’ Help link opens their own guide', async ({ page, data }) => {
+    for (const [path, guide] of [
+      ['/performance', 'How performance scores work'],
+      ['/performance/goals', 'Set a goal or a team challenge'],
+      ['/performance/achievements', 'Recognize someone, and approve client appreciation'],
+      ['/performance/leaderboards', 'Leaderboards and who can see them'],
+    ] as const) {
+      await page.goto(`/o/${data.orgId}${path}`);
+      await page.getByRole('link', { name: 'Help for this page' }).click();
+      await expect(page.getByRole('button', { name: new RegExp(guide) })).toHaveAttribute('aria-expanded', 'true');
+    }
   });
 
   test('a guide’s button opens the page, with a way back to the guide', async ({ page, data }) => {
@@ -100,6 +167,22 @@ test.describe('Help for a restricted role', () => {
     await expect(page.getByRole('button', { name: /Set a budget/ })).toHaveCount(0); // can read budgets, not set them
     for (const hidden of ['Run payroll', 'Approve timesheets', 'Invite a member', 'Create and send an invoice']) {
       await expect(page.getByRole('button', { name: new RegExp(hidden) })).toHaveCount(0);
+    }
+  });
+
+  test('no Performance or integration guides without access; the calculator and theme guides are for everyone', async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}/help`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Help Center' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Performance', exact: true })).toHaveCount(0);
+    for (const hidden of ['How performance scores work', 'Set a goal', 'Recognize someone', 'Write a manager review', 'Leaderboards', 'Create an API key', 'Send events to another system', 'Add milestones to a project']) {
+      await expect(page.getByRole('button', { name: new RegExp(hidden) })).toHaveCount(0);
+    }
+    // Searching does not reveal them either.
+    await page.getByRole('searchbox', { name: 'Search help' }).fill('leaderboard');
+    await expect(page.getByText('Nothing found for “leaderboard”')).toBeVisible();
+    await page.getByRole('button', { name: 'Show all topics' }).click();
+    for (const shown of ['Work out hours and pay with the calculator', 'Switch between light and dark']) {
+      await expect(page.getByRole('button', { name: new RegExp(shown) })).toBeVisible();
     }
   });
 });
@@ -146,7 +229,13 @@ test.describe('Product tour for a new account', () => {
     // (textContent: the counter is styled in capitals, which innerText would return.)
     const total = Number((await page.getByTestId('product-tour').getByText(/Step 1 of \d+/).textContent())!.match(/of (\d+)/)![1]);
     expect(total).toBeGreaterThanOrEqual(8);
-    for (let i = 1; i < total; i++) await page.getByTestId('product-tour').getByRole('button', { name: 'Next' }).click();
+    let sawPerformance = false;
+    for (let i = 1; i < total; i++) {
+      await page.getByTestId('product-tour').getByRole('button', { name: 'Next' }).click();
+      sawPerformance ||= await page.getByRole('dialog', { name: 'Performance', exact: true }).isVisible();
+    }
+    // The owner can open the Performance Center, so the tour shows it.
+    expect(sawPerformance).toBe(true);
     const last = page.getByRole('dialog', { name: 'Help is always here' });
     await expect(last).toContainText(`Step ${total} of ${total}`);
     await expect(last.getByRole('button', { name: 'Skip tour' })).toHaveCount(0);

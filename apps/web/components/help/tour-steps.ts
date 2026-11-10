@@ -55,10 +55,16 @@ export const TOUR_STEPS: TourStep[] = [
     body: 'A summary of time and money for any period, and a library of reports you can filter, save and download.',
   },
   {
+    id: 'performance',
+    target: 'nav.group.performance',
+    title: 'Performance',
+    body: 'Scores, goals, recognition and leaderboards, measured from goals, delivery, approved work, reviews and attendance. Never from activity or screenshots.',
+  },
+  {
     id: 'settings',
     target: 'nav.item.settings',
     title: 'Settings',
-    body: 'Your organization, timesheet periods and rules, what the desktop app tracks, devices, roles and security.',
+    body: 'Opens a list of settings by topic: your organization, timesheet rules, what the desktop app tracks, devices, roles, security and integrations.',
   },
   {
     id: 'customize',
@@ -76,7 +82,7 @@ export const TOUR_STEPS: TourStep[] = [
     id: 'account',
     target: 'account-menu',
     title: 'Your account',
-    body: 'Your profile and devices, your own timesheet and pay stubs, and sign out.',
+    body: 'Your profile and devices, your own timesheet and pay stubs, light or dark theme, and sign out.',
   },
   {
     id: 'help',

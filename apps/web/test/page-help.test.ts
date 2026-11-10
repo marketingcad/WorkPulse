@@ -18,6 +18,17 @@ describe('the top bar Help link', () => {
     expect(guideFor('/timesheets/approvals', (p: Permission) => p !== 'timesheets:approve')?.id).toBe('manual-time');
   });
 
+  it('opens the Performance guides on the Performance pages, only for people who may use them', () => {
+    expect(guideFor('/performance', all)?.id).toBe('performance-scores');
+    expect(guideFor('/performance/workers', all)?.id).toBe('performance-scores');
+    expect(guideFor('/performance/goals', all)?.id).toBe('performance-goals');
+    expect(guideFor('/performance/achievements', all)?.id).toBe('performance-recognition');
+    expect(guideFor('/performance/leaderboards', all)?.id).toBe('performance-leaderboards');
+    expect(guideFor('/developer/webhooks', all)?.id).toBe('webhooks');
+    // A manager who may read goals but not set them: no guide about setting goals.
+    expect(guideFor('/performance/goals', (p: Permission) => p !== 'goals:manage')).toBeNull();
+  });
+
   it('covers every page in the guides’ own links', () => {
     const pages = [...new Set(HELP_ARTICLES.flatMap((a) => a.links?.map((l) => l.href) ?? []))].filter((h) => !h.includes('#') && !h.includes('?'));
     for (const page of pages) expect(guideFor(page, all), page).not.toBeNull();

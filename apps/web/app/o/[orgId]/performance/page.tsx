@@ -72,7 +72,7 @@ export default function PerformanceOverviewPage() {
                 <Plus className="size-4" aria-hidden />
                 {t('perf.overview.newGoal')}
               </Link>
-            )}
+            )}                   
           </>
         }
       />

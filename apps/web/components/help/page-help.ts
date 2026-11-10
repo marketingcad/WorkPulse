@@ -9,6 +9,12 @@ import { HELP_ARTICLES, type HelpArticle } from './content';
 export const PAGE_GUIDE: Record<string, string> = {
   '/finance/billing': 'rates',
   '/finance/payroll': 'payroll',
+  '/performance': 'performance-scores',
+  '/performance/teams': 'performance-scores',
+  '/performance/workers': 'performance-scores',
+  '/performance/goals': 'performance-goals',
+  '/performance/achievements': 'performance-recognition',
+  '/performance/leaderboards': 'performance-leaderboards',
   '/reports': 'reports',
   '/settings/policies': 'tracking-policies',
   '/settings/screenshot-retention': 'screenshot-retention',

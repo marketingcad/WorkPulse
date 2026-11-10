@@ -41,7 +41,7 @@
         ],
         "packages/ui": ["avatar", "brand", "catalog", "chart-math", "i18n", "pagination", "table"],
         "apps/web": [
-          "api-errors", "assistant-bridge", "assistant-nav-parity", "assistant-stream-client", "avatar-crop", "calculator", "calculator-oracle", "calculator-position", "confirm-dialogs", "csv-import", "deps",
+          "api-errors", "assistant-bridge", "in-app-history", "assistant-nav-parity", "assistant-stream-client", "avatar-crop", "calculator", "calculator-oracle", "calculator-position", "confirm-dialogs", "csv-import", "deps",
           "download-guides", "download-platform", "duration-input", "help", "invoice-extra-lines", "money-input", "multi-monitor", "nav", "page-help", "redirect",
           "policy-fields", "table-actions", "time-off-overlap", "unsaved", "url-range", "zoned"
         ],
@@ -49,7 +49,7 @@
       },
       "playwright": [
         "web/assistant", "web/ai-insights", "web/ai-workflow", "web/ai-advanced", "web/tracking-policies", "web/webhooks", "web/report-exports", "web/schedules", "web/time-off", "web/attendance-scheduled", "web/breaks-eod", "web/budgets", "web/calculator", "web/calculator-accuracy", "web/charts", "web/client-delete",
-        "web/branding", "web/csv-import", "web/data-export", "web/download", "web/finance-paging", "web/help", "web/help-video", "web/insights", "web/invitations",
+        "web/branding", "web/csv-import", "web/public-hydration", "web/data-export", "web/download", "web/finance-paging", "web/help", "web/help-video", "web/insights", "web/invitations",
         "web/member-profile", "web/monitoring-card-setting", "web/multi-monitor", "web/navigation", "web/navigation-flows", "web/organizations", "web/people-paging",
         "web/performance-achievements", "web/performance-goals", "web/performance-leaderboards", "web/performance-overview", "web/performance-teams",
         "web/performance-workers", "web/portal", "web/portal-insights", "web/profile-avatar", "web/profiles", "web/project-milestones",

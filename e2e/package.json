@@ -19,7 +19,8 @@
     "tutorial:record": "playwright test --config playwright.tutorial.config.ts",
     "tutorial:package": "node ../node_modules/tsx/dist/cli.mjs tutorial/build-package.ts",
     "tutorial:render": "node ../node_modules/tsx/dist/cli.mjs tutorial/render.ts",
-    "tutorial:publish": "node ../node_modules/tsx/dist/cli.mjs tutorial/publish.ts"
+    "tutorial:publish": "node ../node_modules/tsx/dist/cli.mjs tutorial/publish.ts",
+    "tutorial:test": "node ../node_modules/vitest/vitest.mjs run --config tutorial/vitest.config.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

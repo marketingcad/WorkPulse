@@ -63,6 +63,24 @@ describe('planRetime with anchors', () => {
     expect(p.pieces).toHaveLength(1);
   });
 
+  it('holds the first frame before footage that starts on an anchor (no empty piece)', () => {
+    const p = planRetime({ ...base, clip: 10, target: 12, anchors: [at(0, 5)] });
+    expect(p.pieces).toEqual([{ from: 0, to: 10, speed: 1.25, holdBefore: 5, holdAfter: 0 }]);
+    expect(p.anchors[0]).toMatchObject({ shownAt: 5, driftMs: 0 });
+    expect(p.length).toBe(13);
+  });
+
+  it('adds the hold of a second anchor recorded at the same moment to the piece before', () => {
+    const p = planRetime({ ...base, clip: 10, target: 12, anchors: [at(2, 5, 'a'), at(2, 8, 'b')] });
+    expect(p.pieces[0]).toEqual({ from: 0, to: 2, speed: 1, holdAfter: 6 });
+    expect(p.anchors[1]).toMatchObject({ on: 'b', shownAt: 8, driftMs: 0 });
+  });
+
+  it('never makes an empty piece, even with an anchor at the very end', () => {
+    for (const anchors of [[at(0, 5)], [at(2, 5), at(2, 8)], [at(10, 11)], [at(0, 1), at(0, 2), at(10, 12)]])
+      for (const piece of planRetime({ ...base, clip: 10, target: 12, anchors }).pieces) expect(piece.to).toBeGreaterThan(piece.from);
+  });
+
   it('sorts anchors by when they were recorded', () => {
     const p = planRetime({ ...base, clip: 10, target: 12, anchors: [at(6, 7, 'late'), at(2, 5, 'early')] });
     expect(p.anchors.map((a) => a.on)).toEqual(['early', 'late']);
@@ -75,6 +93,12 @@ describe('mapTime', () => {
   it('maps an anchor to when it is shown, after its hold', () => {
     expect(mapTime(held, 2)).toBe(5);
     expect(mapTime(held, 1)).toBe(1);
+  });
+
+  it('counts a hold before the footage', () => {
+    const pieces = planRetime({ ...base, clip: 10, target: 12, anchors: [at(0, 5)] }).pieces;
+    expect(mapTime(pieces, 0)).toBe(5);
+    expect(mapTime(pieces, 1)).toBe(5.8);
   });
 
   it('scales time in a faster piece', () => {
@@ -93,6 +117,12 @@ describe('mapTime', () => {
 describe('retimeChain', () => {
   it('is today\'s filter for a single piece', () => {
     expect(retimeChain([{ from: 0, to: 8, speed: 1, holdAfter: 4 }])).toBe('[0:v]setpts=(PTS-STARTPTS)/1,fps=30,scale=1920:1080,tpad=stop_mode=clone:stop_duration=4.1[rt]');
+  });
+
+  it('holds the first frame for a hold before the footage', () => {
+    expect(retimeChain([{ from: 0, to: 10, speed: 1.25, holdBefore: 5, holdAfter: 0 }])).toBe(
+      '[0:v]setpts=(PTS-STARTPTS)/1.25,fps=30,scale=1920:1080,tpad=start_mode=clone:start_duration=5:stop_mode=clone:stop_duration=0.1[rt]',
+    );
   });
 
   it('splits, retimes, holds and joins the pieces', () => {

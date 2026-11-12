@@ -34,11 +34,16 @@ export interface WordTime {
 /** Where the word times came from: forced alignment, the voice provider, or the word-count estimate. */
 export type Aligner = 'whisper' | 'elevenlabs' | 'estimate';
 
-/** A stretch of the trimmed clip, played at `speed`, then held on its last frame for `holdAfter` seconds. */
+/**
+ * A stretch of the trimmed clip (never empty), played at `speed`, then held on its last frame for
+ * `holdAfter` seconds. `holdBefore` holds its first frame first: only where an anchor comes before any
+ * footage has played.
+ */
 export interface Piece {
   from: number;
   to: number;
   speed: number;
+  holdBefore?: number;
   holdAfter: number;
 }
 

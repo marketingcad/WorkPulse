@@ -317,7 +317,7 @@ async function scene(s: Scene, voice: string, first: boolean, last: boolean): Pr
     maxSpeed: MAX_SPEED,
     anchors: markers
       .filter((m): m is Marker & { on: string } => !!m.on)
-      .map((m) => ({ label: m.label, on: m.on, clipAt: m.at - start, wordAt: LEAD + words[anchorWords(s, m.on, m.nth).first]!.start })),
+      .map((m) => ({ label: m.label, on: m.on, clipAt: m.at - start, wordAt: round(LEAD + words[anchorWords(s, m.on, m.nth).first]!.start) })),
   });
   const length = plan.length;
 

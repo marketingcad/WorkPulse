@@ -42,15 +42,26 @@ export function planRetime({ clip, target, maxSpeed, anchors }: RetimeInput): Re
   }
 
   const pieces: Piece[] = [];
+  // A piece with no footage gives ffmpeg no frame to hold, so a hold where no footage has played yet
+  // waits here for the first piece (held before it), and a hold between two anchors recorded at the
+  // same moment goes onto the piece before.
+  let before = 0;
+  const add = (from: number, to: number, speed: number, hold: number) => {
+    if (to > from) {
+      pieces.push({ from: ms(from), to: ms(to), speed: ms(speed), ...(before > 0 ? { holdBefore: ms(before) } : {}), holdAfter: ms(hold) });
+      before = 0;
+    } else if (pieces.length) pieces.at(-1)!.holdAfter = ms(pieces.at(-1)!.holdAfter + hold);
+    else before += hold;
+  };
   let v = 0;
   let from = 0;
   for (const a of kept) {
     const need = a.wordAt - v;
     const footage = a.clipAt - from;
-    const speed = need > 0 ? clamp(footage / need, 1, maxSpeed) : maxSpeed;
+    const speed = need > 0 && footage > 0 ? clamp(footage / need, 1, maxSpeed) : need > 0 ? 1 : maxSpeed;
     const hold = Math.max(0, need - footage / speed);
     v += footage / speed + hold;
-    pieces.push({ from: ms(from), to: ms(a.clipAt), speed: ms(speed), holdAfter: ms(hold) });
+    add(from, a.clipAt, speed, hold);
     const r = a.result;
     r.shownAt = ms(v);
     r.driftMs = Math.round((v - a.wordAt) * 1000);
@@ -63,7 +74,9 @@ export function planRetime({ clip, target, maxSpeed, anchors }: RetimeInput): Re
   const room = target + 1 - v;
   const speed = room > 0 ? clamp(footage / room, 1, maxSpeed) : maxSpeed;
   const hold = Math.max(0, target - (v + footage / speed));
-  pieces.push({ from: ms(from), to: ms(clip), speed: ms(speed), holdAfter: ms(hold) });
+  // A clip with no footage at all still needs one piece to show.
+  if (footage > 0 || !pieces.length) pieces.push({ from: ms(from), to: ms(clip), speed: ms(speed), ...(before > 0 ? { holdBefore: ms(before) } : {}), holdAfter: ms(hold) });
+  else add(from, clip, speed, hold);
   return { pieces, length: ms(v + footage / speed + hold), anchors: results };
 }
 
@@ -73,6 +86,7 @@ export function mapTime(pieces: Piece[], clipT: number): number {
   if (clipT < 0) return ms(clipT / (pieces[0]?.speed ?? 1));
   let v = 0;
   for (const p of pieces) {
+    v += p.holdBefore ?? 0;
     if (clipT < p.to) return ms(v + (Math.max(clipT, p.from) - p.from) / p.speed);
     v += (p.to - p.from) / p.speed + p.holdAfter;
   }
@@ -87,7 +101,8 @@ export function mapTime(pieces: Piece[], clipT: number): number {
 export function retimeChain(pieces: Piece[]): string {
   const play = (p: Piece, last: boolean) => {
     const hold = ms(p.holdAfter + (last ? 0.1 : 0));
-    return `setpts=(PTS-STARTPTS)/${p.speed},fps=30,scale=1920:1080${hold > 0 ? `,tpad=stop_mode=clone:stop_duration=${hold}` : ''}`;
+    const pad = [...(p.holdBefore ? [`start_mode=clone:start_duration=${p.holdBefore}`] : []), ...(hold > 0 ? [`stop_mode=clone:stop_duration=${hold}`] : [])];
+    return `setpts=(PTS-STARTPTS)/${p.speed},fps=30,scale=1920:1080${pad.length ? `,tpad=${pad.join(':')}` : ''}`;
   };
   if (pieces.length === 1) return `[0:v]${play(pieces[0]!, true)}[rt]`;
   const n = pieces.length;

@@ -14,7 +14,9 @@ test.describe('QA · Form integrity (admin)', () => {
     const { api, orgApi } = adminApi;
     const day = '2025-06-04';
     const note = `Stale edit ${data.run}-${uid()}`;
-    await ok(await api.post(orgApi('/manual-time'), { data: { project_id: data.projects.website.id, started_at: `${day}T10:00:00.000Z`, ended_at: `${day}T11:00:00.000Z`, note, reason: 'E2E stale edit' } }), 'entry');
+    // Its own hour per attempt: a retry would otherwise overlap the entry the first attempt created.
+    const hour = String(10 + 2 * test.info().retry).padStart(2, '0');
+    await ok(await api.post(orgApi('/manual-time'), { data: { project_id: data.projects.website.id, started_at: `${day}T${hour}:00:00.000Z`, ended_at: `${day}T${hour}:59:00.000Z`, note, reason: 'E2E stale edit' } }), 'entry');
 
     await page.goto(`/o/${data.orgId}/timesheets/all`);
     await page.getByLabel('From', { exact: true }).fill(day);
@@ -26,7 +28,7 @@ test.describe('QA · Form integrity (admin)', () => {
     const dialog = page.getByRole('dialog', { name: 'Edit time entry' });
     // Times are on the entry's clock, and the dialog says which (it said "your browser's timezone").
     await expect(dialog).toContainText('Times are in UTC');
-    await expect(dialog.getByLabel('Start')).toHaveValue(`${day}T10:00`);
+    await expect(dialog.getByLabel('Start')).toHaveValue(`${day}T${hour}:00`);
 
     // Meanwhile someone marks the entry non-billable.
     const [entry] = await ok<Array<{ id: string; revision: number }>>(await api.get(orgApi(`/time-entries?from=${day}&to=${day}&q=${encodeURIComponent(note)}`)), 'entry');

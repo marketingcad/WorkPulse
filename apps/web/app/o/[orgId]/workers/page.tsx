@@ -30,6 +30,7 @@ import {
   type Column,
 } from '@tallywork/ui';
 import { ApiError, errorMessage, qs, useOrgQuery } from '@/lib/api';
+import { keepPreviousWhen, pathParam } from '@/lib/placeholder';
 import { useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
 import { useOrgAction, type RoleDto } from '@/components/workspace/basics';
@@ -67,7 +68,10 @@ export default function WorkersPage() {
   // The server filters, searches and pages the members (an organization can have thousands).
   const filters = { view, role_id: role || undefined, status: former || status === 'ACTIVE_ALL' ? undefined : status, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
-  const workersQ = useOrgQuery<OffsetPage<WorkerDto>>(org.can('members:read') ? `/workers${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  const workersQ = useOrgQuery<OffsetPage<WorkerDto>>(org.can('members:read') ? `/workers${qs({ ...filters, ...paging.params })}` : null, {
+    // Keep the rows while paging or searching, but not when switching to the other tab (BUG-03).
+    placeholderData: keepPreviousWhen<OffsetPage<WorkerDto>>((p) => (pathParam(p, 'view') ?? 'current') === view),
+  });
   useClampPage(paging, workersQ.data, workersQ.isPlaceholderData);
   const teamsQ = useOrgQuery<TeamDto[]>(org.can('teams:read') ? '/teams' : null);
   const rolesQ = useOrgQuery<RoleDto[]>('/roles');

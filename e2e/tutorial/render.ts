@@ -25,6 +25,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameS
 import path from 'node:path';
 import { clock, srtTime, timedCues } from './format';
 import { CHAPTERS, slug, VIDEO, type Scene } from './scenes';
+import { download, unzip } from './timing/voice-timing';
 
 const HERE = import.meta.dirname;
 const CLIPS = path.join(HERE, 'clips');
@@ -158,15 +159,14 @@ async function voices(scenes: Scene[]): Promise<Map<string, string>> {
       renameSync(`${j.out}.part`, j.out);
     }
   }
-  if (TTS === 'openai' || TTS === 'elevenlabs') for (const j of todo) writeFileSync(j.out, await speakOnline(j.text));
+  if (TTS === 'openai' || TTS === 'elevenlabs')
+    for (const j of todo) {
+      const { audio, alignment } = await speakOnline(j.text);
+      // ElevenLabs says when each character is spoken: the word times come from that (timing/voice-timing.ts).
+      if (alignment) writeFileSync(`${j.out}.alignment.json`, JSON.stringify(alignment), 'utf8');
+      writeFileSync(j.out, audio);
+    }
   return files;
-}
-
-async function download(url: string, to: string): Promise<void> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`download failed: ${res.status} ${url}`);
-  writeFileSync(`${to}.part`, Buffer.from(await res.arrayBuffer()));
-  renameSync(`${to}.part`, to);
 }
 
 /** Piper and the voice model, downloaded on first use. */
@@ -178,9 +178,7 @@ async function piper(): Promise<{ exe: string; model: string }> {
     mkdirSync(PIPER, { recursive: true });
     const zip = path.join(PIPER, 'piper.zip');
     await download(PIPER_RELEASE, zip);
-    // Windows' own tar opens zip files.
-    const r = spawnSync(path.join(process.env.WINDIR ?? 'C:\\Windows', 'System32', 'tar.exe'), ['-xf', zip, '-C', PIPER]);
-    if (r.status !== 0) throw new Error(`cannot unpack Piper: ${r.stderr}`);
+    unzip(zip, PIPER);
   }
   // "en_US-lessac-high" lives at en/en_US/lessac/high/ in the voice repository.
   const name = /^([a-z]+)_([A-Z]+)-(.+)-(x_low|low|medium|high)$/.exec(VOICE);
@@ -196,7 +194,7 @@ async function piper(): Promise<{ exe: string; model: string }> {
   return { exe, model };
 }
 
-async function speakOnline(text: string): Promise<Buffer> {
+async function speakOnline(text: string): Promise<{ audio: Buffer; alignment?: unknown }> {
   const key = process.env[TTS === 'openai' ? 'OPENAI_API_KEY' : 'ELEVENLABS_API_KEY'];
   if (!key) throw new Error(`TUTORIAL_TTS=${TTS} needs ${TTS === 'openai' ? 'OPENAI_API_KEY' : 'ELEVENLABS_API_KEY'}`);
   const res =
@@ -212,13 +210,15 @@ async function speakOnline(text: string): Promise<Buffer> {
             ...(MODEL.startsWith('gpt-') ? { instructions: 'A professional, friendly product trainer. Calm pace, a little slower than conversation.' } : {}),
           }),
         })
-      : await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(VOICE || '')}?output_format=mp3_44100_128`, {
+      : await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(VOICE || '')}/with-timestamps?output_format=mp3_44100_128`, {
           method: 'POST',
           headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
           body: JSON.stringify({ text, model_id: MODEL }),
         });
   if (!res.ok) throw new Error(`${TTS} speech failed: ${res.status} ${await res.text()}`);
-  return Buffer.from(await res.arrayBuffer());
+  if (TTS === 'openai') return { audio: Buffer.from(await res.arrayBuffer()) };
+  const body = (await res.json()) as { audio_base64: string; alignment: unknown };
+  return { audio: Buffer.from(body.audio_base64, 'base64'), alignment: body.alignment };
 }
 
 // ─── Pictures ────────────────────────────────────────────────────────────────

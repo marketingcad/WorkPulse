@@ -96,12 +96,23 @@ test('the window has no Node access and the main process rejects invalid request
   expect(result.badStubId).toContain('Invalid payload for me:savePayStub');
 });
 
-test('signing out returns to the sign-in screen', async ({ desktopApp, data }) => {
+test('signing out returns to the sign-in screen and ends the device on the server', async ({ desktopApp, data, adminApi }) => {
   const { window } = desktopApp;
+  type Device = { id: string; status: string };
+  const devices = async () => {
+    const b = await ok<Device[] | { data: Device[] }>(await adminApi.api.get(adminApi.orgApi(`/devices?membership_id=${data.worker.membershipId}`)), 'devices');
+    return Array.isArray(b) ? b : b.data;
+  };
+  const before = new Set((await devices()).map((d) => d.id));
   await signIn(window, data.worker.email);
+  const mine = (await devices()).find((d) => !before.has(d.id));
+  expect(mine?.status).toBe('ACTIVE');
+
   await window.getByRole('button', { name: 'Profile' }).click();
   await window.getByRole('menuitem', { name: 'Sign out' }).click();
   await expect(window.getByRole('heading', { level: 1, name: 'Welcome Back' })).toBeVisible();
+  // QA audit BUG-15: the device used to stay "Active" for administrators, its sign-in still valid.
+  await expect.poll(async () => (await devices()).find((d) => d.id === mine!.id)?.status).toBe('REVOKED');
 });
 
 test('the sign-in screen can show and hide the password', async ({ desktopApp }) => {

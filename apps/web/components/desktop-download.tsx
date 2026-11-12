@@ -7,7 +7,7 @@ import { Button, Dialog } from '@tallywork/ui';
 import { AuthShell } from '@/components/auth-shell';
 import { GUIDES } from '@/components/download/guides';
 import { t } from '@/lib/i18n';
-import { detectPlatform, type Platform } from '@/components/download/platform';
+import { detectPlatform, platformLabel, type Platform } from '@/components/download/platform';
 
 // Matches the md Button, for links that start a download.
 const LINK_BUTTON = 'inline-flex h-9 w-full items-center justify-center gap-2 rounded-sm border px-3.5 text-sm font-medium transition-colors';
@@ -22,7 +22,6 @@ export interface DownloadLinks {
 }
 
 const PLATFORMS: Platform[] = ['windows', 'macos', 'linux'];
-const LABELS: Record<Platform, string> = { windows: 'Windows', macos: 'macOS', linux: 'Ubuntu / Debian (.deb)' };
 
 
 /** Shown once the installer download starts: what to do with the file, first install or update. */
@@ -125,12 +124,12 @@ export function DesktopDownload({ links }: { links: DownloadLinks }) {
             {primary && (
               <a href={links[primary]!} download onClick={() => started(primary)} className={`${LINK_BUTTON} border-transparent bg-interactive text-on-accent hover:bg-interactive-hover`}>
                 <Download className="size-4" aria-hidden />
-                {t('download.for', { platform: LABELS[primary] })}
+                {t('download.for', { platform: platformLabel(primary, links[primary]) })}
               </a>
             )}
             {others.map((p) => (
               <a key={p} href={links[p]!} download onClick={() => started(p)} className={`${LINK_BUTTON} border-border bg-surface text-text shadow-[0_1px_2px_rgb(15_23_42/0.05)] hover:border-border-strong hover:bg-surface-muted`}>
-                {t('download.for', { platform: LABELS[p] })}
+                {t('download.for', { platform: platformLabel(p, links[p]) })}
               </a>
             ))}
           </div>

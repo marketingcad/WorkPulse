@@ -12,3 +12,13 @@ export function detectPlatform(ua: string, maxTouchPoints = 0): Platform | 'mobi
   if (/Linux/i.test(ua) && !/Android/i.test(ua)) return 'linux';
   return null;
 }
+
+/**
+ * The name on a download button. Linux follows the file the link serves (QA audit 11 Nov 2026,
+ * BUG-14): production's .deb setting pointed at the AppImage, and the button still said “(.deb)”.
+ */
+export function platformLabel(p: Platform, url: string | null): string {
+  if (p === 'windows') return 'Windows';
+  if (p === 'macos') return 'macOS';
+  return url && /\.appimage(?:[?#]|$)/i.test(url) ? 'Linux (AppImage)' : 'Ubuntu / Debian (.deb)';
+}

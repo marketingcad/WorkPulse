@@ -32,7 +32,7 @@
       "vitest": {
         "packages/domain": ["performance", "screenshot-retention", "insights-compare", "insights-timesheets", "insights-workforce", "insights-projects", "insights-workflow", "insights-performance", "insights-finance", "insights-capacity", "insights-forecast", "portal-summary", "notifications", "expense-categories", "assistant-navigation", "help-search"],
         "packages/contracts": ["assistant"],
-        "e2e/tutorial": ["anchors", "align", "captions", "retime", "voice-timing"],
+        "e2e/tutorial": ["anchors", "align", "captions", "retime", "voice-timing", "timeline"],
         "packages/api": [
           "agent-time-off-cancel", "notification-priority", "insights-weekly", "ai-provider", "assistant-retention", "assistant-stream", "avatar", "client-delete", "clients", "dashboard", "email", "email-verification", "expense-rejection",
           "finance-paging", "help-tutorial", "insights", "invoice-export-filters", "invoice-reminder", "mailer", "monitoring-card",

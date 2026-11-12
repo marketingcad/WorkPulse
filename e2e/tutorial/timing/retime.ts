@@ -69,6 +69,8 @@ export function planRetime({ clip, target, maxSpeed, anchors }: RetimeInput): Re
 
 /** The video time (seconds from the scene's start) at which a clip time is shown. */
 export function mapTime(pieces: Piece[], clipT: number): number {
+  // Before the scene starts (marks made before d.begin()): stays negative, as the renderer skips those.
+  if (clipT < 0) return ms(clipT / (pieces[0]?.speed ?? 1));
   let v = 0;
   for (const p of pieces) {
     if (clipT < p.to) return ms(v + (Math.max(clipT, p.from) - p.from) / p.speed);

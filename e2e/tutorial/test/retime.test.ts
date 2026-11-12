@@ -81,6 +81,10 @@ describe('mapTime', () => {
     expect(mapTime([{ from: 0, to: 30, speed: 1.5, holdAfter: 0 }], 15)).toBe(10);
   });
 
+  it('keeps times before the clip before it, so the renderer still skips them', () => {
+    expect(mapTime([{ from: 0, to: 30, speed: 1.5, holdAfter: 0 }], -3)).toBeLessThan(0);
+  });
+
   it('puts times past the end at the last frame of footage', () => {
     expect(mapTime([{ from: 0, to: 8, speed: 1, holdAfter: 4 }], 9)).toBe(8);
   });

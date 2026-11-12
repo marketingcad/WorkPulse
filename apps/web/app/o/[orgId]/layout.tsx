@@ -5,7 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import type { MeDto, OrgContextDto } from '@tallywork/contracts';
 import { ErrorState, Logo, Spinner } from '@tallywork/ui';
 import { isDesktopOnly } from '@tallywork/domain';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
+import { PageNotFound } from '@/components/page-not-found';
 import { OrgProvider } from '@/lib/org';
 import { useAccountLocale } from '@/lib/i18n';
 import { AppShell } from '@/components/shell/app-shell';
@@ -49,6 +50,9 @@ export default function OrgLayout({ children }: { children: React.ReactNode }) {
         }}
       />
     );
+  // An organization that does not exist, or that this person does not belong to (the API says 404 for
+  // both, so neither is revealed): the normal "Page not found", not an error with a pointless retry.
+  if (error instanceof ApiError && error.status === 404) return <PageNotFound title />;
   if (error)
     return (
       <div className="flex min-h-dvh items-center justify-center">

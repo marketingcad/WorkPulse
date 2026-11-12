@@ -94,10 +94,14 @@ async function handleEvent(tx: Tx, deps: Deps, e: Envelope): Promise<void> {
       break;
     case 'timesheet.submitted': {
       const worker = p.membership_id as string;
-      const names = await memberNames({ tx }, [worker]);
+      // QA audit 11 Nov 2026 (BUG-12): when a manager or the owner submitted for the worker, the
+      // notification said the worker did. It now names who submitted, and for whom.
+      const by = typeof p.submitted_by === 'string' && p.submitted_by !== worker ? p.submitted_by : null;
+      const names = await memberNames({ tx }, by ? [worker, by] : [worker]);
+      const workerName = names.get(worker) ?? 'a member';
       await notify(tx, deps, org, await approversFor(tx, org, worker, 'timesheets:approve'), {
         type: 'timesheet.submitted',
-        title: `${names.get(worker) ?? 'A member'} submitted a timesheet`,
+        title: by ? `${names.get(by) ?? 'Someone'} submitted ${workerName}'s timesheet` : `${names.get(worker) ?? 'A member'} submitted a timesheet`,
         body: `Period ${p.period_start} – ${p.period_end}`,
         link: `/timesheets/approvals`,
       });

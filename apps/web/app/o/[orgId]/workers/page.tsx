@@ -36,6 +36,7 @@ import { useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
 import { useOrgAction, type RoleDto } from '@/components/workspace/basics';
 import { MemberCell } from '@/lib/avatars';
+import { pendingInviteFor } from '@/components/people/pending-invite';
 
 interface InvitationRow {
   id: string;
@@ -53,6 +54,8 @@ interface InviteResult {
   invite_url: string;
   expires_at: string;
   email_sent?: boolean;
+  /** an earlier pending invitation to this address was replaced, and its link no longer works */
+  replaced_pending?: boolean;
 }
 
 export default function WorkersPage() {
@@ -258,6 +261,9 @@ function InviteDialog({ open, onOpenChange, roles, teams }: { open: boolean; onO
   const [result, setResult] = useState<InviteResult | null>(null);
   const [copied, setCopied] = useState(false);
   const roleId = f.role_id || defaultRole;
+  // Shares the Pending invitations list's query, so this is usually already loaded.
+  const pendingQ = useOrgQuery<InvitationRow[]>(open ? '/invitations' : null);
+  const pending = pendingInviteFor(pendingQ.data, f.email);
 
   const close = (o: boolean) => {
     onOpenChange(o);
@@ -342,6 +348,7 @@ function InviteDialog({ open, onOpenChange, roles, teams }: { open: boolean; onO
             )}{' '}
             It expires {fmtDate(result.expires_at)}.
           </p>
+          {result.replaced_pending && <p role="status">This replaces the earlier invitation to this address. Its link no longer works.</p>}
           <div className="flex items-center gap-2">
             <Input readOnly value={result.invite_url} aria-label="Invitation link" onFocus={(e) => e.target.select()} className="font-mono text-xs" />
             <IconButton label={copied ? 'Copied' : 'Copy link'} variant="secondary" onClick={copy}>
@@ -390,7 +397,13 @@ function InviteDialog({ open, onOpenChange, roles, teams }: { open: boolean; onO
             void submit();
           }}
         >
-          <Field label="Email" htmlFor="inv-email" required error={err?.field('email')}>
+          <Field
+            label="Email"
+            htmlFor="inv-email"
+            required
+            error={err?.field('email')}
+            hint={pending ? `An invitation to this address is pending (sent ${fmtDate(pending.created_at)}). Sending a new one replaces it, and the earlier link stops working.` : undefined}
+          >
             <Input id="inv-email" type="email" autoFocus value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="name@company.com" />
           </Field>
           <Field label="Name" htmlFor="inv-name" hint="Optional. They can change it when they accept." error={err?.field('name')}>

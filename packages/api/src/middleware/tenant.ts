@@ -1,13 +1,10 @@
 import type { Context, MiddlewareHandler } from 'hono';
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
   memberships,
   organizations,
-  projectMembers,
-  projectTeams,
   rolePermissions,
   roles,
-  teamMembers,
   withTenant,
   type Tx,
 } from '@tallywork/db';
@@ -46,17 +43,62 @@ export async function loadGrants(tx: Tx, roleId: string): Promise<Grants> {
   return Object.fromEntries(rows.map((r) => [r.permission, r.scope])) as Grants;
 }
 
-/** Build the actor context: grants + team and project scope sets. */
-export async function loadActor(tx: Tx, principal: Principal, organizationId: string, membershipId: string): Promise<Actor> {
-  const [m] = await tx
-    .select({ id: memberships.id, userId: memberships.userId, roleId: memberships.roleId, status: memberships.status, isOwner: memberships.isOwner, roleKey: roles.key })
-    .from(memberships)
-    .innerJoin(roles, eq(roles.id, memberships.roleId))
-    .where(and(eq(memberships.id, membershipId), eq(memberships.organizationId, organizationId)))
-    .limit(1);
-  if (!m || m.status !== 'ACTIVE') throw forbidden('Your membership in this organization is not active');
+/** The organization and one membership with everything an actor is built from, as one row (see tenantRow). */
+interface TenantRow {
+  org_id: string;
+  name: string;
+  slug: string;
+  timezone: string;
+  week_start: number;
+  currency: string;
+  pay_period: OrgInfo['payPeriod'];
+  settings: OrgInfo['settings'];
+  m_id: string | null;
+  user_id: string | null;
+  status: string | null;
+  is_owner: boolean | null;
+  role_key: string | null;
+  grants: Array<[permission: string, scope: string]>;
+  teams: Array<[teamId: string, role: string]>;
+  managed: string[];
+  projects: string[];
+}
 
-  let grants = await loadGrants(tx, m.roleId);
+/**
+ * QA audit 11 Nov 2026, Phase 3 (BUG-02): the organization, a membership (by user or by id), its role,
+ * permissions, teams, the members of the teams it manages and its projects (direct and through teams),
+ * in one query. It replaces seven, each a round trip to the database on every request. Null when the
+ * organization does not exist; `m_id` null when the membership does not.
+ */
+async function tenantRow(tx: Tx, organizationId: string, who: { userId: string } | { membershipId: string }): Promise<TenantRow | null> {
+  const member = 'userId' in who ? sql`m.user_id = ${who.userId}` : sql`m.id = ${who.membershipId}`;
+  const res = await tx.execute(sql`
+    select o.id as org_id, o.name, o.slug, o.timezone, o.week_start, o.currency, o.pay_period, o.settings,
+      m.id as m_id, m.user_id, m.status, m.is_owner, r.key as role_key,
+      coalesce((select json_agg(json_build_array(rp.permission, rp.scope)) from role_permissions rp where rp.role_id = m.role_id), '[]'::json) as grants,
+      coalesce((select json_agg(json_build_array(tm.team_id, tm.role)) from team_members tm where tm.membership_id = m.id), '[]'::json) as teams,
+      coalesce((select json_agg(distinct tm.membership_id) from team_members tm
+        where tm.team_id in (select own.team_id from team_members own where own.membership_id = m.id and own.role = 'MANAGER')), '[]'::json) as managed,
+      coalesce((select json_agg(distinct p.project_id) from (
+        select pm.project_id from project_members pm where pm.membership_id = m.id
+        union select pt.project_id from project_teams pt where pt.team_id in (select own.team_id from team_members own where own.membership_id = m.id)
+      ) p), '[]'::json) as projects
+    from organizations o
+    left join memberships m on m.organization_id = o.id and ${member}
+    left join roles r on r.id = m.role_id
+    where o.id = ${organizationId}
+    limit 1`);
+  return ((res as unknown as { rows: TenantRow[] }).rows[0] as TenantRow | undefined) ?? null;
+}
+
+function orgFromRow(r: TenantRow): OrgInfo {
+  return { id: r.org_id, name: r.name, slug: r.slug, timezone: r.timezone, weekStart: r.week_start, currency: r.currency, payPeriod: r.pay_period, settings: r.settings };
+}
+
+/** The actor from a tenant row: the same checks and sets loadActor always made. */
+function actorFromRow(principal: Principal, organizationId: string, r: TenantRow): Actor {
+  if (!r.m_id || r.status !== 'ACTIVE') throw forbidden('Your membership in this organization is not active');
+  let grants = Object.fromEntries(r.grants) as Grants;
   // Org-only permissions held at a narrower scope (custom roles saved before the rule) grant nothing.
   for (const p of ORG_ONLY_PERMISSIONS) if (grants[p] && grants[p] !== 'org') delete grants[p];
   if (principal.type === 'api_key') {
@@ -68,28 +110,36 @@ export async function loadActor(tx: Tx, principal: Principal, organizationId: st
     // A key never exceeds the rights of the admin who created it.
     grants = intersectGrants(grants, keyGrants);
   }
-
-  const myTeams = await tx.select({ teamId: teamMembers.teamId, role: teamMembers.role }).from(teamMembers).where(eq(teamMembers.membershipId, m.id));
-  const managedTeamIds = myTeams.filter((t) => t.role === 'MANAGER').map((t) => t.teamId);
-  const managed = managedTeamIds.length
-    ? await tx.select({ id: teamMembers.membershipId }).from(teamMembers).where(inArray(teamMembers.teamId, managedTeamIds))
-    : [];
-  const allTeamIds = myTeams.map((t) => t.teamId);
-  const direct = await tx.select({ id: projectMembers.projectId }).from(projectMembers).where(eq(projectMembers.membershipId, m.id));
-  const viaTeams = allTeamIds.length ? await tx.select({ id: projectTeams.projectId }).from(projectTeams).where(inArray(projectTeams.teamId, allTeamIds)) : [];
-
   return {
     organizationId,
-    membershipId: m.id,
-    userId: m.userId,
+    membershipId: r.m_id,
+    userId: r.user_id,
     principal,
-    roleKey: m.roleKey,
-    isOwner: m.isOwner,
+    roleKey: r.role_key!,
+    isOwner: !!r.is_owner,
     grants,
-    managedTeamIds,
-    managedMembershipIds: new Set(managed.map((r) => r.id).filter((id) => id !== m.id)),
-    assignedProjectIds: new Set([...direct, ...viaTeams].map((r) => r.id)),
+    managedTeamIds: r.teams.filter(([, role]) => role === 'MANAGER').map(([teamId]) => teamId),
+    managedMembershipIds: new Set(r.managed.filter((id) => id !== r.m_id)),
+    assignedProjectIds: new Set(r.projects),
   };
+}
+
+/** Build the actor context: grants + team and project scope sets. */
+export async function loadActor(tx: Tx, principal: Principal, organizationId: string, membershipId: string): Promise<Actor> {
+  const r = await tenantRow(tx, organizationId, { membershipId });
+  if (!r) throw forbidden('Your membership in this organization is not active');
+  return actorFromRow(principal, organizationId, r);
+}
+
+/**
+ * The organization and the acting member, in one query. A missing organization is not found; someone
+ * who is not a member gets `no_membership` (the tenant middleware turns it into its own answers).
+ */
+export async function loadTenant(tx: Tx, principal: Principal, organizationId: string, who: { userId: string } | { membershipId: string }): Promise<{ org: OrgInfo; actor: Actor }> {
+  const r = await tenantRow(tx, organizationId, who);
+  if (!r) throw notFound('organization');
+  if (!r.m_id) throw new DomainError('not_found', 'no_membership', 'Not a member of this organization');
+  return { org: orgFromRow(r), actor: actorFromRow(principal, organizationId, r) };
 }
 
 /**
@@ -157,33 +207,22 @@ export const tenant: MiddlewareHandler<AppEnv> = async (c, next) => {
 
   await runInTenantTx(c, organizationId, async () => {
     const tx = c.var.tx;
-    let membershipId: string;
-    if (principal.type === 'user') {
-      const [m] = await tx
-        .select({ id: memberships.id })
-        .from(memberships)
-        .where(and(eq(memberships.userId, principal.userId), eq(memberships.organizationId, organizationId)))
-        .limit(1);
+    // The organization and the acting member in one query (QA audit Phase 3: it was seven). The checks
+    // below keep their old order, so each case still gets the same answer.
+    const row = await tenantRow(tx, organizationId, { userId: principal.type === 'user' ? principal.userId : principal.createdBy });
+    if (!row?.m_id) {
       // Not a member → the org does not exist as far as this user is concerned.
-      if (!m) throw notFound('organization');
-      membershipId = m.id;
-    } else {
-      const [m] = await tx
-        .select({ id: memberships.id })
-        .from(memberships)
-        .where(and(eq(memberships.userId, principal.createdBy), eq(memberships.organizationId, organizationId)))
-        .limit(1);
-      if (!m) throw forbidden('The API key owner is no longer a member');
-      membershipId = m.id;
+      if (principal.type === 'user') throw notFound('organization');
+      throw forbidden('The API key owner is no longer a member');
     }
     if (principal.type === 'api_key') assertApiKeyRoute(principal.scopes, c.req.method, c.req.path.split(`/orgs/${organizationId}`)[1] ?? '');
-    const org = await loadOrg(tx, organizationId);
+    const org = orgFromRow(row);
     // Organization security settings apply to people and API keys (desktop agents use their own routes).
     // Required two-factor is for the web app only, by decision (audit 29 Oct 2026, AUTH-006); the
     // security settings page says so.
     if (!ipAllowed(clientIp((h) => c.req.header(h)), org.settings.ipAllowlist)) throw forbidden('Access to this organization is not allowed from your network');
     c.set('org', org);
-    const actor = await loadActor(tx, principal, organizationId, membershipId);
+    const actor = actorFromRow(principal, organizationId, row);
     if (principal.type === 'user' && !principal.mfaVerified && mfaRequiredFor(org.settings.enforceMfa, actor)) {
       throw new DomainError('forbidden', 'mfa_enrollment_required', 'Your organization requires two-factor authentication. Turn it on in your profile to continue.');
     }

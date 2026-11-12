@@ -434,7 +434,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     points: [
       'The most specific rate wins: a rate for one member on one project beats a project rate, which beats the organization’s rate.',
-      'You can also set today’s rate directly on a member, client or project.',
+      'You can also set rates directly on a member, client or project, with the day they start. A new project’s rates start on its start date unless you pick another day.',
+      'Approved time that had no rate is priced once a rate covers it. Before saving, WorkPulse shows how much time and money that is and asks you to confirm. Time that was already priced, or is on an invoice or a finalized payroll, keeps its amounts.',
+      'Summary warns about time with no rate. Time a finalized payroll already paid at 0 cannot be changed by a rate: add a bonus on the next payroll.',
       'Type amounts with a dot for cents, such as 75.50 or 1,250.00. An amount like 12,50 is refused, so it is never saved as 1,250.00. This applies to every amount in Finance.',
     ],
     links: [{ label: 'Open Rates', href: '/finance/billing' }],

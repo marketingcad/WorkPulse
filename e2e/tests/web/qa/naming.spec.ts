@@ -4,7 +4,8 @@ import { ADMIN_STATE } from '../../../support/env';
 /**
  * Audit 28 Oct 2026, phase 5: names and places. One address for a member's timesheet, "Timesheet
  * period" for the timesheet setting (payroll has its own pay periods), report categories named like
- * the sidebar with sentence-case titles, and rate fields that say they apply from today.
+ * the sidebar with sentence-case titles, and rate fields that say when they start (QA audit 11 Nov
+ * 2026, BUG-08: they used to start today only, so time already worked was priced at $0).
  */
 test.describe('QA · Names and places (admin)', () => {
   test.use({ storageState: ADMIN_STATE });
@@ -31,15 +32,18 @@ test.describe('QA · Names and places (admin)', () => {
     await expect(page.getByRole('heading', { name: 'People', exact: true })).toHaveCount(0);
   });
 
-  test('project rate fields say they apply from today, and link to Rates', async ({ page, data, adminApi }) => {
+  test('project rate fields say when they start, and link to Rates', async ({ page, data, adminApi }) => {
     const name = `Rated ${uid()}`;
     await ok(await adminApi.api.post(adminApi.orgApi('/projects'), { data: { name } }), 'project');
     await page.goto(`/o/${data.orgId}/projects`);
     await page.getByRole('button', { name: `Actions for ${name}` }).click();
     await page.getByRole('menuitem', { name: 'Edit' }).click();
     const dialog = page.getByRole('dialog', { name: 'Edit project' });
-    await expect(dialog.getByText(/what you pay, from today/)).toBeVisible();
-    await expect(dialog.getByText(/what you charge, from today/)).toBeVisible();
+    await expect(dialog.getByText(/\/ hour, what you pay$/)).toBeVisible();
+    await expect(dialog.getByText(/\/ hour, what you charge$/)).toBeVisible();
+    // Editing: an empty start date means the new amounts start today.
+    await expect(dialog.getByLabel('Rates start')).toBeVisible();
+    await expect(dialog.getByText('Empty: today.')).toBeVisible();
     await expect(dialog.getByRole('link', { name: /See all rates/ })).toHaveAttribute('href', `/o/${data.orgId}/finance/billing`);
   });
 });

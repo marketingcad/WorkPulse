@@ -34,7 +34,9 @@ import {
 import { ApiError, errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
 import { ColorDot, ProjectStatusBadge, hoursToSeconds, secondsToHours, useOrgAction, type RoleDto } from '@/components/workspace/basics';
-import { RateNote } from '@/components/finance/rate-note';
+import { RateNote, RateStartField } from '@/components/finance/rate-note';
+import { useRatePricingConfirm } from '@/components/finance/rate-pricing-confirm';
+import { previewRatesFromBody } from '@/components/finance/rate-pricing';
 import { DataExportAction } from '@/components/security/data-export';
 
 const AnonymizeDialog = lazy(() => import('@/components/security/anonymize-dialog').then((m) => ({ default: m.AnonymizeDialog })));
@@ -339,8 +341,11 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
     end_date: w.end_date ?? '',
     pay_rate: w.pay_rate_minor != null ? fromMinor(w.pay_rate_minor) : '',
     bill_rate: w.bill_rate_minor != null ? fromMinor(w.bill_rate_minor) : '',
+    /** first day the rates apply; '' = today */
+    rates_from: '',
   });
   const canRates = org.can('rates:manage');
+  const pricing = useRatePricingConfirm();
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const zones = useMemo(() => {
@@ -367,12 +372,16 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
       if (canRates) {
         for (const [key, field, cur] of [['pay_rate', 'pay_rate_minor', w.pay_rate_minor], ['bill_rate', 'bill_rate_minor', w.bill_rate_minor]] as const) {
           const v = f[key].trim();
-          if (v === (cur != null ? fromMinor(cur) : '')) continue;
+          // A start date sends the rates with it, so an unchanged amount can be moved to an earlier day.
+          if (v === (cur != null ? fromMinor(cur) : '') && !(f.rates_from && v)) continue;
           const minor = v ? toMinor(v) : null;
           if (v && minor === null) throw new ApiError(422, 'validation', 'Enter a valid amount', undefined, [{ field, message: 'Enter an amount like 25 or 25.50' }]);
           body[field] = minor;
         }
+        if (f.rates_from && (body.pay_rate_minor !== undefined || body.bill_rate_minor !== undefined)) body.rate_effective_from = f.rates_from;
       }
+      // Rates that would price approved time with no rate are confirmed first (BUG-08).
+      if (!(await pricing.confirm(previewRatesFromBody(body, { scope: 'WORKER', scopeId: w.id }, org.organization.currency, todayIn(org.organization.timezone))))) return;
       await run('PATCH', `/workers/${w.id}`, body);
       toast.success('Profile saved');
       onDone();
@@ -434,12 +443,14 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
           </Field>
           {canRates && (
             <>
-              <Field label="Pay rate per hour" htmlFor="wk-pay" hint={`${org.organization.currency} / hour, what you pay this member, from today`} error={err?.field('pay_rate_minor')}>
+              <Field label="Pay rate per hour" htmlFor="wk-pay" hint={`${org.organization.currency} / hour, what you pay this member`} error={err?.field('pay_rate_minor')}>
                 <Input id="wk-pay" inputMode="decimal" className="tabular" placeholder="0.00" value={f.pay_rate} onChange={(e) => setF({ ...f, pay_rate: e.target.value })} />
               </Field>
-              <Field label="Bill rate per hour" htmlFor="wk-bill" hint={`${org.organization.currency} / hour, what you charge for their time, from today`} error={err?.field('bill_rate_minor')}>
+              <Field label="Bill rate per hour" htmlFor="wk-bill" hint={`${org.organization.currency} / hour, what you charge for their time`} error={err?.field('bill_rate_minor')}>
                 <Input id="wk-bill" inputMode="decimal" className="tabular" placeholder="0.00" value={f.bill_rate} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} />
               </Field>
+              {pricing.dialog}
+              <RateStartField id="wk-rates-from" value={f.rates_from} onChange={(rates_from) => setF({ ...f, rates_from })} emptyMeans="today" error={err?.field('rate_effective_from')} />
               <RateNote scope="WORKER" className="sm:col-span-2" />
             </>
           )}

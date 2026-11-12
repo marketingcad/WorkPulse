@@ -34,6 +34,7 @@ import dynamic from 'next/dynamic';
 import { periodLabel, type TimesheetHistoryItem } from './shared';
 import { TimeTypeBadge } from '@/components/settings/time-type-badge';
 import { downloadText, toCsv } from '@/lib/csv';
+import { UnpricedTimeWarning } from '@/components/finance/unpriced-time';
 
 // Dialogs open on demand, so they load when first opened instead of with the page (first-load JS budget).
 const CommentDialog = dynamic(() => import('./entry-dialogs').then((m) => m.CommentDialog));
@@ -252,6 +253,7 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
             : []),
         ]}
       />
+      {money && <UnpricedTimeWarning pay={money.totals.unpriced_pay_seconds} bill={money.totals.unpriced_bill_seconds} paid={money.totals.unpriced_paid_seconds} />}
 
       <Panel>
         <Tabs

@@ -32,6 +32,8 @@ import {
 } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
+import { useRatePricingConfirm } from '@/components/finance/rate-pricing-confirm';
+import { previewRatesFromBody } from '@/components/finance/rate-pricing';
 import { MultiSelect } from '@/components/workspace/multi-select';
 import { ColorDot, PriorityBadge, ProjectFields, ProjectStatusBadge, TaskDialog, TaskStatusSelect, clientsForProject, projectPayload, projectToForm, useHoursPerDay, useOrgAction, type ProjectForm } from '@/components/workspace/shared';
 import { useMemberOptions } from '@/lib/members';
@@ -545,6 +547,7 @@ function SettingsTab({ project }: { project: ProjectDto }) {
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const pricing = useRatePricingConfirm();
   // The form follows the saved project only while it has no unsaved changes (or right after a save):
   // a background refresh (window focus, someone's timer updating the totals) must not wipe edits.
   const loaded = useRef(projectToForm(project, hoursPerDay));
@@ -563,9 +566,13 @@ function SettingsTab({ project }: { project: ProjectDto }) {
     setBusy(true);
     setErr(null);
     try {
+      const body = projectPayload(f, { hoursPerDay, initial: projectToForm(project, hoursPerDay), canManageRates: org.can('rates:manage') });
+      // Rates that would price approved time with no rate are confirmed first (BUG-08).
+      const currency = clients.find((c) => c.id === f.client_id)?.currency ?? org.organization.currency;
+      if (!(await pricing.confirm(previewRatesFromBody(body, { scope: 'PROJECT', scopeId: project.id }, currency, todayIn(org.organization.timezone))))) return;
       // Before the request: the action refreshes the project before it returns.
       justSaved.current = true;
-      await run('PATCH', `/projects/${project.id}`, projectPayload(f, { hoursPerDay, initial: projectToForm(project, hoursPerDay), canManageRates: org.can('rates:manage') }));
+      await run('PATCH', `/projects/${project.id}`, body);
       toast.success('Project saved');
     } catch (e) {
       justSaved.current = false;
@@ -599,6 +606,7 @@ function SettingsTab({ project }: { project: ProjectDto }) {
           }}
         >
           <ProjectFields f={f} setF={setF} err={err} clients={clients} showAssignments={false} projectId={project.id} />
+          {pricing.dialog}
           <div className="mt-4 flex justify-end gap-2">
             <Button onClick={() => setF(projectToForm(project, hoursPerDay))}>Reset</Button>
             <Button type="submit" variant="primary" loading={busy} disabled={!f.name.trim()}>

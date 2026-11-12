@@ -24,6 +24,7 @@ import {
   type Tx,
 } from '@tallywork/db';
 import {
+  amountForSeconds,
   budgetStatus,
   businessRule,
   can,
@@ -42,7 +43,7 @@ import {
   type RateKind,
   type RateScope,
 } from '@tallywork/domain';
-import type { BudgetStatusDto, ExpensePageSummary, InvoicePageSummary, OffsetPage, budgetInput, expenseInput, invoiceCreateInput, invoiceDraftUpdateInput, paymentInput, rateInput } from '@tallywork/contracts';
+import type { BudgetStatusDto, ExpensePageSummary, InvoicePageSummary, OffsetPage, RatePricingPreviewDto, budgetInput, expenseInput, invoiceCreateInput, invoiceDraftUpdateInput, paymentInput, ratePricingPreviewInput, rateInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
 import { audit, emit, emitFrom } from './events';
@@ -153,20 +154,102 @@ async function assertCanManageRate(x: Ctx, scope: RateScope, scopeId: string | n
   if (!ok) throw forbidden('Your role can’t change this rate');
 }
 
-/** Applies form rate edits for one scope from today: unchanged amounts create no new version, null ends the rate. */
-export async function applyScopedRates(x: Ctx, scope: RateScope, scopeId: string, changes: RateChange[], currency: string) {
+/**
+ * Applies form rate edits for one scope from `from` (default today): an unchanged amount creates no
+ * new version unless it is moved to an earlier date, and null ends the rate today.
+ */
+export async function applyScopedRates(x: Ctx, scope: RateScope, scopeId: string, changes: RateChange[], currency: string, from?: string) {
   if (!changes.length) return;
   await assertCanManageRate(x, scope, scopeId);
   const current = await currentScopedRates(x, scope);
   const today = localDate(x.deps.now(), x.org.timezone);
+  const start = from ?? today;
   for (const [kind, amount] of changes) {
     const cur = current.get(`${kind}:${scopeId}`);
     if (amount === null) {
       if (cur) await closeOpenRates(x, kind, scope, scopeId, today);
-    } else if (!cur || cur.amountMinor !== amount || cur.currency !== currency) {
-      await setRate(x, { kind, scope, scope_id: scopeId, amount_minor: amount, currency, effective_from: today });
+    } else if (!cur || cur.amountMinor !== amount || cur.currency !== currency || start < cur.effectiveFrom) {
+      await setRate(x, { kind, scope, scope_id: scopeId, amount_minor: amount, currency, effective_from: start });
     }
   }
+}
+
+/** The date form rates start from: the one asked for, else a new record's own start date when that is earlier than today, else today. */
+export function formRateStart(x: Ctx, asked: string | undefined, recordStart?: string | null) {
+  if (asked) return asked;
+  const today = localDate(x.deps.now(), x.org.timezone);
+  return recordStart && recordStart < today ? recordStart : today;
+}
+
+/**
+ * QA audit 11 Nov 2026 (BUG-08). Approved time that had no rate when it was approved was priced at
+ * 0 and stayed there, so setting up a project and then entering last week's hours paid and billed
+ * nothing. Once a rate covers such time, price it. Approved amounts never change: only an entry with
+ * no rate of that kind is filled, never pay a finalized payroll holds, never billing an invoice holds.
+ */
+async function planUnpricedPricing(x: Ctx, kind: RateKind, from: string, rates: Rate[]) {
+  const open = and(isNull(billingEntries.voidedAt), gte(billingEntries.localDate, from));
+  const candidates =
+    kind === 'PAY'
+      ? await x.tx.select().from(billingEntries).where(and(open, isNull(billingEntries.payRateId), isNull(billingEntries.payrollLineId)))
+      : await x.tx.select().from(billingEntries).where(and(open, eq(billingEntries.billable, true), isNull(billingEntries.billRateId), isNull(billingEntries.invoiceLineId)));
+  return candidates.flatMap((e) => {
+    const rate = resolveRate(rates, kind, { date: e.localDate, membershipId: e.membershipId, projectId: e.projectId, clientId: e.clientId });
+    if (!rate) return [];
+    const coefficient = (kind === 'PAY' ? e.payCoefficient : e.billCoefficient) ?? 1;
+    // An entry keeps one currency, the bill rate's when it has one (as approval sets it).
+    return [{ entry: e, rate, amount: amountForSeconds(Math.round(e.seconds * coefficient), rate.amountMinor), currency: kind === 'BILL' || !e.billRateId ? rate.currency : e.currency }];
+  });
+}
+
+async function priceUnpricedApprovedTime(x: Ctx, kind: RateKind, from: string) {
+  let priced = 0;
+  for (const p of await planUnpricedPricing(x, kind, from, await loadRates(x.tx))) {
+    const set = kind === 'PAY' ? { payRateId: p.rate.id, payAmountMinor: p.amount, currency: p.currency } : { billRateId: p.rate.id, billAmountMinor: p.amount, currency: p.currency };
+    const done = await x.tx
+      .update(billingEntries)
+      .set(set)
+      .where(and(eq(billingEntries.id, p.entry.id), isNull(billingEntries.voidedAt), kind === 'PAY' ? and(isNull(billingEntries.payRateId), isNull(billingEntries.payrollLineId)) : and(isNull(billingEntries.billRateId), isNull(billingEntries.invoiceLineId))))
+      .returning({ id: billingEntries.id });
+    priced += done.length;
+  }
+  if (priced) await audit(x, { action: 'rate.priced_approved_time', targetType: 'rate', targetId: null, after: { kind, from, entries: priced } });
+}
+
+/**
+ * What saving these rates would price of the approved time that has no rate, without saving anything:
+ * the same plan setRate applies, run against today's rates with these versions put in (each one ends
+ * the open rate of its kind and target from its date, as closeOpenRates does). Forms ask for it before
+ * saving, so nobody prices approved time without seeing how much.
+ */
+export async function previewRatePricing(x: Ctx, input: z.infer<typeof ratePricingPreviewInput>): Promise<RatePricingPreviewDto> {
+  if (!x.actor.grants['rates:manage']) throw forbidden();
+  const proposed = input.rates.map((r) => ({ ...r, scope_id: r.scope === 'ORG' ? null : (r.scope_id ?? null) }));
+  for (const r of proposed) {
+    if (r.scope !== 'ORG' && !r.scope_id) throw validation('scope_id is required for this scope');
+    await assertCanManageRate(x, r.scope, r.scope_id);
+  }
+  let rates = await loadRates(x.tx);
+  for (const r of proposed) {
+    const same = (e: Rate) => e.kind === r.kind && e.scope === r.scope && (e.scopeId ?? null) === r.scope_id && e.effectiveTo === null;
+    rates = rates.filter((e) => !(same(e) && e.effectiveFrom >= r.effective_from)).map((e) => (same(e) ? { ...e, effectiveTo: r.effective_from } : e));
+    rates.push({ id: `preview:${r.kind}`, kind: r.kind, scope: r.scope, scopeId: r.scope_id, amountMinor: r.amount_minor, currency: r.currency, effectiveFrom: r.effective_from, effectiveTo: null });
+  }
+  const out: RatePricingPreviewDto = { entries: 0, pay_seconds: 0, pay_minor: 0, bill_seconds: 0, bill_minor: 0, currency: proposed[0]!.currency };
+  for (const r of proposed) {
+    // Everything the save would price, as setRate does: also time an existing rate of this kind covers.
+    for (const p of await planUnpricedPricing(x, r.kind, r.effective_from, rates)) {
+      out.entries++;
+      if (r.kind === 'PAY') {
+        out.pay_seconds += p.entry.seconds;
+        out.pay_minor += p.amount;
+      } else {
+        out.bill_seconds += p.entry.seconds;
+        out.bill_minor += p.amount;
+      }
+    }
+  }
+  return out;
 }
 
 export async function setRate(x: Ctx, input: z.infer<typeof rateInput>) {
@@ -178,6 +261,7 @@ export async function setRate(x: Ctx, input: z.infer<typeof rateInput>) {
   const id = newId();
   await x.tx.insert(billingRates).values({ id, organizationId: x.org.id, kind: input.kind, scope: input.scope, scopeId, amountMinor: input.amount_minor, currency: input.currency, effectiveFrom: input.effective_from, createdBy: x.actor.membershipId });
   await audit(x, { action: 'rate.set', targetType: 'rate', targetId: id, before: prev, after: input });
+  await priceUnpricedApprovedTime(x, input.kind, input.effective_from);
   return listRates(x);
 }
 

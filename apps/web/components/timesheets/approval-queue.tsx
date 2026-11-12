@@ -10,6 +10,7 @@ import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { FlagBadges, periodLabel, type BulkResult } from '@/components/timesheets/shared';
+import { withoutDecided } from './queue';
 import { MemberCell } from '@/lib/avatars';
 
 // Loaded when a timesheet is opened, not with the page: the queue itself loads faster.
@@ -33,7 +34,8 @@ export function ApprovalQueue() {
   // The server pages the queue (approved timesheets keep growing) and counts every pending one.
   const filters = { status, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
-  const q = useOrgQuery<OffsetPage<ApprovalQueueItemDto>>(allowed ? `/timesheets/approvals${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  const queuePath = allowed ? `/timesheets/approvals${qs({ ...filters, ...paging.params })}` : null;
+  const q = useOrgQuery<OffsetPage<ApprovalQueueItemDto>>(queuePath, { placeholderData: (p) => p });
   useClampPage(paging, q.data, q.isPlaceholderData);
   const pendingQ = useOrgQuery<OffsetPage<ApprovalQueueItemDto>>(allowed ? '/timesheets/approvals?status=SUBMITTED&page=1&page_size=1' : null);
 
@@ -181,8 +183,11 @@ export function ApprovalQueue() {
             date={open.period_start}
             compact
             decisions
-            onDecided={(_ts, action) => {
+            onDecided={(next, action) => {
               if (action !== 'reopen') setOpen(null);
+              // Out of this tab at once, not after the slow full refresh (C-11).
+              const id = next.id;
+              if (queuePath && id) qc.setQueryData<OffsetPage<ApprovalQueueItemDto>>(['org', orgId, queuePath], (old) => withoutDecided(old, id, next.status, status));
             }}
           />
         </Drawer>

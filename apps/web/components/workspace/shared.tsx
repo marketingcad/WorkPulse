@@ -4,10 +4,15 @@ import type { ClientDto, ProjectDto, TaskDto, TeamDto, MemberOptionDto } from '@
 import { Plus, Trash2 } from 'lucide-react';
 import { Button, Checkbox, Dialog, Field, IconButton, Input, Select, StatusBadge, Textarea, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgId, useOrgQuery } from '@/lib/api';
-import { useOrg } from '@/lib/org';
+import { todayIn, useOrg } from '@/lib/org';
 import { fromMinor, toMinor } from '@/components/finance/types';
-import { RateNote } from '@/components/finance/rate-note';
+import { RateNote, RateStartField } from '@/components/finance/rate-note';
+import { useRatePricingConfirm } from '@/components/finance/rate-pricing-confirm';
+import { previewRatesFromBody } from '@/components/finance/rate-pricing';
 import { MultiSelect } from './multi-select';
+import { breaksPayload, projectPayload, unitSeconds, type ProjectBreakForm, type ProjectForm } from './project-form';
+export { breaksPayload, projectPayload };
+export type { ProjectBreakForm, ProjectForm };
 // Write with AI: loaded on demand, only when WorkPulse AI is on.
 const DraftButton = lazy(() => import('@/components/assistant/draft-button'));
 import { ColorPicker, PRIORITIES, PROJECT_COLORS, PROJECT_STATUSES, TASK_STATUSES, hoursToSeconds, secondsToHours, useOrgAction } from './basics';
@@ -218,41 +223,12 @@ export function TaskDialog({
 }
 
 // ─── Project form ────────────────────────────────────────────────────────────
-export interface ProjectForm {
-  name: string;
-  client_id: string;
-  description: string;
-  color: string;
-  status: string;
-  billable_default: boolean;
-  member_ids: string[];
-  team_ids: string[];
-  short_name: string;
-  start_date: string;
-  end_date: string;
-  /** in `estimate_unit`, as typed */
-  estimate: string;
-  estimate_unit: 'HOURS' | 'DAYS';
-  pay_rate: string;
-  bill_rate: string;
-  /** planned breaks, as typed: time 'HH:MM' or '', minutes or '' */
-  breaks: ProjectBreakForm[];
-}
-
-export interface ProjectBreakForm {
-  break_type_id: string;
-  start_time: string;
-  minutes: string;
-}
-
 /** Working hours in a day, for converting estimates (organization setting, default 8). */
 export function useHoursPerDay(): number {
   const org = useOrg();
   const v = (org.organization.settings as { workingHoursPerDay?: number }).workingHoursPerDay;
   return v && v > 0 ? v : 8;
 }
-
-const unitSeconds = (unit: 'HOURS' | 'DAYS', hoursPerDay: number) => (unit === 'DAYS' ? hoursPerDay * 3600 : 3600);
 
 export function projectToForm(p: ProjectDto | null | undefined, hoursPerDay: number): ProjectForm {
   const unit = p?.estimate_unit ?? 'HOURS';
@@ -272,18 +248,9 @@ export function projectToForm(p: ProjectDto | null | undefined, hoursPerDay: num
     estimate_unit: unit,
     pay_rate: p?.pay_rate_minor != null ? fromMinor(p.pay_rate_minor) : '',
     bill_rate: p?.bill_rate_minor != null ? fromMinor(p.bill_rate_minor) : '',
+    rates_from: '',
     breaks: (p?.breaks ?? []).map((b) => ({ break_type_id: b.break_type_id, start_time: b.start_time ?? '', minutes: b.duration_minutes != null ? String(b.duration_minutes) : '' })),
   };
-}
-
-/** The request body's `breaks`; a blank time or length means "any time" / "the break type's maximum". */
-export function breaksPayload(breaks: ProjectBreakForm[]) {
-  return breaks.map((b, i) => {
-    const m = b.minutes.trim() === '' ? null : Number(b.minutes);
-    if (m !== null && !(Number.isInteger(m) && m >= 1 && m <= 480)) throw new ApiError(422, 'validation', 'Enter a valid break length', undefined, [{ field: `breaks.${i}.duration_minutes`, message: 'Whole minutes, 1 to 480' }]);
-    if (!b.break_type_id) throw new ApiError(422, 'validation', 'Pick a break type', undefined, [{ field: `breaks.${i}.break_type_id`, message: 'Pick a break type' }]);
-    return { break_type_id: b.break_type_id, start_time: b.start_time || null, duration_minutes: m };
-  });
 }
 
 /**
@@ -492,12 +459,13 @@ export function ProjectFields({
         </Field>
         {canReadRates && (
           <>
-            <Field label="Pay rate per hour" htmlFor="proj-pay" hint={`${currency} / hour, what you pay, from today`} error={err?.field('pay_rate_minor')}>
+            <Field label="Pay rate per hour" htmlFor="proj-pay" hint={`${currency} / hour, what you pay`} error={err?.field('pay_rate_minor')}>
               <Input id="proj-pay" inputMode="decimal" className="tabular" placeholder="0.00" value={f.pay_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, pay_rate: e.target.value })} />
             </Field>
-            <Field label="Bill rate per hour" htmlFor="proj-bill" hint={`${currency} / hour, what you charge, from today`} error={err?.field('bill_rate_minor')}>
+            <Field label="Bill rate per hour" htmlFor="proj-bill" hint={`${currency} / hour, what you charge`} error={err?.field('bill_rate_minor')}>
               <Input id="proj-bill" inputMode="decimal" className="tabular" placeholder="0.00" value={f.bill_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} />
             </Field>
+            {canManageRates && <RateStartField id="proj-rates-from" value={f.rates_from} onChange={(rates_from) => setF({ ...f, rates_from })} emptyMeans={projectId ? 'today' : 'the project’s start date if it is earlier, otherwise today'} error={err?.field('rate_effective_from')} />}
             <RateNote scope="PROJECT" />
           </>
         )}
@@ -519,64 +487,6 @@ export function ProjectFields({
       )}
     </div>
   );
-}
-
-/**
- * Request body for the form. Rates are only sent when they changed and the editor may manage
- * rates; the estimate is converted from hours or days to seconds.
- */
-export function projectPayload(f: ProjectForm, opts: { workers?: boolean; teams?: boolean; hoursPerDay?: number; initial?: ProjectForm; canManageRates?: boolean } = {}) {
-  const rate = (key: 'pay_rate' | 'bill_rate', field: 'pay_rate_minor' | 'bill_rate_minor') => {
-    if (!opts.canManageRates || (opts.initial && f[key] === opts.initial[key])) return {};
-    if (!f[key].trim()) return opts.initial ? { [field]: null } : {};
-    const minor = toMinor(f[key]);
-    if (minor === null) throw new ApiError(422, 'validation', 'Enter a valid amount', undefined, [{ field, message: 'Enter an amount like 75 or 75.50' }]);
-    return { [field]: minor };
-  };
-  const est = f.estimate.trim() === '' ? null : Number(f.estimate);
-  if (est !== null && !(est >= 0)) throw new ApiError(422, 'validation', 'Enter a valid estimate', undefined, [{ field: 'estimate_seconds', message: 'A number of hours or days' }]);
-  const full = {
-    name: f.name,
-    client_id: f.client_id || null,
-    description: f.description || null,
-    color: f.color,
-    status: f.status,
-    billable_default: f.billable_default,
-    short_name: f.short_name.trim() || null,
-    start_date: f.start_date || null,
-    end_date: f.end_date || null,
-    estimate_seconds: est === null ? null : Math.round(est * unitSeconds(f.estimate_unit, opts.hoursPerDay ?? 8)),
-    estimate_unit: f.estimate_unit,
-    ...rate('pay_rate', 'pay_rate_minor'),
-    ...rate('bill_rate', 'bill_rate_minor'),
-    breaks: breaksPayload(f.breaks),
-    ...(opts.workers ? { member_ids: f.member_ids } : {}),
-    ...(opts.teams ? { team_ids: f.team_ids } : {}),
-  };
-  const i = opts.initial;
-  if (!i) return full;
-  // Editing: only what was changed here (U3). Access changed meanwhile in Members & teams is not
-  // overwritten from this form's snapshot, and an estimate left alone is not recomputed from today's
-  // hours per day.
-  const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
-  const estimateSame = f.estimate.trim() === i.estimate.trim() && f.estimate_unit === i.estimate_unit;
-  const unchanged: Record<string, boolean> = {
-    name: f.name === i.name,
-    client_id: (f.client_id || null) === (i.client_id || null),
-    description: (f.description || null) === (i.description || null),
-    color: f.color === i.color,
-    status: f.status === i.status,
-    billable_default: f.billable_default === i.billable_default,
-    short_name: f.short_name.trim() === i.short_name.trim(),
-    start_date: (f.start_date || null) === (i.start_date || null),
-    end_date: (f.end_date || null) === (i.end_date || null),
-    estimate_seconds: estimateSame,
-    estimate_unit: estimateSame,
-    breaks: JSON.stringify(full.breaks) === JSON.stringify(breaksPayload(i.breaks)),
-    member_ids: sameSet(f.member_ids, i.member_ids),
-    team_ids: sameSet(f.team_ids, i.team_ids),
-  };
-  return Object.fromEntries(Object.entries(full).filter(([k]) => !unchanged[k]));
 }
 
 /**
@@ -618,6 +528,7 @@ export function ProjectDialog({
   const [f, setF] = useState<ProjectForm>(projectToForm(project, hoursPerDay));
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
+  const pricing = useRatePricingConfirm();
   useEffect(() => {
     if (open) {
       setF({ ...projectToForm(project, hoursPerDay), ...(!project && defaultClientId ? { client_id: defaultClientId } : {}) });
@@ -630,6 +541,9 @@ export function ProjectDialog({
     setErr(null);
     try {
       const body = projectPayload(f, { workers: !!workers, teams: !!teams, hoursPerDay, initial: project ? projectToForm(project, hoursPerDay) : undefined, canManageRates: org.can('rates:manage') });
+      // Rates that would price approved time with no rate are confirmed first (BUG-08); a new project has none.
+      const currency = clientsForProject(clients, project)?.find((c) => c.id === f.client_id)?.currency ?? org.organization.currency;
+      if (!(await pricing.confirm(previewRatesFromBody(body, { scope: 'PROJECT', scopeId: project?.id ?? null }, currency, todayIn(org.organization.timezone))))) return;
       const p = project ? await run<ProjectDto>('PATCH', `/projects/${project.id}`, body) : await run<ProjectDto>('POST', '/projects', body);
       toast.success(project ? 'Project updated' : 'Project created');
       onOpenChange(false);
@@ -658,6 +572,7 @@ export function ProjectDialog({
       }
     >
       <ProjectFields f={f} setF={setF} err={err} clients={clientsForProject(clients, project)} workers={workers} teams={teams} projectId={project?.id} />
+      {pricing.dialog}
     </Dialog>
   );
 }

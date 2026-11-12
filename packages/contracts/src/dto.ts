@@ -89,6 +89,12 @@ export interface InsightsDto {
     billable_clients: number;
     billable_projects: number;
     paid_people: number;
+    /** seconds no pay rate covers (paid 0); null when money is hidden */
+    unpriced_pay_seconds: number | null;
+    /** billable seconds no bill rate covers (billed 0); null when money is hidden */
+    unpriced_bill_seconds: number | null;
+    /** part of unpriced_pay_seconds a finalized payroll already paid at 0 (a rate no longer changes it); null when money is hidden */
+    unpriced_paid_seconds: number | null;
   };
   members: Array<{
     membership_id: string;
@@ -104,6 +110,18 @@ export interface InsightsDto {
   by_client: Array<{ client_id: string | null; name: string; seconds: number; billable_seconds: number; bill_minor: number | null }>;
   by_project: Array<{ project_id: string; name: string; color: string; client_name: string | null; seconds: number; billable_seconds: number; bill_minor: number | null }>;
   by_day: Array<{ date: string; seconds: number; billable_seconds: number; pay_minor: number | null; bill_minor: number | null }>;
+}
+
+/** What saving some rates would price of the approved time that has no rate (POST /rates/pricing-preview). */
+export interface RatePricingPreviewDto {
+  /** billing entries that would be priced */
+  entries: number;
+  pay_seconds: number;
+  pay_minor: number;
+  bill_seconds: number;
+  bill_minor: number;
+  /** the currency of the rates previewed */
+  currency: string;
 }
 
 /** Personal data; readable by the member and by admins with members:manage. */

@@ -22,7 +22,7 @@ import type { MemberDetailsDto, MemberOptionDto, OffsetPage, OrgContextDto, Work
 import type { Ctx } from './ctx';
 import { ipAllowed, parseCidr } from '../lib/cidr';
 import { audit } from './events';
-import { applyScopedRates, currentScopedRates, rateChanges } from './finance';
+import { applyScopedRates, currentScopedRates, formRateStart, rateChanges } from './finance';
 import { membershipFilter, narrowMemberships } from './scope';
 import { mayUseAssistant } from './assistant/access';
 import { randomToken, sha256 } from '../lib/crypto';
@@ -403,7 +403,7 @@ export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<
       .values({ membershipId, organizationId: x.org.id, timezone: before.timezone, ...profilePatch })
       .onConflictDoUpdate({ target: workerProfiles.membershipId, set: { ...profilePatch, updatedAt: new Date() } });
   }
-  await applyScopedRates(x, 'WORKER', membershipId, changes, x.org.currency);
+  await applyScopedRates(x, 'WORKER', membershipId, changes, x.org.currency, formRateStart(x, input.rate_effective_from));
   const after = await getWorker(x, membershipId);
   await audit(x, { action: 'worker.updated', targetType: 'membership', targetId: membershipId, before, after });
   return after;

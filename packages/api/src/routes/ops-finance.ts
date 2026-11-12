@@ -12,6 +12,7 @@ import {
   pageQuery,
   paymentInput,
   rateInput,
+  ratePricingPreviewInput,
   scheduleInput,
   timeOffAdjustInput,
   timeOffPolicyInput,
@@ -73,6 +74,7 @@ import {
   recordPayment,
   sendInvoice,
   setRate,
+  previewRatePricing,
   upsertBudget,
   remindInvoice,
   voidInvoice,
@@ -163,6 +165,8 @@ export const opsRoutes = new Hono<AppEnv>()
 export const financeRoutes = new Hono<AppEnv>()
   .get('/rates', async (c) => c.json(await listRates(ctx(c))))
   .post('/rates', async (c) => c.json(await setRate(ctx(c), await body(c, rateInput)), 201))
+  // Read-only: what saving these rates would price of approved time with no rate (BUG-08).
+  .post('/rates/pricing-preview', async (c) => c.json(await previewRatePricing(ctx(c), await body(c, ratePricingPreviewInput))))
   .delete('/rates/:id', async (c) => {
     await deleteRate(ctx(c), c.req.param('id'));
     return c.body(null, 204);

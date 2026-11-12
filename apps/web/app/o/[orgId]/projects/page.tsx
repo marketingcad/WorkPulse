@@ -28,7 +28,11 @@ import {
 } from '@tallywork/ui';
 import { errorMessage, qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
-import { ColorDot, PROJECT_STATUSES, ProjectDialog, ProjectStatusBadge, useOrgAction } from '@/components/workspace/shared';
+import dynamic from 'next/dynamic';
+import { ColorDot, PROJECT_STATUSES, ProjectStatusBadge, useOrgAction } from '@/components/workspace/shared';
+
+// The project form loads when it is opened, not with the list (bundle budget).
+const ProjectDialog = dynamic(() => import('@/components/workspace/project-fields').then((m) => m.ProjectDialog), { ssr: false });
 import { useMemberOptions } from '@/lib/members';
 
 export default function ProjectsPage() {
@@ -242,16 +246,18 @@ function Projects() {
         )}
       </Panel>
 
-      <ProjectDialog
-        open={edit !== null}
-        onOpenChange={(o) => !o && setEdit(null)}
-        project={edit === 'new' ? null : edit}
-        defaultClientId={edit === 'new' ? clientId || undefined : undefined}
-        clients={clientsQ.data}
-        workers={workersQ.data}
-        teams={teamsQ.data}
-        onSaved={(p) => edit === 'new' && router.push(`${org.base}/projects/${p.id}`)}
-      />
+      {edit !== null && (
+        <ProjectDialog
+          open
+          onOpenChange={(o) => !o && setEdit(null)}
+          project={edit === 'new' ? null : edit}
+          defaultClientId={edit === 'new' ? clientId || undefined : undefined}
+          clients={clientsQ.data}
+          workers={workersQ.data}
+          teams={teamsQ.data}
+          onSaved={(p) => edit === 'new' && router.push(`${org.base}/projects/${p.id}`)}
+        />
+      )}
       <ConfirmDialog
         open={!!archive}
         onOpenChange={(o) => !o && setArchive(null)}

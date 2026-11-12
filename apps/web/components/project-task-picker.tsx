@@ -18,8 +18,12 @@ export interface PickerValue {
   taskId: string | null;
 }
 
-/** Combined project/task search ("proj / task"), keyboard navigable. */
-export function ProjectTaskPicker({ value, onChange, disabled, compact, placeholder = 'Select a project', assignments: given }: { value: PickerValue; onChange: (v: PickerValue) => void; disabled?: boolean; compact?: boolean; placeholder?: string; assignments?: Assignment[] }) {
+/**
+ * Combined project/task search ("proj / task"), keyboard navigable.
+ * `loading`, `error` + `onRetry` and `forSelf` come from useAssignmentsFor when `assignments` is given
+ * (QA audit BUG-09: it said "not assigned" while the list was still loading, or had failed).
+ */
+export function ProjectTaskPicker({ value, onChange, disabled, compact, placeholder = 'Select a project', assignments: given, loading, error, onRetry, forSelf = true }: { value: PickerValue; onChange: (v: PickerValue) => void; disabled?: boolean; compact?: boolean; placeholder?: string; assignments?: Assignment[]; loading?: boolean; error?: boolean; onRetry?: () => void; forSelf?: boolean }) {
   const { data } = useOrgQuery<Assignment[]>(given ? null : '/me/assignments', { staleTime: 60_000 });
   const assignments = given ?? data ?? [];
   const [open, setOpen] = useState(false);
@@ -65,7 +69,7 @@ export function ProjectTaskPicker({ value, onChange, disabled, compact, placehol
                 {currentTask && <span className="text-text-muted"> / {currentTask.title}</span>}
               </>
             ) : (
-              <span className="text-text-faint">{placeholder}</span>
+              <span className="text-text-faint">{loading && value.projectId ? 'Loading…' : placeholder}</span>
             )}
           </span>
           <ChevronDown className="size-3.5 shrink-0 text-text-faint" />
@@ -101,9 +105,26 @@ export function ProjectTaskPicker({ value, onChange, disabled, compact, placehol
           </div>
           <ul ref={listRef} role="listbox" className="max-h-80 overflow-y-auto p-1">
             {options.length === 0 && (
-              <li className="flex flex-col items-center gap-1 px-3 py-6 text-center text-sm text-text-muted">
+              <li className="flex flex-col items-center gap-1 px-3 py-6 text-center text-sm text-text-muted" role={error ? 'alert' : 'status'}>
                 <FolderKanban className="size-5 text-text-faint" />
-                {assignments.length ? 'No matches' : 'You are not assigned to any active project yet.'}
+                {error ? (
+                  <>
+                    Couldn’t load projects.
+                    {onRetry && (
+                      <button type="button" onClick={onRetry} className="font-medium text-interactive hover:underline">
+                        Retry
+                      </button>
+                    )}
+                  </>
+                ) : loading ? (
+                  'Loading projects…'
+                ) : assignments.length ? (
+                  'No matches'
+                ) : forSelf ? (
+                  'You are not assigned to any active project yet.'
+                ) : (
+                  'This member is not assigned to any active project yet.'
+                )}
               </li>
             )}
             {options.map((o, i) => (

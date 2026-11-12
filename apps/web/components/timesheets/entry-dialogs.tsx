@@ -50,7 +50,8 @@ export function EditEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onClo
   const org = useOrg();
   const toast = useToast();
   const refresh = useRefresh();
-  const { assignments } = useAssignmentsFor(entry.membership_id);
+  const assignmentsQ = useAssignmentsFor(entry.membership_id);
+  const { assignments } = assignmentsQ;
   const policy = useReasonPolicy(entry.membership_id);
   const isSelf = entry.membership_id === org.membership.id;
   const reasonRequired = isSelf && org.grants['time:edit'] !== 'org' ? policy.edits : false;
@@ -137,7 +138,7 @@ export function EditEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onClo
           </Field>
         </div>
         <Field label="Project / task" error={err?.field('project_id') ?? err?.field('task_id')}>
-          <ProjectTaskPicker value={target} onChange={setTarget} assignments={options ?? []} />
+          <ProjectTaskPicker value={target} onChange={setTarget} assignments={options ?? []} loading={assignmentsQ.loading} error={assignmentsQ.error} onRetry={assignmentsQ.retry} forSelf={assignmentsQ.self} />
         </Field>
         <TimeTypeField id="te-type" value={timeType} onChange={setTimeType} error={err?.field('time_type_id')} />
         <Checkbox label="Billable" checked={billable} onChange={(e) => setBillable(e.target.checked)} />
@@ -354,7 +355,8 @@ export function ManualTimeDialog({ membershipId: fixedMember, defaultDate, prefi
   const [member, setMember] = useState(fixedMember ?? org.membership.id);
   const membershipId = fixedMember ?? member;
   const isSelf = membershipId === org.membership.id;
-  const { assignments } = useAssignmentsFor(membershipId);
+  const assignmentsQ = useAssignmentsFor(membershipId);
+  const { assignments } = assignmentsQ;
   const policy = useReasonPolicy(membershipId);
   const reasonRequired = isSelf ? policy.manual : false;
   // Exact times are on the member's clock, the zone their time is recorded and listed in (U7).
@@ -485,7 +487,7 @@ export function ManualTimeDialog({ membershipId: fixedMember, defaultDate, prefi
           </div>
         )}
         <Field label="Project / task" error={err?.field('project_id') ?? err?.field('task_id')}>
-          <ProjectTaskPicker value={target} onChange={setTarget} assignments={assignments ?? []} />
+          <ProjectTaskPicker value={target} onChange={setTarget} assignments={assignments ?? []} loading={assignmentsQ.loading} error={assignmentsQ.error} onRetry={assignmentsQ.retry} forSelf={assignmentsQ.self} />
         </Field>
         <Field label="Work performed" htmlFor="mt-note" error={err?.field('note')}>
           <Textarea id="mt-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} className="min-h-16" placeholder="What did you work on?" />

@@ -7,9 +7,9 @@ import { ADMIN_STATE, MANAGER_STATE, WEB_URL } from '../../support/env';
  * worked was paid and billed $0, with nothing to say why. Now the form has a "Rates start" date (a new
  * project defaults to its start date), Summary and the timesheet panel warn about time with no rate,
  * and setting a rate that covers approved time prices it. No invitations: accepting one is rate-limited
- * to 20 a clock hour across the whole run, as in production, and the suite already uses them. The
- * pricing journeys use Nina Newcomer and the paid-at-$0 one Mona Lead (Nina must stay in no finalized
- * payroll), each in its own February 2026 week, which no other spec touches.
+ * to 20 a clock hour across the whole run, as in production, and the suite already uses them. Every
+ * journey uses Mona Lead, each in its own February 2026 week, which no other spec touches. Not Nina
+ * Newcomer: she must stay in no finalized payroll, and timesheet-decisions works with her timesheets.
  */
 test.use({ storageState: ADMIN_STATE });
 
@@ -38,7 +38,7 @@ let person = '';
 
 test.describe('Seeded people, a February 2026 week per journey', () => {
   test.beforeAll(({ data }) => {
-    person = data.newcomer.membershipId;
+    person = data.manager.membershipId; // Mona Lead
   });
 
   test('a project created with an earlier start date pays and bills the time already worked', { tag: '@smoke' }, async ({ page, data, adminApi }) => {

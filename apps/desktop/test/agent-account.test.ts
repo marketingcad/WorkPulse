@@ -7,6 +7,9 @@ const disk = new Map<string, unknown>();
 const files = new Map<string, Array<{ event_id: string; type: string; session_id?: string }>>();
 const sent: Array<{ account: string; events: Array<{ type: string; session_id?: string }> }> = [];
 let signedInAs: { org: string; member: string } | null = null;
+/** Requests the agent made, and whether the server can be reached (for signing out offline). */
+const calls: string[] = [];
+let serverDown = false;
 
 vi.mock('electron', () => ({ Notification: class {}, net: {}, powerMonitor: { on: () => undefined }, desktopCapturer: {}, nativeImage: {}, screen: {} }));
 vi.mock('../src/main/services/secure-store', () => ({
@@ -28,6 +31,11 @@ vi.mock('../src/main/services/api', () => ({
     }
     async request(method: string, path: string, body?: { events: Array<{ event_id: string; type: string }> }) {
       if (!signedInAs) throw new Error('not signed in');
+      calls.push(`${method} ${path}`);
+      if (path === '/agent/logout') {
+        if (serverDown) throw new Error('fetch failed');
+        return undefined;
+      }
       if (path === '/agent/bootstrap') return bootstrap(signedInAs.org, signedInAs.member);
       if (path === '/agent/ingest/batch') {
         sent.push({ account: `${signedInAs.org}:${signedInAs.member}`, events: body!.events });
@@ -113,6 +121,8 @@ beforeEach(() => {
   files.clear();
   sent.length = 0;
   signedInAs = null;
+  calls.length = 0;
+  serverDown = false;
 });
 
 describe('one computer, two accounts', () => {
@@ -186,5 +196,30 @@ describe('one computer, two accounts', () => {
     await agent.refreshBootstrap();
     await agent.sync();
     expect(sent).toEqual([{ account: 'org:ann', events: [{ event_id: 'e1', type: 'session.stop', session_id: 's1' }] }]);
+  });
+});
+
+describe('signing out (QA audit BUG-15)', () => {
+  it('tells the server, so this device stops working there too, then signs out here', async () => {
+    signedInAs = { org: 'org', member: 'ann' };
+    const agent = newAgent();
+    await agent.refreshBootstrap();
+    (agent as unknown as { sync: () => Promise<void> }).sync = vi.fn(async () => undefined);
+    await agent.logout();
+    expect(calls).toContain('POST /agent/logout');
+    expect(signedInAs).toBeNull();
+    expect(agent.state().phase).toBe('signed_out');
+  });
+
+  it('still signs out on the computer when the server cannot be reached', async () => {
+    signedInAs = { org: 'org', member: 'ann' };
+    const agent = newAgent();
+    await agent.refreshBootstrap();
+    (agent as unknown as { sync: () => Promise<void> }).sync = vi.fn(async () => undefined);
+    serverDown = true;
+    await agent.logout();
+    expect(calls).toContain('POST /agent/logout');
+    expect(signedInAs).toBeNull();
+    expect(agent.state().phase).toBe('signed_out');
   });
 });

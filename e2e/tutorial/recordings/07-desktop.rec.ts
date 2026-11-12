@@ -10,13 +10,13 @@ test('07.2', async ({ d, page }) => {
   await d.desktop({ signedOut: true });
   await expect(page.getByRole('heading', { name: 'Welcome Back' })).toBeVisible();
   d.begin();
-  await d.mark('zoom to the sign-in form', page.getByLabel('Email'));
+  await d.mark('zoom to the sign-in form', page.getByLabel('Email'), { on: 'sign in with the same email' });
   await d.type(page.getByLabel('Email'), PEOPLE.worker.email);
   await d.type(page.getByLabel('Password', { exact: true }), DEMO_PASSWORD);
   await d.click(page.getByRole('button', { name: 'Sign in', exact: true }));
   const rail = page.getByRole('navigation', { name: 'Primary' });
   await expect(rail).toBeVisible();
-  await d.mark('highlight the menu rail', rail);
+  await d.mark('highlight the menu rail', rail, { on: 'the menu on the left' });
   for (const item of ['Home', 'Track', 'Timesheet', 'Time off', 'Schedule', 'Pay stubs', 'Settings']) await d.point(rail.getByRole('button', { name: item, exact: true }), { hold: 900 });
   await d.finish();
 });
@@ -25,12 +25,12 @@ test('07.3', async ({ d, page }) => {
   await d.desktop();
   d.begin();
   const timer = page.getByRole('region', { name: 'Timer' });
-  await d.mark('zoom to the timer card', timer);
+  await d.mark('zoom to the timer card', timer, { on: 'The timer starts right away' });
   await d.choose(timer.getByRole('combobox', { name: 'Project', exact: true }), PROJECT);
   await expect(timer.getByText('Clocked in', { exact: true })).toBeVisible();
   await d.point(timer.getByText('Clocked in', { exact: true }), { hold: 2500 });
   const breaks = timer.getByRole('group', { name: 'Breaks' });
-  await d.mark('highlight the break buttons', breaks);
+  await d.mark('highlight the break buttons', breaks, { on: 'Below the timer are the breaks' });
   await d.point(breaks.getByRole('button').first(), { hold: 1800 });
   await d.point(breaks.getByRole('button').last(), { hold: 1800 });
   await d.type(page.getByLabel('Work note'), 'Homepage hero variations');
@@ -45,7 +45,7 @@ test('07.4', async ({ d, page }) => {
   await d.click(timer.getByRole('group', { name: 'Breaks' }).getByRole('button', { name: /Start Lunch break/ }), { settle: false });
   const countdown = timer.getByLabel('Break time');
   await expect(countdown).toBeVisible();
-  await d.mark('zoom to the break countdown', countdown);
+  await d.mark('zoom to the break countdown', countdown, { on: 'shows how long is left' });
   await d.point(countdown, { hold: 5000 });
   await d.click(timer.getByRole('button', { name: 'Clock back in' }), { settle: false });
   await expect(timer.getByText('Clocked in', { exact: true })).toBeVisible();
@@ -55,7 +55,7 @@ test('07.4', async ({ d, page }) => {
   await d.desktopState({ idlePrompt: { idleId: crypto.randomUUID(), startedAt: new Date(now - 7 * 60_000).toISOString(), endedAt: new Date(now).toISOString() } });
   const idle = page.getByRole('dialog', { name: 'Idle time' });
   await expect(idle).toBeVisible();
-  await d.mark('zoom to the idle prompt', idle);
+  await d.mark('zoom to the idle prompt', idle, { on: 'it asks what to do with that time' });
   await d.beat(4500);
   await d.click(idle.getByRole('button', { name: /Keep/ }), { settle: false });
   await d.finish();
@@ -66,7 +66,7 @@ test('07.5', async ({ d, page }) => {
   d.begin();
   await d.click(page.getByRole('region', { name: 'Timer' }).getByRole('button', { name: 'Clock out' }), { settle: false });
   const sheet = page.getByRole('dialog', { name: 'Clock out' });
-  await d.mark('zoom to the Clock out dialog', sheet);
+  await d.mark('zoom to the Clock out dialog', sheet, { on: 'click Clock out' });
   await d.type(sheet.getByLabel('End-of-day report'), 'Finished three homepage hero variations and shared them with Maya for review. Next: mobile layouts.');
   await d.click(sheet.getByLabel(/This work is finished/), { settle: false });
   await d.click(sheet.getByRole('button', { name: 'Submit and clock out' }), { settle: false });
@@ -86,7 +86,7 @@ test('07.6', async ({ d, page }) => {
   await d.click(page.getByRole('tab', { name: 'Sessions' }));
   await d.beat(2500);
   await d.click(page.getByRole('button', { name: 'Add manual time' }));
-  await d.mark('zoom to the Add manual time form', page.getByRole('heading', { name: 'Add manual time' }));
+  await d.mark('zoom to the Add manual time form', page.getByRole('heading', { name: 'Add manual time' }), { on: 'Click Add manual time' });
   await d.choose(page.getByRole('combobox', { name: 'Project', exact: true }), PROJECT);
   await d.set(page.getByRole('textbox', { name: 'Date', exact: true }), isoDay(-1));
   await d.set(page.getByRole('textbox', { name: 'From', exact: true }), '18:00');
@@ -109,11 +109,11 @@ test('07.7', async ({ d, page }) => {
   await d.click(page.getByRole('button', { name: 'Next' }));
   const submit = page.getByRole('button', { name: /^(Submit|Resubmit)$/ });
   if (await submit.isVisible()) {
-    await d.mark('highlight the Submit button', submit);
+    await d.mark('highlight the Submit button', submit, { on: 'click Submit' });
     await d.point(submit, { hold: 2500 });
   }
   await d.click(page.getByRole('tab', { name: 'Activity' }));
-  await d.mark('zoom to Apps and Websites', page.getByText('Apps', { exact: true }).first());
+  await d.mark('zoom to Apps and Websites', page.getByText('Apps', { exact: true }).first(), { on: 'the apps and websites' });
   await d.point(page.getByText('Apps', { exact: true }).first(), { hold: 2500 });
   await d.point(page.getByText('Websites', { exact: true }).first(), { hold: 2500 });
   await d.click(page.getByRole('tab', { name: 'Reports' }));
@@ -129,7 +129,7 @@ test('07.8', async ({ d, page }) => {
   await d.click(rail.getByRole('button', { name: 'Time off', exact: true }));
   await d.click(page.getByRole('button', { name: 'Request time off' }).first(), { settle: false });
   const type = page.getByRole('combobox', { name: 'Type', exact: true });
-  await d.mark('zoom to the Request time off form', type);
+  await d.mark('zoom to the Request time off form', type, { on: 'click Request time off' });
   await d.choose(type, 'Paid time off');
   // A weekday two to three weeks out, so the request is a normal one for the manager to approve.
   let start = 16;

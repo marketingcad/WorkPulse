@@ -8,7 +8,7 @@ test('12.1', async ({ d, page }) => {
   if ((await group.getAttribute('aria-expanded')) !== 'true') await d.click(group, { settle: false });
   await d.click(nav.getByRole('link', { name: 'Summary' }));
   await expect(page.getByRole('heading', { level: 1, name: 'Summary' })).toBeVisible();
-  await d.mark('zoom to the totals', page.getByText('Time logged', { exact: true }).first());
+  await d.mark('zoom to the totals', page.getByText('Time logged', { exact: true }).first(), { on: 'It shows the time logged' });
   for (const k of ['Time logged', 'Est. pay', 'Billable time', 'Est. billable', 'Activity', 'Days off']) await d.point(page.getByText(k, { exact: true }).first(), { hold: 900 });
   await d.click(choice(page.getByRole('main'), 'Weekly'));
   await d.click(page.getByRole('button', { name: 'Previous period' }));
@@ -19,7 +19,7 @@ test('12.1', async ({ d, page }) => {
   }
   const people = page.getByRole('table', { name: 'Time and money per person' });
   await d.scrollTo(people);
-  await d.mark('zoom to the People table', people);
+  await d.mark('zoom to the People table', people, { on: 'a table with every' });
   await d.beat(2500);
   await d.scroll(-4000);
   await d.point(page.getByRole('button', { name: 'Export CSV' }), { hold: 1500 });
@@ -34,14 +34,14 @@ test('12.2', async ({ d, page }) => {
   await d.click(page.getByRole('link', { name: /^Time & activity/ }).first());
   await expect(page.getByRole('heading', { level: 1, name: 'Time & activity' })).toBeVisible();
   const range = page.getByLabel('Date range');
-  await d.mark('zoom to the filters and grouping', range);
+  await d.mark('zoom to the filters and grouping', range, { on: 'Filter by date, members' });
   await d.select(range, 'last_month');
   const groupBy = page.getByRole('group', { name: 'Group by' });
   await d.click(groupBy.getByRole('button', { name: 'Client', exact: true }), { settle: false });
   await d.settle();
   await d.beat(2500);
   await d.click(page.getByRole('button', { name: 'Export' }), { settle: false });
-  await d.mark('zoom to the Export menu', page.getByRole('menuitem', { name: 'CSV', exact: true }));
+  await d.mark('zoom to the Export menu', page.getByRole('menuitem', { name: 'CSV', exact: true }), { on: 'Export downloads the result' });
   await d.beat(1500);
   const download = page.waitForEvent('download');
   await d.click(page.getByRole('menuitem', { name: 'CSV', exact: true }), { settle: false });
@@ -55,7 +55,7 @@ test('12.3', async ({ d, page }) => {
   d.begin();
   await d.click(page.getByRole('button', { name: 'Save report' }), { settle: false });
   const dialog = page.getByRole('dialog', { name: 'Save report' });
-  await d.mark('zoom to the Save report dialog', dialog);
+  await d.mark('zoom to the Save report dialog', dialog, { on: 'Click Save report' });
   await d.type(dialog.getByLabel(label('Name')), 'Monthly hours by project');
   const range = dialog.getByLabel(label('Date range'));
   if (await range.isVisible()) await d.choose(range, 'Last month');

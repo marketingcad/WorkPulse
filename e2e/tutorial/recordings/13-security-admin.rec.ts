@@ -10,7 +10,7 @@ test('13.1', async ({ d, page }) => {
   await d.point(page.getByRole('table', { name: 'Registered devices' }), { hold: 3000 });
   await d.click(page.getByRole('button', { name: /^Actions for / }).first(), { settle: false });
   const menu = page.getByRole('menu');
-  await d.mark('zoom to the device actions', menu);
+  await d.mark('zoom to the device actions', menu, { on: 'actions you can approve it' });
   for (const item of ['Approve device', 'Require sign-in again', 'Revoke device']) {
     const el = menu.getByRole('menuitem', { name: item });
     if (await el.isVisible()) await d.point(el, { hold: 1300 });
@@ -24,10 +24,10 @@ test('13.2', async ({ d, page }) => {
   d.begin();
   await d.click(settingsTab(page, 'Security & retention'));
   const twofa = page.getByLabel(label('Require two-factor authentication'));
-  await d.mark('zoom to Sign-in & access', twofa);
+  await d.mark('zoom to Sign-in & access', twofa, { on: 'Require two-factor authentication' });
   for (const l of ['Require two-factor authentication', 'Session lifetime (hours)', 'Require device approval', 'Allowed networks (IP allowlist)']) await d.point(page.getByText(l, { exact: true }).first(), { hold: 1600 });
   await d.click(settingsTab(page, 'Access review'));
-  await d.mark('zoom to the Access review counts', page.getByText('Active members', { exact: true }).first());
+  await d.mark('zoom to the Access review counts', page.getByText('Active members', { exact: true }).first(), { on: 'Access review' });
   for (const k of ['Active members', 'Without two-factor', 'Roles', 'Active API keys']) await d.point(page.getByText(k, { exact: true }).first(), { hold: 1300 });
   await d.finish();
 });
@@ -41,7 +41,7 @@ test('13.3', async ({ d, page }) => {
   await d.click(page.getByRole('button', { name: 'Preview cleanup' }), { settle: false });
   const result = page.getByRole('region', { name: 'Preview result' });
   await expect(result).toBeVisible();
-  await d.mark('zoom to the preview result', result);
+  await d.mark('zoom to the preview result', result, { on: 'Click Preview cleanup' });
   await d.point(result, { hold: 3500 });
   const history = page.getByRole('table', { name: 'Cleanup history' }).or(page.getByText('Cleanup history')).first();
   await d.scrollTo(history);
@@ -55,7 +55,7 @@ test('13.4', async ({ d, page }) => {
   await d.click(settingsTab(page, 'API keys'));
   await d.click(page.getByRole('button', { name: 'Create API key' }).first(), { settle: false });
   const dialog = page.getByRole('dialog', { name: 'Create API key' });
-  await d.mark('zoom to the Create API key dialog', dialog);
+  await d.mark('zoom to the Create API key dialog', dialog, { on: 'create an API key' });
   await d.type(dialog.getByLabel(label('Name')), 'Accounting sync');
   await d.click(dialog.getByRole('checkbox').first(), { settle: false });
   await d.choose(dialog.getByLabel(label('Expires')), 'In 90 days');
@@ -67,7 +67,7 @@ test('13.4', async ({ d, page }) => {
   await d.click(settingsTab(page, 'Webhooks'));
   await d.click(page.getByRole('button', { name: 'Add endpoint' }).first(), { settle: false });
   const hook = page.getByRole('dialog', { name: 'Add endpoint' });
-  await d.mark('zoom to the Add endpoint dialog', hook);
+  await d.mark('zoom to the Add endpoint dialog', hook, { on: 'Add the endpoint address' });
   // The server checks that the host resolves; example.com is reserved for documentation.
   await d.type(hook.getByLabel(label('Endpoint URL')), 'https://example.com/workpulse-webhook');
   await d.type(hook.getByLabel(label('Description')), 'Accounting system');
@@ -95,7 +95,7 @@ test('13.5', async ({ d, page }) => {
   await d.beat(1500);
   await d.click(page.getByRole('table', { name: 'Audit log' }).getByRole('row').nth(1), { settle: false });
   const drawer = page.getByRole('dialog').first();
-  await d.mark('zoom to the entry details', drawer);
+  await d.mark('zoom to the entry details', drawer, { on: 'open an entry to see the details' });
   await d.beat(4000);
   await page.keyboard.press('Escape');
   await d.point(page.getByRole('button', { name: 'Export CSV' }), { hold: 2000 });

@@ -9,16 +9,16 @@ const OWNER = { name: 'Jordan Lee', org: 'Brightside Studio', email: 'jordan@bri
 test('02.1', async ({ d, page }) => {
   await d.go('!/signup');
   d.begin();
-  await d.mark('zoom to the form', page.getByLabel('Your name'));
+  await d.mark('zoom to the form', page.getByLabel('Your name'), { on: 'Enter your name' });
   await d.type(page.getByLabel('Your name'), OWNER.name);
   await d.type(page.getByLabel('Organization name'), OWNER.org);
   await d.type(page.getByLabel('Work email'), OWNER.email);
   await d.type(page.getByLabel('Password', { exact: true }), OWNER.password);
-  await d.mark('password hint', page.getByText('At least 10 characters.'));
+  await d.mark('password hint', page.getByText('At least 10 characters.'), { on: 'at least ten characters' });
   await d.click(page.getByRole('button', { name: 'Create organization' }));
   const checklist = page.getByRole('list', { name: 'Getting started' });
   await expect(checklist).toBeVisible();
-  await d.mark('zoom to the Getting started checklist', checklist);
+  await d.mark('zoom to the Getting started checklist', checklist, { on: 'Getting started checklist' });
   for (const step of ['Invite your team', 'Create a project', 'Set pay and bill rates', 'Connect the desktop app', 'Review what is tracked']) {
     await d.point(checklist.getByRole('link', { name: new RegExp(step) }), { hold: 1100 });
   }
@@ -31,11 +31,11 @@ test('02.2', async ({ d, page }) => {
   d.begin();
   await d.beat(1500);
   const forgot = page.getByRole('link', { name: 'Forgot password?' });
-  await d.mark('highlight Forgot password?', forgot);
+  await d.mark('highlight Forgot password?', forgot, { on: 'click Forgot password' });
   await d.click(forgot);
   await d.type(page.getByLabel('Work email'), OWNER.email);
   await d.click(page.getByRole('button', { name: 'Send reset link' }));
-  await d.mark('zoom to the confirmation', page.getByText(OWNER.email).first());
+  await d.mark('zoom to the confirmation', page.getByText(OWNER.email).first(), { on: 'the message is the same' });
   await d.beat(3500);
   await d.click(page.getByRole('link', { name: 'Back to sign in' }));
   await d.type(page.getByLabel('Work email'), OWNER.email);
@@ -59,7 +59,7 @@ test('02.3', async ({ d, page }) => {
   await d.go(`!${link.pathname}${link.search}`);
   await expect(page.getByRole('heading', { name: 'You have been invited' })).toBeVisible();
   d.begin();
-  await d.mark('zoom to the invitation form', page.getByLabel('Your name'));
+  await d.mark('zoom to the invitation form', page.getByLabel('Your name'), { on: 'Check your name' });
   await d.point(page.getByLabel('Your name'), { hold: 1500 });
   await d.type(page.getByLabel('Choose a password'), 'Rivera-Team-2026');
   await d.click(page.getByRole('button', { name: 'Join organization' }));
@@ -84,18 +84,18 @@ test('02.4', async ({ d, page }) => {
   await d.click(panel.getByRole('button', { name: 'Continue' }), { settle: false });
   const qr = panel.getByRole('img', { name: 'QR code to add WorkPulse to your authenticator app' });
   await expect(qr).toBeVisible();
-  await d.mark('zoom to the QR code', qr);
+  await d.mark('zoom to the QR code', qr, { on: 'Scan the QR code' });
   await d.point(qr, { hold: 3000 });
   const key = (await panel.locator('code').first().textContent())!.replace(/\s/g, '');
   await d.type(panel.getByLabel('Code', { exact: true }), totpNow(key));
   await d.click(panel.getByRole('button', { name: 'Turn on' }), { settle: false });
   const codes = panel.locator('pre, code').filter({ hasText: /[a-z2-9]{5}-[a-z2-9]{5}/ }).first();
   await expect(codes).toBeVisible();
-  await d.mark('zoom to the recovery codes', codes);
+  await d.mark('zoom to the recovery codes', codes, { on: 'ten recovery codes' });
   await d.point(codes, { hold: 2500 });
   await d.point(panel.getByRole('button', { name: 'Download' }), { hold: 1500 });
   await d.click(panel.getByLabel('I have saved these codes somewhere safe'), { settle: false });
-  await d.mark('the Done button', panel.getByRole('button', { name: 'Done' }));
+  await d.mark('the Done button', panel.getByRole('button', { name: 'Done' }), { on: 'click Done' });
   await d.click(panel.getByRole('button', { name: 'Done' }), { settle: false });
   await expect(panel.getByText('On', { exact: true })).toBeVisible();
   await d.finish();

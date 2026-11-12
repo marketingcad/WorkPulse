@@ -9,7 +9,7 @@ test('05.1', async ({ d, page }) => {
   await d.click(nav.getByRole('link', { name: 'Members' }));
   await d.click(page.getByRole('button', { name: 'Invite member' }).first(), { settle: false });
   const dialog = page.getByRole('dialog', { name: 'Invite member' });
-  await d.mark('zoom to the Invite member dialog', dialog);
+  await d.mark('zoom to the Invite member dialog', dialog, { on: 'click Invite member' });
   await d.type(dialog.getByLabel('Email'), 'leo.martins@demo.tallywork.app');
   await d.type(dialog.getByLabel(label('Name')), 'Leo Martins');
   await d.point(dialog.getByLabel('Role'), { hold: 1500 });
@@ -23,7 +23,7 @@ test('05.1', async ({ d, page }) => {
   const ready = page.getByRole('dialog', { name: 'Invitation ready' });
   const link = ready.getByLabel('Invitation link');
   await expect(link).toBeVisible();
-  await d.mark('highlight the invitation link', link);
+  await d.mark('highlight the invitation link', link, { on: 'the dialog shows the invitation link' });
   await d.point(link, { hold: 3500 });
   await d.click(ready.getByRole('button', { name: 'Done' }));
   const pending = page.getByText(/Pending invitations/).first();
@@ -40,9 +40,9 @@ test('05.2', async ({ d, page }) => {
   await d.click(page.getByText('Ava Okafor', { exact: true }).first());
   await expect(page.getByRole('heading', { level: 1, name: 'Ava Okafor' })).toBeVisible();
   const tabs = page.getByRole('group', { name: 'Sections' });
-  await d.mark('zoom to the profile tabs', tabs);
+  await d.mark('zoom to the profile tabs', tabs, { on: 'Click a member to open their profile' });
   await d.point(page.getByText('Access', { exact: true }).first(), { hold: 2500 });
-  await d.mark('highlight the Access panel', page.getByText('Access', { exact: true }).first());
+  await d.mark('highlight the Access panel', page.getByText('Access', { exact: true }).first(), { on: 'quick links and access' });
   for (const tab of ['Personal info', 'Time', 'Projects', 'Devices', 'Policy']) {
     await d.click(tabs.getByRole('button', { name: tab, exact: true }));
     await d.beat(2600);
@@ -61,7 +61,7 @@ test('05.3', async ({ d, page }) => {
   await d.click(dialog.getByRole('button', { name: 'Create team' }));
   const drawer = page.getByRole('dialog', { name: 'Video Production' });
   await expect(drawer).toBeVisible();
-  await d.mark('zoom to the team panel', drawer);
+  await d.mark('zoom to the team panel', drawer, { on: 'Then add people' });
   for (const m of [{ name: 'Priya Silva', role: 'MANAGER' }, { name: 'Kenji Mensah', role: 'MEMBER' }]) {
     await d.choose(drawer.getByLabel('Add member'), m.name);
     await d.select(drawer.getByLabel(label('Role')), m.role);

@@ -69,7 +69,14 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
   const orgId = useOrgId();
   const qc = useQueryClient();
   const isSelf = membershipId === org.membership.id;
-  const tsQ = useOrgQuery<TimesheetDto>(`/timesheets${qs({ membership_id: membershipId, date })}`);
+  const tsPath = `/timesheets${qs({ membership_id: membershipId, date })}`;
+  const tsQ = useOrgQuery<TimesheetDto>(tsPath);
+  // A decision or submit answers with the updated timesheet: show it at once, then refresh the rest
+  // in the background (QA audit C-11: the status kept the old state for 3-5 s on a slow server).
+  const showNow = (next: TimesheetDto) => {
+    qc.setQueryData(['org', orgId, tsPath], next);
+    void qc.invalidateQueries({ queryKey: ['org', orgId] });
+  };
   const ts = tsQ.data;
   const entriesQ = useOrgQuery<TimeEntryDto[]>(ts ? `/time-entries${qs({ from: ts.period_start, to: ts.period_end, membership_ids: [membershipId] })}` : null, { enabled: !!ts && org.can('time:read') });
   const [tab, setTab] = useState<'week' | 'entries'>('week');
@@ -107,8 +114,7 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
     if (!ts) return;
     setSubmitting(true);
     try {
-      await api(`/orgs/${orgId}/timesheets/submit`, { method: 'POST', body: { membership_id: isSelf ? undefined : membershipId, date: ts.period_start, version: ts.version } });
-      await qc.invalidateQueries({ queryKey: ['org', orgId] });
+      showNow(await api<TimesheetDto>(`/orgs/${orgId}/timesheets/submit`, { method: 'POST', body: { membership_id: isSelf ? undefined : membershipId, date: ts.period_start, version: ts.version } }));
       toast.success(isSelf ? 'Timesheet submitted for approval' : `Timesheet submitted for ${ts.worker_name}`);
       setConfirmSubmit(false);
     } catch (e) {
@@ -121,7 +127,7 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
   const decide = async (action: Decision, comment: string) => {
     if (!ts?.id) return;
     const r = await api<TimesheetDto>(`/orgs/${orgId}/timesheets/${ts.id}/${action}`, { method: 'POST', body: { comment: comment || undefined } });
-    void qc.invalidateQueries({ queryKey: ['org', orgId] });
+    showNow(r);
     const msg = { approve: 'Timesheet approved', reject: 'Timesheet rejected', 'request-changes': 'Changes requested; the timesheet is back in draft', reopen: 'Timesheet reopened as draft' }[action];
     toast.success(`${msg} · ${ts.worker_name}`);
     onDecided?.(r, action);

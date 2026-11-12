@@ -43,12 +43,12 @@
         "apps/web": [
           "api-errors", "assignments", "assistant-bridge", "in-app-history", "assistant-nav-parity", "assistant-stream-client", "avatar-crop", "calculator", "calculator-oracle", "calculator-position", "confirm-dialogs", "csv-import", "deps",
           "download-guides", "download-platform", "duration-input", "form-checks", "help", "invoice-extra-lines", "money-input", "multi-monitor", "nav", "page-help", "redirect",
-          "policy-fields", "project-rate-start", "rate-pricing", "table-actions", "time-off-overlap", "unsaved", "url-range", "zoned"
+          "placeholder", "policy-fields", "project-rate-start", "queue", "rate-pricing", "table-actions", "time-off-overlap", "unsaved", "url-range", "zoned"
         ],
         "apps/desktop": ["agent-account", "agent-connect", "agent-monitoring-card", "disclosure", "errors", "nav", "updater", "urls"]
       },
       "playwright": [
-        "web/assistant", "web/ai-insights", "web/ai-workflow", "web/ai-advanced", "web/ai-forecast-portal", "web/tracking-policies", "web/webhooks", "web/report-exports", "web/schedules", "web/time-off", "web/attendance-scheduled", "web/breaks-eod", "web/budgets", "web/calculator", "web/calculator-accuracy", "web/charts", "web/client-delete",
+        "web/assistant", "web/ai-insights", "web/ai-workflow", "web/ai-advanced", "web/ai-forecast-portal", "web/tracking-policies", "web/webhooks", "web/report-exports", "web/schedules", "web/stale-screens", "web/time-off", "web/attendance-scheduled", "web/breaks-eod", "web/budgets", "web/calculator", "web/calculator-accuracy", "web/charts", "web/client-delete",
         "web/csv-import", "web/form-checks", "web/public-hydration", "web/data-export", "web/download", "web/finance-paging", "web/help", "web/help-video", "web/insights", "web/invitations",
         "web/member-profile", "web/monitoring-card-setting", "web/multi-monitor", "web/navigation", "web/navigation-flows", "web/organizations", "web/people-paging",
         "web/performance-achievements", "web/performance-goals", "web/performance-leaderboards", "web/performance-overview", "web/performance-teams",

@@ -37,9 +37,10 @@ import { ColorDot, ProjectStatusBadge, hoursToSeconds, secondsToHours, useOrgAct
 import { RateNote, RateStartField } from '@/components/finance/rate-note';
 import { useRatePricingConfirm } from '@/components/finance/rate-pricing-confirm';
 import { previewRatesFromBody } from '@/components/finance/rate-pricing';
-import { DataExportAction } from '@/components/security/data-export';
 
 const AnonymizeDialog = lazy(() => import('@/components/security/anonymize-dialog').then((m) => ({ default: m.AnonymizeDialog })));
+// Loaded on demand, like the dialogs: the page is close to the first-load budget (250 KB).
+const DataExportAction = lazy(() => import('@/components/security/data-export').then((m) => ({ default: m.DataExportAction })));
 const MfaResetDialog = lazy(() => import('@/components/security/mfa-reset-dialog').then((m) => ({ default: m.MfaResetDialog })));
 import { fromMinor, toMinor } from '@/components/finance/types';
 import { useUrlValue } from '@/lib/url-state';
@@ -251,7 +252,9 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
           <Panel title="Personal data">
             <div className="flex flex-col gap-3 p-4">
               <p className="text-sm text-text-muted">{isSelf ? 'Download a copy of everything this organization holds about you.' : 'When this member asks what data you hold about them, download a copy of all of it to send them.'}</p>
-              <DataExportAction membershipId={w.id} label={isSelf ? 'Export my data' : 'Export their data'} />
+              <Suspense fallback={null}>
+                <DataExportAction membershipId={w.id} label={isSelf ? 'Export my data' : 'Export their data'} />
+              </Suspense>
               {admin && !isSelf && (
                 <div className="flex flex-col gap-2 border-t border-border pt-3">
                   {w.is_owner ? (

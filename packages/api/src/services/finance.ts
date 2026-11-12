@@ -738,14 +738,9 @@ async function buildInvoiceDraft(x: Ctx, input: z.infer<typeof invoiceCreateInpu
     .innerJoin(users, eq(users.id, memberships.userId))
     .where(
       and(
-        eq(billingEntries.clientId, input.client_id),
-        eq(billingEntries.currency, currency),
-        eq(billingEntries.billable, true),
-        isNull(billingEntries.voidedAt),
-        isNull(billingEntries.invoiceLineId),
+        invoiceableTime(input.client_id, currency),
         gte(billingEntries.localDate, input.period_start),
         lte(billingEntries.localDate, input.period_end),
-        sql`${billingEntries.billAmountMinor} > 0`,
       ),
     );
   const types = await x.tx.select({ id: timeTypes.id, name: timeTypes.name, isDefault: timeTypes.isDefault, archivedAt: timeTypes.archivedAt }).from(timeTypes);
@@ -803,6 +798,44 @@ async function buildInvoiceDraft(x: Ctx, input: z.infer<typeof invoiceCreateInpu
   return { client, lines: withTax, subtotal, tax, total: subtotal + tax, currency, otherCurrencyEntries: other?.n ?? 0 };
 }
 
+/** Approved billable time for the client that can go on an invoice: not voided, not invoiced, worth something. */
+function invoiceableTime(clientId: string, currency: string) {
+  return and(eq(billingEntries.clientId, clientId), eq(billingEntries.currency, currency), eq(billingEntries.billable, true), isNull(billingEntries.voidedAt), isNull(billingEntries.invoiceLineId), sql`${billingEntries.billAmountMinor} > 0`);
+}
+
+/**
+ * The invoices that already hold this client's approved billable time in the period (QA audit 11 Nov
+ * 2026, BUG-13): a second invoice for the same period found nothing and said "Approve timesheets
+ * first", when the time was approved and on INV-1001. A voided invoice releases its time, so every
+ * invoice found here is live.
+ */
+async function invoicesHolding(x: Ctx, clientId: string, from: string, to: string) {
+  return x.tx
+    .selectDistinct({ id: invoices.id, number: invoices.number })
+    .from(billingEntries)
+    .innerJoin(invoiceLines, eq(invoiceLines.id, billingEntries.invoiceLineId))
+    .innerJoin(invoices, eq(invoices.id, invoiceLines.invoiceId))
+    .where(and(eq(billingEntries.clientId, clientId), eq(billingEntries.billable, true), isNull(billingEntries.voidedAt), gte(billingEntries.localDate, from), lte(billingEntries.localDate, to)))
+    .orderBy(invoices.number)
+    .limit(5);
+}
+
+/**
+ * The first and last day of the client's approved time not yet invoiced (QA audit C-10): the new
+ * invoice form starts on the month of the latest, not always on last month, which found nothing to
+ * invoice when the approved time was this month's.
+ */
+export async function unbilledRange(x: Ctx, clientId: string): Promise<{ from: string | null; to: string | null }> {
+  await assertCanManageInvoicesFor(x, clientId);
+  const [client] = await x.tx.select({ currency: clients.currency }).from(clients).where(eq(clients.id, clientId));
+  if (!client) throw notFound('client');
+  const [r] = await x.tx
+    .select({ from: sql<string | null>`min(${billingEntries.localDate})::text`, to: sql<string | null>`max(${billingEntries.localDate})::text` })
+    .from(billingEntries)
+    .where(invoiceableTime(clientId, client.currency ?? x.org.currency));
+  return { from: r?.from ?? null, to: r?.to ?? null };
+}
+
 /** Invoices are managed per client: org scope covers every client, a narrower one its projects' clients (A2b). */
 async function assertCanManageInvoicesFor(x: Ctx, clientId: string) {
   if (!x.actor.grants['invoices:manage']) throw forbidden();
@@ -820,6 +853,8 @@ export async function previewInvoice(x: Ctx, input: z.infer<typeof invoiceCreate
     tax_minor: d.tax,
     total_minor: d.total,
     other_currency_entries: d.otherCurrencyEntries,
+    // Only worth asking when nothing in the period can be invoiced: it explains the empty preview.
+    already_invoiced: d.lines.some((l) => l.kind === 'TIME') ? [] : await invoicesHolding(x, d.client.id, input.period_start, input.period_end),
     lines: d.lines.map((l) => ({ kind: l.kind, description: l.description, quantity: l.quantity, unit_price_minor: l.unitPriceMinor, amount_minor: l.amountMinor, tax_minor: l.taxMinor, entries: l.billingEntryIds.length })),
   };
 }

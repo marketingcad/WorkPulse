@@ -71,6 +71,7 @@ import {
   listPayments,
   listRates,
   previewInvoice,
+  unbilledRange,
   recordPayment,
   sendInvoice,
   setRate,
@@ -199,6 +200,7 @@ export const financeRoutes = new Hono<AppEnv>()
     const filters = { status: q.status, clientId: q.client_id, from: q.from, to: q.to, search: q.q };
     return c.json(q.page ? await pageInvoices(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listInvoices(ctx(c), filters));
   })
+  .get('/invoices/unbilled', async (c) => c.json(await unbilledRange(ctx(c), query(c, z.object({ client_id: z.uuid() })).client_id)))
   .post('/invoices/preview', async (c) => c.json(await previewInvoice(ctx(c), await body(c, invoiceCreateInput))))
   .post('/invoices', async (c) => c.json(await createInvoice(ctx(c), await body(c, invoiceCreateInput)), 201))
   .get('/invoices/:id', async (c) => c.json(await getInvoice(ctx(c), c.req.param('id'))))

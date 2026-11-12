@@ -26,6 +26,7 @@ import {
   type Column,
 } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgQuery } from '@/lib/api';
+import { countOf } from '@/lib/plural';
 import { useOrg } from '@/lib/org';
 import { ColorDot, useOrgAction } from '@/components/workspace/basics';
 import { useMemberOptions } from '@/lib/members';
@@ -261,7 +262,7 @@ function TeamDrawer({ team, onClose, projects, canManage }: { team: TeamDto | nu
   };
 
   return (
-    <Drawer open={!!team} onOpenChange={(o) => !o && onClose()} title={team?.name ?? ''} subtitle={team ? `${team.members.length} members · ${team.members.filter((m) => m.role === 'MANAGER').length} managers` : undefined}>
+    <Drawer open={!!team} onOpenChange={(o) => !o && onClose()} title={team?.name ?? ''} subtitle={team ? `${countOf(team.members.length, 'member')} · ${countOf(team.members.filter((m) => m.role === 'MANAGER').length, 'manager')}` : undefined}>
       {team && (
         <div className="flex flex-col">
           {team.description && <p className="border-b border-border px-5 py-3 text-sm text-text-muted">{team.description}</p>}

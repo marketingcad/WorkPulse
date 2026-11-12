@@ -34,16 +34,40 @@ export function fromDatabaseError(err: unknown): DomainError | null {
   return null;
 }
 
+/** SQLSTATEs for a connection the server refused or dropped: class 08 (connection exception), too many connections, shutdown or not accepting connections. */
+const UNAVAILABLE_SQLSTATE = /^(08...|53300|57P01|57P02|57P03)$/;
+/** Node socket errors when connecting to, or talking to, the database. */
+const UNAVAILABLE_ERRNO = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH', 'EAI_AGAIN']);
+/** pg and pooler (Supabase Supavisor) messages for the same, which come without a usable code. */
+const UNAVAILABLE_MESSAGE = /timeout exceeded when trying to connect|connection terminated|not queryable|max clients reached|EMAXCONN|too many (clients|connections)/i;
+
 /**
- * The database is saturated, not broken: no pooled connection came free in time, or a statement ran
- * past its time limit (57014). Clients should retry shortly, so these become a 503, not a 500.
+ * The database is saturated or briefly unreachable, not broken: no pooled connection came free in
+ * time, a statement ran past its time limit (57014), or the server or its pooler refused or dropped
+ * the connection (QA audit BUG-01). Clients should retry shortly, so these become a 503, not a 500.
  */
 export function isDatabaseBusy(err: unknown): boolean {
   for (let e = err, depth = 0; e && typeof e === 'object' && depth < 4; e = (e as { cause?: unknown }).cause, depth++) {
-    if ((e as { code?: unknown }).code === '57014') return true;
-    if (e instanceof Error && /timeout exceeded when trying to connect/i.test(e.message)) return true;
+    const code = (e as { code?: unknown }).code;
+    if (code === '57014') return true;
+    if (typeof code === 'string' && (UNAVAILABLE_SQLSTATE.test(code) || UNAVAILABLE_ERRNO.has(code))) return true;
+    if (e instanceof Error && UNAVAILABLE_MESSAGE.test(e.message)) return true;
   }
   return false;
+}
+
+/**
+ * The driver's own error under a wrapper (Drizzle's "Failed query: …" keeps it on `cause`), for the
+ * log: its code and message only, never the query's parameters or the server's detail, which can hold
+ * session hashes or personal data. Null when the error wraps nothing.
+ */
+export function databaseErrorCause(err: unknown): { code: string | null; message: string } | null {
+  let found: { code: string | null; message: string } | null = null;
+  for (let e = (err as { cause?: unknown } | null)?.cause, depth = 0; e && typeof e === 'object' && depth < 4; e = (e as { cause?: unknown }).cause, depth++) {
+    const code = (e as { code?: unknown }).code;
+    found = { code: typeof code === 'string' ? code : null, message: e instanceof Error ? e.message.split('\n')[0]!.slice(0, 300) : String(e).slice(0, 300) };
+  }
+  return found;
 }
 
 export function problemFromError(error: unknown, requestId: string): Problem {

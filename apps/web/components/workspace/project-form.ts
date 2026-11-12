@@ -4,6 +4,7 @@
  */
 import { ApiError } from '../../lib/api';
 import { toMinor } from '../finance/types';
+import { dateOrderProblem, fieldError } from '../../lib/form-checks';
 
 export interface ProjectForm {
   name: string;
@@ -60,6 +61,9 @@ export function projectPayload(f: ProjectForm, opts: { workers?: boolean; teams?
     if (minor === null) throw new ApiError(422, 'validation', 'Enter a valid amount', undefined, [{ field, message: 'Enter an amount like 75 or 75.50' }]);
     return { [field]: minor };
   };
+  // The end date after the start, checked before sending, with the server's wording (QA audit BUG-05).
+  const order = dateOrderProblem(f.start_date, f.end_date);
+  if (order) throw fieldError('end_date', order);
   const est = f.estimate.trim() === '' ? null : Number(f.estimate);
   if (est !== null && !(est >= 0)) throw new ApiError(422, 'validation', 'Enter a valid estimate', undefined, [{ field: 'estimate_seconds', message: 'A number of hours or days' }]);
   const full = {

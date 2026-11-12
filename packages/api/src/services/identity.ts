@@ -297,6 +297,26 @@ export async function changePassword(deps: Deps, uid: string, keepSessionId: str
 }
 
 /** Accept an invitation: creates the user if needed, then the membership. */
+/**
+ * What the join page may show before an invitation is accepted (QA audit BUG-10): the name the inviter
+ * entered, the organization, and whether the invited email already has an account (then it must sign
+ * in first). Never the email itself. Valid exactly when accepting it would be: not accepted, not
+ * revoked or replaced, not expired.
+ */
+export async function peekInvitation(db: Db, token: string, now: Date): Promise<{ name: string | null; organization_name: string; has_account: boolean }> {
+  const inv = await withSystem(db, async (tx) => {
+    const [i] = await tx
+      .select({ name: invitations.name, email: invitations.email, organizationName: organizations.name })
+      .from(invitations)
+      .innerJoin(organizations, eq(organizations.id, invitations.organizationId))
+      .where(and(eq(invitations.tokenHash, sha256(token)), isNull(invitations.acceptedAt), isNull(invitations.revokedAt), gt(invitations.expiresAt, now)))
+      .limit(1);
+    return i ?? null;
+  });
+  if (!inv) throw businessRule('invalid_invitation', 'This invitation is invalid or has expired');
+  return { name: inv.name ?? null, organization_name: inv.organizationName, has_account: !!(await findUserByEmail(db, inv.email)) };
+}
+
 export async function acceptInvitation(
   db: Db,
   input: { token: string; name?: string | null; password?: string | null; currentUserId?: string | null },

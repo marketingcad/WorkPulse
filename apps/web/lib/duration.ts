@@ -20,6 +20,19 @@ export function parseDuration(v: string): number | null {
   return null;
 }
 
+/**
+ * What is wrong with a duration typed for one time entry, or null when it can be saved: unreadable,
+ * under a minute, or over the 24 hours one entry may hold. QA audit 11 Nov 2026 (C-9): "25:00" was
+ * told "Enter the time worked, e.g. 2:30", as if it were unreadable, not too long.
+ */
+export function entryDurationProblem(v: string): string | null {
+  const secs = parseDuration(v);
+  if (secs === null) return 'Enter the time worked, e.g. 2:30 or 1.5';
+  if (secs < 60) return 'Enter at least 1 minute';
+  if (secs > 24 * 3600) return 'One entry can hold at most 24 hours. Split longer work across days.';
+  return null;
+}
+
 /** H:MM, rounded to the nearest minute (3,570 s is "1:00", never "0:60"). */
 export function asHm(secs: number): string {
   const mins = Math.round(secs / 60);

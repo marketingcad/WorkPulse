@@ -131,9 +131,11 @@ test('an invitation link can only be used once', async ({ page, browser, data })
   const again = await browser.newContext(SIGNED_OUT);
   const p2 = await again.newPage();
   await p2.goto(link);
-  await p2.getByLabel('Your name').fill('Olive Again');
-  await p2.getByLabel('Choose a password').fill(PASSWORD);
-  await p2.getByRole('button', { name: 'Join organization' }).click();
+  // The page reads the invitation first, so a used link says so straight away, with no form (QA audit BUG-10).
   await expect(p2.getByRole('alert').filter({ hasText: /./ })).toContainText('This invitation is invalid or has expired');
+  await expect(p2.getByLabel('Choose a password')).toHaveCount(0);
+  // And the server refuses a second accept on its own.
+  const second = await again.request.post('/api/v1/auth/invitations/accept', { data: { token: new URL(link).searchParams.get('token'), name: 'Olive Again', password: PASSWORD }, headers: { Origin: new URL(link).origin } });
+  expect([second.status(), (await second.json()).code]).toEqual([422, 'invalid_invitation']);
   await again.close();
 });

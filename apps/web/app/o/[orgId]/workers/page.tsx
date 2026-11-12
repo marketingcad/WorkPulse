@@ -30,6 +30,7 @@ import {
   type Column,
 } from '@tallywork/ui';
 import { ApiError, errorMessage, qs, useOrgQuery } from '@/lib/api';
+import { emailProblem, fieldError } from '@/lib/form-checks';
 import { keepPreviousWhen, pathParam } from '@/lib/placeholder';
 import { useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
@@ -275,6 +276,9 @@ function InviteDialog({ open, onOpenChange, roles, teams }: { open: boolean; onO
   };
 
   const submit = async () => {
+    // Checked here first, with the server's rule and wording (QA audit BUG-05).
+    const emailIssue = emailProblem(f.email.trim());
+    if (emailIssue) return setErr(fieldError('email', emailIssue));
     setBusy(true);
     setErr(null);
     try {

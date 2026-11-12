@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { users } from '@tallywork/db';
 import {
   acceptInviteInput,
+  peekInviteInput,
   avatarPresetInput,
   changePasswordInput,
   createOrgInput,
@@ -22,6 +23,7 @@ import { rateLimit } from '../middleware/rate-limit';
 import { SESSION_COOKIE, requireUser, sessionId, userId } from '../middleware/auth';
 import {
   acceptInvitation,
+  peekInvitation,
   changePassword,
   consumeEmailToken,
   createOrganization,
@@ -182,6 +184,9 @@ export const authRoutes = new Hono<AppEnv>()
     }
     return c.json({ ok: true, signed_in: signedIn });
   })
+
+  // The join page reads the invitation first (QA audit BUG-10). Its own bucket: reading never uses up accepts.
+  .post('/invitations/peek', rateLimit('invite-peek', 60, 3600), async (c) => c.json(await peekInvitation(c.var.deps.db, (await body(c, peekInviteInput)).token, c.var.deps.now())))
 
   .post('/invitations/accept', rateLimit('invite-accept', 20, 3600), async (c) => {
     const input = await body(c, acceptInviteInput);

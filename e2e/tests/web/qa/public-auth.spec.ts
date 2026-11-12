@@ -84,10 +84,12 @@ test.describe('QA · Links from emails', () => {
   test('an invalid invitation link does not create an account', async ({ page }) => {
     await page.goto(`/invite?token=${badToken}`);
     await expect(page.getByRole('heading', { level: 1, name: 'You have been invited' })).toBeVisible();
-    await page.getByLabel('Your name').fill('Ivy Intruder');
-    await page.getByLabel('Choose a password').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Join organization' }).click();
-    await expect(page.getByRole('alert').filter({ hasText: /./ })).toHaveText('This invitation is invalid or has expired');
+    // The page reads the invitation first (QA audit BUG-10): an invalid link says so, with no form to fill in.
+    await expect(page.getByRole('alert').filter({ hasText: /./ })).toHaveText('This invitation is invalid or has expired. Ask the person who invited you to send a new one.');
+    await expect(page.getByLabel('Choose a password')).toHaveCount(0);
+    // And the server refuses to create an account from it on its own.
+    const r = await page.request.post('/api/v1/auth/invitations/accept', { data: { token: badToken, name: 'Ivy Intruder', password: PASSWORD }, headers: { Origin: new URL(page.url()).origin } });
+    expect([r.status(), (await r.json()).code]).toEqual([422, 'invalid_invitation']);
     await expect(page).toHaveURL(/\/invite/);
   });
 

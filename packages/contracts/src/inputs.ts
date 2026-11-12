@@ -103,6 +103,8 @@ export const inviteInput = z.object({
   team_role: z.enum(['MEMBER', 'MANAGER']).default('MEMBER'),
   project_ids: z.array(id).max(100).default([]),
 });
+/** Read an invitation before accepting it (the join page): the token is its secret, so it is sent in the body. */
+export const peekInviteInput = z.object({ token: linkToken('This invitation is invalid or has expired') });
 export const acceptInviteInput = z.object({ token: linkToken('This invitation is invalid or has expired'), name: nonEmpty(100).optional(), password: password.optional() });
 
 export const updateWorkerInput = z.object({

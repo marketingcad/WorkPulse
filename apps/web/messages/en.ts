@@ -253,6 +253,12 @@ export const webEn = {
   'auth.invite.choosePassword': 'Choose a password',
   'auth.invite.passwordHint': 'At least 10 characters. Already have an account? Sign in first, then open this link again.',
   'auth.invite.submit': 'Join organization',
+  'auth.invite.subtitleOrg': 'Set up your account to join {org} on WorkPulse.',
+  'auth.invite.checking': 'Checking your invitation…',
+  'auth.invite.invalid': 'This invitation is invalid or has expired. Ask the person who invited you to send a new one.',
+  'auth.invite.hasAccount': 'You already have a WorkPulse account with this email. Sign in, then open this link again to join.',
+  'auth.invite.signIn': 'Sign in',
+  'auth.invite.passwordHintNew': 'At least 10 characters.',
 
   // Client portal: invitation and dashboard list for portal-only users
   'portal.invite.title': 'Open your project dashboard',

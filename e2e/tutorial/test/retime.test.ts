@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapTime, planRetime, retimeChain, type RetimeInput } from '../timing/retime';
+import { mapTime, planRetime, retimeChain, zoomMarks, type RetimeInput } from '../timing/retime';
 
 const base = { maxSpeed: 1.5, anchors: [] } satisfies Partial<RetimeInput>;
 const at = (clipAt: number, wordAt: number, on = 'x') => ({ label: `mark ${on}`, on, clipAt, wordAt });
@@ -84,6 +84,19 @@ describe('planRetime with anchors', () => {
   it('sorts anchors by when they were recorded', () => {
     const p = planRetime({ ...base, clip: 10, target: 12, anchors: [at(6, 7, 'late'), at(2, 5, 'early')] });
     expect(p.anchors.map((a) => a.on)).toEqual(['early', 'late']);
+  });
+});
+
+describe('zoomMarks', () => {
+  it('times each anchored mark by its own anchor, even two recorded at the same moment', () => {
+    const plan = planRetime({ ...base, clip: 10, target: 12, anchors: [{ ...at(2, 5, 'a'), key: 0 }, { ...at(2, 8, 'b'), key: 1 }] });
+    const marks = zoomMarks([{ at: 3, label: 'a', on: 'a' }, { at: 3, label: 'b', on: 'b' }, { at: 2, label: 'plain' }], 1, plan);
+    expect(marks.map((m) => m.at)).toEqual([5, 8, mapTime(plan.pieces, 1)]);
+  });
+
+  it('times an anchor at the very end of the footage by its word', () => {
+    const plan = planRetime({ ...base, clip: 10, target: 12, anchors: [{ ...at(10, 11), key: 0 }] });
+    expect(zoomMarks([{ at: 10, label: 'end', on: 'x' }], 0, plan)[0]!.at).toBe(11);
   });
 });
 

@@ -18,6 +18,23 @@ describe('parseWhisper', () => {
     ]);
   });
 
+  it('uses the DTW token times of full JSON (-ojf): each word starts at its first spoken token, ends where the next starts', () => {
+    const tok = (text: string, from: number, t_dtw: number) => ({ text, offsets: { from, to: from }, t_dtw });
+    const json = {
+      transcription: [
+        { offsets: { from: 0, to: 60 }, text: '', tokens: [tok('[_BEG_]', 0, -1)] },
+        { offsets: { from: 1470, to: 2200 }, text: ' home', tokens: [tok(' home', 1470, 104)] },
+        { offsets: { from: 2200, to: 2280 }, text: ' page.', tokens: [tok(' page', 2200, 142), tok('.', 2270, 222)] },
+        { offsets: { from: 2280, to: 2460 }, text: ' It', tokens: [tok(' It', 2340, -1)] },
+      ],
+    };
+    expect(parseWhisper(json)).toEqual([
+      { word: 'home', start: 1.04, end: 1.42 },
+      { word: 'page.', start: 1.42, end: 2.34 },
+      { word: 'It', start: 2.34, end: 2.46 },
+    ]);
+  });
+
   it('rejects output that is not whisper JSON', () => {
     expect(() => parseWhisper({ nope: true })).toThrow('whisper');
   });

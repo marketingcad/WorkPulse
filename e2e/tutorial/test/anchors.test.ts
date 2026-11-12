@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anchorWords, normalize, scriptWords } from '../timing/anchors';
+import { anchorProblems, anchorWords, normalize, scriptWords } from '../timing/anchors';
 
 const scene = { id: '09.2', narration: 'Open Time › Approvals. Click Approve → the entry is locked. Click Approve again.' };
 
@@ -14,6 +14,23 @@ describe('scriptWords', () => {
     expect(normalize('&')).toBe('and');
     expect(normalize('Sign-in,')).toBe('signin');
     expect(normalize('›')).toBe('');
+  });
+});
+
+describe('anchorProblems', () => {
+  it('lists every anchor the narration does not say, and every anchor outside the scene', () => {
+    const markers = [
+      { at: 1, label: 'scene start (trim before this)' },
+      { at: 0.5, label: 'too early', on: 'Approvals' },
+      { at: 2, label: 'fine', on: 'Click Approve' },
+      { at: 3, label: 'typo', on: 'Click Aprove' },
+      { at: 4, label: 'third', on: 'Click Approve', nth: 3 },
+      { at: 9, label: 'scene end (trim after this)' },
+    ];
+    expect(anchorProblems(scene, markers)).toEqual({
+      errors: ['No "Click Aprove" (occurrence 1) in the narration of scene 09.2', 'No "Click Approve" (occurrence 3) in the narration of scene 09.2'],
+      warnings: ['09.2 "Approvals": recorded before the scene starts (d.begin()), so it is ignored'],
+    });
   });
 });
 

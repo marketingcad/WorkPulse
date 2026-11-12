@@ -122,5 +122,12 @@ function fill(script: string[], times: Array<{ start: number; end: number } | nu
     }
     i = k;
   }
+  // The recognizer's times can step back now and then: a word never starts before the one before it ends.
+  let last = lead;
+  for (const w of out) {
+    w.start = Math.max(w.start, last);
+    w.end = Math.max(w.end, w.start);
+    last = w.end;
+  }
   return out;
 }

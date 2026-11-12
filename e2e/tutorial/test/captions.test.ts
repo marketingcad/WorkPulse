@@ -32,6 +32,16 @@ describe('wordCues', () => {
     expect(c[1]![0]).toBe(0.5);
   });
 
+  it('never ends a cue before it starts, when two cues start at the same time', () => {
+    const words: WordTime[] = [
+      { word: 'Alpha', start: 1, end: 1 },
+      { word: 'beta.', start: 1, end: 1 },
+      { word: 'Gamma', start: 1, end: 1.5 },
+      { word: 'delta.', start: 1.5, end: 2 },
+    ];
+    for (const [start, end] of wordCues('Alpha beta. Gamma delta.', words, 0)) expect(end).toBeGreaterThan(start);
+  });
+
   it('keeps a short last cue on screen for at least a second', () => {
     const c = wordCues('Done.', [{ word: 'Done.', start: 2, end: 2.2 }], 0);
     expect(c[0]![1]).toBeCloseTo(3);

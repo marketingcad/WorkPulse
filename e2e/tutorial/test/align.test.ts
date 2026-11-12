@@ -50,6 +50,11 @@ describe('alignToScript', () => {
     expect(rising(r.words)).toBe(true);
   });
 
+  it('never lets word times go backwards, even when the recognizer does', () => {
+    const r = alignToScript('a b c d', [w('a', 1, 1.2), w('d', 0.5, 0.7)], 3);
+    expect(rising(r.words)).toBe(true);
+  });
+
   it('keeps times in order with spoken-out money and extra heard words', () => {
     const r = alignToScript(
       'The invoice totals $1,250.00 for March.',

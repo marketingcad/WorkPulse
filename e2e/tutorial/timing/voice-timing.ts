@@ -21,7 +21,7 @@ import { normalize } from './anchors';
 import type { Aligner, WordTime } from './types';
 
 /** Bump when the alignment changes, so cached results are redone. */
-export const ALIGN_VERSION = 1;
+export const ALIGN_VERSION = 2;
 
 const WHISPER_DIR = path.resolve(import.meta.dirname, '../../.tmp/whisper');
 const WHISPER_RELEASE = 'https://github.com/ggml-org/whisper.cpp/releases/download/v1.7.6/whisper-bin-x64.zip';
@@ -41,13 +41,31 @@ export function unzip(zip: string, into: string): void {
   if (r.status !== 0) throw new Error(`cannot unpack ${path.basename(zip)}: ${r.stderr}`);
 }
 
-/** Words from whisper-cli's JSON (`-oj`, one word per item with `-ml 1 -sow`), in seconds. */
+interface WhisperToken {
+  text: string;
+  offsets: { from: number; to: number };
+  /** the DTW time of the token, in hundredths of a second; -1 when there is none */
+  t_dtw?: number;
+}
+
+/**
+ * Words from whisper-cli's JSON (one word per item with `-ml 1 -sow`), in seconds. With full JSON
+ * (`-ojf` and `-dtw`), a word starts at the DTW time of its first spoken token and lasts until the next
+ * word starts: DTW times are much closer to the audio than the segment offsets, which can be off by
+ * most of a second. Without them, the segment offsets are used.
+ */
 export function parseWhisper(json: unknown): WordTime[] {
-  const items = (json as { transcription?: Array<{ offsets: { from: number; to: number }; text: string }> }).transcription;
+  const items = (json as { transcription?: Array<{ offsets: { from: number; to: number }; text: string; tokens?: WhisperToken[] }> }).transcription;
   if (!Array.isArray(items)) throw new Error('not whisper output: no "transcription" list');
-  return items
-    .map((x) => ({ word: x.text.trim(), start: x.offsets.from / 1000, end: x.offsets.to / 1000 }))
+  const words = items
+    .map((x) => {
+      const token = x.tokens?.find((k) => !/^\[.*\]$/.test(k.text.trim()) && normalize(k.text));
+      const dtw = token?.t_dtw !== undefined && token.t_dtw >= 0;
+      const start = dtw ? token!.t_dtw! / 100 : (token?.offsets.from ?? x.offsets.from) / 1000;
+      return { word: x.text.trim(), start, end: x.offsets.to / 1000, dtw };
+    })
     .filter((x) => x.word && !/^\[.*\]$/.test(x.word) && normalize(x.word));
+  return words.map(({ dtw, ...w }, i) => ({ ...w, end: dtw && words[i + 1] ? Math.max(w.start, words[i + 1]!.start) : w.end }));
 }
 
 /** Words from ElevenLabs' character times (the `alignment` of a with-timestamps response). */
@@ -99,7 +117,7 @@ async function hear(id: string, voiceFile: string, ffmpeg: string, dir: string):
   const out = path.join(dir, `${id}.whisper`);
   const convert = spawnSync(ffmpeg, ['-y', '-v', 'error', '-i', voiceFile, '-ar', '16000', '-ac', '1', wav], { encoding: 'utf8' });
   if (convert.status !== 0) throw new Error(`ffmpeg could not convert the voice: ${convert.stderr}`);
-  const r = spawnSync(exe, ['-m', model, '-f', wav, '-l', 'en', '-ml', '1', '-sow', '-oj', '-of', out, '-np', '-dtw', 'base.en'], { encoding: 'utf8' });
+  const r = spawnSync(exe, ['-m', model, '-f', wav, '-l', 'en', '-ml', '1', '-sow', '-ojf', '-of', out, '-np', '-dtw', 'base.en'], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`whisper-cli failed: ${r.stderr || r.stdout}`);
   return parseWhisper(JSON.parse(readFileSync(`${out}.json`, 'utf8')));
 }

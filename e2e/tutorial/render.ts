@@ -32,8 +32,8 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameS
 import path from 'node:path';
 import { clock, srtTime, wordCues } from './format';
 import { CHAPTERS, slug, VIDEO, type Scene } from './scenes';
-import { anchorWords } from './timing/anchors';
-import { mapTime, planRetime, retimeChain } from './timing/retime';
+import { anchorProblems, anchorWords } from './timing/anchors';
+import { planRetime, retimeChain, zoomMarks } from './timing/retime';
 import { placeTimeline, syncReport } from './timing/timeline';
 import type { Box, Marker, SceneTimeline } from './timing/types';
 import { download, unzip, wordTimes } from './timing/voice-timing';
@@ -315,16 +315,15 @@ async function scene(s: Scene, voice: string, first: boolean, last: boolean): Pr
     clip: end - start,
     target: LEAD + speech + TAIL,
     maxSpeed: MAX_SPEED,
-    anchors: markers
-      .filter((m): m is Marker & { on: string } => !!m.on)
-      .map((m) => ({ label: m.label, on: m.on, clipAt: m.at - start, wordAt: round(LEAD + words[anchorWords(s, m.on, m.nth).first]!.start) })),
+    // key: the marker's index, so each zoom finds its own anchor (zoomMarks)
+    anchors: markers.flatMap((m, key) => (m.on ? [{ label: m.label, on: m.on, key, clipAt: m.at - start, wordAt: round(LEAD + words[anchorWords(s, m.on, m.nth).first]!.start) }] : [])),
   });
   const length = plan.length;
 
   const shown = callouts(s);
   const slot = (length - 1.5) / Math.max(1, shown.length);
   const notes = shown.map((t, i) => text(t, { size: 40, bold: true, y: 'h-text_h-150', box: true, from: 1.5 + i * slot, to: 1.5 + i * slot + Math.min(5, slot - 0.4) }));
-  const zoom = zoompan(markers.map((m) => ({ ...m, at: mapTime(plan.pieces, m.at - start) })));
+  const zoom = zoompan(zoomMarks(markers, start, plan));
   const rest = [
     ...(zoom ? [zoom] : []),
     ...notes,
@@ -394,6 +393,20 @@ async function main() {
   const only = process.env.TUTORIAL_SCENES?.split(',').map((x) => x.trim()).filter(Boolean);
   for (const id of only ?? []) if (!all.some((s) => s.id === id)) throw new Error(`TUTORIAL_SCENES: no scene "${id}" in tutorial/scenes.ts`);
   const scenes = only ? all.filter((s) => only.includes(s.id)) : all;
+  // Anchors and clips are checked before any voice is made or video encoded: paid voices and long
+  // encodes are not wasted on a render that cannot finish.
+  const problems: string[] = [];
+  for (const s of scenes.filter((x) => x.app !== 'edit')) {
+    const markersFile = path.join(CLIPS, `${s.id}-${slug(s.title)}.markers.json`);
+    if (!existsSync(markersFile)) {
+      problems.push(`no clip for scene ${s.id}: run pnpm tutorial:record first (${markersFile})`);
+      continue;
+    }
+    const { errors, warnings } = anchorProblems(s, (JSON.parse(readFileSync(markersFile, 'utf8')) as { markers: Marker[] }).markers);
+    problems.push(...errors);
+    for (const w of warnings) console.warn(`[render] anchor: ${w}`);
+  }
+  if (problems.length) throw new Error(`cannot render:\n  ${problems.join('\n  ')}`);
   const voice = await voices(scenes);
   const tagline = 'Track • Focus • Achieve';
   const name = only ? 'preview' : NAME;
@@ -449,9 +462,11 @@ async function main() {
   const total = t;
   mkdirSync(path.join(WORK, 'timeline'), { recursive: true });
   for (const s of timeline) writeFileSync(path.join(WORK, 'timeline', `${s.scene}.json`), JSON.stringify(s, null, 2), 'utf8');
-  writeFileSync(path.join(OUT, 'timeline.json'), `${JSON.stringify(placeTimeline(timeline, starts), null, 2)}\n`, 'utf8');
+  // A preview keeps its own timeline and report, so the full video's stay true to it.
+  const prefix = only ? `${name}.` : '';
+  writeFileSync(path.join(OUT, `${prefix}timeline.json`), `${JSON.stringify(placeTimeline(timeline, starts), null, 2)}\n`, 'utf8');
   const report = syncReport(timeline);
-  writeFileSync(path.join(OUT, 'sync-report.json'), `${JSON.stringify(report.json, null, 2)}\n`, 'utf8');
+  writeFileSync(path.join(OUT, `${prefix}sync-report.json`), `${JSON.stringify(report.json, null, 2)}\n`, 'utf8');
   for (const line of report.lines) console.warn(`[render] sync: ${line}`);
   const estimated = timeline.filter((s) => s.voice.aligner === 'estimate').map((s) => s.scene);
   if (estimated.length) console.warn(`[render] word times estimated, not aligned, for: ${estimated.join(', ')}`);

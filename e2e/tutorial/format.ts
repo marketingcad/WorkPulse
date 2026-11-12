@@ -81,9 +81,13 @@ export function wordCues(narration: string, words: WordTime[], at: number): Arra
     spans.push({ first: wordAt(pos), last: wordAt(pos + len - 1), text });
     pos += len;
   }
+  // Each cue starts a little after the one before, even when estimated words share a time, so no cue
+  // ends before it starts (players drop those).
+  const starts: number[] = [];
+  for (const c of spans) starts.push(Math.max(at + words[c.first]!.start, (starts.at(-1) ?? -Infinity) + 0.1));
   return spans.map((c, i) => {
-    const start = at + words[c.first]!.start;
-    const next = spans[i + 1] ? at + words[spans[i + 1]!.first]!.start - 0.05 : Infinity;
+    const start = starts[i]!;
+    const next = i + 1 < starts.length ? starts[i + 1]! - 0.05 : Infinity;
     const end = Math.min(next, Math.max(at + words[c.last]!.end + CUE_AFTER, start + CUE_MIN));
     return [start, end, c.text];
   });

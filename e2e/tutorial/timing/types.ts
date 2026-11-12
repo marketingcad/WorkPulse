@@ -56,6 +56,8 @@ export interface AnchorResult {
   shownAt: number | null;
   driftMs: number | null;
   note?: 'out of order' | 'late';
+  /** which marker of the recording this anchor came from (its index in the markers file) */
+  key?: number;
 }
 
 /** One scene of the rendered video. Times are seconds from the scene's start; `start` places it in the video. */

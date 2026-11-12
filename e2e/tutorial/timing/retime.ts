@@ -15,7 +15,7 @@ export interface RetimeInput {
   target: number;
   maxSpeed: number;
   /** clipAt from the trimmed start; wordAt = LEAD + the start of the anchor's first word */
-  anchors: Array<{ label: string; on: string; clipAt: number; wordAt: number }>;
+  anchors: Array<{ label: string; on: string; clipAt: number; wordAt: number; key?: number }>;
 }
 
 export interface RetimePlan {
@@ -35,7 +35,7 @@ export function planRetime({ clip, target, maxSpeed, anchors }: RetimeInput): Re
   const results: AnchorResult[] = [];
   const kept: Array<(typeof inside)[number] & { result: AnchorResult }> = [];
   for (const a of inside) {
-    const result: AnchorResult = { label: a.label, on: a.on, wordAt: a.wordAt, shownAt: null, driftMs: null };
+    const result: AnchorResult = { label: a.label, on: a.on, wordAt: a.wordAt, shownAt: null, driftMs: null, ...(a.key !== undefined ? { key: a.key } : {}) };
     results.push(result);
     if (kept.length && a.wordAt < kept.at(-1)!.wordAt) result.note = 'out of order';
     else kept.push({ ...a, result });
@@ -111,4 +111,16 @@ export function retimeChain(pieces: Piece[]): string {
     ...pieces.map((p, i) => `[c${i}]trim=start=${p.from}:end=${p.to},${play(p, i === n - 1)}[p${i}]`),
     `${pieces.map((_, i) => `[p${i}]`).join('')}concat=n=${n}:v=1:a=0[rt]`,
   ].join(';\n');
+}
+
+/**
+ * The marks with their times in the retimed scene, for the zooms: an anchored mark is shown when its
+ * anchor is (two anchors recorded at the same moment are told apart by `key`, the mark's index); any
+ * other mark goes where its footage went. `start` is the scene's start in the clip.
+ */
+export function zoomMarks<M extends { at: number; on?: string }>(markers: M[], start: number, plan: RetimePlan): M[] {
+  return markers.map((m, i) => {
+    const anchor = m.on ? plan.anchors.find((a) => a.key === i && a.shownAt !== null) : undefined;
+    return { ...m, at: anchor ? anchor.shownAt! : mapTime(plan.pieces, m.at - start) };
+  });
 }

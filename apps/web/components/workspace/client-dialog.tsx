@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import type { ClientDto } from '@tallywork/contracts';
 import { Button, Checkbox, Dialog, Field, Input, Select, Textarea, cx, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage } from '@/lib/api';
+import { emailProblem, fieldError } from '@/lib/form-checks';
 import { todayIn, useOrg } from '@/lib/org';
 import { useRatePricingConfirm } from '@/components/finance/rate-pricing-confirm';
 import { previewRatesFromBody } from '@/components/finance/rate-pricing';
@@ -67,6 +68,9 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
 
   const save = async () => {
     if (saving.current) return;
+    // Checked here first, with the server's rule and wording (QA audit BUG-05). The email is optional.
+    const emailIssue = f.email.trim() ? emailProblem(f.email.trim()) : null;
+    if (emailIssue) return setErr(fieldError('email', emailIssue));
     saving.current = true;
     setBusy(true);
     setErr(null);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asHm, parseDuration } from '../lib/duration';
+import { asHm, entryDurationProblem, parseDuration } from '../lib/duration';
 
 /** The "Duplicate" dialog prefills a duration as H:MM; it must read back as the same time. */
 describe('duration prefill', () => {
@@ -44,5 +44,20 @@ describe('parseDuration', () => {
     for (const v of ['', 'eight', '2:60', '2:5', '1,5', '-1', '2h 30s', '2..5', '2:30h', 'h', 'm', '1.5m', '12345:00']) {
       expect(parseDuration(v), v).toBeNull();
     }
+  });
+});
+
+/** QA audit, 11 Nov 2026 (C-9): "25:00" was told its format was wrong, not that it was too long. */
+describe('entryDurationProblem', () => {
+  it('names the 24-hour limit for one entry', () => {
+    for (const v of ['25:00', '30h', '24:01', '1500m']) expect(entryDurationProblem(v)).toBe('One entry can hold at most 24 hours. Split longer work across days.');
+  });
+  it('keeps the format hint for what cannot be read, and asks for at least a minute', () => {
+    expect(entryDurationProblem('two hours')).toBe('Enter the time worked, e.g. 2:30 or 1.5');
+    expect(entryDurationProblem('')).toBe('Enter the time worked, e.g. 2:30 or 1.5');
+    expect(entryDurationProblem('0:00')).toBe('Enter at least 1 minute');
+  });
+  it('accepts up to 24 hours', () => {
+    for (const v of ['24:00', '2:30', '2.5', '90m', '0:01']) expect(entryDurationProblem(v)).toBeNull();
   });
 });

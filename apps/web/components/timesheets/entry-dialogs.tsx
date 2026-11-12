@@ -8,7 +8,7 @@ import { useOrg } from '@/lib/org';
 import { ProjectTaskPicker, type PickerValue } from '@/components/project-task-picker';
 import { fromLocalInput, toLocalInput, useAssignmentsFor, useReasonPolicy, type EntryRevision } from './shared';
 import { useMemberOptions } from '@/lib/members';
-import { asHm, parseDuration } from '@/lib/duration';
+import { asHm, entryDurationProblem, parseDuration } from '@/lib/duration';
 
 function useRefresh() {
   const qc = useQueryClient();
@@ -381,8 +381,9 @@ export function ManualTimeDialog({ membershipId: fixedMember, defaultDate, prefi
     let when: Record<string, unknown>;
     let total: number;
     if (mode === 'duration') {
-      const secs = parseDuration(duration);
-      if (!secs || secs < 60 || secs > 24 * 3600) return fail('duration_seconds', 'Enter the time worked, e.g. 2:30 or 1.5');
+      const problem = entryDurationProblem(duration);
+      if (problem) return fail('duration_seconds', problem);
+      const secs = parseDuration(duration)!;
       when = { local_date: date, duration_seconds: secs };
       total = secs;
     } else {

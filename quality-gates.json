@@ -11,7 +11,7 @@
         "packages/api": [
           "access-consistency", "agent-login", "ai-insights", "ai-insights-finance", "ai-insights-capacity", "ai-insights-forecast", "portal-ai-summary", "assistant-performance-tool", "assistant-insight-tools", "assistant-drafts", "assistant", "assistant-security", "assistant-tools", "agent-me", "audit-oct28", "audit-phase1", "breaks-eod", "compliance", "confirm-window", "device-approval",
           "finance", "flow", "forms-phase4", "integrations", "invitations", "mfa-hardening", "money-p0", "money-p1-safety", "money-phase3", "multi-monitor",
-          "offline-sync", "offline-sync.property", "payroll", "rates-effective-date", "refused-time", "route-boundaries", "security", "security-auth", "security-authz",
+          "offline-sync", "offline-sync.property", "payroll", "rates-effective-date", "refused-time", "route-boundaries", "security", "security-auth", "security-authz", "tenant-context",
           "session-timeouts", "staff-profile", "support", "time-accuracy", "time-integrity", "time-money", "time-overlap", "time-product",
           "timesheet-entry", "timesheet-rules", "timesheets", "tracking", "work-integrity", "work-scope"
         ],

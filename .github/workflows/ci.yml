@@ -73,6 +73,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:migrate
       - run: pnpm db:migrate
+      # Pooled connections run as the restricted role, with the time limits, on a real server.
+      - name: Pooled connections run their session setup
+        run: pnpm --filter @tallywork/db exec vitest run test/pool-session.test.ts
+        env:
+          TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
       - name: The app role cannot rewrite the audit log
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "begin; set local role tallywork_app; update audit_logs set action = action where false; rollback;" && exit 1 || echo "update refused as expected"

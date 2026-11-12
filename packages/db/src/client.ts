@@ -89,6 +89,49 @@ export function sessionSetupSql(s: PoolSettings): string[] {
   return [`set role ${APP_ROLE}`, `set statement_timeout = ${s.statementTimeoutMs}`, `set idle_in_transaction_session_timeout = ${s.idleInTransactionTimeoutMs}`];
 }
 
+type SetupClient = { connect(): Promise<unknown>; query(sql: string): Promise<unknown>; end(): Promise<unknown> };
+
+/**
+ * A pg Client class whose connect() also runs `setup` (the restricted role and time limits), in
+ * order, before it resolves. Its queries are counted per request from the start, so the setup round
+ * trips show in the request's query stats.
+ *
+ * QA audit 11 Nov 2026 (Phase 2): the setup used to be fired from the pool's 'connect' event without
+ * waiting. A failed statement there raised an 'error' event on a connection already handed to a
+ * request, which pg-pool no longer listens to at that point, so Node crashed the instance; and the
+ * request's own queries, queued behind it, could run before the crash without the restricted role
+ * (as the owner, bypassing row-level security). Now a connection whose setup fails is closed and its
+ * checkout fails with that error: the request gets an error response, nothing runs unrestricted.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function withSessionSetup<C extends new (...args: any[]) => SetupClient>(Base: C, setup: string[]): C {
+  return class extends Base {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    constructor(...args: any[]) {
+      super(...args);
+      countCalls(this as object, 'query');
+    }
+    // pg-pool calls connect(callback); others call connect() and await it.
+    // @ts-expect-error -- pg's Client types connect() as two overloads; this one handles both.
+    connect(callback?: (err?: Error) => void) {
+      const ready = super.connect().then(async () => {
+        try {
+          for (const q of setup) await this.query(q);
+        } catch (e) {
+          await this.end().catch(() => undefined);
+          throw e;
+        }
+      });
+      if (!callback) return ready;
+      ready.then(
+        () => callback(),
+        (e: Error) => callback(e),
+      );
+      return undefined;
+    }
+  };
+}
+
 export interface DbHandle {
   db: Db;
   kind: 'pg' | 'pglite';
@@ -133,24 +176,18 @@ export function createDb(url: string, opts: { runAsAppRole?: boolean } = {}): Db
   }
 
   const settings = poolSettings();
-  const pool = new pg.Pool({ connectionString: url, max: settings.max, connectionTimeoutMillis: settings.connectionTimeoutMillis, idleTimeoutMillis: 5_000 });
+  // The session setup (restricted role, time limits) is part of connecting: a connection is handed
+  // out only once it has run, and one whose setup failed is closed, never used (see withSessionSetup).
+  const Client = withSessionSetup(pg.Client, runAsAppRole ? sessionSetupSql(settings) : []);
+  const pool = new pg.Pool({ connectionString: url, max: settings.max, connectionTimeoutMillis: settings.connectionTimeoutMillis, idleTimeoutMillis: 5_000, Client });
   // Poolers (Supabase Supavisor, Neon) may close idle connections. pg reports that as an
   // 'error' event on the pool; without a listener Node crashes the process. The pool
   // already discards the broken client, so logging is enough.
-  // Counted first, so the session setup below is counted too: it is a round trip per new connection.
-  pool.on('connect', (c) => {
-    countCalls(c, 'query');
+  pool.on('connect', () => {
     const stats = currentQueryStats();
     if (stats) stats.connects++;
   });
   pool.on('error', (e) => console.warn(JSON.stringify({ level: 'warn', msg: 'idle database connection closed', error: e.message })));
-  if (runAsAppRole) {
-    pool.on('connect', (c) => {
-      // Fail loudly (connection error) rather than silently running with bypass rights.
-      // Queued on the client in order, before any query the pool hands it.
-      for (const q of sessionSetupSql(settings)) c.query(q).catch((e: unknown) => c.emit('error', e as Error));
-    });
-  }
   const db = drizzlePg(pool, { schema, casing: 'snake_case' }) as unknown as Db;
   return {
     db,

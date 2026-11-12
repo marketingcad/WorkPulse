@@ -1,27 +1,19 @@
 import { request, type APIRequestContext, type Page } from '@playwright/test';
 import { expect, ok, test, uid } from '../../support/fixtures';
-import { ADMIN_STATE, MANAGER_STATE, PASSWORD, WEB_URL } from '../../support/env';
+import { ADMIN_STATE, MANAGER_STATE, WEB_URL } from '../../support/env';
 
 /**
  * QA audit, 11 Nov 2026 (BUG-08). Rates typed into the project form started "today", so time already
  * worked was paid and billed $0, with nothing to say why. Now the form has a "Rates start" date (a new
  * project defaults to its start date), Summary and the timesheet panel warn about time with no rate,
- * and setting a rate that covers approved time prices it. One person is invited for the whole file
- * (accepting an invitation is rate-limited across the whole run, as in production), and each journey
- * uses its own February 2026 week, which no other spec touches.
+ * and setting a rate that covers approved time prices it. No invitations: accepting one is rate-limited
+ * to 20 a clock hour across the whole run, as in production, and the suite already uses them. The
+ * pricing journeys use Nina Newcomer and the paid-at-$0 one Mona Lead (Nina must stay in no finalized
+ * payroll), each in its own February 2026 week, which no other spec touches.
  */
 test.use({ storageState: ADMIN_STATE });
 
 type AdminApi = { api: APIRequestContext; orgApi: (p: string) => string };
-
-async function invitePerson(adminApi: AdminApi, name: string): Promise<string> {
-  const roles = await ok<Array<{ id: string; key: string }>>(await adminApi.api.get(adminApi.orgApi('/roles')), 'roles');
-  const invite = await ok<{ invite_url: string }>(await adminApi.api.post(adminApi.orgApi('/invitations'), { data: { email: `rates+${uid()}@e2e.test`, name, role_id: roles.find((r) => r.key === 'WORKER')!.id } }), 'invite');
-  const ctx = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL }, storageState: { cookies: [], origins: [] } });
-  const accepted = await ok<{ membership_id: string }>(await ctx.post('/api/v1/auth/invitations/accept', { data: { token: new URL(invite.invite_url).searchParams.get('token'), name, password: PASSWORD } }), 'accept');
-  await ctx.dispose();
-  return accepted.membership_id;
-}
 
 /** One hour on `day` for the person, submitted and approved through the API. */
 async function approvedHour(adminApi: AdminApi, membershipId: string, projectId: string, day: string) {
@@ -44,12 +36,9 @@ async function editProject(page: Page, orgId: string, name: string) {
 
 let person = '';
 
-test.describe('One invited person, a February 2026 week per journey', () => {
-  test.describe.configure({ mode: 'serial' });
-  test.beforeAll(async ({ data }) => {
-    const api = await request.newContext({ baseURL: WEB_URL, storageState: ADMIN_STATE, extraHTTPHeaders: { Origin: WEB_URL } });
-    person = await invitePerson({ api, orgApi: (p) => `/api/v1/orgs/${data.orgId}${p}` }, `Rita Rates ${uid()}`);
-    await api.dispose();
+test.describe('Seeded people, a February 2026 week per journey', () => {
+  test.beforeAll(({ data }) => {
+    person = data.newcomer.membershipId;
   });
 
   test('a project created with an earlier start date pays and bills the time already worked', { tag: '@smoke' }, async ({ page, data, adminApi }) => {
@@ -144,6 +133,7 @@ test.describe('One invited person, a February 2026 week per journey', () => {
   });
 
   test('time a finalized payroll already paid at $0 says to add a bonus instead', async ({ page, data, adminApi }) => {
+    const person = data.manager.membershipId; // Mona: in no pay group, and no spec checks her pay stubs
     const day = '2026-02-18';
     const name = `Paid at zero ${uid()}`;
     const project = await ok<{ id: string }>(await adminApi.api.post(adminApi.orgApi('/projects'), { data: { name, member_ids: [person], billable_default: false } }), 'project');

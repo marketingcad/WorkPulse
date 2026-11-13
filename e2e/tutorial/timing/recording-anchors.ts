@@ -20,10 +20,8 @@ export function recordingAnchors(dir = DIR): Map<string, SourceAnchor[]> {
     // Each test('NN.N', …) block runs to the next one.
     const blocks = [...source.matchAll(/test\('([\d.]+)'/g)].map((m, i, all) => ({ id: m[1]!, body: source.slice(m.index, all[i + 1]?.index) }));
     for (const { id, body } of blocks) {
-      const anchors = [
-        ...[...body.matchAll(/\bon: '([^']+)'(?:, nth: (\d+))?/g)].map((m) => ({ file, on: m[1]!, nth: Number(m[2] ?? 1) })),
-        ...[...body.matchAll(/\bd\.cue\('([^']+)'(?:, \{ nth: (\d+) \})?/g)].map((m) => ({ file, on: m[1]!, nth: Number(m[2] ?? 1) })),
-      ];
+      // In source order, which is the order they are recorded in.
+      const anchors = [...body.matchAll(/\bon: '([^']+)'(?:, nth: (\d+))?|\bd\.cue\('([^']+)'(?:, \{ nth: (\d+) \})?/g)].map((m) => ({ file, on: (m[1] ?? m[3])!, nth: Number(m[2] ?? m[4] ?? 1) }));
       out.set(id, [...(out.get(id) ?? []), ...anchors]);
     }
   }

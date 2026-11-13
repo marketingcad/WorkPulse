@@ -29,6 +29,27 @@ test.describe('signing in', () => {
     await expect(page).toHaveURL(/\/login/);
   });
 
+  // QA audit 13 Nov 2026 (BUG-17): an empty form went to the server and came back as one line,
+  // "Email: This field is required (and 1 more)", above the form.
+  test('an empty or malformed form is explained under each field, without a request', async ({ page }) => {
+    const sent: string[] = [];
+    page.on('request', (r) => void (r.url().includes('/api/v1/auth/login') && sent.push(r.method())));
+    await page.goto('/login');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    const alerts = page.getByRole('alert').filter({ hasText: /./ });
+    await expect(alerts).toHaveText(['This field is required', 'This field is required']);
+    const email = page.getByLabel('Work email');
+    await expect(email).toHaveAttribute('aria-invalid', 'true');
+    await expect(email).toHaveAccessibleDescription(/This field is required/);
+
+    await email.fill('not-an-email');
+    await page.getByLabel('Password', { exact: true }).fill('anything-at-all');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(alerts).toHaveText(['Enter a valid email address, like name@example.com']);
+    await expect(page.getByText(/and 1 more/)).toHaveCount(0);
+    expect(sent).toEqual([]);
+  });
+
   test('a signed-out visitor is sent to sign in, then back to the page they asked for', async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}/teams`);
     await expect(page).toHaveURL(/\/login\?next=/);

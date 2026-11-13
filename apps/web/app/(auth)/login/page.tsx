@@ -10,6 +10,7 @@ import { CheckEmail } from '@/components/check-email';
 import { api, ApiError } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { afterSignIn, currentUser, lastOrgId } from '@/lib/home';
+import { loginProblems } from '@/lib/form-checks';
 
 function LoginForm() {
   const router = useRouter();
@@ -19,6 +20,7 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<'email' | 'password', string>>>({});
   const [loading, setLoading] = useState(false);
   // Accounts with two-factor get a second step after the password.
   const [step, setStep] = useState<'password' | 'code'>('password');
@@ -42,10 +44,17 @@ function LoginForm() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    // Checked here first, under each field (QA audit BUG-17); every request counts toward the sign-in limit.
+    const problems = loginProblems({ email, password });
+    setFieldErrors(Object.fromEntries(problems.map((p) => [p.field, p.message])));
+    if (problems.length) {
+      setError(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const r = await api<MeDto | { mfa_required: true }>('/auth/login', { body: { email, password, remember } });
+      const r = await api<MeDto | { mfa_required: true }>('/auth/login', { body: { email: email.trim(), password, remember } });
       if ('mfa_required' in r) {
         setStep('code');
         setPassword('');
@@ -94,10 +103,23 @@ function LoginForm() {
           {t('auth.login.expired')}
         </p>
       )}
-      <Field label={t('auth.workEmail')} htmlFor="email">
-        <AuthInput icon={Mail} id="email" type="email" autoComplete="email" placeholder={t('auth.login.emailPlaceholder')} required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
+      <Field label={t('auth.workEmail')} htmlFor="email" error={fieldErrors.email}>
+        <AuthInput
+          icon={Mail}
+          id="email"
+          type="email"
+          autoComplete="email"
+          placeholder={t('auth.login.emailPlaceholder')}
+          required
+          value={email}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            if (fieldErrors.email) setFieldErrors((f) => ({ ...f, email: undefined }));
+          }}
+          autoFocus
+        />
       </Field>
-      <Field label={t('auth.password')} htmlFor="password">
+      <Field label={t('auth.password')} htmlFor="password" error={fieldErrors.password}>
         <AuthInput
           icon={Lock}
           id="password"
@@ -106,7 +128,10 @@ function LoginForm() {
           placeholder={t('auth.login.passwordPlaceholder')}
           required
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            if (fieldErrors.password) setFieldErrors((f) => ({ ...f, password: undefined }));
+          }}
           trailing={
             <button
               type="button"

@@ -121,11 +121,19 @@ test.describe('WorkPulse AI (admin)', () => {
     await page.goto(`/o/${data.orgId}`);
     const panel = await openPanel(page);
     await panel.getByRole('button', { name: 'New chat' }).click();
-    const count = async () => (await (await page.request.get(`/api/v1/orgs/${data.orgId}/assistant/conversations?page=1`)).json()).total as number;
-    const before = await count();
-    await panel.getByTestId('assistant-suggestion').first().dblclick();
+    // Other tests use the same admin account at the same time and add or delete conversations, so the
+    // total is no stable count (CI saw 8 for an expected 9). Only conversations that did not exist
+    // before and start with this suggestion are counted.
+    const api = (p: string) => page.request.get(`/api/v1/orgs/${data.orgId}/assistant/conversations${p}`).then((r) => r.json());
+    const ids = async () => ((await api('?page=1&page_size=50')).data as Array<{ id: string }>).map((c) => c.id);
+    const before = new Set(await ids());
+    const suggestion = panel.getByTestId('assistant-suggestion').first();
+    const text = (await suggestion.innerText()).trim();
+    await suggestion.dblclick();
     await expect(lastAnswer(page)).toContainText('Here is what I found', { timeout: 15_000 });
-    expect(await count()).toBe(before + 1);
+    const fresh = (await ids()).filter((id) => !before.has(id));
+    const firstQuestions = await Promise.all(fresh.map(async (id) => ((await api(`/${id}`)).messages as Array<{ role: string; content: string }>).find((m) => m.role === 'user')?.content));
+    expect(firstQuestions.filter((q) => q === text)).toHaveLength(1);
     await expect(panel.locator('[data-role="user"]')).toHaveCount(1);
   });
 

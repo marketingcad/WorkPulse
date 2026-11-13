@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { inviteInput, issueMessage, password, signupInput } from '@tallywork/contracts';
-import { EMAIL_MESSAGE, dateOrderProblem, emailProblem, fieldError, passwordProblem, signupProblems } from '../lib/form-checks';
+import { inviteInput, issueMessage, loginInput, password, signupInput } from '@tallywork/contracts';
+import { EMAIL_MESSAGE, dateOrderProblem, emailProblem, fieldError, loginProblems, passwordProblem, signupProblems } from '../lib/form-checks';
 
 /**
  * QA audit, 11 Nov 2026 (BUG-05, BUG-10): forms sent malformed emails, reversed dates and short
@@ -70,5 +70,23 @@ describe('signupProblems matches the server (QA audit BUG-16)', () => {
     const server = signupInput.safeParse(sent, { reportInput: true });
     const expected = server.success ? [] : server.error.issues.map((i) => ({ field: String(i.path[0]), message: issueMessage(i as never) }));
     expect(signupProblems(f)).toEqual(expected);
+  });
+});
+
+describe('loginProblems matches the server (QA audit BUG-17)', () => {
+  const cases: Array<[string, { email: string; password: string }]> = [
+    ['a valid form', { email: 'quinn@example.com', password: 'anything' }],
+    ['an empty form', { email: '', password: '' }],
+    ['a malformed email', { email: 'not-an-email', password: 'anything' }],
+    ['an email with spaces around it', { email: '  quinn@example.com ', password: 'anything' }],
+    ['an empty password', { email: 'quinn@example.com', password: '' }],
+    ['a very long password', { email: 'quinn@example.com', password: 'p'.repeat(201) }],
+  ];
+
+  it.each(cases)('%s', (_label, f) => {
+    // As the page sends it (trimmed email), with the input kept as the server's error map sees it.
+    const server = loginInput.safeParse({ email: f.email.trim(), password: f.password }, { reportInput: true });
+    const expected = server.success ? [] : server.error.issues.map((i) => ({ field: String(i.path[0]), message: issueMessage(i as never) }));
+    expect(loginProblems(f)).toEqual(expected);
   });
 });

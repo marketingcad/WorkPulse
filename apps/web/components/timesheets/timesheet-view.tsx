@@ -35,6 +35,7 @@ import { periodLabel, type TimesheetHistoryItem } from './shared';
 import { TimeTypeBadge } from '@/components/settings/time-type-badge';
 import { downloadText, toCsv } from '@/lib/csv';
 import { UnpricedTimeWarning } from '@/components/finance/unpriced-time';
+import { conflictMessage, isConflict } from './conflict';
 
 // Dialogs open on demand, so they load when first opened instead of with the page (first-load JS budget).
 const CommentDialog = dynamic(() => import('./entry-dialogs').then((m) => m.CommentDialog));
@@ -118,15 +119,33 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
       toast.success(isSelf ? 'Timesheet submitted for approval' : `Timesheet submitted for ${ts.worker_name}`);
       setConfirmSubmit(false);
     } catch (e) {
-      toast.error(errorMessage(e));
+      toast.error(staleMessage(e));
     } finally {
       setSubmitting(false);
     }
   };
 
+  /**
+   * A 409 means the timesheet changed since this page loaded: decided, submitted or reopened in
+   * another tab or by someone else (QA audit 13 Nov 2026, BUG-18). The page kept the old status, with
+   * buttons that could never work. It is reloaded, and the message says so.
+   */
+  const staleMessage = (e: unknown): string => {
+    if (!isConflict(e)) return errorMessage(e);
+    void qc.invalidateQueries({ queryKey: ['org', orgId] });
+    return conflictMessage(e);
+  };
+
   const decide = async (action: Decision, comment: string) => {
     if (!ts?.id) return;
-    const r = await api<TimesheetDto>(`/orgs/${orgId}/timesheets/${ts.id}/${action}`, { method: 'POST', body: { comment: comment || undefined } });
+    let r: TimesheetDto;
+    try {
+      r = await api<TimesheetDto>(`/orgs/${orgId}/timesheets/${ts.id}/${action}`, { method: 'POST', body: { comment: comment || undefined } });
+    } catch (e) {
+      // Also for the decision dialog, which shows the error itself.
+      if (isConflict(e)) void qc.invalidateQueries({ queryKey: ['org', orgId] });
+      throw e;
+    }
     showNow(r);
     const msg = { approve: 'Timesheet approved', reject: 'Timesheet rejected', 'request-changes': 'Changes requested; the timesheet is back in draft', reopen: 'Timesheet reopened as draft' }[action];
     toast.success(`${msg} · ${ts.worker_name}`);
@@ -138,7 +157,7 @@ export function TimesheetView({ membershipId, date, onDateChange, compact, decis
     try {
       await decide('approve', '');
     } catch (e) {
-      toast.error(errorMessage(e));
+      toast.error(staleMessage(e));
     } finally {
       setApproving(false);
     }

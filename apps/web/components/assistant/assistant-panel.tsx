@@ -175,6 +175,9 @@ export function AssistantPanel({ orgId, onClose, ask }: { orgId: string; onClose
             type="button"
             className="min-w-0 flex-1 truncate rounded-sm px-1 text-left text-sm font-semibold hover:bg-surface-muted"
             title={t('assistant.rename')}
+            // Named for what it does: an untitled conversation reads "New chat", the same name as
+            // the button that starts one, so the two could not be told apart by name.
+            aria-label={`${t('assistant.rename')}: ${title}`}
             onClick={() => setRenaming(a.active!.id)}
           >
             {title}

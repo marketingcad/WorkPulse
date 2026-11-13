@@ -74,3 +74,18 @@ export function signupProblems(f: SignupForm): Array<{ field: keyof SignupForm; 
 export function formErrors(errors: ReadonlyArray<{ field: string; message: string }>): ApiError {
   return new ApiError(422, 'validation', errors[0]?.message ?? 'Check the form', undefined, [...errors]);
 }
+
+/**
+ * Problems with a sign-in form, checked before sending (QA audit 13 Nov 2026, BUG-17): an empty form
+ * went to the server and came back as one combined line, "Email: This field is required (and 1
+ * more)", above the form instead of under each field. Same rules as the server's `loginInput`.
+ */
+export function loginProblems(f: { email: string; password: string }): Array<{ field: 'email' | 'password'; message: string }> {
+  const out: Array<{ field: 'email' | 'password'; message: string }> = [];
+  const email = f.email.trim();
+  const emailIssue = email ? emailProblem(email) : REQUIRED_MESSAGE;
+  if (emailIssue) out.push({ field: 'email', message: emailIssue });
+  if (!f.password) out.push({ field: 'password', message: REQUIRED_MESSAGE });
+  else if (f.password.length > 200) out.push({ field: 'password', message: 'Use at most 200 characters' });
+  return out;
+}

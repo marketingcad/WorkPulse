@@ -1,12 +1,12 @@
 import type { Chapter } from '../scenes';
 
-export const ch16: Chapter = {
-  n: 16,
+export const ch18: Chapter = {
+  n: 18,
   title: 'Wrap-up',
   goal: 'Remember the main workflow and where to go next.',
   scenes: [
     {
-      id: '16.1',
+      id: '18.1',
       title: 'Recap',
       persona: 'admin',
       app: 'web',
@@ -19,15 +19,15 @@ export const ch16: Chapter = {
       transition: 'Fade to the end card.',
     },
     {
-      id: '16.2',
+      id: '18.2',
       title: 'Closing',
       persona: 'admin',
       app: 'edit',
-      screen: 'End card: the WorkPulse logo, "Track • Focus • Achieve", and where to get help.',
+      screen: 'End card: the WorkPulse logo, "Smarter Workforce. Better Business.", and where to get help.',
       actions: ['No recording: the end card is made in the editor.'],
       narration:
-        'Thank you for watching. Whenever you need a reminder, open Help inside WorkPulse: every topic in this video has a step-by-step guide there, and the product tour is one click away. Now it is your turn. Track, focus, achieve.',
-      overlays: ['End card: WorkPulse logo', '"Track • Focus • Achieve"', '"Help is always in the app: Help › Search"'],
+        'Thank you for watching. Whenever you need a reminder, open Help inside WorkPulse: every topic in this video has a step-by-step guide there, and the product tour is one click away. Now it is your turn. Smarter workforce, better business.',
+      overlays: ['End card: WorkPulse logo', '"Smarter Workforce. Better Business."', '"Help is always in the app: Help › Search"'],
       focus: [],
       transition: 'Fade to black (1 s).',
     },

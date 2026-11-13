@@ -2,7 +2,7 @@ import { expect, test } from '../kit';
 
 // 16.2 (the end card) is made in the editor; it has no recording.
 
-test('16.1', async ({ d, page }) => {
+test('18.1', async ({ d, page }) => {
   await d.go('');
   await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
   d.begin();

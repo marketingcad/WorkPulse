@@ -14,7 +14,7 @@ async function openGuides(d: import('../kit').Director, page: import('@playwrigh
   }
 }
 
-test('15.1', async ({ d, page }) => {
+test('17.1', async ({ d, page }) => {
   await d.go('/help');
   d.begin();
   await openGuides(d, page, 'Frequently asked questions', [
@@ -26,7 +26,7 @@ test('15.1', async ({ d, page }) => {
   await d.finish();
 });
 
-test('15.2', async ({ d, page }) => {
+test('17.2', async ({ d, page }) => {
   await d.go('/help');
   d.begin();
   await openGuides(d, page, 'Troubleshooting', [

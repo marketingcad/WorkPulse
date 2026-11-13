@@ -408,7 +408,7 @@ async function main() {
   }
   if (problems.length) throw new Error(`cannot render:\n  ${problems.join('\n  ')}`);
   const voice = await voices(scenes);
-  const tagline = 'Track • Focus • Achieve';
+  const tagline = 'Smarter Workforce. Better Business.';
   const name = only ? 'preview' : NAME;
 
   /** The closing scene, made in the editor: the end card, read over. */
@@ -428,7 +428,7 @@ async function main() {
     () =>
       card('00-title', [
         { t: 'WorkPulse', size: 132, bold: true, y: 'h/2-190' },
-        { t: 'Complete Tutorial', size: 64, y: 'h/2-20' },
+        { t: 'Powered by AI · Complete Tutorial', size: 64, y: 'h/2-20' },
         { t: tagline, size: 40, color: ACCENT, y: 'h/2+90' },
       ], 4).then((s) => ({ ...s, chapter: CHAPTERS[0]!.title })),
   ];

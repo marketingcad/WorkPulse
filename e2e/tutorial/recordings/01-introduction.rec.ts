@@ -35,7 +35,7 @@ test('01.3', async ({ d, page }) => {
   d.begin();
   const nav = page.getByRole('complementary', { name: 'Primary' });
   await d.mark('zoom to the sidebar', nav, { on: 'The menu on the left' });
-  for (const group of ['Time Tracking', 'Workforce', 'Project Management', 'Finance', 'Reports']) {
+  for (const group of ['Time Tracking', 'Workforce', 'Project Management', 'Finance', 'Reports', 'Performance']) {
     const button = nav.getByRole('button', { name: group });
     if ((await button.getAttribute('aria-expanded')) !== 'true') await d.click(button, { settle: false });
     else await d.point(button);

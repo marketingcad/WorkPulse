@@ -1,0 +1,349 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tutorial overlay</title>
+<!--
+  Draws one animated element of the tutorial video at a time (visuals/render-elements.ts):
+  window.mount(kind, spec, w, h, duration) builds it at the top left, and window.seek(ms) sets every
+  animation's clock, so each frame is drawn exactly. The background is transparent, except for the
+  full-frame chapter transition. Brand: WorkPulse indigo #4B4FC4, Segoe UI. Drawings are original.
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  body { width: 1920px; height: 1080px; font-family: 'Segoe UI', 'Segoe UI Variable', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  #stage { position: absolute; left: 0; top: 0; }
+  .glass { background: rgba(14, 17, 42, 0.86); border: 1px solid rgba(132, 137, 255, 0.55); box-shadow: 0 12px 32px rgba(6, 8, 30, 0.35), 0 2px 6px rgba(6, 8, 30, 0.25); }
+  .ring { position: absolute; border-radius: 10px; border: 2.5px solid #6c70f0; box-shadow: 0 0 0 4px rgba(75, 79, 196, 0.22), 0 0 16px 4px rgba(75, 79, 196, 0.5); }
+  .ripple { position: absolute; border-radius: 50%; border: 3px solid rgba(108, 112, 240, 0.9); background: rgba(75, 79, 196, 0.16); }
+  .step { position: absolute; left: 4px; top: 4px; width: 30px; height: 30px; border-radius: 50%; background: #4B4FC4; color: #fff; font-weight: 700; font-size: 17px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95), 0 4px 10px rgba(6, 8, 30, 0.35); }
+  .chip { position: absolute; left: 0; height: 36px; border-radius: 10px; color: #fff; font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px; padding: 0 14px; box-sizing: border-box; white-space: nowrap; }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: #8f93ff; box-shadow: 0 0 8px #8f93ff; }
+  .pointer { position: absolute; width: 14px; height: 14px; background: rgba(14, 17, 42, 0.86); border: 1px solid rgba(132, 137, 255, 0.55); transform: rotate(45deg); }
+  .callout { position: absolute; left: 0; bottom: 0; border-radius: 16px; color: #fff; display: flex; align-items: center; box-sizing: border-box; padding: 0 34px 0 40px; overflow: hidden; }
+  .callout .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 7px; background: linear-gradient(#8f93ff, #4B4FC4); }
+  .callout .text { font-size: 31px; font-weight: 600; letter-spacing: 0.1px; position: relative; }
+  .callout .underline { position: absolute; left: 0; right: 0; bottom: -6px; height: 3px; border-radius: 2px; background: linear-gradient(90deg, #8f93ff, rgba(143, 147, 255, 0)); transform-origin: left center; }
+  .callout-link { position: absolute; width: 2px; background: linear-gradient(rgba(143, 147, 255, 0), rgba(143, 147, 255, 0.8)); }
+  .card { position: absolute; left: 0; top: 0; border-radius: 20px; color: #fff; box-sizing: border-box; overflow: hidden; background: rgba(16, 19, 48, 0.96) !important; }
+  .card .art { position: absolute; left: 0; right: 0; top: 18px; height: 196px; display: flex; justify-content: center; }
+  .card .caption { position: absolute; left: 24px; right: 24px; bottom: 26px; text-align: center; font-size: 21px; font-weight: 600; color: #eef0ff; }
+  .card .kicker { position: absolute; left: 22px; top: 16px; font-size: 12px; letter-spacing: 2.4px; color: #a9acff; font-weight: 700; }
+  .tag { position: absolute; left: 0; top: 0; height: 40px; border-radius: 20px; color: #fff; font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 10px; padding: 0 20px; box-sizing: border-box; white-space: nowrap; }
+  .tag .dot { width: 9px; height: 9px; border-radius: 50%; background: #8f93ff; }
+  .chapter { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; background: radial-gradient(1200px 700px at 70% 30%, #23287a 0%, #121640 55%, #0a0d2a 100%); color: #fff; }
+  .chapter .num { position: absolute; left: 220px; top: 380px; font-size: 26px; letter-spacing: 9px; font-weight: 700; color: #a9acff; }
+  .chapter .title { position: absolute; left: 216px; top: 428px; font-size: 92px; font-weight: 700; letter-spacing: -1px; }
+  .chapter .goal { position: absolute; left: 220px; top: 560px; width: 1300px; font-size: 30px; color: #c9ccf2; line-height: 1.35; }
+  .chapter .line { position: absolute; left: 220px; height: 3px; border-radius: 2px; background: linear-gradient(90deg, #6c70f0, rgba(108, 112, 240, 0)); transform-origin: left center; }
+  .chapter .brand { position: absolute; left: 220px; bottom: 90px; font-size: 22px; color: #9ea2d8; letter-spacing: 0.5px; }
+  .chapter .brand b { color: #fff; }
+  .chapter .orb { position: absolute; border-radius: 50%; border: 2px solid rgba(143, 147, 255, 0.28); }
+  .chapter .grid { position: absolute; inset: -200px; background-image: linear-gradient(rgba(143, 147, 255, 0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(143, 147, 255, 0.06) 1px, transparent 1px); background-size: 64px 64px; }
+  svg text { font-family: 'Segoe UI', system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+const INDIGO = '#4B4FC4', LIGHT = '#8f93ff', SOFT = '#c9ccf2';
+let stage = document.getElementById('stage');
+
+function el(tag, cls, parent, style) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (style) Object.assign(e.style, style);
+  (parent || stage).appendChild(e);
+  return e;
+}
+function svg(w, h, parent) {
+  const s = document.createElementNS(NS, 'svg');
+  s.setAttribute('width', w); s.setAttribute('height', h); s.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  parent.appendChild(s);
+  return s;
+}
+function s_(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  parent.appendChild(e);
+  return e;
+}
+/** An animation that is driven only by seek(): never plays on its own. */
+function anim(node, frames, opts) {
+  const a = node.animate(frames, { fill: 'both', easing: EASE, ...opts });
+  a.pause();
+  return a;
+}
+/** Fades the whole element out over its last 200 ms. */
+function exit(node, duration) {
+  anim(node, [{ opacity: 1 }, { opacity: 0 }], { duration: 200, delay: Math.max(0, duration - 200), easing: 'ease-in' });
+}
+/** A stroke that draws itself. */
+function draw(path, delay, duration) {
+  const len = path.getTotalLength ? path.getTotalLength() : 400;
+  path.style.strokeDasharray = `${len}`;
+  anim(path, [{ strokeDashoffset: len }, { strokeDashoffset: 0 }], { duration: duration || 600, delay: delay || 0 });
+}
+function pop(node, delay, from) {
+  if (node instanceof SVGElement) { node.style.transformBox = 'fill-box'; node.style.transformOrigin = 'center'; }
+  anim(node, [{ opacity: 0, transform: `scale(${from || 0.6})` }, { opacity: 1, transform: 'scale(1)' }], { duration: 320, delay: delay || 0 });
+}
+
+// ─── Kinds ─────────────────────────────────────────────────────────────────
+
+const KINDS = {
+  ring(spec, w, h, d) {
+    const r = el('div', 'ring', stage, { left: `${spec.margin - 4}px`, top: `${spec.margin - 4}px`, width: `${spec.w + 8}px`, height: `${spec.h + 8}px`, boxSizing: 'border-box' });
+    anim(r, [{ opacity: 0, transform: 'scale(1.08)' }, { opacity: 1, transform: 'scale(1)' }], { duration: 300 });
+    // Two soft pulses of the glow while it holds.
+    anim(r, [
+      { boxShadow: '0 0 0 4px rgba(75,79,196,0.22), 0 0 16px 4px rgba(75,79,196,0.5)' },
+      { boxShadow: '0 0 0 6px rgba(75,79,196,0.14), 0 0 20px 6px rgba(75,79,196,0.62)' },
+      { boxShadow: '0 0 0 4px rgba(75,79,196,0.22), 0 0 16px 4px rgba(75,79,196,0.5)' },
+    ], { duration: 900, delay: 300, iterations: 2, easing: 'ease-in-out' });
+    if (spec.click) {
+      // The ring presses in as the click lands, with a ripple from the middle.
+      anim(r, [{ transform: 'scale(1)' }, { transform: 'scale(0.96)' }, { transform: 'scale(1)' }], { duration: 260, delay: Math.max(300, d - 420), composite: 'add', easing: 'ease-out' });
+      const size = Math.min(spec.w, spec.h) + 24;
+      const rp = el('div', 'ripple', stage, { width: `${size}px`, height: `${size}px`, left: `${w / 2 - size / 2}px`, top: `${h / 2 - size / 2}px`, opacity: 0 });
+      anim(rp, [{ opacity: 0, transform: 'scale(0.4)' }, { opacity: 0.9, transform: 'scale(0.45)', offset: 0.05 }, { opacity: 0, transform: 'scale(1.5)' }], { duration: 380, delay: Math.max(300, d - 420), easing: 'ease-out' });
+    }
+    if (spec.step) {
+      const b = el('div', 'step', stage);
+      b.textContent = spec.step;
+      pop(b, 120);
+    }
+    exit(stage, d);
+  },
+
+  label(spec, w, h, d) {
+    const down = spec.pointer === 'down';
+    const chip = el('div', 'chip glass', stage, { top: down ? '0px' : '12px', width: `${w}px` });
+    el('span', 'dot', chip);
+    el('span', '', chip).textContent = spec.text;
+    // The pointer sits behind the chip, so only its tip shows, towards the item.
+    const p = el('div', 'pointer', stage, { left: `${spec.pointerX - 7}px`, top: down ? '29px' : '5px', zIndex: '1' });
+    chip.style.zIndex = '2';
+    anim(stage, [{ opacity: 0, transform: `translateY(${down ? 8 : -8}px)` }, { opacity: 1, transform: 'translateY(0)' }], { duration: 260 });
+    exit(chip, d); exit(p, d);
+  },
+
+  callout(spec, w, h, d) {
+    const link = el('div', 'callout-link', stage, { left: `${w / 2 - 1}px`, top: '0px', height: '26px' });
+    const box = el('div', 'callout glass', stage, { width: `${w}px`, height: `${h - 30}px` });
+    el('div', 'bar', box);
+    const t = el('div', 'text', box);
+    t.textContent = spec.text;
+    const u = el('div', 'underline', t);
+    anim(box, [{ opacity: 0, transform: 'translateY(26px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 340 });
+    anim(link, [{ opacity: 0, transform: 'scaleY(0)' }, { opacity: 1, transform: 'scaleY(1)' }], { duration: 300, delay: 200 });
+    anim(u, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 520, delay: 260 });
+    exit(stage, d);
+  },
+
+  tag(spec, w, h, d) {
+    const t = el('div', 'tag glass', stage, { width: `${w}px` });
+    el('span', 'dot', t);
+    el('span', '', t).textContent = spec.text;
+    anim(t, [{ opacity: 0, transform: 'translateY(-10px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 320 });
+    exit(t, d);
+  },
+
+  card(spec, w, h, d) {
+    const c = el('div', 'card glass', stage, { width: `${w}px`, height: `${h}px` });
+    el('div', 'kicker', c).textContent = spec.concept === 'flow' ? 'HOW IT FLOWS' : 'GOOD TO KNOW';
+    const art = el('div', 'art', c);
+    el('div', 'caption', c).textContent = spec.caption;
+    anim(c, [{ opacity: 0, transform: 'translateY(18px) scale(0.97)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }], { duration: 350 });
+    // A gentle float while it is up, once.
+    anim(art, [{ transform: 'translateY(0)' }, { transform: 'translateY(-3px)' }, { transform: 'translateY(0)' }], { duration: Math.max(1200, d - 600), delay: 400, easing: 'ease-in-out' });
+    (ART[spec.concept] || ART.ai)(art, spec, w, d);
+    exit(c, d);
+  },
+
+  chapter(spec, w, h, d) {
+    const c = el('div', 'chapter', stage);
+    const grid = el('div', 'grid', c);
+    anim(grid, [{ transform: 'translate(0, 0)' }, { transform: 'translate(-40px, -24px)' }], { duration: d, easing: 'linear' });
+    for (const [x, y, r, dl] of [[1460, 250, 360, 0], [1560, 610, 180, 200], [1300, 760, 90, 380]]) {
+      const o = el('div', 'orb', c, { left: `${x - r}px`, top: `${y - r}px`, width: `${2 * r}px`, height: `${2 * r}px` });
+      anim(o, [{ opacity: 0, transform: 'scale(0.85)' }, { opacity: 1, transform: 'scale(1)' }], { duration: 900, delay: dl });
+      anim(o, [{ transform: 'translate(0,0)' }, { transform: 'translate(-14px, 10px)' }], { duration: d, easing: 'ease-in-out', composite: 'add' });
+    }
+    const num = el('div', 'num', c);
+    num.textContent = `CHAPTER ${String(spec.n).padStart(2, '0')}`;
+    const title = el('div', 'title', c);
+    title.textContent = spec.title;
+    const goal = el('div', 'goal', c);
+    goal.textContent = spec.goal || '';
+    const l1 = el('div', 'line', c, { top: '366px', width: '120px' });
+    const l2 = el('div', 'line', c, { top: '540px', width: '520px', opacity: 0.6 });
+    const brand = el('div', 'brand', c);
+    brand.innerHTML = '<b>WorkPulse</b> · Powered by AI';
+    anim(c, [{ opacity: 0 }, { opacity: 1 }], { duration: 350, easing: 'ease-out' });
+    anim(l1, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 500, delay: 200 });
+    anim(num, [{ opacity: 0, transform: 'translateX(-16px)' }, { opacity: 1, transform: 'translateX(0)' }], { duration: 420, delay: 260 });
+    anim(title, [{ opacity: 0, transform: 'translateX(-28px)' }, { opacity: 1, transform: 'translateX(0)' }], { duration: 560, delay: 420 });
+    anim(l2, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 700, delay: 640 });
+    anim(goal, [{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 500, delay: 760 });
+    anim(brand, [{ opacity: 0 }, { opacity: 1 }], { duration: 500, delay: 900 });
+    // Into the recording: everything but the background fades out at the end.
+    for (const n of [num, title, goal, l1, l2, brand]) anim(n, [{ opacity: 1 }, { opacity: 0 }], { duration: 350, delay: d - 380, easing: 'ease-in', composite: 'replace' });
+  },
+};
+
+// ─── Concept illustrations (original drawings) ─────────────────────────────
+
+const stroke = (extra) => ({ fill: 'none', stroke: LIGHT, 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', ...extra });
+const ART = {
+  os(art) {
+    const s = svg(400, 190, art);
+    const items = [
+      { x: 70, label: 'Windows', d: 'M30 40 h80 a6 6 0 0 1 6 6 v52 a6 6 0 0 1 -6 6 h-80 a6 6 0 0 1 -6 -6 v-52 a6 6 0 0 1 6 -6 z M58 104 v14 M82 104 v14 M48 120 h44', extra: (g) => { s_('rect', { x: 36, y: 50, width: 68, height: 44, rx: 3, fill: 'rgba(143,147,255,0.12)' }, g); } },
+      { x: 200, label: 'macOS', d: 'M34 46 h72 a6 6 0 0 1 6 6 v46 h-84 v-46 a6 6 0 0 1 6 -6 z M18 98 h104 l-8 12 h-88 z', extra: (g) => { s_('rect', { x: 40, y: 54, width: 60, height: 38, rx: 3, fill: 'rgba(143,147,255,0.12)' }, g); } },
+      { x: 330, label: 'Linux', d: 'M26 42 h88 a6 6 0 0 1 6 6 v62 a6 6 0 0 1 -6 6 h-88 a6 6 0 0 1 -6 -6 v-62 a6 6 0 0 1 6 -6 z M20 58 h100', extra: (g) => { const t = s_('text', { x: 36, y: 92, fill: SOFT, 'font-size': 22, 'font-weight': 700 }, g); t.textContent = '>_'; } },
+    ];
+    items.forEach((it, i) => {
+      const g = s_('g', {}, s_('g', { transform: `translate(${it.x - 70}, 0)` }, s));
+      it.extra(g);
+      draw(s_('path', { d: it.d, ...stroke() }, g), 250 + i * 220, 700);
+      const t = s_('text', { x: 70, y: 168, 'text-anchor': 'middle', fill: '#fff', 'font-size': 18, 'font-weight': 600 }, g);
+      t.textContent = it.label;
+      pop(g, 250 + i * 220, 0.85);
+    });
+  },
+  'phone-qr'(art) {
+    const s = svg(400, 190, art);
+    const phone = s_('g', {}, s);
+    draw(s_('path', { d: 'M150 10 h100 a14 14 0 0 1 14 14 v150 a14 14 0 0 1 -14 14 h-100 a14 14 0 0 1 -14 -14 v-150 a14 14 0 0 1 14 -14 z M186 22 h28', ...stroke() }, phone), 200, 700);
+    // A QR-like pattern (not a real code), cells appearing in waves.
+    const cells = s_('g', {}, s);
+    let k = 0;
+    for (let y = 0; y < 9; y++) for (let x = 0; x < 9; x++) {
+      const corner = (x < 3 && y < 3) || (x > 5 && y < 3) || (x < 3 && y > 5);
+      if (!corner && ((x * 7 + y * 13 + x * y) % 3 !== 0)) continue;
+      const r = s_('rect', { x: 164 + x * 8, y: 44 + y * 8, width: 7, height: 7, rx: 1.5, fill: corner ? '#fff' : SOFT }, cells);
+      anim(r, [{ opacity: 0 }, { opacity: 1 }], { duration: 160, delay: 500 + ((x + y) * 35) });
+      k++;
+    }
+    const scan = s_('rect', { x: 158, y: 40, width: 84, height: 3, rx: 1.5, fill: LIGHT }, s);
+    anim(scan, [{ transform: 'translateY(0)', opacity: 0 }, { opacity: 1, offset: 0.15 }, { transform: 'translateY(76px)', opacity: 0 }], { duration: 900, delay: 1000, easing: 'ease-in-out' });
+    const code = s_('text', { x: 200, y: 148, 'text-anchor': 'middle', fill: '#fff', 'font-size': 22, 'font-weight': 700, 'letter-spacing': 3 }, s);
+    code.textContent = '123 456';
+    anim(code, [{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: 1700 });
+  },
+  security(art) {
+    const s = svg(400, 190, art);
+    draw(s_('path', { d: 'M200 18 l62 22 v44 c0 42 -28 70 -62 86 c-34 -16 -62 -44 -62 -86 v-44 z', ...stroke({ fill: 'rgba(143,147,255,0.10)' }) }, s), 200, 800);
+    draw(s_('path', { d: 'M176 94 l18 18 l34 -36', ...stroke({ stroke: '#fff', 'stroke-width': 5 }) }, s), 900, 420);
+  },
+  flow(art, spec) {
+    const s = svg(640, 190, art);
+    const icons = [
+      'M0 -16 a16 16 0 1 1 0 32 a16 16 0 1 1 0 -32 M0 -8 v9 l7 5',
+      'M-12 1 l8 8 l16 -18',
+      'M-11 -16 h16 l8 8 v24 h-24 z M-5 0 h12 M-5 7 h12',
+      'M-15 -9 h30 v20 h-30 z M-15 -3 h30 M7 4 h4',
+    ];
+    const xs = [70, 230, 390, 550];
+    (spec.nodes || []).forEach((n, i) => {
+      const at = Math.round(n.at * 1000) + 250;
+      const g = s_('g', {}, s_('g', { transform: `translate(${xs[i]}, 78)` }, s));
+      const halo = s_('circle', { r: 40, fill: 'rgba(75,79,196,0.35)' }, g);
+      s_('circle', { r: 34, fill: 'rgba(20,24,60,0.9)', stroke: LIGHT, 'stroke-width': 2.5 }, g);
+      s_('path', { d: icons[i], ...stroke({ stroke: '#fff', 'stroke-width': 2.5 }) }, g);
+      const t = s_('text', { y: 66, 'text-anchor': 'middle', fill: '#fff', 'font-size': 18, 'font-weight': 600 }, g);
+      t.textContent = n.label;
+      pop(g, at, 0.5);
+      // The active step glows; it settles when the next one arrives.
+      const next = spec.nodes[i + 1] ? Math.round(spec.nodes[i + 1].at * 1000) + 250 : at + 1400;
+      anim(halo, [{ opacity: 0 }, { opacity: 1 }, { opacity: 1, offset: 0.7 }, { opacity: 0.25 }], { duration: Math.max(500, next - at + 300), delay: at });
+      if (i > 0) {
+        const a = s_('path', { d: `M${xs[i - 1] + 42} 78 H${xs[i] - 46} m-10 -8 l10 8 l-10 8`, ...stroke() }, s);
+        draw(a, at - 220, 360);
+      }
+    });
+  },
+  money(art) {
+    const s = svg(400, 190, art);
+    [0, 1, 2].forEach((i) => {
+      const g = s_('g', {}, s);
+      s_('ellipse', { cx: 170, cy: 140 - i * 18, rx: 46, ry: 14, fill: 'rgba(143,147,255,0.18)', stroke: LIGHT, 'stroke-width': 2.5 }, g);
+      pop(g, 250 + i * 150, 0.7);
+    });
+    const d = s_('text', { x: 170, y: 92, 'text-anchor': 'middle', fill: '#fff', 'font-size': 40, 'font-weight': 700 }, s);
+    d.textContent = '$';
+    pop(d, 750);
+    draw(s_('path', { d: 'M244 130 c30 -10 50 -40 62 -80 m-16 6 l16 -6 l6 16', ...stroke() }, s), 900, 600);
+  },
+  invoice(art) {
+    const s = svg(400, 190, art);
+    draw(s_('path', { d: 'M150 12 h80 l24 24 v140 h-104 z M230 12 v24 h24', ...stroke() }, s), 200, 700);
+    [[166, 60, 70], [166, 80, 56], [166, 100, 70], [166, 120, 40]].forEach(([x, y, w], i) => {
+      const l = s_('path', { d: `M${x} ${y} h${w}`, ...stroke({ stroke: SOFT, 'stroke-width': 4 }) }, s);
+      draw(l, 700 + i * 120, 260);
+    });
+    const tot = s_('text', { x: 236, y: 158, 'text-anchor': 'end', fill: '#fff', 'font-size': 20, 'font-weight': 700 }, s);
+    tot.textContent = '$1,250';
+    pop(tot, 1250, 0.8);
+    const st = s_('g', {}, s_('g', { transform: 'translate(280, 70) rotate(-12)' }, s));
+    s_('rect', { x: -38, y: -16, width: 76, height: 32, rx: 6, fill: 'none', stroke: '#7be3b0', 'stroke-width': 3 }, st);
+    const tt = s_('text', { y: 7, 'text-anchor': 'middle', fill: '#7be3b0', 'font-size': 17, 'font-weight': 700 }, st);
+    tt.textContent = 'SENT';
+    pop(st, 1500, 1.4);
+  },
+  payroll(art) {
+    const s = svg(400, 190, art);
+    draw(s_('path', { d: 'M126 22 h148 a10 10 0 0 1 10 10 v126 a10 10 0 0 1 -10 10 h-148 a10 10 0 0 1 -10 -10 v-126 a10 10 0 0 1 10 -10 z', ...stroke() }, s), 200, 700);
+    const av = s_('g', {}, s);
+    s_('circle', { cx: 158, cy: 62, r: 18, fill: 'rgba(143,147,255,0.25)', stroke: LIGHT, 'stroke-width': 2.5 }, av);
+    pop(av, 650);
+    [[188, 56, 66], [188, 72, 44], [140, 108, 120], [140, 128, 90]].forEach(([x, y, w], i) => draw(s_('path', { d: `M${x} ${y} h${w}`, ...stroke({ stroke: SOFT, 'stroke-width': 4 }) }, s), 800 + i * 110, 260));
+    draw(s_('path', { d: 'M236 132 l10 10 l20 -22', ...stroke({ stroke: '#7be3b0', 'stroke-width': 4 }) }, s), 1350, 350);
+  },
+  'offline-sync'(art) {
+    const s = svg(400, 190, art);
+    draw(s_('path', { d: 'M96 70 h104 a6 6 0 0 1 6 6 v58 h-116 v-58 a6 6 0 0 1 6 -6 z M78 134 h152 l-10 14 h-132 z', ...stroke() }, s), 200, 700);
+    const cloud = s_('path', { d: 'M262 92 a24 24 0 0 1 4 -47 a32 32 0 0 1 60 6 a20 20 0 0 1 2 41 z', ...stroke({ fill: 'rgba(143,147,255,0.12)' }) }, s);
+    draw(cloud, 500, 700);
+    const slash = s_('path', { d: 'M260 36 l72 70', ...stroke({ stroke: '#ff9aa2', 'stroke-width': 4 }) }, s);
+    draw(slash, 1100, 260);
+    anim(slash, [{ opacity: 1 }, { opacity: 0 }], { duration: 250, delay: 1700 });
+    const arrows = s_('g', { transform: 'translate(250, 110)' }, s);
+    s_('path', { d: 'M-34 -4 a34 34 0 0 1 60 -10 m2 -14 v14 h-14', ...stroke({ stroke: '#7be3b0' }) }, arrows);
+    s_('path', { d: 'M34 4 a34 34 0 0 1 -60 10 m-2 14 v-14 h14', ...stroke({ stroke: '#7be3b0' }) }, arrows);
+    anim(arrows, [{ opacity: 0, transform: 'translate(250px,110px) rotate(-90deg) scale(0.6)' }, { opacity: 1, transform: 'translate(250px,110px) rotate(0) scale(1)' }], { duration: 500, delay: 1800 });
+  },
+  ai(art) {
+    const s = svg(400, 190, art);
+    const star = (cx, cy, r) => `M${cx} ${cy - r} C${cx + r * 0.18} ${cy - r * 0.18} ${cx + r * 0.18} ${cy - r * 0.18} ${cx + r} ${cy} C${cx + r * 0.18} ${cy + r * 0.18} ${cx + r * 0.18} ${cy + r * 0.18} ${cx} ${cy + r} C${cx - r * 0.18} ${cy + r * 0.18} ${cx - r * 0.18} ${cy + r * 0.18} ${cx - r} ${cy} C${cx - r * 0.18} ${cy - r * 0.18} ${cx - r * 0.18} ${cy - r * 0.18} ${cx} ${cy - r} z`;
+    [[170, 92, 52, 200], [244, 50, 22, 520], [250, 132, 16, 700]].forEach(([x, y, r, dl]) => {
+      const p = s_('path', { d: star(x, y, r), fill: 'rgba(143,147,255,0.22)', stroke: LIGHT, 'stroke-width': 2.5, 'stroke-linejoin': 'round' }, s);
+      p.style.transformOrigin = `${x}px ${y}px`;
+      anim(p, [{ opacity: 0, transform: 'scale(0.3) rotate(-30deg)' }, { opacity: 1, transform: 'scale(1) rotate(0)' }], { duration: 420, delay: dl });
+    });
+    const bubble = s_('g', {}, s);
+    s_('path', { d: 'M286 66 h74 a10 10 0 0 1 10 10 v34 a10 10 0 0 1 -10 10 h-50 l-14 12 v-12 h-10 a10 10 0 0 1 -10 -10 v-34 a10 10 0 0 1 10 -10 z', fill: 'rgba(20,24,60,0.9)', stroke: SOFT, 'stroke-width': 2 }, bubble);
+    [306, 322, 338].forEach((x, i) => { const dt = s_('circle', { cx: x, cy: 93, r: 4, fill: '#fff' }, bubble); anim(dt, [{ opacity: 0.3 }, { opacity: 1 }, { opacity: 0.3 }], { duration: 600, delay: 1200 + i * 150 }); });
+    pop(bubble, 950, 0.8);
+  },
+};
+
+// ─── Driver ────────────────────────────────────────────────────────────────
+
+window.mount = (kind, spec, w, h, duration) => {
+  for (const a of document.getAnimations()) a.cancel();
+  stage.remove();
+  stage = el('div', '', document.body, { width: `${w}px`, height: `${h}px` });
+  stage.id = 'stage';
+  KINDS[kind](spec, w, h, duration * 1000);
+  return document.fonts.ready.then(() => true);
+};
+window.seek = (ms) => {
+  for (const a of document.getAnimations()) a.currentTime = ms;
+};
+</script>
+</body>
+</html>

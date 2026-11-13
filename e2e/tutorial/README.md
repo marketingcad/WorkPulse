@@ -65,6 +65,18 @@ Zooms, highlights and clicks are shown when the narrator says what they show, an
 - **Output.** `video/timeline.json` has every scene's start, word times, anchors, footage pieces and captions. `video/sync-report.json` lists the anchors shown more than 150 ms after their words, or dropped because the narration says them in a different order from the recording; the render prints the same lines (`[render] sync: …`).
 - **Preview.** `TUTORIAL_SCENES=07.3,09.2 pnpm tutorial:render` renders only those scenes into `video/preview.mp4`, with `preview.en.srt`, `preview.timeline.json` and `preview.sync-report.json` (so the full video's timeline stays as it was), without cards, thumbnail or chapter files. Anchor phrases and clips are checked before any voice is made, so a typo stops the render straight away.
 
+### Animated visuals
+
+On top of the recording, the render draws animated visuals timed to the narration (, off with ):
+
+- **Highlight ring and name label** on each item the voiceover names, when it is said. The ring follows the item through zooms and ends at the next click, scroll or page change. A named button gets 0.9 s under the cursor before the click, so its ring is seen.
+- **Step numbers** inside the rings of scenes marked  in their script.
+- **Callouts** (the quoted text of a scene's overlays) slide in when the narration talks about them.
+- **Concept cards** for what the screen cannot show (: operating systems, a phone with a QR code, two-factor, the time-to-money flow, rates, invoices, payroll, offline sync, WorkPulse AI), on their trigger words, in the corner farthest from the ring. A scene's script can add a card on other words or turn one off ().
+- **Scene tag** and **branded chapter transitions**.
+
+At most one ring, label, callout and card are on screen at a time. Each element is drawn by  in Chromium, frame by frame, into a small transparent clip cached in  by what it shows, so a re-render only draws what changed. Drawings are original: no real logos.
+
 ## Publishing to the Help Center
 
 System admins (anyone who may change the organization, `org:update`) can watch the tutorial on the Help page: a player at the top of the topics with the chapter list, a "Video tutorial" topic link, and a "Watch the video" button in the page header. Nobody else sees it, and the API refuses them.

@@ -37,6 +37,11 @@ import { planRetime, retimeChain, zoomMarks } from './timing/retime';
 import { placeTimeline, syncReport } from './timing/timeline';
 import type { Box, Marker, SceneTimeline } from './timing/types';
 import { download, unzip, wordTimes } from './timing/voice-timing';
+import { planVisuals } from './visuals/plan';
+import { closeRenderer, renderElement } from './visuals/render-elements';
+
+/** The animated visual layer (visuals/): on unless TUTORIAL_VISUALS=off, which renders the plain video. */
+const VISUALS = process.env.TUTORIAL_VISUALS !== 'off';
 
 const HERE = import.meta.dirname;
 const CLIPS = path.join(HERE, 'clips');
@@ -347,23 +352,42 @@ async function scene(s: Scene, voice: string, first: boolean, last: boolean): Pr
   const length = plan.length;
 
   const shown = callouts(s);
-  const slot = (length - 1.5) / Math.max(1, shown.length);
-  const notes = shown.map((t, i) => text(t, { size: 40, bold: true, y: 'h-text_h-150', box: true, from: 1.5 + i * slot, to: 1.5 + i * slot + Math.min(5, slot - 0.4) }));
   const zoom = zoompan(zoomMarks(markers, start, plan));
-  const rest = [
-    ...(zoom ? [zoom] : []),
-    ...notes,
-    ...(first ? ['fade=t=in:st=0:d=0.4'] : []),
-    ...(last ? [`fade=t=out:st=${round(length - 0.4)}:d=0.4`] : []),
-    'format=yuv420p',
-  ].join(',');
-  // One piece is a single chain, written as it always was, so unanchored scenes keep their cached encodes.
+  const fades = [...(first ? ['fade=t=in:st=0:d=0.4'] : []), ...(last ? [`fade=t=out:st=${round(length - 0.4)}:d=0.4`] : []), 'format=yuv420p'];
   const chain = retimeChain(plan.pieces);
-  const picture = plan.pieces.length === 1 ? `${chain.slice(0, -'[rt]'.length)},${rest}[v]` : `${chain};\n[rt]${rest}[v]`;
+  const visualInputs: string[] = [];
+  let picture: string;
+  if (VISUALS) {
+    // The animated layer (visuals/): pointing elements over the footage before the zoom, so they
+    // stay on their item; fixed ones after it, so they keep their size. Each is a cached clip.
+    const visuals = planVisuals({ scene: s, chapter: Number(s.id.split('.')[0]), lead: LEAD, words, markers, start, retime: plan, callouts: shown });
+    const parts = [chain];
+    let cur = 'rt';
+    let input = 2;
+    const lay = async (v: (typeof visuals)[number]) => {
+      visualInputs.push('-i', await renderElement({ kind: v.kind, spec: v.spec, w: v.w, h: v.h, duration: round(v.to - v.from) }, { ffmpeg: FFMPEG, work: WORK }));
+      const out = `l${input}`;
+      parts.push(`[${input}:v]setpts=PTS-STARTPTS+${v.from}/TB[e${input}];[${cur}][e${input}]overlay=${v.x}:${v.y}:enable='between(t,${v.from},${v.to})':eof_action=pass[${out}]`);
+      cur = out;
+      input++;
+    };
+    for (const v of visuals.filter((x) => x.layer === 'point')) await lay(v);
+    parts.push(`[${cur}]${zoom ?? 'null'}[z]`);
+    cur = 'z';
+    for (const v of visuals.filter((x) => x.layer === 'fixed')) await lay(v);
+    parts.push(`[${cur}]${fades.join(',')}[v]`);
+    picture = parts.join(';\n');
+  } else {
+    const slot = (length - 1.5) / Math.max(1, shown.length);
+    const notes = shown.map((t, i) => text(t, { size: 40, bold: true, y: 'h-text_h-150', box: true, from: 1.5 + i * slot, to: 1.5 + i * slot + Math.min(5, slot - 0.4) }));
+    const rest = [...(zoom ? [zoom] : []), ...notes, ...fades].join(',');
+    // One piece is a single chain, written as it always was, so unanchored scenes keep their cached encodes.
+    picture = plan.pieces.length === 1 ? `${chain.slice(0, -'[rt]'.length)},${rest}[v]` : `${chain};\n[rt]${rest}[v]`;
+  }
   const graph = `${picture};\n${audioGraph(length, last ? 0.4 : null)}`;
   const st = statSync(clip);
   // A re-recorded clip has the same name: its size and time tell the cache it changed.
-  const file = await encode(s.id, ['-ss', String(start), '-to', String(end), '-i', clip, ...audioIn(voice)], graph, length, `${st.size} ${st.mtimeMs}`);
+  const file = await encode(s.id, ['-ss', String(start), '-to', String(end), '-i', clip, ...audioIn(voice), ...visualInputs], graph, length, `${st.size} ${st.mtimeMs}`);
   const timeline: SceneTimeline = {
     scene: s.id,
     start: 0,
@@ -387,6 +411,15 @@ async function card(name: string, lines: Array<Parameters<typeof text>[1] & { t:
   const graph = `[0:v]${video.join(',')}[v];\n${audioGraph(length, fadeOut)}`;
   const file = await encode(name, ['-f', 'lavfi', '-i', `color=c=${BG}:s=1920x1080:r=30`, ...audioIn(voice)], graph, length);
   return { file, seconds: length };
+}
+
+/** A chapter's branded animated transition (visuals/overlay.html, kind "chapter"), with silence. */
+async function chapterCard(c: (typeof CHAPTERS)[number]): Promise<Segment> {
+  const seconds = 3;
+  const art = await renderElement({ kind: 'chapter', spec: { n: c.n, title: c.title, goal: c.goal }, w: 1920, h: 1080, duration: seconds }, { ffmpeg: FFMPEG, work: WORK, opaque: true });
+  const graph = `[0:v]fps=30,format=yuv420p[v];\n${audioGraph(seconds, null)}`;
+  const file = await encode(`${String(c.n).padStart(2, '0')}-chapter`, ['-i', art, ...audioIn(undefined)], graph, seconds);
+  return { file, seconds };
 }
 
 /** Runs jobs a few at a time (each ffmpeg already uses several cores), keeping their order. */
@@ -461,14 +494,18 @@ async function main() {
   for (const [ci, c] of only ? [] : CHAPTERS.entries()) {
     if (ci > 0)
       jobs.push(() =>
-        card(`${String(c.n).padStart(2, '0')}-chapter`, [
-          { t: `Chapter ${c.n}`, size: 40, color: ACCENT, y: 'h/2-90' },
-          { t: c.title, size: 84, bold: true, y: 'h/2-20' },
-        ], 3).then((s) => ({ ...s, chapter: c.title })),
+        (VISUALS
+          ? chapterCard(c)
+          : card(`${String(c.n).padStart(2, '0')}-chapter`, [
+              { t: `Chapter ${c.n}`, size: 40, color: ACCENT, y: 'h/2-90' },
+              { t: c.title, size: 84, bold: true, y: 'h/2-20' },
+            ], 3)
+        ).then((s) => ({ ...s, chapter: c.title })),
       );
     for (const [si, s] of c.scenes.entries()) jobs.push(sceneJob(s, si === 0, si === c.scenes.length - 1));
   }
   const segments = await pool(jobs);
+  await closeRenderer();
 
   // Captions (timed to the spoken words), chapter marks and the timeline, from the real lengths.
   const srt: string[] = [];

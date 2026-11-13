@@ -46,7 +46,7 @@ const FRAME = { w: 1920, h: 1080 };
 const RING_MAX = 1.5;
 const RING_MIN = 0.5;
 /** Room around the item for the ring's glow. */
-const RING_MARGIN = 18;
+const RING_MARGIN = 26;
 const CALLOUT_SECONDS = 3.5;
 const CARD_SECONDS = 3.5;
 const FLOW_SECONDS = 5;
@@ -108,7 +108,7 @@ export function planVisuals(input: PlanInput): Visual[] {
     const total = (words.at(-1)?.end ?? 0) + lead;
     const from = best.first >= 0 ? wordAt(best.first) : round(1.5 + (i * (total - 1.5)) / Math.max(1, input.callouts.length));
     const w = Math.min(1200, Math.round(text.length * 15 + 150));
-    out.push({ kind: 'callout', layer: 'fixed', from, to: round(from + CALLOUT_SECONDS), x: Math.round((FRAME.w - w) / 2), y: FRAME.h - 112 - 64, w, h: 112, spec: { text } });
+    out.push({ kind: 'callout', layer: 'fixed', from, to: round(from + CALLOUT_SECONDS), x: Math.round((FRAME.w - w) / 2), y: FRAME.h - 112 - 34, w, h: 112, spec: { text } });
   });
 
   // ─── Concept cards, on their words, in the corner farthest from the ring ─

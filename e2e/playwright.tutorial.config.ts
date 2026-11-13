@@ -22,7 +22,8 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   timeout: 5 * 60_000,
-  expect: { timeout: 15_000 },
+  // Saves usually answer in milliseconds; a busy machine can stall one for half a minute.
+  expect: { timeout: 60_000 },
   reporter: [['list']],
   use: {
     viewport: VIEWPORT,

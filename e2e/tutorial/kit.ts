@@ -7,6 +7,8 @@ import { CLIPS_DIR, STATE, TUTORIAL_DATA, TUTORIAL_DESKTOP_URL } from './env';
 import type { TutorialData } from './setup';
 import { anchorWords } from './timing/anchors';
 import type { Marker } from './timing/types';
+import type { PortalAiSummaryDto } from '@tallywork/contracts';
+import { ScriptedAssistant } from './assistant';
 
 /**
  * The recording kit: what a scene recording uses to look like a person presenting the app.
@@ -234,11 +236,39 @@ export class Director {
     });
   }
 
-  /** Holds the last frame until the narration has had time to finish. */
+  /** Holds the last frame until the narration has had time to finish. Fails a scene whose scripted AI was not used as written. */
   async finish(): Promise<void> {
     const left = narrationSeconds(this.scene) * 1000 - (Date.now() - this.sceneStart);
     await this.page.waitForTimeout(Math.max(1500, left + 1000));
     this.markers.push({ at: this.seconds(), label: 'scene end (trim after this)' });
+    this.scripted?.assertUsed();
+  }
+
+  // ─── Scripted WorkPulse AI (assistant.ts) ──────────────────────────────────
+
+  private scripted: ScriptedAssistant | null = null;
+
+  private async ai(): Promise<ScriptedAssistant> {
+    if (!this.scripted) {
+      this.scripted = new ScriptedAssistant(this.scene.id, this.data.orgId);
+      await this.scripted.install(this.page);
+    }
+    return this.scripted;
+  }
+
+  /** The next question asked in the WorkPulse AI panel, and the answer shown (Markdown). */
+  async scriptAnswer(question: string, markdown: string, title?: string): Promise<void> {
+    (await this.ai()).answer(question, markdown, title);
+  }
+
+  /** The next "Write with AI" draft. */
+  async scriptDraft(text: string, facts: string[] = []): Promise<void> {
+    (await this.ai()).draft(text, facts);
+  }
+
+  /** The client portal's AI summary for this scene. */
+  async scriptPortalSummary(dto: PortalAiSummaryDto): Promise<void> {
+    (await this.ai()).portalSummary(dto);
   }
 }
 

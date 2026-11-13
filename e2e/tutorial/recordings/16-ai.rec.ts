@@ -35,9 +35,11 @@ test('16.2', async ({ d, page }) => {
   await d.go('/ai-insights');
   await expect(page.getByRole('heading', { level: 1, name: 'AI Insights' })).toBeVisible();
   d.begin();
+  await d.point(page.getByRole('heading', { level: 1, name: 'AI Insights' }), { hold: 1200, on: 'AI Insights looks through' });
   const tabs = page.getByRole('group', { name: 'Sections' });
   await d.mark('zoom to the period switch and tabs', tabs, { on: 'Choose a period' });
   await d.point(tabs, { hold: 2500 });
+  await d.point(tabs.getByRole('button', { name: 'Capacity', exact: true }), { hold: 1200, on: 'capacity for the next two weeks' });
   const card = page.getByText(/timesheets? (is|are) waiting for approval/).first().locator('xpath=ancestor::article[1]');
   await d.scrollTo(card);
   await d.mark('zoom to a finding card', card, { on: 'Each finding says what was found' });
@@ -69,6 +71,7 @@ test('16.3', async ({ d, page }) => {
   await d.mark('zoom to the description and its draft', draft, { on: 'It writes a description' });
   await d.point(page.getByRole('button', { name: 'Undo' }), { hold: 2000, on: 'click Undo' });
   await d.go('/ai-insights?tab=timesheets');
+  await d.point(page.getByRole('heading', { level: 1, name: 'AI Insights' }), { hold: 1000, on: 'In AI Insights' });
   await d.click(page.getByRole('button', { name: 'Last week', exact: true }).or(page.getByRole('radio', { name: 'Last week', exact: true })).first(), { settle: false });
   const missing = page.getByText(/not been submitted/).first().locator('xpath=ancestor::article[1]');
   await expect(missing).toBeVisible({ timeout: 15_000 });
@@ -86,6 +89,10 @@ test('16.4', async ({ d, page }) => {
   d.begin();
   await d.click(page.getByRole('button', { name: /^Notifications/ }), { settle: false, on: 'Notifications now come sorted by priority' });
   const panel = page.getByRole('dialog').or(page.getByRole('menu')).first();
+  const urgent = panel.getByText('Urgent', { exact: true }).first();
+  if (await urgent.isVisible()) await d.point(urgent, { hold: 1200, on: 'Urgent and' });
+  const important = panel.getByText('Important', { exact: true }).first();
+  if (await important.isVisible()) await d.point(important, { hold: 1200, on: 'important ones are labelled' });
   await d.mark('zoom to the notifications panel', panel, { on: 'similar notifications are grouped' });
   await d.point(panel.getByText(/^\+\d+ more$/).first(), { hold: 2500, on: 'Open a group' });
   await page.keyboard.press('Escape');

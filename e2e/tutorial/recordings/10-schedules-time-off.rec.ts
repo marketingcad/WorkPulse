@@ -6,7 +6,9 @@ test('10.1', async ({ d, page }) => {
   const nav = page.getByRole('complementary', { name: 'Primary' });
   const group = nav.getByRole('button', { name: 'Workforce' });
   if ((await group.getAttribute('aria-expanded')) !== 'true') await d.click(group, { settle: false });
-  await d.click(nav.getByRole('link', { name: 'Schedules' }));
+  await d.point(nav.getByRole('link', { name: 'Schedules' }), { hold: 1200, on: 'Schedules hold' });
+  await d.point(group, { hold: 800, on: 'Open Workforce' });
+  await d.click(nav.getByRole('link', { name: 'Schedules' }), { on: 'then Schedules' });
   await d.beat(2500);
   const edit = page.getByRole('button', { name: 'Edit schedule for Ava Okafor' });
   await d.scrollTo(edit);
@@ -23,14 +25,16 @@ test('10.1', async ({ d, page }) => {
 test('10.2', async ({ d, page }) => {
   await d.go('/schedules');
   d.begin();
-  await d.click(page.getByRole('navigation', { name: 'Schedules & attendance' }).getByRole('link', { name: 'Attendance' }));
+  await d.click(page.getByRole('navigation', { name: 'Schedules & attendance' }).getByRole('link', { name: 'Attendance' }), { on: 'Attendance compares the schedule' });
   const roster = page.getByRole('table', { name: 'Attendance roster' });
   await d.mark('zoom to the roster', roster, { on: 'For each person you see' });
   await d.point(roster, { hold: 3000 });
+  await d.point(page.getByText('Late', { exact: true }).filter({ visible: true }).first(), { hold: 1200, on: 'present, late, absent' });
+  await d.point(page.getByLabel('Status', { exact: true }), { hold: 600, on: 'Filter by status' });
   await d.choose(page.getByLabel('Status', { exact: true }), 'Late');
   await d.beat(2500);
   await d.choose(page.getByLabel('Status', { exact: true }), 'All statuses');
-  await d.click(choice(page, 'Week'));
+  await d.click(choice(page, 'Week'), { on: 'and the whole week' });
   await d.beat(2500);
   await d.finish();
 });
@@ -38,15 +42,15 @@ test('10.2', async ({ d, page }) => {
 test('10.3', async ({ d, page }) => {
   await d.go('/schedules');
   d.begin();
-  await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('link', { name: 'Time off' }));
+  await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('link', { name: 'Time off' }), { on: 'Time off requests arrive' });
   const tabs = page.getByRole('main');
-  await d.click(tabs.getByRole('button', { name: /^Requests/ }));
+  await d.click(tabs.getByRole('button', { name: /^Requests/ }), { on: 'on the Requests tab' });
   const row = page.getByRole('row').filter({ hasText: 'Ava Okafor' }).filter({ has: page.getByRole('button', { name: 'Approve' }) }).first();
   await d.mark('highlight Ava’s request', row, { on: 'the request Ava sent' });
   await d.point(row, { hold: 2000 });
-  await d.click(row.getByRole('button', { name: 'Approve' }), { settle: false });
+  await d.click(row.getByRole('button', { name: 'Approve' }), { settle: false, on: 'Approve it' });
   await d.beat(2000);
-  await d.click(tabs.getByRole('button', { name: 'Calendar', exact: true }));
+  await d.click(tabs.getByRole('button', { name: 'Calendar', exact: true }), { on: 'The Calendar shows' });
   await d.beat(3000);
   await d.click(tabs.getByRole('button', { name: 'Policies & holidays', exact: true }));
   await d.mark('zoom to the policies', page.getByRole('button', { name: /New policy/ }), { on: 'On Policies and holidays' });

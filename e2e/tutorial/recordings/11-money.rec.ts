@@ -1,25 +1,30 @@
 import { request, type Page } from '@playwright/test';
 import { STATE, TUTORIAL_URL } from '../env';
-import { choice, expect, label, test, type Director } from '../kit';
+import { choice, expect, label, test, type Anchor, type Director } from '../kit';
 
 const isoDay = (offset: number) => new Date(Date.now() + offset * 86400_000).toISOString().slice(0, 10);
 
-/** Opens a Finance page from the sidebar, opening the group first when it is closed. */
-async function openFinance(d: Director, page: Page, item: string) {
+/**
+ * Opens a Finance page from the sidebar, opening the group first when it is closed. With anchors, the
+ * group (clicked, or pointed at when it is already open) and the page are shown as they are named.
+ */
+async function openFinance(d: Director, page: Page, item: string, groupAnchor: Anchor = {}, itemAnchor: Anchor = {}) {
   const nav = page.getByRole('complementary', { name: 'Primary' });
   const group = nav.getByRole('button', { name: 'Finance' });
-  if ((await group.getAttribute('aria-expanded')) !== 'true') await d.click(group, { settle: false });
-  await d.click(nav.getByRole('link', { name: item }));
+  if ((await group.getAttribute('aria-expanded')) !== 'true') await d.click(group, { settle: false, ...groupAnchor });
+  else if (groupAnchor.on) await d.point(group, { hold: 600, ...groupAnchor });
+  await d.click(nav.getByRole('link', { name: item }), itemAnchor);
 }
 
 test('11.1', async ({ d, page }) => {
   await d.go('');
   d.begin();
-  await openFinance(d, page, 'Rates');
+  await openFinance(d, page, 'Rates', { on: 'rates. Open Finance' }, { on: 'then Rates' });
   await d.point(page.getByText('Bill rates (charged to clients)'), { hold: 2000 });
   await d.point(page.getByText('Pay rates (paid to members)'), { hold: 2000 });
   await d.click(page.getByRole('button', { name: 'Set bill rate' }), { settle: false });
   const dialog = page.getByRole('dialog', { name: 'Set rate' });
+  await d.point(dialog.getByLabel(label('Applies to')), { hold: 1200, on: 'a client, a project, a member' });
   await d.mark('zoom to the Set rate dialog', dialog, { on: 'a bill rate of one hundred' });
   await d.choose(dialog.getByLabel(label('Applies to')), 'Project');
   await d.choose(dialog.getByLabel(label('Project')), 'Lumen — Spring Campaign');
@@ -42,8 +47,8 @@ test('11.2', async ({ d, page }) => {
   await d.mark('zoom to the Set budget dialog', dialog, { on: 'Click Set budget' });
   await d.choose(dialog.getByLabel(label('Project')), 'Lumen — Spring Campaign');
   await d.choose(dialog.getByLabel(label('Type')), 'Hours');
-  await d.type(dialog.getByLabel(label('Hours')), '120');
-  await d.type(dialog.getByLabel(label('Warn at (%)')), '80');
+  await d.type(dialog.getByLabel(label('Hours')), '120', { on: 'in hours' });
+  await d.type(dialog.getByLabel(label('Warn at (%)')), '80', { on: 'Warn at sets' });
   await d.click(dialog.getByRole('button', { name: 'Save budget' }), { settle: false });
   await expect(page.getByText('Budget saved')).toBeVisible();
   await d.finish();
@@ -53,7 +58,7 @@ test('11.3', async ({ d, page }) => {
   await d.go('/finance/budgets');
   d.begin();
   await openFinance(d, page, 'Expenses');
-  await d.click(page.getByRole('button', { name: /^Submitted/ }), { settle: false });
+  await d.click(page.getByRole('button', { name: /^Submitted/ }), { settle: false, on: 'the Submitted tab' });
   await d.beat(1500);
   const row = page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Approve' }) }).first();
   await d.point(row, { hold: 2000 });
@@ -65,7 +70,8 @@ test('11.3', async ({ d, page }) => {
   await d.click(page.getByRole('button', { name: /^Approved/ }), { settle: false });
   await d.beat(1500);
   const reimburse = page.getByRole('button', { name: 'Reimburse' }).first();
-  if (await reimburse.isVisible()) await d.point(reimburse, { hold: 2000 });
+  if (await reimburse.isVisible()) await d.point(reimburse, { hold: 2000, on: 'click Reimburse' });
+  await d.point(page.getByRole('button', { name: /^Approved/ }), { hold: 1200, on: 'Approved billable expenses' });
   await d.point(page.getByRole('button', { name: 'New expense' }), { hold: 1500 });
   const exp = page.getByRole('button', { name: 'Export' });
   await d.mark('highlight the Export button', exp, { on: 'an Export button' });
@@ -78,7 +84,7 @@ test('11.4', async ({ d, page }) => {
   d.begin();
   await openFinance(d, page, 'Invoices');
   for (const k of ['Outstanding', 'Overdue', 'Drafts', 'Collected']) await d.point(page.getByText(k, { exact: true }).first(), { hold: 1000 });
-  await d.click(page.getByRole('button', { name: 'New invoice' }).or(page.getByRole('link', { name: 'New invoice' })).first());
+  await d.click(page.getByRole('button', { name: 'New invoice' }).or(page.getByRole('link', { name: 'New invoice' })).first(), { on: 'Click New invoice' });
   await expect(page.getByRole('heading', { level: 1, name: 'New invoice' })).toBeVisible();
   await d.choose(page.getByLabel(label('Client')), 'Wonka Confectionery');
   await d.set(page.getByLabel(label('Period start')), isoDay(-30));
@@ -106,7 +112,7 @@ test('11.5', async ({ d, page }) => {
   await d.click(page.getByRole('row').filter({ hasText: 'Wonka Confectionery' }).first());
   await expect(page.getByRole('link', { name: 'Download PDF' })).toBeVisible();
   d.begin();
-  await d.point(page.getByRole('link', { name: 'Download PDF' }), { hold: 2500 });
+  await d.point(page.getByRole('link', { name: 'Download PDF' }), { hold: 2500, on: 'Download PDF gives you' });
   const send = page.getByRole('button', { name: 'Send', exact: true });
   await d.mark('highlight the Send button', send, { on: 'Click Send' });
   await d.click(send, { settle: false });
@@ -123,7 +129,7 @@ test('11.5', async ({ d, page }) => {
   await expect(page.getByText('Payment recorded')).toBeVisible();
   await d.beat(1500);
   await d.go('/finance/invoices');
-  await d.click(page.getByRole('navigation', { name: 'Invoices' }).getByRole('link', { name: 'Payments received' }));
+  await d.click(page.getByRole('navigation', { name: 'Invoices' }).getByRole('link', { name: 'Payments received' }), { on: 'Payments received lists' });
   await d.beat(2500);
   await d.finish();
 });
@@ -147,14 +153,14 @@ test('11.6', async ({ d, page }) => {
   await d.go('/finance/invoices');
   d.begin();
   await openFinance(d, page, 'Payroll');
-  await d.click(choice(page.getByRole('main'), 'Pay groups'), { settle: false });
+  await d.click(choice(page.getByRole('main'), 'Pay groups'), { settle: false, on: 'pay groups set who' });
   await d.point(page.getByText('Weekly USD').first(), { hold: 2500 });
-  await d.click(choice(page.getByRole('main'), 'Payrolls'), { settle: false });
-  await d.click(page.getByRole('button', { name: 'Run payroll' }).last(), { settle: false });
+  await d.click(choice(page.getByRole('main'), 'Payrolls'), { settle: false, on: 'the Payrolls tab' });
+  await d.click(page.getByRole('button', { name: 'Run payroll' }).last(), { settle: false, on: 'click Run payroll' });
   const dialog = page.getByRole('dialog', { name: 'Run payroll' });
   await d.choose(dialog.getByLabel(label('Pay group')), 'Weekly USD');
   await d.set(dialog.getByLabel(label('Period')), isoDay(-14));
-  await d.click(dialog.getByRole('button', { name: 'Create draft' }));
+  await d.click(dialog.getByRole('button', { name: 'Create draft' }), { on: 'create a draft' });
   const stubs = page.getByText('Pay stubs', { exact: true }).first();
   await expect(stubs).toBeVisible();
   for (const k of ['Gross', 'Adjustments', 'Net pay']) await d.point(page.getByText(k, { exact: true }).first(), { hold: 1000 });
@@ -163,7 +169,7 @@ test('11.6', async ({ d, page }) => {
   await d.beat(1500);
   // The bonus goes to someone who worked this week; a $0.00 stub would look odd on screen.
   const paid = page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Adjust', exact: true }) }).filter({ hasNotText: /\$0\.00/ });
-  await d.click(paid.first().getByRole('button', { name: 'Adjust', exact: true }), { settle: false });
+  await d.click(paid.first().getByRole('button', { name: 'Adjust', exact: true }), { settle: false, on: 'Add bonuses or deductions with Adjust' });
   const adj = page.getByRole('dialog', { name: /Bonuses and deductions/ });
   await d.mark('zoom to the bonuses dialog', adj, { on: 'Add bonuses or deductions' });
   const addLine = adj.getByRole('button', { name: 'Add line' });
@@ -191,7 +197,7 @@ test('11.7', async ({ d, page }) => {
   await d.mark('highlight the Stub link', stub, { on: 'pay stub is a PDF' });
   await d.point(stub, { hold: 2500 });
   await d.scroll(-2000);
-  await d.click(page.getByRole('button', { name: 'Mark as paid' }), { settle: false });
+  await d.click(page.getByRole('button', { name: 'Mark as paid' }), { settle: false, on: 'click Mark as paid' });
   await d.beat(1500);
   await d.click(page.getByRole('button', { name: 'Mark as paid' }).last());
   await expect(page.getByText('Payroll marked as paid')).toBeVisible();

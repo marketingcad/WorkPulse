@@ -6,9 +6,14 @@ test('15.1', async ({ d, page }) => {
   await d.go('/performance');
   await expect(page.getByRole('heading', { level: 1, name: 'Performance overview' })).toBeVisible();
   d.begin();
+  const nav = page.getByRole('complementary', { name: 'Primary' });
+  await d.point(nav.getByRole('button', { name: /^Performance/ }), { hold: 1200, on: 'Performance shows how work' });
+  await d.point(nav.getByRole('link', { name: 'Performance overview' }), { hold: 1200, on: 'then Performance overview' });
   const score = page.getByText(/Organization score/).first();
   await d.mark('zoom to the organization score', score, { on: 'The organization score' });
   await d.point(score, { hold: 1500 });
+  const month = page.getByRole('radio', { name: 'Month', exact: true }).or(page.getByRole('button', { name: 'Month', exact: true })).first();
+  await d.point(month, { hold: 800, on: 'a month' });
   await d.click(page.getByRole('radio', { name: 'Quarter', exact: true }).or(page.getByRole('button', { name: 'Quarter', exact: true })).first(), { settle: false, on: 'a quarter' });
   await d.beat(1200);
   await d.click(page.getByRole('radio', { name: 'Month', exact: true }).or(page.getByRole('button', { name: 'Month', exact: true })).first(), { settle: false });
@@ -58,6 +63,8 @@ test('15.3', async ({ d, page }) => {
   await d.go('/performance/leaderboards');
   await expect(page.getByRole('heading', { level: 1, name: 'Leaderboards' })).toBeVisible();
   d.begin();
+  await d.point(page.getByRole('heading', { level: 1, name: 'Leaderboards' }), { hold: 1000, on: 'Leaderboards rank' });
+  await d.point(page.getByRole('radio', { name: 'People', exact: true }), { hold: 1000, on: 'people by their performance score' });
   const family = page.getByRole('radiogroup', { name: 'Compare within' });
   await d.mark('zoom to the Role family filter', family, { on: 'the same role family' });
   await d.point(family, { hold: 1500 });

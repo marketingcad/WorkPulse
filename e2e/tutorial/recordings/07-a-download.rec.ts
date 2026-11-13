@@ -7,7 +7,7 @@ test('07.1', async ({ d, page }) => {
   await expect(page.getByRole('heading', { name: 'Get the WorkPulse desktop app' })).toBeVisible();
   d.begin();
   const windows = page.getByRole('link', { name: 'Download for Windows' });
-  await d.mark('zoom to the download buttons', windows);
+  await d.mark('zoom to the download buttons', windows, { on: 'the right installer' });
   for (const name of ['Download for Windows', 'Download for macOS', 'Download for Ubuntu / Debian (.deb)']) await d.point(page.getByRole('link', { name }), { hold: 1200 });
   await d.click(windows, { settle: false });
   const dialog = page.getByRole('dialog', { name: /Your download has started/ });
@@ -16,7 +16,7 @@ test('07.1', async ({ d, page }) => {
   await d.click(dialog.getByRole('link', { name: 'Open the step-by-step Windows guide (with pictures)' }));
   const steps = page.getByRole('list', { name: 'Steps to set up WorkPulse on Windows' });
   await expect(steps).toBeVisible();
-  await d.mark('zoom to the steps in the guide', steps);
+  await d.mark('zoom to the steps in the guide', steps, { on: 'A short guide opens' });
   for (const h of ['If Windows protects your PC, click More info', 'Click Run anyway', 'Sign in']) {
     await d.scrollTo(page.getByRole('heading', { name: new RegExp(h) }).first());
     await d.beat(2200);

@@ -9,7 +9,7 @@ test('09.1', async ({ d, page }) => {
   await d.click(nav.getByRole('link', { name: 'Time entries' }));
   await expect(page.getByRole('heading', { level: 1, name: 'Time entries' })).toBeVisible();
   const range = page.getByRole('group', { name: 'Date range' });
-  await d.mark('zoom to the filters', range);
+  await d.mark('zoom to the filters', range, { on: 'Pick a date range' });
   await d.click(range.getByRole('button', { name: 'This week' }));
   await d.choose(page.getByLabel('Member', { exact: true }), 'Ava Okafor');
   await d.settle();
@@ -19,7 +19,7 @@ test('09.1', async ({ d, page }) => {
   await d.click(entry.getByRole('button', { name: 'Entry actions' }), { settle: false });
   await d.click(page.getByRole('menuitem', { name: 'Edit' }), { settle: false });
   const edit = page.getByRole('dialog', { name: 'Edit time entry' });
-  await d.mark('zoom to the Edit dialog', edit);
+  await d.mark('zoom to the Edit dialog', edit, { on: 'choose Edit' });
   await d.type(edit.getByLabel(label('Note')), 'Homepage hero review with Maya');
   await d.type(edit.getByLabel(/Reason for change/), 'Added the missing note');
   await d.click(edit.getByRole('button', { name: 'Save changes' }), { settle: false });
@@ -28,7 +28,7 @@ test('09.1', async ({ d, page }) => {
   await d.click(page.getByRole('menuitem', { name: 'View history' }), { settle: false });
   const history = page.getByRole('dialog').filter({ hasText: 'Revision history' });
   await expect(history).toBeVisible();
-  await d.mark('zoom to the revision history', history);
+  await d.mark('zoom to the revision history', history, { on: 'View history' });
   await d.beat(4000);
   await page.keyboard.press('Escape');
   await d.finish();
@@ -39,7 +39,7 @@ test('09.2', async ({ d, page }) => {
   d.begin();
   await d.click(page.getByRole('button', { name: 'Add time' }).first(), { settle: false });
   const dialog = page.getByRole('dialog', { name: /^Add time/ });
-  await d.mark('zoom to the Add time dialog', dialog);
+  await d.mark('zoom to the Add time dialog', dialog, { on: 'Click Add time' });
   const member = dialog.getByLabel(label('Member'));
   if (await member.isVisible()) await d.choose(member, 'Kenji Mensah');
   const yesterday = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
@@ -63,9 +63,9 @@ test('09.3', async ({ d, page }) => {
   await d.click(rows.first(), { settle: false });
   const sheet = page.getByRole('dialog').first();
   await expect(sheet.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
-  await d.mark('zoom to the timesheet panel', sheet);
+  await d.mark('zoom to the timesheet panel', sheet, { on: 'Click a timesheet' });
   await d.beat(3500);
-  await d.mark('highlight the Approve button', sheet.getByRole('button', { name: 'Approve', exact: true }));
+  await d.mark('highlight the Approve button', sheet.getByRole('button', { name: 'Approve', exact: true }), { on: 'click Approve' });
   await d.click(sheet.getByRole('button', { name: 'Approve', exact: true }), { settle: false });
   await expect(page.getByText(/Timesheet approved/)).toBeVisible();
   await d.beat(1500);
@@ -78,7 +78,7 @@ test('09.3', async ({ d, page }) => {
   await d.beat(1500);
   const manual = page.getByText('Manual time requests', { exact: true }).first();
   await d.scrollTo(manual);
-  await d.mark('zoom to the manual time requests', manual);
+  await d.mark('zoom to the manual time requests', manual, { on: 'manual time requests wait' });
   await d.beat(2000);
   const approve = page.getByRole('button', { name: 'Approve', exact: true }).last();
   await d.click(approve, { settle: false });
@@ -91,7 +91,7 @@ test('09.4', async ({ d, page }) => {
   d.begin();
   await d.click(page.getByRole('group', { name: 'Sections' }).getByRole('button', { name: 'Team week', exact: true }).or(page.getByRole('link', { name: 'Team week' })).first());
   const table = page.getByText(/Hours per member/).first();
-  await d.mark('zoom to the hours table', table);
+  await d.mark('zoom to the hours table', table, { on: 'the hours each member worked' });
   await d.point(table, { hold: 3000 });
   await d.click(page.getByRole('button', { name: 'Previous week' }));
   await d.beat(2000);

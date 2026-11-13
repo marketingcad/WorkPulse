@@ -19,7 +19,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(readFileSync(path.join(root, 'quality-gates.json'), 'utf8'));
 const gates = manifest.gates;
 const E2E_DIR = 'e2e/tests';
-const VITEST_DIRS = ['packages/domain', 'packages/db', 'packages/api', 'packages/ui', 'packages/contracts', 'apps/web', 'apps/desktop'];
+const VITEST_DIRS = ['packages/domain', 'packages/db', 'packages/api', 'packages/ui', 'packages/contracts', 'apps/web', 'apps/desktop', 'e2e/tutorial'];
 
 const posix = (p) => p.split(path.sep).join('/');
 function* walk(dir) {
@@ -97,9 +97,12 @@ function run(gateId, flags, playwrightArgs) {
   if (unit) {
     for (const [pkg, names] of Object.entries(g.vitest ?? {})) {
       if (exclude.has(pkg)) continue;
-      const name = JSON.parse(readFileSync(path.join(root, pkg, 'package.json'), 'utf8')).name;
-      const files = names.map((n) => posix(path.relative(path.join(root, pkg), path.join(root, disk.get(`vitest:${pkg}:${n}`)))));
-      if (!sh(['--filter', name, 'exec', 'vitest', 'run', ...files])) failed.push(`${pkg} (Vitest)`);
+      // A folder inside a package (e2e/tutorial) runs with its own vitest.config.ts from that package.
+      const dir = existsSync(path.join(root, pkg, 'package.json')) ? pkg : path.dirname(pkg);
+      const name = JSON.parse(readFileSync(path.join(root, dir, 'package.json'), 'utf8')).name;
+      const config = dir === pkg ? [] : ['--config', posix(path.join(path.relative(dir, pkg), 'vitest.config.ts'))];
+      const files = names.map((n) => posix(path.relative(path.join(root, dir), path.join(root, disk.get(`vitest:${pkg}:${n}`)))));
+      if (!sh(['--filter', name, 'exec', 'vitest', 'run', ...config, ...files])) failed.push(`${pkg} (Vitest)`);
     }
   }
   if (e2e && g.playwright?.length) {

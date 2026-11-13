@@ -1,4 +1,6 @@
 /** Time and caption formatting shared by build-package.ts (planned timings) and render.ts (real ones). */
+import { normalize, scriptWords } from './timing/anchors';
+import type { WordTime } from './timing/types';
 
 /** 75 → "1:15"; with hours when the video is that long. */
 export function clock(total: number): string {
@@ -53,4 +55,40 @@ export function timedCues(narration: string, at: number, seconds: number): Array
     at += len;
   }
   return out;
+}
+
+/** How long a caption stays after its last word, and the least time one is on screen. */
+const CUE_AFTER = 0.3;
+const CUE_MIN = 1;
+
+/**
+ * The scene's cues timed to its spoken words: [start, end, text] from `at`. `words` are the scene's
+ * script words (one per scriptWords(narration)), timed from the start of its voice. A cue starts on its
+ * first word and ends a little after its last, at least CUE_MIN later, and always before the next cue.
+ */
+export function wordCues(narration: string, words: WordTime[], at: number): Array<[number, number, string]> {
+  // Cues and words are matched by their letters, so a token that cues() splits (as "$1,250.00" at its
+  // full stop) still finds its word.
+  const ends: number[] = [];
+  let chars = 0;
+  for (const w of scriptWords(narration)) ends.push((chars += normalize(w).length));
+  const wordAt = (char: number) => Math.min(words.length - 1, Math.max(0, ends.findIndex((e) => e > char)));
+  const spans: Array<{ first: number; last: number; text: string }> = [];
+  let pos = 0;
+  for (const text of cues(narration)) {
+    const len = normalize(text).length;
+    if (!len || !words.length) continue;
+    spans.push({ first: wordAt(pos), last: wordAt(pos + len - 1), text });
+    pos += len;
+  }
+  // Each cue starts a little after the one before, even when estimated words share a time, so no cue
+  // ends before it starts (players drop those).
+  const starts: number[] = [];
+  for (const c of spans) starts.push(Math.max(at + words[c.first]!.start, (starts.at(-1) ?? -Infinity) + 0.1));
+  return spans.map((c, i) => {
+    const start = starts[i]!;
+    const next = i + 1 < starts.length ? starts[i + 1]! - 0.05 : Infinity;
+    const end = Math.min(next, Math.max(at + words[c.last]!.end + CUE_AFTER, start + CUE_MIN));
+    return [start, end, c.text];
+  });
 }

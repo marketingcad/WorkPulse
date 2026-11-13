@@ -5,6 +5,8 @@ import { narrationSeconds, sceneById, slug, type Scene } from './scenes';
 import { openDesktop, WorkerDevice, type DesktopOptions } from './desktop';
 import { CLIPS_DIR, STATE, TUTORIAL_DATA, TUTORIAL_DESKTOP_URL } from './env';
 import type { TutorialData } from './setup';
+import { anchorWords } from './timing/anchors';
+import type { Marker } from './timing/types';
 
 /**
  * The recording kit: what a scene recording uses to look like a person presenting the app.
@@ -15,15 +17,19 @@ import type { TutorialData } from './setup';
  * - The clip lasts at least as long as the scene's narration, so the voiceover fits.
  * - Each clip is saved as clips/<scene id>-<title>.webm with a .markers.json next to it.
  *
+ * - `{ on: 'words' }` ties a moment to the narration words that name it: the renderer times the footage
+ *   so the moment is shown when those words are spoken (timing/retime.ts). The phrase must be in the
+ *   scene's narration, or the recording fails.
+ *
  * A recording is a Playwright test whose title is the scene id (see scenes.ts).
  */
 
-export interface Marker {
-  /** seconds from the start of the clip */
-  at: number;
-  label: string;
-  /** the area to zoom to or highlight, in video pixels (1920×1080) */
-  box?: { x: number; y: number; width: number; height: number };
+export type { Marker } from './timing/types';
+
+/** The narration words a moment belongs to: the `nth` time `on` is said (default the first). */
+export interface Anchor {
+  on?: string;
+  nth?: number;
 }
 
 const CURSOR_SCRIPT = `
@@ -112,8 +118,29 @@ export class Director {
     await this.page.waitForTimeout(ms);
   }
 
-  /** Glides the cursor to the middle of `target` with an ease-in-out curve. */
-  async point(target: Locator, opts: { hold?: number } = {}): Promise<void> {
+  /**
+   * Notes that this moment belongs to the narration words `a.on`, as "<action>: <words>". Throws first
+   * when the scene's narration does not say them, so a typo cannot quietly put a scene out of time.
+   */
+  private anchor(action: string, a: Anchor): void {
+    if (!a.on) return;
+    anchorWords(this.scene, a.on, a.nth);
+    this.markers.push({ at: this.seconds(), label: `${action}: ${a.on}`, on: a.on, ...(a.nth && a.nth > 1 ? { nth: a.nth } : {}) });
+  }
+
+  /** A moment tied to the narration words `on`, with nothing drawn: it only times the footage. */
+  cue(on: string, opts: { nth?: number } = {}): void {
+    this.anchor('cue', { on, nth: opts.nth });
+  }
+
+  /** Glides the cursor to the middle of `target` with an ease-in-out curve. With `on`, the anchor is when it arrives. */
+  async point(target: Locator, opts: { hold?: number } & Anchor = {}): Promise<void> {
+    await this.glide(target);
+    this.anchor('point', opts);
+    await this.page.waitForTimeout(opts.hold ?? 250);
+  }
+
+  private async glide(target: Locator): Promise<void> {
     await target.scrollIntoViewIfNeeded();
     const box = await target.boundingBox();
     if (!box) throw new Error(`cannot point at an element that is not visible: ${target}`);
@@ -127,12 +154,13 @@ export class Director {
       await this.page.waitForTimeout(12);
     }
     this.mouse = to;
-    await this.page.waitForTimeout(opts.hold ?? 250);
   }
 
-  /** Moves to `target` and clicks it, then lets the page react. */
-  async click(target: Locator, opts: { settle?: boolean } = {}): Promise<void> {
-    await this.point(target, { hold: 200 });
+  /** Moves to `target` and clicks it, then lets the page react. With `on`, the anchor is when the cursor arrives. */
+  async click(target: Locator, opts: { settle?: boolean } & Anchor = {}): Promise<void> {
+    await this.glide(target);
+    this.anchor('click', opts);
+    await this.page.waitForTimeout(200);
     await target.click();
     if (opts.settle !== false) await this.settle();
     else await this.page.waitForTimeout(350);
@@ -141,8 +169,10 @@ export class Director {
   }
 
   /** Clicks into a field and types at a readable speed (replacing what was there). */
-  async type(target: Locator, text: string): Promise<void> {
-    await this.point(target, { hold: 150 });
+  async type(target: Locator, text: string, anchor: Anchor = {}): Promise<void> {
+    await this.glide(target);
+    this.anchor('type', anchor);
+    await this.page.waitForTimeout(150);
     await target.click();
     await target.fill('');
     await target.pressSequentially(text, { delay: 35 });
@@ -175,7 +205,8 @@ export class Director {
   }
 
   /** Scrolls `target` smoothly to the middle of the screen. */
-  async scrollTo(target: Locator): Promise<void> {
+  async scrollTo(target: Locator, anchor: Anchor = {}): Promise<void> {
+    this.anchor('scroll', anchor);
     await target.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
     await this.page.waitForTimeout(900);
   }
@@ -188,14 +219,18 @@ export class Director {
 
   /**
    * Notes a zoom or highlight for the editor: "at 12.4 s, zoom to the Approve button". With a
-   * target, the box is where it is on screen, in video pixels.
+   * target, the box is where it is on screen, in video pixels. With `on`, it is shown when those
+   * narration words are spoken.
    */
-  async mark(label: string, target?: Locator): Promise<void> {
+  async mark(label: string, target?: Locator, anchor: Anchor = {}): Promise<void> {
+    if (anchor.on) anchorWords(this.scene, anchor.on, anchor.nth);
     const box = target ? await target.boundingBox() : null;
     this.markers.push({
       at: this.seconds(),
       label,
       ...(box ? { box: { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) } } : {}),
+      ...(anchor.on ? { on: anchor.on } : {}),
+      ...(anchor.nth && anchor.nth > 1 ? { nth: anchor.nth } : {}),
     });
   }
 

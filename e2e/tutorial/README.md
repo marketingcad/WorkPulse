@@ -55,6 +55,16 @@ The voice comes from `TUTORIAL_TTS`:
 
 Set keys in the environment, never in a file in the repo. Voice files and encoded scenes are cached in `e2e/.tmp/tutorial-render`, so a re-run only redoes what changed; switching the voice re-renders every scene. Callouts are the quoted text of each scene's overlays. Watch the result before publishing.
 
+### Timing to the narration
+
+Zooms, highlights and clicks are shown when the narrator says what they show, and captions follow the spoken words.
+
+- **Anchors.** A recording ties a moment to the words that name it: `d.mark('zoom to the timer card', timer, { on: 'The timer starts' })`, `d.click(button, { on: 'click Approve' })`, or `d.cue('the Coffee break')` for timing alone. `nth: 2` picks a later time the phrase is said. `click`, `type`, `point` and `scrollTo` take `{ on }` too; the moment is when the cursor arrives. The phrase must be in the scene's narration (case and punctuation don't matter), or the recording fails. `pnpm --filter @tallywork/e2e tutorial:test` also checks every anchor against the script, so editing the narration can't silently break one.
+- **Word timing.** Each voice file is aligned word by word with [whisper.cpp](https://github.com/ggml-org/whisper.cpp), which runs on this computer. The Windows build and its `base.en` model (~150 MB) download into `e2e/.tmp/whisper` on first use; results are cached in `e2e/.tmp/tutorial-render/align`. ElevenLabs voices bring their own timestamps instead. If alignment fails, or matches less than 80% of the words, that scene falls back to an estimate from word counts and the render says so. `TUTORIAL_ALIGN=off` uses the estimate everywhere.
+- **Retiming.** Between anchors, the footage plays faster (up to 1.5×) where it runs ahead of the words, and holds on the frame before the anchor where it runs behind. It is never slowed down. A scene without anchors renders as before.
+- **Output.** `video/timeline.json` has every scene's start, word times, anchors, footage pieces and captions. `video/sync-report.json` lists the anchors shown more than 150 ms after their words, or dropped because the narration says them in a different order from the recording; the render prints the same lines (`[render] sync: …`).
+- **Preview.** `TUTORIAL_SCENES=07.3,09.2 pnpm tutorial:render` renders only those scenes into `video/preview.mp4`, with `preview.en.srt`, `preview.timeline.json` and `preview.sync-report.json` (so the full video's timeline stays as it was), without cards, thumbnail or chapter files. Anchor phrases and clips are checked before any voice is made, so a typo stops the render straight away.
+
 ## Publishing to the Help Center
 
 System admins (anyone who may change the organization, `org:update`) can watch the tutorial on the Help page: a player at the top of the topics with the chapter list, a "Video tutorial" topic link, and a "Watch the video" button in the page header. Nobody else sees it, and the API refuses them.
@@ -76,7 +86,7 @@ The API is `GET /orgs/:orgId/help/tutorial` (the manifest, or `null`) and `GET /
 2. Make the recording do what the actions say, in `recordings/NN-*.rec.ts`:
    - `await d.go('/path')` opens a page of the demo organization (`'!/download'` for any other path). Call `d.begin()` when the narration starts.
    - Move with `d.click`, `d.type`, `d.choose` (a `<select>` option by text), `d.set` (date and time fields), `d.point`, `d.scrollTo` and `d.beat`. These are slow and visible on purpose; don't use raw `locator.click()` on screen.
-   - Call `d.mark('zoom to …', locator)` for every zoom or highlight in the script.
+   - Call `d.mark('zoom to …', locator, { on: 'words' })` for every zoom or highlight in the script, with the narration words it belongs to (see [Timing to the narration](#timing-to-the-narration)).
    - End with `await d.finish()`, which holds the last frame until the narration would end.
    - Use `label('Name')` for a field whose label may end with the required marker (`Name *`), and `choice(scope, 'Weekly')` for segmented controls.
    - Desktop scenes call `useDesktopWindow()` at the top of their file and open the window with `d.desktop()`.

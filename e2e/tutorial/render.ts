@@ -9,6 +9,13 @@
  * Help Center, see publish.ts). TUTORIAL_MUSIC=<audio file> mixes a music track in quietly under the voice. Work files and the voice cache are in e2e/.tmp/tutorial-render, so a
  * re-run only redoes the scenes whose clip, words or voice changed.
  *
+ * Timing to the narration: each voice file is aligned word by word (timing/voice-timing.ts: whisper.cpp,
+ * or ElevenLabs' own timestamps), and every recorded moment anchored with `{ on: 'words' }` is shown when
+ * those words are spoken (timing/retime.ts). Captions follow the spoken words. The render also writes
+ * timeline.json (every scene's words, anchors, footage timing and captions) and sync-report.json (the
+ * anchors more than 150 ms off their words), and prints the same. TUTORIAL_ALIGN=off estimates word
+ * times from word counts instead. TUTORIAL_SCENES=07.3,09.2 renders only those scenes, as preview.mp4.
+ *
  * Voice, from TUTORIAL_TTS:
  * - `piper` (default): Piper, a free open-source voice that runs on this computer. TUTORIAL_VOICE
  *   (default "en_US-lessac-high") names a voice from https://huggingface.co/rhasspy/piper-voices.
@@ -23,8 +30,13 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { clock, srtTime, timedCues } from './format';
+import { clock, srtTime, wordCues } from './format';
 import { CHAPTERS, slug, VIDEO, type Scene } from './scenes';
+import { anchorProblems, anchorWords } from './timing/anchors';
+import { planRetime, retimeChain, zoomMarks } from './timing/retime';
+import { placeTimeline, syncReport } from './timing/timeline';
+import type { Box, Marker, SceneTimeline } from './timing/types';
+import { download, unzip, wordTimes } from './timing/voice-timing';
 
 const HERE = import.meta.dirname;
 const CLIPS = path.join(HERE, 'clips');
@@ -54,17 +66,6 @@ const PIPER = path.resolve(HERE, '../.tmp/piper');
 const PIPER_RELEASE = 'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip';
 const MODEL = process.env.TUTORIAL_TTS_MODEL ?? (TTS === 'openai' ? 'gpt-4o-mini-tts' : 'eleven_multilingual_v2');
 
-interface Box {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-interface Marker {
-  at: number;
-  label: string;
-  box?: Box;
-}
 /** One piece of the final cut, in order. */
 interface Segment {
   file: string;
@@ -72,6 +73,8 @@ interface Segment {
   scene?: Scene;
   /** the chapter this segment opens */
   chapter?: string;
+  /** a scene's words, anchors and captions, timed from the segment's start */
+  timeline?: SceneTimeline;
 }
 
 function tool(name: 'ffmpeg' | 'ffprobe'): string {
@@ -158,15 +161,14 @@ async function voices(scenes: Scene[]): Promise<Map<string, string>> {
       renameSync(`${j.out}.part`, j.out);
     }
   }
-  if (TTS === 'openai' || TTS === 'elevenlabs') for (const j of todo) writeFileSync(j.out, await speakOnline(j.text));
+  if (TTS === 'openai' || TTS === 'elevenlabs')
+    for (const j of todo) {
+      const { audio, alignment } = await speakOnline(j.text);
+      // ElevenLabs says when each character is spoken: the word times come from that (timing/voice-timing.ts).
+      if (alignment) writeFileSync(`${j.out}.alignment.json`, JSON.stringify(alignment), 'utf8');
+      writeFileSync(j.out, audio);
+    }
   return files;
-}
-
-async function download(url: string, to: string): Promise<void> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`download failed: ${res.status} ${url}`);
-  writeFileSync(`${to}.part`, Buffer.from(await res.arrayBuffer()));
-  renameSync(`${to}.part`, to);
 }
 
 /** Piper and the voice model, downloaded on first use. */
@@ -178,9 +180,7 @@ async function piper(): Promise<{ exe: string; model: string }> {
     mkdirSync(PIPER, { recursive: true });
     const zip = path.join(PIPER, 'piper.zip');
     await download(PIPER_RELEASE, zip);
-    // Windows' own tar opens zip files.
-    const r = spawnSync(path.join(process.env.WINDIR ?? 'C:\\Windows', 'System32', 'tar.exe'), ['-xf', zip, '-C', PIPER]);
-    if (r.status !== 0) throw new Error(`cannot unpack Piper: ${r.stderr}`);
+    unzip(zip, PIPER);
   }
   // "en_US-lessac-high" lives at en/en_US/lessac/high/ in the voice repository.
   const name = /^([a-z]+)_([A-Z]+)-(.+)-(x_low|low|medium|high)$/.exec(VOICE);
@@ -196,7 +196,7 @@ async function piper(): Promise<{ exe: string; model: string }> {
   return { exe, model };
 }
 
-async function speakOnline(text: string): Promise<Buffer> {
+async function speakOnline(text: string): Promise<{ audio: Buffer; alignment?: unknown }> {
   const key = process.env[TTS === 'openai' ? 'OPENAI_API_KEY' : 'ELEVENLABS_API_KEY'];
   if (!key) throw new Error(`TUTORIAL_TTS=${TTS} needs ${TTS === 'openai' ? 'OPENAI_API_KEY' : 'ELEVENLABS_API_KEY'}`);
   const res =
@@ -212,13 +212,15 @@ async function speakOnline(text: string): Promise<Buffer> {
             ...(MODEL.startsWith('gpt-') ? { instructions: 'A professional, friendly product trainer. Calm pace, a little slower than conversation.' } : {}),
           }),
         })
-      : await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(VOICE || '')}?output_format=mp3_44100_128`, {
+      : await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(VOICE || '')}/with-timestamps?output_format=mp3_44100_128`, {
           method: 'POST',
           headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
           body: JSON.stringify({ text, model_id: MODEL }),
         });
   if (!res.ok) throw new Error(`${TTS} speech failed: ${res.status} ${await res.text()}`);
-  return Buffer.from(await res.arrayBuffer());
+  if (TTS === 'openai') return { audio: Buffer.from(await res.arrayBuffer()) };
+  const body = (await res.json()) as { audio_base64: string; alignment: unknown };
+  return { audio: Buffer.from(body.audio_base64, 'base64'), alignment: body.alignment };
 }
 
 // ─── Pictures ────────────────────────────────────────────────────────────────
@@ -305,31 +307,53 @@ async function scene(s: Scene, voice: string, first: boolean, last: boolean): Pr
   const start = markers.find((m) => m.label.startsWith('scene start'))?.at ?? 0;
   const end = markers.find((m) => m.label.startsWith('scene end'))?.at ?? seconds(clip);
   const speech = seconds(voice);
-  // Where the clicking outlasts the words, play the footage faster (up to 1.5×) rather than leave a silence.
-  const speed = Math.min(MAX_SPEED, Math.max(1, (end - start) / (LEAD + speech + TAIL + 1)));
-  const picture = (end - start) / speed;
-  const length = Math.max(picture, LEAD + speech + TAIL);
+  const { words, aligner } = await wordTimes(s, voice, { ffmpeg: FFMPEG, voiceSeconds: speech, work: WORK });
+  // Each anchored moment is shown when its words are spoken: the footage between anchors is sped up
+  // (to 1.5×) or held on the frame before the anchor (timing/retime.ts). Without anchors, the footage
+  // plays faster where the clicking outlasts the words, as it always has.
+  const plan = planRetime({
+    clip: end - start,
+    target: LEAD + speech + TAIL,
+    maxSpeed: MAX_SPEED,
+    // key: the marker's index, so each zoom finds its own anchor (zoomMarks)
+    anchors: markers.flatMap((m, key) => (m.on ? [{ label: m.label, on: m.on, key, clipAt: m.at - start, wordAt: round(LEAD + words[anchorWords(s, m.on, m.nth).first]!.start) }] : [])),
+  });
+  const length = plan.length;
 
   const shown = callouts(s);
   const slot = (length - 1.5) / Math.max(1, shown.length);
   const notes = shown.map((t, i) => text(t, { size: 40, bold: true, y: 'h-text_h-150', box: true, from: 1.5 + i * slot, to: 1.5 + i * slot + Math.min(5, slot - 0.4) }));
-  const zoom = zoompan(markers.map((m) => ({ ...m, at: (m.at - start) / speed })));
-  const video = [
-    `setpts=(PTS-STARTPTS)/${round(speed)}`,
-    'fps=30',
-    'scale=1920:1080',
-    `tpad=stop_mode=clone:stop_duration=${round(length - picture + 0.1)}`,
+  const zoom = zoompan(zoomMarks(markers, start, plan));
+  const rest = [
     ...(zoom ? [zoom] : []),
     ...notes,
     ...(first ? ['fade=t=in:st=0:d=0.4'] : []),
     ...(last ? [`fade=t=out:st=${round(length - 0.4)}:d=0.4`] : []),
     'format=yuv420p',
-  ];
-  const graph = `[0:v]${video.join(',')}[v];\n${audioGraph(length, last ? 0.4 : null)}`;
+  ].join(',');
+  // One piece is a single chain, written as it always was, so unanchored scenes keep their cached encodes.
+  const chain = retimeChain(plan.pieces);
+  const picture = plan.pieces.length === 1 ? `${chain.slice(0, -'[rt]'.length)},${rest}[v]` : `${chain};\n[rt]${rest}[v]`;
+  const graph = `${picture};\n${audioGraph(length, last ? 0.4 : null)}`;
   const st = statSync(clip);
   // A re-recorded clip has the same name: its size and time tell the cache it changed.
   const file = await encode(s.id, ['-ss', String(start), '-to', String(end), '-i', clip, ...audioIn(voice)], graph, length, `${st.size} ${st.mtimeMs}`);
-  return { file, seconds: length, scene: s };
+  const timeline: SceneTimeline = {
+    scene: s.id,
+    start: 0,
+    seconds: length,
+    voice: { start: LEAD, seconds: speech, aligner },
+    words,
+    anchors: plan.anchors,
+    pieces: plan.pieces,
+    captions: captionsOf(s, words),
+  };
+  return { file, seconds: length, scene: s, timeline };
+}
+
+/** A scene's captions, timed from the start of its segment (its voice starts LEAD in). */
+function captionsOf(s: Scene, words: SceneTimeline['words']): SceneTimeline['captions'] {
+  return wordCues(s.narration, words, LEAD).map(([start, end, t]) => ({ start: round(start), end: round(end), text: t }));
 }
 
 async function card(name: string, lines: Array<Parameters<typeof text>[1] & { t: string }>, length: number, voice?: string, fadeOut = 0.5): Promise<Segment> {
@@ -364,11 +388,43 @@ async function main() {
   // drawtext reads fonts by relative path: a drive letter's colon would need escaping in the filter.
   for (const f of ['segoeui.ttf', 'segoeuib.ttf', 'seguisym.ttf']) copyFileSync(path.join(process.env.WINDIR ?? 'C:\\Windows', 'Fonts', f), path.join(WORK, 'fonts', f));
 
-  const scenes = CHAPTERS.flatMap((c) => c.scenes);
+  const all = CHAPTERS.flatMap((c) => c.scenes);
+  // TUTORIAL_SCENES=07.3,09.2 renders only those scenes, one after another, as a preview.
+  const only = process.env.TUTORIAL_SCENES?.split(',').map((x) => x.trim()).filter(Boolean);
+  for (const id of only ?? []) if (!all.some((s) => s.id === id)) throw new Error(`TUTORIAL_SCENES: no scene "${id}" in tutorial/scenes.ts`);
+  const scenes = only ? all.filter((s) => only.includes(s.id)) : all;
+  // Anchors and clips are checked before any voice is made or video encoded: paid voices and long
+  // encodes are not wasted on a render that cannot finish.
+  const problems: string[] = [];
+  for (const s of scenes.filter((x) => x.app !== 'edit')) {
+    const markersFile = path.join(CLIPS, `${s.id}-${slug(s.title)}.markers.json`);
+    if (!existsSync(markersFile)) {
+      problems.push(`no clip for scene ${s.id}: run pnpm tutorial:record first (${markersFile})`);
+      continue;
+    }
+    const { errors, warnings } = anchorProblems(s, (JSON.parse(readFileSync(markersFile, 'utf8')) as { markers: Marker[] }).markers);
+    problems.push(...errors);
+    for (const w of warnings) console.warn(`[render] anchor: ${w}`);
+  }
+  if (problems.length) throw new Error(`cannot render:\n  ${problems.join('\n  ')}`);
   const voice = await voices(scenes);
   const tagline = 'Track • Focus • Achieve';
+  const name = only ? 'preview' : NAME;
 
-  const jobs: Array<() => Promise<Segment>> = [
+  /** The closing scene, made in the editor: the end card, read over. */
+  const readOver = async (s: Scene, v: string): Promise<Segment> => {
+    const speech = seconds(v);
+    const { words, aligner } = await wordTimes(s, v, { ffmpeg: FFMPEG, voiceSeconds: speech, work: WORK });
+    const g = await card(s.id, [
+      { t: 'WorkPulse', size: 132, bold: true, y: 'h/2-200' },
+      { t: tagline, size: 48, color: ACCENT, y: 'h/2-20' },
+      { t: 'Help is always in the app: Help › Search', size: 40, y: 'h/2+90' },
+    ], LEAD + speech + 2, v, 1);
+    return { ...g, scene: s, timeline: { scene: s.id, start: 0, seconds: g.seconds, voice: { start: LEAD, seconds: speech, aligner }, words, anchors: [], pieces: [], captions: captionsOf(s, words) } };
+  };
+  const sceneJob = (s: Scene, first: boolean, last: boolean) => () => (s.app === 'edit' ? readOver(s, voice.get(s.id)!) : scene(s, voice.get(s.id)!, first, last));
+
+  const jobs: Array<() => Promise<Segment>> = only ? scenes.map((s) => sceneJob(s, true, true)) : [
     () =>
       card('00-title', [
         { t: 'WorkPulse', size: 132, bold: true, y: 'h/2-190' },
@@ -376,7 +432,7 @@ async function main() {
         { t: tagline, size: 40, color: ACCENT, y: 'h/2+90' },
       ], 4).then((s) => ({ ...s, chapter: CHAPTERS[0]!.title })),
   ];
-  for (const [ci, c] of CHAPTERS.entries()) {
+  for (const [ci, c] of only ? [] : CHAPTERS.entries()) {
     if (ci > 0)
       jobs.push(() =>
         card(`${String(c.n).padStart(2, '0')}-chapter`, [
@@ -384,33 +440,36 @@ async function main() {
           { t: c.title, size: 84, bold: true, y: 'h/2-20' },
         ], 3).then((s) => ({ ...s, chapter: c.title })),
       );
-    for (const [si, s] of c.scenes.entries()) {
-      const v = voice.get(s.id)!;
-      if (s.app === 'edit')
-        // The only scene made in the editor is the closing one: the end card, read over.
-        jobs.push(async () => ({
-          ...(await card(s.id, [
-            { t: 'WorkPulse', size: 132, bold: true, y: 'h/2-200' },
-            { t: tagline, size: 48, color: ACCENT, y: 'h/2-20' },
-            { t: 'Help is always in the app: Help › Search', size: 40, y: 'h/2+90' },
-          ], LEAD + seconds(v) + 2, v, 1)),
-          scene: s,
-        }));
-      else jobs.push(() => scene(s, v, si === 0, si === c.scenes.length - 1));
-    }
+    for (const [si, s] of c.scenes.entries()) jobs.push(sceneJob(s, si === 0, si === c.scenes.length - 1));
   }
   const segments = await pool(jobs);
 
-  // Captions and chapter marks from the real lengths.
+  // Captions (timed to the spoken words), chapter marks and the timeline, from the real lengths.
   const srt: string[] = [];
   const chapters: Array<{ title: string; at: number }> = [];
+  const timeline: SceneTimeline[] = [];
+  const starts: number[] = [];
   let t = 0;
   for (const g of segments) {
     if (g.chapter) chapters.push({ title: g.chapter, at: chapters.length ? t : 0 });
-    if (g.scene) for (const [a, b, p] of timedCues(g.scene.narration, t + LEAD, seconds(voice.get(g.scene.id)!))) srt.push(String(srt.length / 4 + 1), `${srtTime(a)} --> ${srtTime(b)}`, p, '');
+    if (g.timeline) {
+      for (const c of g.timeline.captions) srt.push(String(srt.length / 4 + 1), `${srtTime(t + c.start)} --> ${srtTime(t + c.end)}`, c.text, '');
+      timeline.push(g.timeline);
+      starts.push(round(t));
+    }
     t += g.seconds;
   }
   const total = t;
+  mkdirSync(path.join(WORK, 'timeline'), { recursive: true });
+  for (const s of timeline) writeFileSync(path.join(WORK, 'timeline', `${s.scene}.json`), JSON.stringify(s, null, 2), 'utf8');
+  // A preview keeps its own timeline and report, so the full video's stay true to it.
+  const prefix = only ? `${name}.` : '';
+  writeFileSync(path.join(OUT, `${prefix}timeline.json`), `${JSON.stringify(placeTimeline(timeline, starts), null, 2)}\n`, 'utf8');
+  const report = syncReport(timeline);
+  writeFileSync(path.join(OUT, `${prefix}sync-report.json`), `${JSON.stringify(report.json, null, 2)}\n`, 'utf8');
+  for (const line of report.lines) console.warn(`[render] sync: ${line}`);
+  const estimated = timeline.filter((s) => s.voice.aligner === 'estimate').map((s) => s.scene);
+  if (estimated.length) console.warn(`[render] word times estimated, not aligned, for: ${estimated.join(', ')}`);
   writeFileSync(path.join(WORK, 'list.txt'), segments.map((g) => `file '${g.file}'`).join('\n'), 'utf8');
   writeFileSync(path.join(WORK, 'captions.srt'), srt.join('\n'), 'utf8');
   writeFileSync(
@@ -423,7 +482,7 @@ async function main() {
     'utf8',
   );
 
-  const mp4 = path.join(OUT, `${NAME}.mp4`);
+  const mp4 = path.join(OUT, `${name}.mp4`);
   console.log('[render] joining the segments');
   // Captions stay in the .srt next to the MP4: an embedded caption track corrupts the MP4's first chapter mark.
   const music = process.env.TUTORIAL_MUSIC;
@@ -440,11 +499,13 @@ async function main() {
       : ['-map', '0:v', '-map', '0:a', '-c', 'copy']),
     '-map_metadata', '1', '-map_chapters', '1', '-movflags', '+faststart', mp4,
   ]);
-  await thumbnail();
-  await chapterFiles(segments, voice);
-  copyFileSync(path.join(WORK, 'captions.srt'), path.join(OUT, `${NAME}.en.srt`));
-  writeFileSync(path.join(OUT, 'youtube-chapters.txt'), `${chapters.map((c) => `${clock(c.at)} ${c.title}`).join('\n')}\n`, 'utf8');
-  console.log(`[render] ${path.relative(process.cwd(), mp4)} · ${clock(total)} · ${segments.length} segments · voice: ${TTS} "${VOICE}"${music ? ` · music: ${path.basename(music)}` : ''}`);
+  copyFileSync(path.join(WORK, 'captions.srt'), path.join(OUT, `${name}.en.srt`));
+  if (!only) {
+    await thumbnail();
+    await chapterFiles(segments);
+    writeFileSync(path.join(OUT, 'youtube-chapters.txt'), `${chapters.map((c) => `${clock(c.at)} ${c.title}`).join('\n')}\n`, 'utf8');
+  }
+  console.log(`[render] ${path.relative(process.cwd(), mp4)} · ${clock(total)} · ${segments.length} segments${only ? ` (preview of ${only.join(', ')})` : ''} · voice: ${TTS} "${VOICE}"${music ? ` · music: ${path.basename(music)}` : ''}`);
 }
 
 /**
@@ -452,7 +513,7 @@ async function main() {
  * storage upload limit, with WebVTT captions, a poster and manifest.json. Names carry a content hash,
  * so browsers may cache them and a new render never overwrites what viewers are watching.
  */
-async function chapterFiles(segments: Segment[], voice: Map<string, string>): Promise<void> {
+async function chapterFiles(segments: Segment[]): Promise<void> {
   const dir = path.join(OUT, 'chapters');
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
@@ -473,7 +534,7 @@ async function chapterFiles(segments: Segment[], voice: Map<string, string>): Pr
     const vtt = ['WEBVTT', ''];
     let t = 0;
     for (const g of group.segments) {
-      if (g.scene) for (const [a, b, p] of timedCues(g.scene.narration, t + LEAD, seconds(voice.get(g.scene.id)!))) vtt.push(`${srtTime(a).replace(',', '.')} --> ${srtTime(b).replace(',', '.')}`, p, '');
+      for (const c of g.timeline?.captions ?? []) vtt.push(`${srtTime(t + c.start).replace(',', '.')} --> ${srtTime(t + c.end).replace(',', '.')}`, c.text, '');
       t += g.seconds;
     }
     writeFileSync(path.join(dir, `${name}.vtt`), vtt.join('\n'), 'utf8');

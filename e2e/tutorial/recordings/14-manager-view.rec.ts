@@ -5,11 +5,11 @@ test('14.1', async ({ d, page }) => {
   await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
   d.begin();
   const role = page.getByText('Team Manager', { exact: true }).first();
-  await d.mark('highlight the role name', role);
+  await d.mark('highlight the role name', role, { on: 'through the eyes of Maya' });
   await d.point(role, { hold: 2500 });
   await d.point(page.getByRole('button', { name: 'Team', exact: true }).or(page.getByRole('radio', { name: 'Team', exact: true })).first(), { hold: 2500 });
   const nav = page.getByRole('complementary', { name: 'Primary' });
-  await d.mark('zoom to the sidebar', nav);
+  await d.mark('zoom to the sidebar', nav, { on: 'Her menu is shorter' });
   for (const group of ['Time Tracking', 'Workforce', 'Project Management', 'Finance', 'Reports']) {
     const button = nav.getByRole('button', { name: group });
     if (!(await button.isVisible())) continue;

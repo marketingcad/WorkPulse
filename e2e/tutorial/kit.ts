@@ -257,7 +257,7 @@ export class Director {
   }
 
   /** The next question asked in the WorkPulse AI panel, and the answer shown (Markdown). */
-  async scriptAnswer(question: string, markdown: string, title?: string): Promise<void> {
+  async scriptAnswer(question: string | RegExp, markdown: string, title?: string): Promise<void> {
     (await this.ai()).answer(question, markdown, title);
   }
 

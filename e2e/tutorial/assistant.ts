@@ -47,10 +47,11 @@ export interface Handled {
   chunks?: string[];
 }
 
-const same = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase();
+const same = (asked: string, expected: string | RegExp) =>
+  typeof expected === 'string' ? asked.trim().replace(/\s+/g, ' ').toLowerCase() === expected.trim().replace(/\s+/g, ' ').toLowerCase() : expected.test(asked.trim());
 
 export class ScriptedAssistant {
-  private readonly answers: Array<{ question: string; markdown: string; title?: string }> = [];
+  private readonly answers: Array<{ question: string | RegExp; markdown: string; title?: string }> = [];
   private readonly drafts: AssistantDraftDto[] = [];
   private summary: PortalAiSummaryDto | null = null;
   private readonly chats: Chat[] = [];
@@ -61,8 +62,11 @@ export class ScriptedAssistant {
     private readonly orgId: string,
   ) {}
 
-  /** The next question asked in the panel, and its answer (Markdown, as the assistant writes it). */
-  answer(question: string, markdown: string, title?: string): void {
+  /**
+   * The next question asked in the panel, and its answer (Markdown, as the assistant writes it). A
+   * pattern matches a question that carries dates, such as "Explain with WorkPulse AI" on a finding.
+   */
+  answer(question: string | RegExp, markdown: string, title?: string): void {
     this.answers.push({ question, markdown, ...(title ? { title } : {}) });
   }
 

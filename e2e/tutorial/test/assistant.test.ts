@@ -78,6 +78,15 @@ describe('ScriptedAssistant', () => {
     expect(call(a, 'POST', `${base}/conversations/${chat.id}/messages`, JSON.stringify({ content: '  which projects are close to their  budget? ' })).status).toBe(200);
   });
 
+  it('matches a question that carries dates by a pattern', () => {
+    const a = new ScriptedAssistant('16.2', ORG);
+    a.answer(/^Explain this insight and what I should do: "\d+ timesheets are waiting for approval"/, 'Approve them so pay and billing use approved time.');
+    const chat = json(call(a, 'POST', `${base}/conversations`, '{}')) as AssistantConversationDto;
+    const q = 'Explain this insight and what I should do: "12 timesheets are waiting for approval" (2026-11-09 to 2026-11-13).';
+    expect(call(a, 'POST', `${base}/conversations/${chat.id}/messages`, JSON.stringify({ content: q })).status).toBe(200);
+    expect(() => a.assertUsed()).not.toThrow();
+  });
+
   it('fails the scene when the question is not the scripted one', () => {
     const a = scripted();
     const chat = json(call(a, 'POST', `${base}/conversations`, '{}')) as AssistantConversationDto;

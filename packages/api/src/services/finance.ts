@@ -53,7 +53,9 @@ import { priceEntries } from './pay-figures';
 import { membersWith, notify } from './notify';
 import { lockWorker } from './tracking';
 import { isUuid, likePattern } from '../lib/search';
-import { renderEmail } from '../lib/email';
+import { renderEmail, type EmailContent } from '../lib/email';
+import type { MailMessage } from '../lib/mailer';
+import { renderInvoicePdf } from '../lib/invoice-pdf';
 
 
 /** The issuing company as printed on invoices. */
@@ -1041,6 +1043,37 @@ export async function getInvoice(x: Ctx, id: string) {
   };
 }
 
+/** Amount rows for an invoice email: subtotal and tax, shown when there is tax. */
+export function invoiceAmountRows(inv: { subtotal_minor: number; tax_minor: number }, fmt: (m: number) => string): Array<{ label: string; value: string }> {
+  return inv.tax_minor ? [{ label: 'Subtotal', value: fmt(inv.subtotal_minor) }, { label: 'Tax', value: fmt(inv.tax_minor) }] : [];
+}
+
+/**
+ * An invoice email as the client receives it (QA audit 13 Nov 2026, BUG-21 and C-17): the invoice
+ * attached as a PDF, and replies going to the organization's own address when it has one (the sender
+ * is a no-reply address, and the email used to say "Reply to …" all the same). The PDF is best
+ * effort: an email without it is better than none.
+ */
+async function invoiceMail(x: Ctx, inv: Awaited<ReturnType<typeof getInvoice>>, content: Omit<EmailContent, 'note' | 'reason'>, to: string): Promise<MailMessage> {
+  const profile = await companyProfile(x);
+  const replyTo = 'email' in profile && profile.email ? profile.email : undefined;
+  const msg = renderEmail(
+    {
+      ...content,
+      note: replyTo ? `Questions about this invoice? Reply to this email to reach ${x.org.name}.` : `Questions about this invoice? Contact ${x.org.name} directly; replies to this email are not read.`,
+      reason: `You received this email because ${x.org.name} sent you an invoice through WorkPulse.`,
+    },
+    { appUrl: x.deps.config.appUrl, to },
+  );
+  let pdf: Buffer | null = null;
+  try {
+    pdf = await renderInvoicePdf(inv, profile);
+  } catch (e) {
+    console.error(`[invoices] the PDF for ${inv.number} could not be made; sending the email without it`, e);
+  }
+  return { ...msg, replyTo, attachments: pdf ? [{ filename: `${inv.number}.pdf`, content: pdf, contentType: 'application/pdf' }] : undefined };
+}
+
 export async function sendInvoice(x: Ctx, id: string) {
   if (!x.actor.grants['invoices:manage']) throw forbidden();
   const inv = await getInvoice(x, id);
@@ -1050,21 +1083,22 @@ export async function sendInvoice(x: Ctx, id: string) {
   if (inv.client.email) {
     const fmt = (m: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: inv.currency }).format(m / 100);
     await x.deps.mailer.send(
-      renderEmail(
+      await invoiceMail(
+        x,
+        await getInvoice(x, id),
         {
           subject: `Invoice ${inv.number} from ${x.org.name}`,
           preheader: `${fmt(inv.total_minor)} due ${inv.due_date}`,
           heading: `Invoice ${inv.number}`,
-          paragraphs: [`${x.org.name} sent you invoice ${inv.number}.`],
+          paragraphs: [`${x.org.name} sent you invoice ${inv.number}. The invoice is attached as a PDF.`],
           details: [
             ...inv.lines.map((l) => ({ label: l.description, value: fmt(l.amount_minor) })),
+            ...invoiceAmountRows(inv, fmt),
             { label: 'Amount due', value: fmt(inv.total_minor), strong: true },
             { label: 'Due date', value: inv.due_date },
           ],
-          note: `Questions about this invoice? Reply to ${x.org.name} directly.`,
-          reason: `You received this email because ${x.org.name} sent you an invoice through WorkPulse.`,
         },
-        { appUrl: x.deps.config.appUrl, to: inv.client.email },
+        inv.client.email,
       ),
     );
   }
@@ -1092,7 +1126,9 @@ export async function remindInvoice(x: Ctx, id: string): Promise<{ sent_to: stri
   const fmt = (m: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: inv.currency }).format(m / 100);
   const overdue = inv.status === 'OVERDUE' || inv.due_date < new Date().toISOString().slice(0, 10);
   await x.deps.mailer.send(
-    renderEmail(
+    await invoiceMail(
+      x,
+      inv,
       {
         subject: overdue ? `Reminder: invoice ${inv.number} from ${x.org.name} is overdue` : `Reminder: invoice ${inv.number} from ${x.org.name}`,
         preheader: `${fmt(inv.balance_minor)} due ${inv.due_date}`,
@@ -1104,10 +1140,8 @@ export async function remindInvoice(x: Ctx, id: string): Promise<{ sent_to: stri
           { label: 'Amount due', value: fmt(inv.balance_minor), strong: true },
           { label: 'Due date', value: inv.due_date },
         ],
-        note: `Questions about this invoice? Reply to ${x.org.name} directly.`,
-        reason: `You received this email because ${x.org.name} sent you an invoice through WorkPulse.`,
       },
-      { appUrl: x.deps.config.appUrl, to: inv.client.email },
+      inv.client.email,
     ),
   );
   await audit(x, { action: 'invoice.reminder_sent', targetType: 'invoice', targetId: id, after: { to: inv.client.email, balance_minor: inv.balance_minor, overdue } });

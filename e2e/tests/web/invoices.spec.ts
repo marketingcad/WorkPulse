@@ -129,6 +129,38 @@ test.describe('Invoices (admin)', () => {
     await expect(page.getByRole('button', { name: 'Review', exact: true })).toBeDisabled();
   });
 
+  // QA audit 13 Nov 2026 (BUG-20): the Review step showed the previous preview ($12.99) while
+  // "Create" saved the current lines ($67.99). A slow preview makes the gap easy to reach.
+  test('Review waits for the totals of the lines being created before it lets you create', async ({ page, data, adminApi }) => {
+    const client = `Review ${data.run} ${uid()}`;
+    await ok(await adminApi.api.post(adminApi.orgApi('/clients'), { data: { name: client } }), 'client');
+    await page.goto(`/o/${data.orgId}/finance/invoices/new`);
+    await page.getByLabel('Client').selectOption({ label: client });
+    await page.getByRole('button', { name: 'Preview lines' }).click();
+    await page.getByRole('button', { name: 'Add line' }).click();
+    await page.getByLabel('Description').fill('Setup fee');
+    await page.getByLabel(/Unit price/).fill('50');
+    const main = page.getByRole('main');
+    await expect(main.getByText(usd(5000)).first()).toBeVisible();
+
+    // From now on the preview answers slowly, like production on a busy day.
+    await page.route('**/invoices/preview', async (route) => {
+      await new Promise((r) => setTimeout(r, 1500));
+      await route.continue();
+    });
+    await page.getByLabel(/Unit price/).fill('80');
+    await page.getByRole('button', { name: 'Dates & notes', exact: true }).click();
+    await page.getByRole('button', { name: 'Review', exact: true }).click();
+    const create = page.getByRole('button', { name: 'Create draft invoice' });
+    await expect(main.getByRole('status').filter({ hasText: 'Updating the totals…' })).toBeVisible();
+    await expect(create).toBeDisabled();
+    // Once the preview has caught up: the new total, and Create is offered.
+    await expect(create).toBeEnabled({ timeout: 10_000 });
+    await expect(main.getByText('Updating the totals…')).toHaveCount(0);
+    await expect(main.getByText(usd(8000)).first()).toBeVisible();
+    await expect(main.getByText(usd(5000))).toHaveCount(0);
+  });
+
   test('recording a payment needs an amount', async ({ page, data, adminApi }) => {
     const { api, orgApi } = adminApi;
     const c = await ok<{ id: string }>(await api.post(orgApi('/clients'), { data: { name: `Initech ${data.run} ${uid()}` } }), 'client');

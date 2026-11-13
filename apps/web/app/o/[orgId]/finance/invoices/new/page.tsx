@@ -29,6 +29,7 @@ import { ApiError, api, errorMessage, qs, useOrgMutation, useOrgQuery } from '@/
 import { addDays, todayIn, useOrg } from '@/lib/org';
 import { Stepper } from '@/components/finance/stepper';
 import { extraLineErrors } from '@/components/finance/extra-lines';
+import { previewIsCurrent } from '@/components/finance/preview-state';
 import { useUnsavedChanges } from '@/lib/unsaved';
 import { monthRange, toMinor, type InvoiceDetail, type InvoicePreview } from '@/components/finance/types';
 import { suggestedPeriod, unbilledOutside, type UnbilledRange } from '@/components/finance/invoice-period';
@@ -138,6 +139,8 @@ function Composer() {
     placeholderData: (prev) => prev,
   });
   const preview = previewQ.data;
+  // Review and Create wait until the preview is the one for the current form (BUG-20).
+  const previewCurrent = previewIsCurrent({ formKey: previewKey, sentKey: debouncedKey, fetching: previewQ.isFetching, placeholder: previewQ.isPlaceholderData, hasData: !!preview });
   const sourceLines = preview?.lines.filter((l) => l.kind !== 'CUSTOM') ?? [];
 
   const create = useOrgMutation<Body, InvoiceDetail>('POST', '/invoices');
@@ -408,6 +411,11 @@ function Composer() {
           </dl>
           <LinesTable lines={preview.lines} currency={currency} />
           <Totals subtotal={preview.subtotal_minor} tax={preview.tax_minor} total={preview.total_minor} currency={currency} />
+          {!previewCurrent && (
+            <p role="status" className="border-t border-border px-4 py-2 text-sm text-text-muted">
+              Updating the totals…
+            </p>
+          )}
           {notes.trim() && <p className="whitespace-pre-wrap border-t border-border px-4 py-3 text-sm text-text-muted">{notes}</p>}
           {err && (
             <p role="alert" className="border-t border-border px-4 py-2 text-sm text-danger">
@@ -418,7 +426,7 @@ function Composer() {
             <Button onClick={back} icon={<ArrowLeft className="size-3.5" />}>
               Back
             </Button>
-            <Button variant="primary" onClick={submit} loading={create.isPending} disabled={!step1Valid || !step2Valid || !step3Valid}>
+            <Button variant="primary" onClick={submit} loading={create.isPending} disabled={!step1Valid || !step2Valid || !step3Valid || !previewCurrent}>
               Create draft invoice
             </Button>
           </div>

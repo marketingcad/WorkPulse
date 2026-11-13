@@ -21,7 +21,7 @@ import {
   type ClientPortalSections,
   type Tx,
 } from '@tallywork/db';
-import { businessRule, forbidden, localDate, newId, notFound } from '@tallywork/domain';
+import { DomainError, businessRule, forbidden, localDate, newId, notFound } from '@tallywork/domain';
 import type { clientPortalAcceptInput, ClientVisibilityDto, PortalListItemDto, PortalScreenshotDto, PortalSummaryDto } from '@tallywork/contracts';
 import type { z } from 'zod';
 import type { Deps } from '../context';
@@ -164,7 +164,11 @@ export async function loadPortalAccess(deps: Deps, userId: string, accessId: str
   return withTenant(deps.db, a.organizationId, async (tx) => {
     const [s] = await tx.select().from(clientPortalSettings).where(eq(clientPortalSettings.clientId, a.clientId));
     const [c] = await tx.select({ archivedAt: clients.archivedAt }).from(clients).where(eq(clients.id, a.clientId));
-    if (!s?.enabled || !c || c.archivedAt) throw notFound('dashboard');
+    if (!c || c.archivedAt) throw notFound('dashboard');
+    // The viewer's own, accepted access to a portal that is not switched on (yet): still a 404, but
+    // saying so, since they were invited (QA audit 13 Nov 2026, BUG-19). Nothing is revealed to anyone
+    // without an access of their own, who keeps the plain "not found" above.
+    if (!s?.enabled) throw new DomainError('not_found', 'portal_off', 'This dashboard is not switched on yet');
     return { accessId: a.id, organizationId: a.organizationId, clientId: a.clientId, sections: { ...DEFAULT_PORTAL_SECTIONS, ...s.sections }, ...(await withSince(tx, await includedProjects(tx, a.clientId, s.projectIds))) };
   });
 }

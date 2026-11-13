@@ -8,9 +8,9 @@
       "vitest": {
         "packages/domain": ["domain", "overtime"],
         "packages/db": ["rls", "migrations", "pool-session", "performance", "assistant"],
-        "apps/web": ["qa-phase6", "timesheet-conflict"],
+        "apps/web": ["qa-phase6", "timesheet-conflict", "invoice-preview-state"],
         "packages/api": [
-          "access-consistency", "agent-login", "agent-logout", "ai-insights", "ai-insights-finance", "ai-insights-capacity", "ai-insights-forecast", "portal-ai-summary", "assistant-performance-tool", "assistant-insight-tools", "assistant-drafts", "assistant", "assistant-security", "assistant-tools", "agent-me", "audit-oct28", "audit-phase1", "breaks-eod", "compliance", "confirm-window", "device-approval",
+          "access-consistency", "agent-login", "agent-logout", "qa-phase9", "ai-insights", "ai-insights-finance", "ai-insights-capacity", "ai-insights-forecast", "portal-ai-summary", "assistant-performance-tool", "assistant-insight-tools", "assistant-drafts", "assistant", "assistant-security", "assistant-tools", "agent-me", "audit-oct28", "audit-phase1", "breaks-eod", "compliance", "confirm-window", "device-approval",
           "finance", "flow", "forms-phase4", "integrations", "invitations", "invitation-peek", "mfa-hardening", "money-p0", "money-p1-safety", "money-phase3", "multi-monitor",
           "offline-sync", "offline-sync.property", "payroll", "qa-phase6", "rates-effective-date", "refused-time", "route-boundaries", "security", "security-auth", "security-authz", "tenant-context",
           "session-timeouts", "staff-profile", "support", "time-accuracy", "time-integrity", "time-money", "time-overlap", "time-product",

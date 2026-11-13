@@ -39,7 +39,8 @@ export default function ClientPortalSettingsPage() {
   const invite = useOrgMutation<{ email: string }>('POST', `/clients/${id}/portal/invitations`, {
     onSuccess: () => {
       setEmail('');
-      toast.success(t('portal.admin.inviteSent'));
+      // The portal may still be off (BUG-19): say what the invited person will see.
+      toast.success(t(settingsQ.data?.enabled === false ? 'portal.admin.inviteSentOff' : 'portal.admin.inviteSent'));
     },
   });
   const [revoking, setRevoking] = useState<Access | null>(null);
@@ -159,6 +160,11 @@ export default function ClientPortalSettingsPage() {
             {t('portal.admin.invite')}
           </Button>
         </form>
+        {!s.enabled && (
+          <p role="note" className="mb-3 rounded-sm bg-warning-soft px-3 py-2 text-sm text-warning">
+            {t('portal.admin.offHint')}
+          </p>
+        )}
         {s.access.length === 0 ? (
           <p className="text-sm text-text-muted">{t('portal.admin.noViewers')}</p>
         ) : (

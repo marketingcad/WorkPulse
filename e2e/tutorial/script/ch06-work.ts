@@ -23,6 +23,7 @@ export const ch06: Chapter = {
       overlays: ['Callout: "Invoices are sent to the contact email"'],
       focus: ['Zoom to the New client dialog.'],
       transition: 'Cut (stay on Clients).',
+      visuals: { steps: true },
     },
     {
       id: '06.2',

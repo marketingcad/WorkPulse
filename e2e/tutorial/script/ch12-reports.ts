@@ -59,6 +59,7 @@ export const ch12: Chapter = {
       overlays: ['Callout: "Delivered automatically by email"'],
       focus: ['Zoom to the Save report dialog.'],
       transition: 'Wipe to a chapter card: "Chapter 13 — Security and administration".',
+      visuals: { steps: true },
     },
   ],
 };

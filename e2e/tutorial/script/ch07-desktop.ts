@@ -56,6 +56,7 @@ export const ch07: Chapter = {
       overlays: ['Callout: "Choose a project, then Clock in"', 'Callout on the breaks: "Planned by your admin"'],
       focus: ['Zoom to the timer card.', 'Highlight the break buttons.'],
       transition: 'Cut (stay on Home).',
+      visuals: { steps: true },
     },
     {
       id: '07.4',

@@ -67,15 +67,15 @@ Zooms, highlights and clicks are shown when the narrator says what they show, an
 
 ### Animated visuals
 
-On top of the recording, the render draws animated visuals timed to the narration (, off with ):
+On top of the recording, the render draws animated visuals timed to the narration (`visuals/`, off with `TUTORIAL_VISUALS=off`):
 
 - **Highlight ring and name label** on each item the voiceover names, when it is said. The ring follows the item through zooms and ends at the next click, scroll or page change. A named button gets 0.9 s under the cursor before the click, so its ring is seen.
-- **Step numbers** inside the rings of scenes marked  in their script.
+- **Step numbers** inside the rings of scenes marked `visuals: { steps: true }` in their script.
 - **Callouts** (the quoted text of a scene's overlays) slide in when the narration talks about them.
-- **Concept cards** for what the screen cannot show (: operating systems, a phone with a QR code, two-factor, the time-to-money flow, rates, invoices, payroll, offline sync, WorkPulse AI), on their trigger words, in the corner farthest from the ring. A scene's script can add a card on other words or turn one off ().
+- **Concept cards** for what the screen cannot show (`visuals/concepts.ts`: operating systems, a phone with a QR code, two-factor, the time-to-money flow, rates, invoices, payroll, offline sync, WorkPulse AI), on their trigger words, in the corner farthest from the ring. A scene's script can add a card on other words or turn one off (`visuals: { add, off }`).
 - **Scene tag** and **branded chapter transitions**.
 
-At most one ring, label, callout and card are on screen at a time. Each element is drawn by  in Chromium, frame by frame, into a small transparent clip cached in  by what it shows, so a re-render only draws what changed. Drawings are original: no real logos.
+At most one ring, label, callout and card are on screen at a time. Each element is drawn by `visuals/overlay.html` in Chromium, frame by frame, into a small transparent clip cached in `e2e/.tmp/tutorial-render/visuals` by what it shows, so a re-render only draws what changed. Drawings are original: no real logos.
 
 ## Publishing to the Help Center
 

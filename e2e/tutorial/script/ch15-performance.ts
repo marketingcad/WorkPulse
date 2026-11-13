@@ -43,6 +43,7 @@ export const ch15: Chapter = {
       overlays: ['Callout: "Progress is measured, not typed in"'],
       focus: ['Zoom to the New goal dialog.', 'Highlight one achievement and its levels.'],
       transition: 'Cut to Leaderboards.',
+      visuals: { steps: true },
     },
     {
       id: '15.3',

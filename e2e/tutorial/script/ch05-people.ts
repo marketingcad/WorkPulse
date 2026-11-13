@@ -25,6 +25,7 @@ export const ch05: Chapter = {
       overlays: ['Callout: "Pick teams and projects now — they are ready on day one"'],
       focus: ['Zoom to the Invite member dialog.', 'Highlight the invitation link.'],
       transition: 'Cut to a member profile.',
+      visuals: { steps: true },
     },
     {
       id: '05.2',

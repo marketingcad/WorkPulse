@@ -77,6 +77,7 @@ export const ch11: Chapter = {
       overlays: ['Callout: "Lines are built from billable time × bill rates"'],
       focus: ['Zoom to the invoice lines.', 'Zoom to the Review totals.'],
       transition: 'Cut to the new invoice.',
+      visuals: { steps: true },
     },
     {
       id: '11.5',
@@ -95,6 +96,7 @@ export const ch11: Chapter = {
       overlays: ['Callout: "Partially paid and overdue are tracked automatically"'],
       focus: ['Highlight the Send button.', 'Zoom to the Record payment dialog.'],
       transition: 'Cut to Payroll.',
+      visuals: { steps: true },
     },
     {
       id: '11.6',
@@ -115,6 +117,7 @@ export const ch11: Chapter = {
       overlays: ['Callout: "Each approved hour is paid exactly once"', 'Callout: "Finalize cannot be undone"'],
       focus: ['Zoom to the pay stubs table.', 'Zoom to the bonuses dialog.', 'Highlight the Finalize button.'],
       transition: 'Cut (stay on the payroll).',
+      visuals: { steps: true },
     },
     {
       id: '11.7',

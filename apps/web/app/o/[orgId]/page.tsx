@@ -16,6 +16,7 @@ import {
   PersonCell,
   SegmentedControl,
   Select,
+  SkeletonRows,
   Spinner,
   StatusBadge,
   WorkerStatus,
@@ -208,6 +209,18 @@ export default function OverviewPage() {
         <Panel>
           <ErrorState error={layoutQ.error} onRetry={() => void layoutQ.refetch()} />
         </Panel>
+      ) : !layoutQ.data && !draft ? (
+        // Until the layout arrives there are no widgets to draw: placeholder cards, not a blank page
+        // (QA audit 11 Nov 2026, BUG-04: 2–3 s of empty page under the heading).
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12" data-testid="overview-loading">
+          {(['M', 'M', 'S', 'S', 'S', 'L'] as const).map((size, i) => (
+            <div key={i} className={cx('min-w-0', SPAN[size])}>
+              <Panel className="h-full">
+                <SkeletonRows rows={3} cols={2} />
+              </Panel>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
           {widgets.map((w, i) => (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectPlatform } from '../components/download/platform';
+import { detectPlatform, platformLabel } from '../components/download/platform';
 
 const UA = {
   iphone: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1',
@@ -23,5 +23,19 @@ describe('detectPlatform (download page)', () => {
     expect(detectPlatform(UA.windows, 10)).toBe('windows'); // a touch-screen Windows laptop is still a computer
     expect(detectPlatform(UA.linux)).toBe('linux');
     expect(detectPlatform('Something else')).toBeNull();
+  });
+});
+
+describe('platformLabel (QA audit BUG-14)', () => {
+  it('names Linux after the file the link serves', () => {
+    expect(platformLabel('linux', 'https://example.com/releases/latest/download/Tallywork-linux.deb')).toBe('Ubuntu / Debian (.deb)');
+    expect(platformLabel('linux', 'https://example.com/releases/latest/download/Tallywork-linux.AppImage')).toBe('Linux (AppImage)');
+    expect(platformLabel('linux', 'https://example.com/Tallywork-linux.appimage?x=1')).toBe('Linux (AppImage)');
+    expect(platformLabel('linux', null)).toBe('Ubuntu / Debian (.deb)');
+  });
+
+  it('keeps the Windows and macOS names', () => {
+    expect(platformLabel('windows', 'https://example.com/Tallywork-Setup.exe')).toBe('Windows');
+    expect(platformLabel('macos', 'https://example.com/Tallywork-mac.dmg')).toBe('macOS');
   });
 });

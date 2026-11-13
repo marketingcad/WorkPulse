@@ -1,21 +1,20 @@
 'use client';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import type { ClientDto, ProjectDto, TaskDto, TeamDto, MemberOptionDto } from '@tallywork/contracts';
-import { Plus, Trash2 } from 'lucide-react';
-import { Button, Checkbox, Dialog, Field, IconButton, Input, Select, StatusBadge, Textarea, useToast } from '@tallywork/ui';
-import { ApiError, errorMessage, useOrgId, useOrgQuery } from '@/lib/api';
+import type { ClientDto, ProjectDto, TaskDto, MemberOptionDto } from '@tallywork/contracts';
+import { Button, Dialog, Field, Input, Select, StatusBadge, Textarea, useToast } from '@tallywork/ui';
+import { ApiError, errorMessage } from '@/lib/api';
 import { useOrg } from '@/lib/org';
-import { fromMinor, toMinor } from '@/components/finance/types';
-import { RateNote } from '@/components/finance/rate-note';
+import { fromMinor } from '@/components/finance/types';
 import { MultiSelect } from './multi-select';
+import { breaksPayload, projectPayload, unitSeconds, type ProjectBreakForm, type ProjectForm } from './project-form';
+export { breaksPayload, projectPayload };
+export type { ProjectBreakForm, ProjectForm };
 // Write with AI: loaded on demand, only when WorkPulse AI is on.
 const DraftButton = lazy(() => import('@/components/assistant/draft-button'));
-import { ColorPicker, PRIORITIES, PROJECT_COLORS, PROJECT_STATUSES, TASK_STATUSES, hoursToSeconds, secondsToHours, useOrgAction } from './basics';
+import { PRIORITIES, PROJECT_COLORS, TASK_STATUSES, hoursToSeconds, secondsToHours, useOrgAction } from './basics';
 
 export * from './basics';
 
-// Only when someone adds a client from the project form.
-const ClientDialog = lazy(() => import('./client-dialog').then((m) => ({ default: m.ClientDialog })));
 
 /** Inline status change; assignees may change status even without task management rights. */
 export function TaskStatusSelect({ task, canManage }: { task: TaskDto; canManage: boolean }) {
@@ -218,41 +217,12 @@ export function TaskDialog({
 }
 
 // ─── Project form ────────────────────────────────────────────────────────────
-export interface ProjectForm {
-  name: string;
-  client_id: string;
-  description: string;
-  color: string;
-  status: string;
-  billable_default: boolean;
-  member_ids: string[];
-  team_ids: string[];
-  short_name: string;
-  start_date: string;
-  end_date: string;
-  /** in `estimate_unit`, as typed */
-  estimate: string;
-  estimate_unit: 'HOURS' | 'DAYS';
-  pay_rate: string;
-  bill_rate: string;
-  /** planned breaks, as typed: time 'HH:MM' or '', minutes or '' */
-  breaks: ProjectBreakForm[];
-}
-
-export interface ProjectBreakForm {
-  break_type_id: string;
-  start_time: string;
-  minutes: string;
-}
-
 /** Working hours in a day, for converting estimates (organization setting, default 8). */
 export function useHoursPerDay(): number {
   const org = useOrg();
   const v = (org.organization.settings as { workingHoursPerDay?: number }).workingHoursPerDay;
   return v && v > 0 ? v : 8;
 }
-
-const unitSeconds = (unit: 'HOURS' | 'DAYS', hoursPerDay: number) => (unit === 'DAYS' ? hoursPerDay * 3600 : 3600);
 
 export function projectToForm(p: ProjectDto | null | undefined, hoursPerDay: number): ProjectForm {
   const unit = p?.estimate_unit ?? 'HOURS';
@@ -272,311 +242,9 @@ export function projectToForm(p: ProjectDto | null | undefined, hoursPerDay: num
     estimate_unit: unit,
     pay_rate: p?.pay_rate_minor != null ? fromMinor(p.pay_rate_minor) : '',
     bill_rate: p?.bill_rate_minor != null ? fromMinor(p.bill_rate_minor) : '',
+    rates_from: '',
     breaks: (p?.breaks ?? []).map((b) => ({ break_type_id: b.break_type_id, start_time: b.start_time ?? '', minutes: b.duration_minutes != null ? String(b.duration_minutes) : '' })),
   };
-}
-
-/** The request body's `breaks`; a blank time or length means "any time" / "the break type's maximum". */
-export function breaksPayload(breaks: ProjectBreakForm[]) {
-  return breaks.map((b, i) => {
-    const m = b.minutes.trim() === '' ? null : Number(b.minutes);
-    if (m !== null && !(Number.isInteger(m) && m >= 1 && m <= 480)) throw new ApiError(422, 'validation', 'Enter a valid break length', undefined, [{ field: `breaks.${i}.duration_minutes`, message: 'Whole minutes, 1 to 480' }]);
-    if (!b.break_type_id) throw new ApiError(422, 'validation', 'Pick a break type', undefined, [{ field: `breaks.${i}.break_type_id`, message: 'Pick a break type' }]);
-    return { break_type_id: b.break_type_id, start_time: b.start_time || null, duration_minutes: m };
-  });
-}
-
-/**
- * The breaks a project plans (Coffee 10:30 for 15 min, Lunch 12:00 for 60 min…), from the break
- * types in Settings. Workers see them as break buttons in the desktop app, with a reminder at the time.
- */
-export function ProjectBreaksField({ breaks, onChange, err }: { breaks: ProjectBreakForm[]; onChange: (b: ProjectBreakForm[]) => void; err: ApiError | null }) {
-  const orgId = useOrgId();
-  const types = useOrgQuery<BreakTypeOption[]>('/break-types');
-  const list = types.data ?? [];
-  const set = (i: number, patch: Partial<ProjectBreakForm>) => onChange(breaks.map((b, j) => (j === i ? { ...b, ...patch } : b)));
-  const add = () => list[0] && onChange([...breaks, { break_type_id: list[0].id, start_time: '', minutes: '' }]);
-  const rowError = (i: number) => err?.field(`breaks.${i}.break_type_id`) ?? err?.field(`breaks.${i}.start_time`) ?? err?.field(`breaks.${i}.duration_minutes`);
-
-  return (
-    <section aria-label="Breaks" className="flex flex-col gap-2 sm:col-span-2">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-medium">Breaks</h3>
-          <p className="text-xs text-text-muted">Workers see these as break buttons when they clock in, with a reminder at the time you set.</p>
-        </div>
-        {list.length > 0 && (
-          <Button size="sm" onClick={add} disabled={breaks.length >= 12}>
-            <Plus className="size-3.5" /> Add break
-          </Button>
-        )}
-      </div>
-      {types.isLoading ? (
-        <p className="text-xs text-text-muted">Loading break types…</p>
-      ) : !list.length ? (
-        <p className="rounded-sm border border-dashed border-border px-3 py-2 text-xs text-text-muted">
-          No break types yet. Add Coffee, Lunch and others in{' '}
-          <a href={`/o/${orgId}/settings/time`} className="text-interactive hover:underline">
-            Settings › Time & pay
-          </a>
-          , then plan them here.
-        </p>
-      ) : !breaks.length ? (
-        <p className="rounded-sm border border-dashed border-border px-3 py-2 text-xs text-text-muted">No breaks planned. Workers can still take any break type from the Break menu.</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {breaks.map((b, i) => {
-            const type = list.find((t) => t.id === b.break_type_id);
-            const n = i + 1;
-            return (
-              <li key={i} className="flex flex-col gap-1">
-                <div className="grid grid-cols-[minmax(0,1fr)_112px_96px_auto] items-center gap-2">
-                  <Select aria-label={`Break ${n} type`} value={b.break_type_id} onChange={(e) => set(i, { break_type_id: e.target.value })}>
-                    {list.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} ({t.paid ? 'paid' : 'unpaid'})
-                      </option>
-                    ))}
-                  </Select>
-                  <Input aria-label={`Break ${n} time`} type="time" value={b.start_time} onChange={(e) => set(i, { start_time: e.target.value })} />
-                  <Input
-                    aria-label={`Break ${n} minutes`}
-                    type="number"
-                    min={1}
-                    max={480}
-                    inputMode="numeric"
-                    className="tabular"
-                    placeholder={type?.max_minutes ? String(type.max_minutes) : 'min'}
-                    value={b.minutes}
-                    onChange={(e) => set(i, { minutes: e.target.value })}
-                  />
-                  <IconButton label={`Remove break ${n}`} onClick={() => onChange(breaks.filter((_, j) => j !== i))}>
-                    <Trash2 className="size-3.5" />
-                  </IconButton>
-                </div>
-                {rowError(i) && <p className="text-xs text-danger">{rowError(i)}</p>}
-              </li>
-            );
-          })}
-          <li className="text-2xs text-text-faint">Blank time = any time. Blank minutes = the break type&apos;s maximum.</li>
-        </ul>
-      )}
-    </section>
-  );
-}
-
-interface BreakTypeOption {
-  id: string;
-  name: string;
-  paid: boolean;
-  max_minutes: number | null;
-}
-
-
-/** Fields shared by the create/edit dialog and the project settings tab. */
-export function ProjectFields({
-  f,
-  setF,
-  err,
-  clients,
-  workers,
-  teams,
-  showAssignments = true,
-  projectId,
-}: {
-  f: ProjectForm;
-  /** The saved project, when editing: Write with AI can draft from its details. */
-  projectId?: string;
-  /** A state setter: Write with AI applies its draft as an update to the latest form. */
-  setF: React.Dispatch<React.SetStateAction<ProjectForm>>;
-  err: ApiError | null;
-  clients?: ClientDto[];
-  workers?: MemberOptionDto[];
-  teams?: TeamDto[];
-  showAssignments?: boolean;
-}) {
-  const org = useOrg();
-  const [newClient, setNewClient] = useState(false);
-  const [draftingDesc, setDraftingDesc] = useState(false);
-  const [created, setCreated] = useState<ClientDto[]>([]);
-  const clientList = [...(clients ?? []), ...created.filter((c) => !(clients ?? []).some((x) => x.id === c.id))];
-  const currency = clientList.find((c) => c.id === f.client_id)?.currency ?? org.organization.currency;
-  const canReadRates = org.can('rates:read');
-  const canManageRates = org.can('rates:manage');
-  const unitLabel = f.estimate_unit === 'DAYS' ? 'days' : 'hours';
-
-  return (
-    <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-[1fr_240px]">
-      <div className="grid grid-cols-1 content-start gap-3 sm:grid-cols-2">
-        <Field label="Name" htmlFor="proj-name" required error={err?.field('name')} className="sm:col-span-2">
-          <Input id="proj-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={150} />
-        </Field>
-        <Field label="Short name" htmlFor="proj-short" hint="Shown where space is tight, e.g. WEB." error={err?.field('short_name')}>
-          <Input id="proj-short" value={f.short_name} onChange={(e) => setF({ ...f, short_name: e.target.value })} maxLength={20} />
-        </Field>
-        <Field label="Client" htmlFor="proj-client" error={err?.field('client_id')}>
-          <div className="flex gap-1.5">
-            <Select id="proj-client" value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })} className="min-w-0 flex-1">
-              <option value="">No client</option>
-              {clientList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-            {org.can('clients:manage') && (
-              <IconButton label="New client" variant="secondary" onClick={() => setNewClient(true)}>
-                <Plus className="size-3.5" />
-              </IconButton>
-            )}
-          </div>
-        </Field>
-        <Field label="Start date" htmlFor="proj-start" error={err?.field('start_date')}>
-          <Input id="proj-start" type="date" value={f.start_date} onChange={(e) => setF({ ...f, start_date: e.target.value })} />
-        </Field>
-        <Field label="End date" htmlFor="proj-end" error={err?.field('end_date')}>
-          <Input id="proj-end" type="date" value={f.end_date} min={f.start_date || undefined} onChange={(e) => setF({ ...f, end_date: e.target.value })} />
-        </Field>
-        <Field label={`Estimated ${unitLabel}`} htmlFor="proj-estimate" hint="Planned effort; compared with logged time on the project." error={err?.field('estimate_seconds')}>
-          <Input id="proj-estimate" type="number" min={0} step={f.estimate_unit === 'DAYS' ? 0.5 : 1} inputMode="decimal" className="tabular" value={f.estimate} onChange={(e) => setF({ ...f, estimate: e.target.value })} />
-        </Field>
-        <Field label="Status" htmlFor="proj-status">
-          <Select id="proj-status" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
-            {PROJECT_STATUSES.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Colour" className="sm:col-span-2">
-          <ColorPicker value={f.color} onChange={(color) => setF({ ...f, color })} />
-        </Field>
-        {showAssignments && workers && (
-          <Field label="Members" htmlFor="proj-members" hint="Members can track time to this project." error={err?.field('member_ids')}>
-            <MultiSelect
-              id="proj-members"
-              options={workers.filter((w) => w.status === 'ACTIVE').map((w) => ({ value: w.id, label: w.name, sub: w.email }))}
-              value={f.member_ids}
-              onChange={(member_ids) => setF({ ...f, member_ids })}
-              placeholder="No direct members"
-            />
-          </Field>
-        )}
-        {showAssignments && teams && (
-          <Field label="Teams" htmlFor="proj-teams" hint="Everyone in these teams can track time here." error={err?.field('team_ids')}>
-            <MultiSelect id="proj-teams" options={teams.map((t) => ({ value: t.id, label: t.name, sub: `${t.members.length} ${t.members.length === 1 ? 'member' : 'members'}` }))} value={f.team_ids} onChange={(team_ids) => setF({ ...f, team_ids })} placeholder="No teams" />
-          </Field>
-        )}
-        <Field label="Description" htmlFor="proj-desc" className="sm:col-span-2">
-          <Textarea id="proj-desc" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} maxLength={2000} className="min-h-16" readOnly={draftingDesc} />
-          {org.assistant_enabled && (
-            <Suspense fallback={null}>
-              <DraftButton value={f.description} onChange={(text) => setF((cur) => ({ ...cur, description: text.slice(0, 2000) }))} onBusy={setDraftingDesc} source={projectId ? { kind: 'project_description', project_id: projectId } : undefined} />
-            </Suspense>
-          )}
-        </Field>
-        <ProjectBreaksField breaks={f.breaks} onChange={(breaks) => setF({ ...f, breaks })} err={err} />
-      </div>
-
-      <section className="flex flex-col gap-3 md:border-l md:border-border md:pl-6" aria-label="Finance">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Finance</h3>
-        <Field label="Estimate units" htmlFor="proj-unit">
-          <Select id="proj-unit" value={f.estimate_unit} onChange={(e) => setF({ ...f, estimate_unit: e.target.value as 'HOURS' | 'DAYS' })}>
-            <option value="HOURS">Hours</option>
-            <option value="DAYS">Days</option>
-          </Select>
-        </Field>
-        <Field label="Currency" htmlFor="proj-currency" hint={f.client_id ? 'From the client.' : 'Workspace default. Pick a client to bill in its currency.'}>
-          <Input id="proj-currency" value={currency} readOnly disabled className="tabular" />
-        </Field>
-        {canReadRates && (
-          <>
-            <Field label="Pay rate per hour" htmlFor="proj-pay" hint={`${currency} / hour, what you pay, from today`} error={err?.field('pay_rate_minor')}>
-              <Input id="proj-pay" inputMode="decimal" className="tabular" placeholder="0.00" value={f.pay_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, pay_rate: e.target.value })} />
-            </Field>
-            <Field label="Bill rate per hour" htmlFor="proj-bill" hint={`${currency} / hour, what you charge, from today`} error={err?.field('bill_rate_minor')}>
-              <Input id="proj-bill" inputMode="decimal" className="tabular" placeholder="0.00" value={f.bill_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} />
-            </Field>
-            <RateNote scope="PROJECT" />
-          </>
-        )}
-        <Checkbox label="Billable by default" checked={f.billable_default} onChange={(e) => setF({ ...f, billable_default: e.target.checked })} />
-      </section>
-
-      {newClient && (
-        <Suspense fallback={null}>
-          <ClientDialog
-            client={null}
-            open
-            onOpenChange={setNewClient}
-            onSaved={(c) => {
-              setCreated((xs) => [...xs, c]);
-              setF({ ...f, client_id: c.id });
-            }}
-          />
-        </Suspense>
-      )}
-    </div>
-  );
-}
-
-/**
- * Request body for the form. Rates are only sent when they changed and the editor may manage
- * rates; the estimate is converted from hours or days to seconds.
- */
-export function projectPayload(f: ProjectForm, opts: { workers?: boolean; teams?: boolean; hoursPerDay?: number; initial?: ProjectForm; canManageRates?: boolean } = {}) {
-  const rate = (key: 'pay_rate' | 'bill_rate', field: 'pay_rate_minor' | 'bill_rate_minor') => {
-    if (!opts.canManageRates || (opts.initial && f[key] === opts.initial[key])) return {};
-    if (!f[key].trim()) return opts.initial ? { [field]: null } : {};
-    const minor = toMinor(f[key]);
-    if (minor === null) throw new ApiError(422, 'validation', 'Enter a valid amount', undefined, [{ field, message: 'Enter an amount like 75 or 75.50' }]);
-    return { [field]: minor };
-  };
-  const est = f.estimate.trim() === '' ? null : Number(f.estimate);
-  if (est !== null && !(est >= 0)) throw new ApiError(422, 'validation', 'Enter a valid estimate', undefined, [{ field: 'estimate_seconds', message: 'A number of hours or days' }]);
-  const full = {
-    name: f.name,
-    client_id: f.client_id || null,
-    description: f.description || null,
-    color: f.color,
-    status: f.status,
-    billable_default: f.billable_default,
-    short_name: f.short_name.trim() || null,
-    start_date: f.start_date || null,
-    end_date: f.end_date || null,
-    estimate_seconds: est === null ? null : Math.round(est * unitSeconds(f.estimate_unit, opts.hoursPerDay ?? 8)),
-    estimate_unit: f.estimate_unit,
-    ...rate('pay_rate', 'pay_rate_minor'),
-    ...rate('bill_rate', 'bill_rate_minor'),
-    breaks: breaksPayload(f.breaks),
-    ...(opts.workers ? { member_ids: f.member_ids } : {}),
-    ...(opts.teams ? { team_ids: f.team_ids } : {}),
-  };
-  const i = opts.initial;
-  if (!i) return full;
-  // Editing: only what was changed here (U3). Access changed meanwhile in Members & teams is not
-  // overwritten from this form's snapshot, and an estimate left alone is not recomputed from today's
-  // hours per day.
-  const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
-  const estimateSame = f.estimate.trim() === i.estimate.trim() && f.estimate_unit === i.estimate_unit;
-  const unchanged: Record<string, boolean> = {
-    name: f.name === i.name,
-    client_id: (f.client_id || null) === (i.client_id || null),
-    description: (f.description || null) === (i.description || null),
-    color: f.color === i.color,
-    status: f.status === i.status,
-    billable_default: f.billable_default === i.billable_default,
-    short_name: f.short_name.trim() === i.short_name.trim(),
-    start_date: (f.start_date || null) === (i.start_date || null),
-    end_date: (f.end_date || null) === (i.end_date || null),
-    estimate_seconds: estimateSame,
-    estimate_unit: estimateSame,
-    breaks: JSON.stringify(full.breaks) === JSON.stringify(breaksPayload(i.breaks)),
-    member_ids: sameSet(f.member_ids, i.member_ids),
-    team_ids: sameSet(f.team_ids, i.team_ids),
-  };
-  return Object.fromEntries(Object.entries(full).filter(([k]) => !unchanged[k]));
 }
 
 /**
@@ -589,75 +257,4 @@ export function clientsForProject(clients: ClientDto[] | undefined, project: Pro
   if (!project?.client_id || active.some((c) => c.id === project.client_id)) return active;
   const current = clients.find((c) => c.id === project.client_id);
   return [...active, { ...(current ?? { id: project.client_id }), name: `${current?.name ?? project.client_name ?? 'Current client'} (archived)`, currency: current?.currency ?? project.currency } as ClientDto];
-}
-
-export function ProjectDialog({
-  open,
-  onOpenChange,
-  project,
-  clients,
-  workers,
-  teams,
-  onSaved,
-  defaultClientId,
-}: {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-  project?: ProjectDto | null;
-  /** a new project starts on this client ("Add a project" right after creating the client) */
-  defaultClientId?: string;
-  clients?: ClientDto[];
-  workers?: MemberOptionDto[];
-  teams?: TeamDto[];
-  onSaved?: (p: ProjectDto) => void;
-}) {
-  const org = useOrg();
-  const run = useOrgAction();
-  const toast = useToast();
-  const hoursPerDay = useHoursPerDay();
-  const [f, setF] = useState<ProjectForm>(projectToForm(project, hoursPerDay));
-  const [err, setErr] = useState<ApiError | null>(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (open) {
-      setF({ ...projectToForm(project, hoursPerDay), ...(!project && defaultClientId ? { client_id: defaultClientId } : {}) });
-      setErr(null);
-    }
-  }, [open, project, hoursPerDay, defaultClientId]);
-
-  const save = async () => {
-    setBusy(true);
-    setErr(null);
-    try {
-      const body = projectPayload(f, { workers: !!workers, teams: !!teams, hoursPerDay, initial: project ? projectToForm(project, hoursPerDay) : undefined, canManageRates: org.can('rates:manage') });
-      const p = project ? await run<ProjectDto>('PATCH', `/projects/${project.id}`, body) : await run<ProjectDto>('POST', '/projects', body);
-      toast.success(project ? 'Project updated' : 'Project created');
-      onOpenChange(false);
-      onSaved?.(p);
-    } catch (e) {
-      if (e instanceof ApiError) setErr(e);
-      toast.error(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={project ? 'Edit project' : 'New project'}
-      width={820}
-      footer={
-        <>
-          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" loading={busy} disabled={!f.name.trim()} onClick={save}>
-            {project ? 'Save project' : 'Create project'}
-          </Button>
-        </>
-      }
-    >
-      <ProjectFields f={f} setF={setF} err={err} clients={clientsForProject(clients, project)} workers={workers} teams={teams} projectId={project?.id} />
-    </Dialog>
-  );
 }

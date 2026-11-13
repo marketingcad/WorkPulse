@@ -222,6 +222,19 @@ export async function loadAgentCtx(
   return { tx, deps, organizationId: p.organizationId, orgTimezone: org!.timezone, weekStart: org!.weekStart, membershipId: p.membershipId, deviceId: p.deviceId, userId: p.userId, policy, showMonitoringCard: org!.settings.showMonitoringCard === true };
 }
 
+/**
+ * The desktop app signs out (QA audit 11 Nov 2026, BUG-15). Signing out used to clear the sign-in on
+ * the computer only: the device stayed "Active" for administrators and its refresh token kept working.
+ * Now its credentials are revoked and the device retired. The next sign-in registers a new device, so
+ * nothing is lost by retiring this one; the audit log says the person signed out, not an administrator.
+ */
+export async function signOutDevice(a: AgentCtx): Promise<void> {
+  const now = a.deps.now();
+  await a.tx.update(devices).set({ status: 'REVOKED', revokedAt: now, updatedAt: now }).where(eq(devices.id, a.deviceId));
+  await a.tx.update(deviceCredentials).set({ revokedAt: now }).where(and(eq(deviceCredentials.deviceId, a.deviceId), isNull(deviceCredentials.revokedAt)));
+  await auditSystem(a.tx, a.organizationId, { action: 'device.signed_out', actorType: 'user', actorId: a.membershipId, targetType: 'device', targetId: a.deviceId });
+}
+
 /** The device's worker as a regular tenant actor, for reusing member-facing services with the same rules. */
 export async function memberCtx(a: AgentCtx): Promise<Ctx> {
   const principal = { type: 'agent' as const, deviceId: a.deviceId, membershipId: a.membershipId, organizationId: a.organizationId, userId: a.userId };

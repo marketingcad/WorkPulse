@@ -244,6 +244,10 @@ export class Agent extends EventEmitter {
   async logout(): Promise<void> {
     if (this.session) await this.stop();
     await this.sync();
+    // Tell the server, so this device's sign-in stops working there too and administrators no longer
+    // see it as active (QA audit BUG-15). Best effort, and never more than a few seconds: offline, the
+    // person is still signed out here.
+    await Promise.race([this.api.request('POST', '/agent/logout').catch(() => undefined), new Promise((r) => setTimeout(r, 5000))]);
     this.api.clear();
     this.boot = null;
     this.clearSavedBoot();

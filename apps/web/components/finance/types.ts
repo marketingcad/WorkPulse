@@ -99,6 +99,8 @@ export interface InvoicePreview {
   total_minor: number;
   /** approved entries for this client and period billed in another currency (left out) */
   other_currency_entries: number;
+  /** with nothing to invoice in the period: the invoices that already hold its approved time */
+  already_invoiced: Array<{ id: string; number: string }>;
   lines: Array<{ kind: 'TIME' | 'EXPENSE' | 'CUSTOM'; description: string; quantity: number; unit_price_minor: number; amount_minor: number; tax_minor: number; entries: number }>;
 }
 
@@ -146,3 +148,4 @@ export function monthRange(today: string): { from: string; to: string } {
   const end = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
   return { from: `${today.slice(0, 8)}01`, to: end };
 }
+

@@ -5,6 +5,7 @@ import { Badge, type Tone } from '@tallywork/ui';
 import { useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import type { Assignment } from '@/components/project-task-picker';
+import { assignmentsForMember } from './assignments';
 import { fromZonedInput, toZonedInput } from '@/lib/zoned';
 
 /** Approval action recorded by GET /timesheets/:id/history. */
@@ -77,30 +78,28 @@ export function periodLabel(start: string, end: string): string {
  * Own: GET /me/assignments. Another member: there is no per-member assignments
  * endpoint, so options are derived from /projects + /tasks + the worker's teams
  * (the server still validates the target on save).
+ *
+ * QA audit 11 Nov 2026 (BUG-09): the list waits for all three requests (it was built before the
+ * member's teams arrived, so it said "not assigned"), they retry like other queries (the member's
+ * did not, so one server error emptied the list for good), and a failure is reported with a retry.
  */
-export function useAssignmentsFor(membershipId: string): { assignments: Assignment[] | undefined; loading: boolean } {
+export function useAssignmentsFor(membershipId: string): { assignments: Assignment[] | undefined; loading: boolean; error: boolean; retry: () => void; self: boolean } {
   const org = useOrg();
   const self = membershipId === org.membership.id;
   const mine = useOrgQuery<Assignment[]>(self ? '/me/assignments' : null, { staleTime: 60_000 });
   const projects = useOrgQuery<ProjectDto[]>(self ? null : '/projects', { staleTime: 60_000 });
   const tasks = useOrgQuery<TaskDto[]>(self ? null : '/tasks', { staleTime: 60_000 });
-  const worker = useOrgQuery<WorkerDto>(self ? null : `/workers/${membershipId}`, { staleTime: 60_000, retry: false });
-  const derived = useMemo(() => {
-    if (self || !projects.data) return undefined;
-    const teams = new Set(worker.data?.team_ids ?? []);
-    return projects.data
-      .filter((p) => !p.archived_at && p.status === 'ACTIVE' && (p.member_ids.includes(membershipId) || p.team_ids.some((t) => teams.has(t))))
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map<Assignment>((p) => ({
-        project_id: p.id,
-        project_name: p.name,
-        color: p.color,
-        client_name: p.client_name,
-        tasks: (tasks.data ?? []).filter((t) => t.project_id === p.id && t.status !== 'DONE').map((t) => ({ id: t.id, title: t.title, status: t.status })),
-      }));
-  }, [self, projects.data, tasks.data, worker.data, membershipId]);
-  if (self) return { assignments: mine.data, loading: mine.isLoading };
-  return { assignments: derived, loading: projects.isLoading || tasks.isLoading };
+  const worker = useOrgQuery<WorkerDto>(self ? null : `/workers/${membershipId}`, { staleTime: 60_000 });
+  const derived = useMemo(() => (self ? undefined : assignmentsForMember(membershipId, projects.data, tasks.data, worker.data?.team_ids)), [self, projects.data, tasks.data, worker.data, membershipId]);
+  if (self) return { assignments: mine.data, loading: mine.isLoading, error: mine.isError && !mine.data, retry: () => void mine.refetch(), self };
+  const failed = [projects, tasks, worker].filter((q) => q.isError && !q.data);
+  return {
+    assignments: derived,
+    loading: !derived && !failed.length,
+    error: failed.length > 0,
+    retry: () => failed.forEach((q) => void q.refetch()),
+    self,
+  };
 }
 
 /**

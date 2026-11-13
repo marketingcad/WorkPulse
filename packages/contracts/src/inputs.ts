@@ -103,6 +103,8 @@ export const inviteInput = z.object({
   team_role: z.enum(['MEMBER', 'MANAGER']).default('MEMBER'),
   project_ids: z.array(id).max(100).default([]),
 });
+/** Read an invitation before accepting it (the join page): the token is its secret, so it is sent in the body. */
+export const peekInviteInput = z.object({ token: linkToken('This invitation is invalid or has expired') });
 export const acceptInviteInput = z.object({ token: linkToken('This invitation is invalid or has expired'), name: nonEmpty(100).optional(), password: password.optional() });
 
 export const updateWorkerInput = z.object({
@@ -120,6 +122,8 @@ export const updateWorkerInput = z.object({
   /** personal hourly rates in minor units (workspace currency); requires rates:manage. null clears, omitted leaves unchanged. */
   pay_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
   bill_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
+  /** first day the pay and bill rates above apply (the organization's calendar); defaults to today, or a new project's start date when that is earlier */
+  rate_effective_from: isoDate.optional(),
 });
 
 export const memberDetailsInput = z.object({
@@ -169,6 +173,8 @@ export const clientInput = z.object({
   /** client-level hourly rates in minor units; requires rates:manage. null clears, omitted leaves unchanged. */
   bill_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
   pay_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
+  /** first day the pay and bill rates above apply (the organization's calendar); defaults to today, or a new project's start date when that is earlier */
+  rate_effective_from: isoDate.optional(),
 });
 
 /** One planned break of a project: an organization break type, optionally at a time of day and for a set length. */
@@ -196,6 +202,8 @@ export const projectInput = z.object({
   /** project-level hourly rates in minor units; requires rates:manage. null clears, omitted leaves unchanged. */
   pay_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
   bill_rate_minor: z.number().int().min(0).max(100_000_000).optional().nullable(),
+  /** first day the pay and bill rates above apply (the organization's calendar); defaults to today, or a new project's start date when that is earlier */
+  rate_effective_from: isoDate.optional(),
   /** planned breaks, in order; replaces the project's list when given */
   breaks: z.array(projectBreakInput).max(12).optional(),
 });
@@ -448,6 +456,8 @@ export const rateInput = z.object({
   currency,
   effective_from: isoDate,
 });
+/** Rates about to be saved (a form sends one or two): what they would price of the approved time that has no rate (BUG-08). Saves nothing. */
+export const ratePricingPreviewInput = z.object({ rates: z.array(rateInput).min(1).max(2) });
 /** Upper bound for stored totals (payments, budgets): far above any real amount, and safe to add up as numbers. */
 const MAX_TOTAL_MINOR = 1_000_000_000_000;
 /**

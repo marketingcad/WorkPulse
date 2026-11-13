@@ -21,6 +21,11 @@ export interface PricedEntry {
   /** the pay or bill rate is in another currency: that amount is left out (0) */
   payForeign: boolean;
   billForeign: boolean;
+  /** no pay rate covered it (paid 0); a billable entry with no bill rate (billed 0) */
+  payUnpriced: boolean;
+  billUnpriced: boolean;
+  /** no pay rate, and a finalized payroll already paid it (at 0): a rate cannot change it any more */
+  payPaidAtZero: boolean;
 }
 
 /**
@@ -45,6 +50,9 @@ export async function priceEntries(tx: Tx, currency: string, from: string, to: s
       bCurrency: billingEntries.currency,
       bClient: billingEntries.clientId,
       bPayCurrency: billingRates.currency,
+      bPayRate: billingEntries.payRateId,
+      bBillRate: billingEntries.billRateId,
+      bPayrollLine: billingEntries.payrollLineId,
     })
     .from(timeEntries)
     .innerJoin(projects, eq(projects.id, timeEntries.projectId))
@@ -69,7 +77,7 @@ export async function priceEntries(tx: Tx, currency: string, from: string, to: s
       // pay rate's currency (as payroll reads it), which can differ.
       const payForeign = !!r.bPayCurrency && r.bPayCurrency !== currency;
       const billForeign = !!r.bBillable && r.bCurrency !== currency;
-      return { ...base, billable: !!r.bBillable, payMinor: payForeign ? 0 : r.bPay, billMinor: billForeign ? 0 : (r.bBill ?? 0), approved: true, payForeign, billForeign };
+      return { ...base, billable: !!r.bBillable, payMinor: payForeign ? 0 : r.bPay, billMinor: billForeign ? 0 : (r.bBill ?? 0), approved: true, payForeign, billForeign, payUnpriced: r.bPayRate === null, billUnpriced: !!r.bBillable && r.bBillRate === null, payPaidAtZero: r.bPayRate === null && r.bPayrollLine !== null };
     }
     const rc = { date: r.d, membershipId: r.m, projectId: r.p, clientId: r.c };
     const k = coef(r.type);
@@ -85,6 +93,9 @@ export async function priceEntries(tx: Tx, currency: string, from: string, to: s
       approved: false,
       payForeign,
       billForeign,
+      payUnpriced: !pay,
+      billUnpriced: r.billable && !bill,
+      payPaidAtZero: false,
     };
   });
 }

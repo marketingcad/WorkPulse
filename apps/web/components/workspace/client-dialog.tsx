@@ -4,9 +4,12 @@ import { useRouter } from 'next/navigation';
 import type { ClientDto } from '@tallywork/contracts';
 import { Button, Checkbox, Dialog, Field, Input, Select, Textarea, cx, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage } from '@/lib/api';
-import { useOrg } from '@/lib/org';
+import { emailProblem, fieldError } from '@/lib/form-checks';
+import { todayIn, useOrg } from '@/lib/org';
+import { useRatePricingConfirm } from '@/components/finance/rate-pricing-confirm';
+import { previewRatesFromBody } from '@/components/finance/rate-pricing';
 import { ColorPicker, useOrgAction } from './basics';
-import { RateNote } from '@/components/finance/rate-note';
+import { RateNote, RateStartField } from '@/components/finance/rate-note';
 import { fromMinor, toMinor } from '@/components/finance/types';
 import { CURRENCIES, LANGUAGES, LogoEditor } from '@/components/workspace/logo-editor';
 
@@ -32,6 +35,8 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
     notes: c?.notes ?? '',
     pay_rate: c?.pay_rate_minor != null ? fromMinor(c.pay_rate_minor) : '',
     bill_rate: c?.bill_rate_minor != null ? fromMinor(c.bill_rate_minor) : '',
+    /** first day the rates apply; '' = today */
+    rates_from: '',
   });
   const [f, setF] = useState(() => initial(client));
   const [err, setErr] = useState<ApiError | null>(null);
@@ -51,15 +56,21 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
   }, [open, client]);
 
   const rateField = (key: 'pay_rate' | 'bill_rate', field: 'pay_rate_minor' | 'bill_rate_minor') => {
-    if (!canManageRates || f[key] === initial(client)[key]) return {};
+    // A start date sends the rates with it, so an unchanged amount can be moved to an earlier day.
+    if (!canManageRates || (f[key] === initial(client)[key] && !(f.rates_from && f[key].trim()))) return {};
     if (!f[key].trim()) return { [field]: null };
     const minor = toMinor(f[key]);
     if (minor === null) throw new ApiError(422, 'validation', 'Enter a valid amount', undefined, [{ field, message: 'Enter an amount like 75 or 75.50' }]);
     return { [field]: minor };
   };
 
+  const pricing = useRatePricingConfirm();
+
   const save = async () => {
     if (saving.current) return;
+    // Checked here first, with the server's rule and wording (QA audit BUG-05). The email is optional.
+    const emailIssue = f.email.trim() ? emailProblem(f.email.trim()) : null;
+    if (emailIssue) return setErr(fieldError('email', emailIssue));
     saving.current = true;
     setBusy(true);
     setErr(null);
@@ -77,8 +88,11 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
         logo: f.logo || null,
         ...rateField('pay_rate', 'pay_rate_minor'),
         ...rateField('bill_rate', 'bill_rate_minor'),
+        ...(canManageRates && f.rates_from ? { rate_effective_from: f.rates_from } : {}),
       };
       const existing = client ?? created.current;
+      // Rates that would price approved time with no rate are confirmed first (BUG-08); a new client has none.
+      if (!(await pricing.confirm(previewRatesFromBody(body, { scope: 'CLIENT', scopeId: existing?.id ?? null }, f.currency || org.organization.currency, todayIn(org.organization.timezone))))) return;
       const saved = existing ? await run<ClientDto>('PATCH', `/clients/${existing.id}`, body) : await run<ClientDto>('POST', '/clients', body);
       if (!client) created.current = saved;
       const wasActive = !saved.archived_at;
@@ -186,12 +200,13 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
               </Field>
               {canReadRates && (
                 <>
-                  <Field label="Pay rate per hour" htmlFor="cl-pay" hint={`${rateCurrency} / hour, what you pay, from today`} error={err?.field('pay_rate_minor')}>
+                  <Field label="Pay rate per hour" htmlFor="cl-pay" hint={`${rateCurrency} / hour, what you pay`} error={err?.field('pay_rate_minor')}>
                     <Input id="cl-pay" inputMode="decimal" value={f.pay_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, pay_rate: e.target.value })} placeholder="0.00" className="tabular" />
                   </Field>
-                  <Field label="Bill rate per hour" htmlFor="cl-bill" hint={`${rateCurrency} / hour, what you charge, from today`} error={err?.field('bill_rate_minor')}>
+                  <Field label="Bill rate per hour" htmlFor="cl-bill" hint={`${rateCurrency} / hour, what you charge`} error={err?.field('bill_rate_minor')}>
                     <Input id="cl-bill" inputMode="decimal" value={f.bill_rate} disabled={!canManageRates} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} placeholder="0.00" className="tabular" />
                   </Field>
+                  {canManageRates && <RateStartField id="cl-rates-from" value={f.rates_from} onChange={(rates_from) => setF({ ...f, rates_from })} emptyMeans="today" error={err?.field('rate_effective_from')} />}
                 </>
               )}
             </div>
@@ -200,6 +215,7 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
         </div>
         <button type="submit" hidden />
       </form>
+      {pricing.dialog}
     </Dialog>
   );
 }

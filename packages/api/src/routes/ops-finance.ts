@@ -12,6 +12,7 @@ import {
   pageQuery,
   paymentInput,
   rateInput,
+  ratePricingPreviewInput,
   scheduleInput,
   timeOffAdjustInput,
   timeOffPolicyInput,
@@ -70,9 +71,11 @@ import {
   listPayments,
   listRates,
   previewInvoice,
+  unbilledRange,
   recordPayment,
   sendInvoice,
   setRate,
+  previewRatePricing,
   upsertBudget,
   remindInvoice,
   voidInvoice,
@@ -163,6 +166,8 @@ export const opsRoutes = new Hono<AppEnv>()
 export const financeRoutes = new Hono<AppEnv>()
   .get('/rates', async (c) => c.json(await listRates(ctx(c))))
   .post('/rates', async (c) => c.json(await setRate(ctx(c), await body(c, rateInput)), 201))
+  // Read-only: what saving these rates would price of approved time with no rate (BUG-08).
+  .post('/rates/pricing-preview', async (c) => c.json(await previewRatePricing(ctx(c), await body(c, ratePricingPreviewInput))))
   .delete('/rates/:id', async (c) => {
     await deleteRate(ctx(c), c.req.param('id'));
     return c.body(null, 204);
@@ -195,6 +200,7 @@ export const financeRoutes = new Hono<AppEnv>()
     const filters = { status: q.status, clientId: q.client_id, from: q.from, to: q.to, search: q.q };
     return c.json(q.page ? await pageInvoices(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listInvoices(ctx(c), filters));
   })
+  .get('/invoices/unbilled', async (c) => c.json(await unbilledRange(ctx(c), query(c, z.object({ client_id: z.uuid() })).client_id)))
   .post('/invoices/preview', async (c) => c.json(await previewInvoice(ctx(c), await body(c, invoiceCreateInput))))
   .post('/invoices', async (c) => c.json(await createInvoice(ctx(c), await body(c, invoiceCreateInput)), 201))
   .get('/invoices/:id', async (c) => c.json(await getInvoice(ctx(c), c.req.param('id'))))

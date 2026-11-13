@@ -859,7 +859,8 @@ export async function submitTimesheet(x: Ctx, membershipId: string, date: string
     .where(eq(timesheets.id, ts.id));
   await setEntriesLocked(x.tx, membershipId, ts.periodStart, ts.periodEnd, true);
   await recordAction(x, ts, 'SUBMIT', to, null);
-  await emitFrom(x, 'timesheet.submitted', { timesheet_id: ts.id, membership_id: membershipId, period_start: ts.periodStart, period_end: ts.periodEnd, total_seconds: total }, { workerId: membershipId });
+  // submitted_by: who pressed Submit, when a manager or admin submits on the worker's behalf (QA audit BUG-12).
+  await emitFrom(x, 'timesheet.submitted', { timesheet_id: ts.id, membership_id: membershipId, submitted_by: x.actor.membershipId ?? null, period_start: ts.periodStart, period_end: ts.periodEnd, total_seconds: total }, { workerId: membershipId });
   await audit(x, { action: 'timesheet.submitted', targetType: 'timesheet', targetId: ts.id });
   return getTimesheet(x, membershipId, date);
 }

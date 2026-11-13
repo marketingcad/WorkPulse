@@ -25,12 +25,13 @@ import {
   fmtMoney,
   useToast,
 } from '@tallywork/ui';
-import { ApiError, api, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
+import { ApiError, api, errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg } from '@/lib/org';
 import { Stepper } from '@/components/finance/stepper';
 import { extraLineErrors } from '@/components/finance/extra-lines';
 import { useUnsavedChanges } from '@/lib/unsaved';
 import { monthRange, toMinor, type InvoiceDetail, type InvoicePreview } from '@/components/finance/types';
+import { suggestedPeriod, unbilledOutside, type UnbilledRange } from '@/components/finance/invoice-period';
 
 type GroupBy = 'project' | 'task' | 'worker';
 interface ExtraLine {
@@ -85,6 +86,15 @@ function Composer() {
 
   const clientsQ = useOrgQuery<ClientDto[]>('/clients');
   const client = clientsQ.data?.find((c) => c.id === clientId);
+  // The period follows the client's approved time not yet invoiced, until the person sets it (C-10).
+  const [periodSet, setPeriodSet] = useState(false);
+  const unbilled = useOrgQuery<UnbilledRange>(clientId ? `/invoices/unbilled${qs({ client_id: clientId })}` : null).data;
+  useEffect(() => {
+    if (periodSet || !unbilled) return;
+    const p = suggestedPeriod(unbilled, { from: lastMonth.from, to: lastMonth.to });
+    setStart(p.from);
+    setEnd(p.to);
+  }, [unbilled, periodSet, lastMonth.from, lastMonth.to]);
   // Past the first step, or with custom lines or notes written, a stray link click asks before the draft is lost.
   useUnsavedChanges(step > 0 || extras.length > 0 || notes.trim() !== '');
 
@@ -183,11 +193,45 @@ function Composer() {
               </Select>
             </Field>
             <Field label="Period start" htmlFor="inv-start" required>
-              <Input id="inv-start" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+              <Input
+                id="inv-start"
+                type="date"
+                value={start}
+                onChange={(e) => {
+                  setPeriodSet(true);
+                  setStart(e.target.value);
+                }}
+              />
             </Field>
             <Field label="Period end" htmlFor="inv-end" required error={start && end && start > end ? 'The period must end after it starts.' : undefined}>
-              <Input id="inv-end" type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+              <Input
+                id="inv-end"
+                type="date"
+                value={end}
+                onChange={(e) => {
+                  setPeriodSet(true);
+                  setEnd(e.target.value);
+                }}
+              />
             </Field>
+            {unbilled?.from && unbilled.to && unbilledOutside(unbilled, start, end) && (
+              <p role="status" className="flex flex-wrap items-center gap-x-2 text-sm text-text-muted sm:col-span-2">
+                <span>
+                  {client?.name ?? 'This client'} has approved time not yet invoiced from {fmtDate(unbilled.from)} to {fmtDate(unbilled.to)}.
+                </span>
+                <button
+                  type="button"
+                  className="font-medium text-interactive hover:underline"
+                  onClick={() => {
+                    setPeriodSet(true);
+                    setStart(unbilled.from!);
+                    setEnd(unbilled.to!);
+                  }}
+                >
+                  Use this period
+                </button>
+              </p>
+            )}
             <Field label="Group time by" className="sm:col-span-2">
               <div>
                 <SegmentedControl
@@ -229,7 +273,23 @@ function Composer() {
               <SkeletonRows rows={4} cols={4} />
             ) : (
               <>
-                {sourceLines.length === 0 && (
+                {sourceLines.length === 0 && preview.already_invoiced.length > 0 && (
+                  <EmptyState
+                    icon={<Clock className="size-5" />}
+                    title="Nothing to invoice in this period"
+                    description={`The approved time in this period is already on ${preview.already_invoiced.map((i) => i.number).join(', ')}. Time can be on one invoice only: to bill it again, void that invoice, or delete it if it is still a draft. You can still add custom lines below.`}
+                    action={
+                      <span className="flex flex-wrap justify-center gap-x-3">
+                        {preview.already_invoiced.map((i) => (
+                          <Link key={i.id} href={`${org.base}/finance/invoices/${i.id}`} className="text-sm font-medium text-interactive hover:underline">
+                            Open {i.number}
+                          </Link>
+                        ))}
+                      </span>
+                    }
+                  />
+                )}
+                {sourceLines.length === 0 && preview.already_invoiced.length === 0 && (
                   <EmptyState
                     icon={<Clock className="size-5" />}
                     title="Nothing to invoice in this period"

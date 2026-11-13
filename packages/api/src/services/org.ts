@@ -22,7 +22,7 @@ import type { MemberDetailsDto, MemberOptionDto, OffsetPage, OrgContextDto, Work
 import type { Ctx } from './ctx';
 import { ipAllowed, parseCidr } from '../lib/cidr';
 import { audit } from './events';
-import { applyScopedRates, currentScopedRates, rateChanges } from './finance';
+import { applyScopedRates, currentScopedRates, formRateStart, rateChanges } from './finance';
 import { membershipFilter, narrowMemberships } from './scope';
 import { mayUseAssistant } from './assistant/access';
 import { randomToken, sha256 } from '../lib/crypto';
@@ -403,7 +403,7 @@ export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<
       .values({ membershipId, organizationId: x.org.id, timezone: before.timezone, ...profilePatch })
       .onConflictDoUpdate({ target: workerProfiles.membershipId, set: { ...profilePatch, updatedAt: new Date() } });
   }
-  await applyScopedRates(x, 'WORKER', membershipId, changes, x.org.currency);
+  await applyScopedRates(x, 'WORKER', membershipId, changes, x.org.currency, formRateStart(x, input.rate_effective_from));
   const after = await getWorker(x, membershipId);
   await audit(x, { action: 'worker.updated', targetType: 'membership', targetId: membershipId, before, after });
   return after;
@@ -524,10 +524,15 @@ export async function inviteWorker(x: Ctx, input: z.infer<typeof inviteInput>) {
     throw validation('Choose active projects from this workspace', { errors: [{ field: 'project_ids', message: 'Choose active projects from this workspace' }] });
   const token = randomToken(32);
   const id = newId();
-  await x.tx
+  // A new invitation replaces any still open for the address: the earlier link stops working, and the
+  // result says so (QA audit C-8). Expired ones are closed too, but were past use already.
+  const now = new Date();
+  const closed = await x.tx
     .update(invitations)
-    .set({ revokedAt: new Date() })
-    .where(and(eq(invitations.organizationId, x.org.id), eq(invitations.email, input.email.toLowerCase()), isNull(invitations.acceptedAt), isNull(invitations.revokedAt)));
+    .set({ revokedAt: now })
+    .where(and(eq(invitations.organizationId, x.org.id), eq(invitations.email, input.email.toLowerCase()), isNull(invitations.acceptedAt), isNull(invitations.revokedAt)))
+    .returning({ expiresAt: invitations.expiresAt });
+  const replaced = closed.some((i) => i.expiresAt > now);
   await x.tx.insert(invitations).values({
     id,
     organizationId: x.org.id,
@@ -560,7 +565,7 @@ export async function inviteWorker(x: Ctx, input: z.infer<typeof inviteInput>) {
     emailSent = false;
   });
   await audit(x, { action: 'invitation.created', targetType: 'invitation', targetId: id, after: { email: input.email, role: role.key, teams: teamIds.length, team_role: teamIds.length ? input.team_role : undefined, projects: projectIds.length } });
-  return { id, email: input.email.toLowerCase(), invite_url: url, expires_at: new Date(Date.now() + 7 * 86400_000).toISOString(), email_sent: emailSent };
+  return { id, email: input.email.toLowerCase(), invite_url: url, expires_at: new Date(Date.now() + 7 * 86400_000).toISOString(), email_sent: emailSent, replaced_pending: replaced };
 }
 
 export async function listInvitations(x: Ctx) {

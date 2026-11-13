@@ -113,8 +113,8 @@ test.describe('Admin navigation', () => {
     await page.goto(`/o/${data.orgId}/projects`);
     await page.getByRole('button', { name: 'New project' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'New project' });
-    await expect(dialog.getByText(/Rates set here start today\. Pay rate overrides client and organization rates; member-on-project and member rates still win\./)).toBeVisible();
-    await expect(dialog.getByRole('link', { name: 'See all rates, or set a future date →' })).toHaveAttribute('href', `/o/${data.orgId}/finance/billing`);
+    await expect(dialog.getByText(/Rates set here start on the “Rates start” date\. Approved time that had no rate is priced once a rate covers it\. Pay rate overrides client and organization rates; member-on-project and member rates still win\./)).toBeVisible();
+    await expect(dialog.getByRole('link', { name: 'See all rates →' })).toHaveAttribute('href', `/o/${data.orgId}/finance/billing`);
   });
 });
 

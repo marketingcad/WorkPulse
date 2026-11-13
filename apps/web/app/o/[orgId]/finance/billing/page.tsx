@@ -30,6 +30,7 @@ import { useMemberOptions } from '@/lib/members';
 import { SCOPE_LABEL } from '@/components/finance/rate-precedence';
 import { RATE_PRECEDENCE } from '@tallywork/domain';
 import { CURRENCIES } from '@/components/settings/options';
+import { useRatePricingConfirm } from '@/components/finance/rate-pricing-confirm';
 
 // The order the billing engine applies (most specific first).
 const PRECEDENCE: Record<RateKind, RateScope[]> = RATE_PRECEDENCE;
@@ -215,6 +216,7 @@ function SetRateDialog({ kind, onClose, targets }: { kind: RateKind | null; onCl
   const [from, setFrom] = useState('');
   const [err, setErr] = useState<ApiError | null>(null);
   const m = useOrgMutation<RateBody, RateRow[]>('POST', '/rates');
+  const pricing = useRatePricingConfirm();
 
   useEffect(() => {
     if (!kind) return;
@@ -248,7 +250,10 @@ function SetRateDialog({ kind, onClose, targets }: { kind: RateKind | null; onCl
       return;
     }
     try {
-      await m.mutateAsync({ kind: k, scope, scope_id: scopeId, amount_minor: minor, currency: currency.toUpperCase(), effective_from: from });
+      const rate = { kind: k, scope, scope_id: scopeId, amount_minor: minor, currency: currency.toUpperCase(), effective_from: from };
+      // A rate that would price approved time with no rate is confirmed first (BUG-08).
+      if (!(await pricing.confirm([rate]))) return;
+      await m.mutateAsync(rate);
       toast.success('Rate saved');
       onClose();
     } catch (e) {
@@ -264,7 +269,7 @@ function SetRateDialog({ kind, onClose, targets }: { kind: RateKind | null; onCl
       open={!!kind}
       onOpenChange={(o) => !o && onClose()}
       title="Set rate"
-      description="Creates a new rate version from the effective date. Earlier approved time keeps its amounts."
+      description="Creates a new rate version from the effective date. Approved time keeps its amounts, except time approved with no rate: it is priced with this one unless an invoice or a finalized payroll holds it."
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
@@ -274,6 +279,7 @@ function SetRateDialog({ kind, onClose, targets }: { kind: RateKind | null; onCl
         </>
       }
     >
+      {pricing.dialog}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Kind" htmlFor="rate-kind">
           <Select id="rate-kind" value={k} onChange={(e) => setK(e.target.value as RateKind)}>

@@ -1,5 +1,5 @@
 'use client';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react';
@@ -9,7 +9,7 @@ import { AuthInput, AuthShell } from '@/components/auth-shell';
 import { CheckEmail } from '@/components/check-email';
 import { api, ApiError } from '@/lib/api';
 import { t } from '@/lib/i18n';
-import { sameOriginPath } from '@/lib/redirect';
+import { afterSignIn, currentUser, lastOrgId } from '@/lib/home';
 
 function LoginForm() {
   const router = useRouter();
@@ -25,18 +25,20 @@ function LoginForm() {
   const [unverified, setUnverified] = useState(false);
 
   function finish(me: MeDto) {
-    const next = params.get('next');
-    let last: string | null = null;
-    try {
-      last = localStorage.getItem('tw.lastOrg');
-    } catch {
-      /* ignore */
-    }
-    const org = me.organizations.find((o) => o.id === last) ?? me.organizations[0];
-    // Client viewers have no organization of their own: they go to their dashboards.
-    const fallback = org ? `/o/${org.id}` : me.client_portals?.length ? (me.client_portals.length === 1 ? `/portal/${me.client_portals[0]!.access_id}` : '/portal') : '/welcome';
-    router.replace(sameOriginPath(next) ?? fallback);
+    router.replace(afterSignIn(me, params.get('next'), lastOrgId()));
   }
+
+  // QA audit 11 Nov 2026 (BUG-06): someone already signed in was shown the sign-in form again. They go
+  // where they were heading, or to their workspace. A signed-out visitor sees the form straight away.
+  useEffect(() => {
+    let live = true;
+    void currentUser().then((me) => {
+      if (live && me) router.replace(afterSignIn(me, params.get('next'), lastOrgId()));
+    });
+    return () => {
+      live = false;
+    };
+  }, [router, params]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

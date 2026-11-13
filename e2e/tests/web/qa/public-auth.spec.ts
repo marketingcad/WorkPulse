@@ -27,9 +27,11 @@ test.describe('QA · Sign-up', () => {
     else await expect(page.getByText(email)).toBeVisible();
   });
 
-  // Every submission counts towards the sign-up rate limit (as in production), so the validation
-  // checks share as few submissions as possible.
+  // Every submission counts towards the sign-up rate limit (as in production). QA audit 12 Nov 2026
+  // (BUG-16): these mistakes are now caught in the browser, so none of them is sent at all.
   test('an empty form, then a short password, are refused field by field and nothing is created', async ({ page }) => {
+    const sent: string[] = [];
+    page.on('request', (r) => void (r.url().includes('/api/v1/auth/signup') && sent.push(r.method())));
     await page.goto('/signup');
     await page.getByRole('button', { name: 'Create organization' }).click();
     const alerts = page.getByRole('alert').filter({ hasText: /./ });
@@ -43,6 +45,14 @@ test.describe('QA · Sign-up', () => {
     await page.getByRole('button', { name: 'Create organization' }).click();
     await expect(alerts).toHaveText(['Use at least 10 characters']);
     await expect(page).toHaveURL(/\/signup/);
+
+    // An invalid email too, and each message stays tied to its field.
+    await page.getByLabel('Work email').fill('not-an-email');
+    await page.getByLabel('Password', { exact: true }).fill('x'.repeat(12));
+    await page.getByRole('button', { name: 'Create organization' }).click();
+    await expect(alerts).toHaveText(['Enter a valid email address, like name@example.com']);
+    await expect(page.getByLabel('Work email')).toHaveAttribute('aria-invalid', 'true');
+    expect(sent).toEqual([]);
   });
 
   test('errors are written for people and tied to their field', async ({ page }) => {
@@ -84,10 +94,12 @@ test.describe('QA · Links from emails', () => {
   test('an invalid invitation link does not create an account', async ({ page }) => {
     await page.goto(`/invite?token=${badToken}`);
     await expect(page.getByRole('heading', { level: 1, name: 'You have been invited' })).toBeVisible();
-    await page.getByLabel('Your name').fill('Ivy Intruder');
-    await page.getByLabel('Choose a password').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Join organization' }).click();
-    await expect(page.getByRole('alert').filter({ hasText: /./ })).toHaveText('This invitation is invalid or has expired');
+    // The page reads the invitation first (QA audit BUG-10): an invalid link says so, with no form to fill in.
+    await expect(page.getByRole('alert').filter({ hasText: /./ })).toHaveText('This invitation is invalid or has expired. Ask the person who invited you to send a new one.');
+    await expect(page.getByLabel('Choose a password')).toHaveCount(0);
+    // And the server refuses to create an account from it on its own.
+    const r = await page.request.post('/api/v1/auth/invitations/accept', { data: { token: badToken, name: 'Ivy Intruder', password: PASSWORD }, headers: { Origin: new URL(page.url()).origin } });
+    expect([r.status(), (await r.json()).code]).toEqual([422, 'invalid_invitation']);
     await expect(page).toHaveURL(/\/invite/);
   });
 

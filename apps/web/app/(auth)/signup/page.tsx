@@ -7,6 +7,7 @@ import { Button, Field } from '@tallywork/ui';
 import { AuthInput, AuthShell } from '@/components/auth-shell';
 import { CheckEmail } from '@/components/check-email';
 import { api, ApiError } from '@/lib/api';
+import { formErrors, signupProblems } from '@/lib/form-checks';
 import { t } from '@/lib/i18n';
 
 export default function SignupPage() {
@@ -19,11 +20,15 @@ export default function SignupPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    // Checked here first, with the server's rules and wording: every request counts toward the
+    // sign-up limit, so a typo must not use one up (QA audit BUG-16).
+    const problems = signupProblems(form);
+    if (problems.length) return setErr(formErrors(problems));
     setLoading(true);
     setErr(null);
     try {
       const r = await api<{ organization_id: string; verification_required?: boolean }>('/auth/signup', {
-        body: { ...form, organization_name: form.organization_name || undefined, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+        body: { ...form, name: form.name.trim(), email: form.email.trim(), organization_name: form.organization_name.trim() || undefined, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
       });
       if (r.verification_required) {
         setPendingEmail(form.email);
@@ -74,12 +79,12 @@ export default function SignupPage() {
         <Field label={t('auth.password')} htmlFor="password" hint={t('auth.passwordHint')} error={err?.field('password')}>
           <AuthInput icon={Lock} id="password" type="password" autoComplete="new-password" value={form.password} onChange={set('password')} required minLength={10} />
         </Field>
-        <Field label={t('auth.signup.orgName')} htmlFor="org" hint={t('auth.signup.orgHint')}>
+        <Field label={t('auth.signup.orgName')} htmlFor="org" hint={t('auth.signup.orgHint')} error={err?.field('organization_name')}>
           <AuthInput icon={Building2} id="org" value={form.organization_name} onChange={set('organization_name')} placeholder={t('auth.signup.orgPlaceholder')} />
         </Field>
-        {err?.general(['name', 'email', 'password']) && (
+        {err?.general(['name', 'email', 'password', 'organization_name']) && (
           <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
-            {err.general(['name', 'email', 'password'])}
+            {err.general(['name', 'email', 'password', 'organization_name'])}
           </p>
         )}
         <Button type="submit" variant="primary" size="md" loading={loading} className="w-full">

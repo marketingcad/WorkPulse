@@ -46,6 +46,10 @@ export async function insights(x: Ctx, from: string, to: string, requested?: str
   const byDay = new Map<string, Acc>();
   const totals = acc();
   let otherCurrency = false;
+  // Time no rate covered, so it is paid or billed 0 (QA audit BUG-08): shown so it is not missed.
+  let unpricedPay = 0;
+  let unpricedBill = 0;
+  let paidAtZero = 0;
 
   for (const r of rows) {
     const secs = r.trackedSeconds + r.manualSeconds;
@@ -86,6 +90,9 @@ export async function insights(x: Ctx, from: string, to: string, requested?: str
       }
       totals.pay += e.payMinor;
       totals.bill += e.billMinor;
+      if (e.payUnpriced) unpricedPay += e.seconds;
+      if (e.billUnpriced) unpricedBill += e.seconds;
+      if (e.payPaidAtZero) paidAtZero += e.seconds;
     }
   }
 
@@ -142,6 +149,9 @@ export async function insights(x: Ctx, from: string, to: string, requested?: str
       billable_clients: [...byClient.entries()].filter(([k, a]) => k && a.billable > 0).length,
       billable_projects: [...byProject.values()].filter((a) => a.billable > 0).length,
       paid_people: [...byMember.values()].filter((a) => a.pay > 0).length,
+      unpriced_pay_seconds: moneyPerm ? unpricedPay : null,
+      unpriced_bill_seconds: moneyPerm ? unpricedBill : null,
+      unpriced_paid_seconds: moneyPerm ? paidAtZero : null,
     },
     members: people
       .map((p) => {

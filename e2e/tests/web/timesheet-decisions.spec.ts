@@ -16,7 +16,8 @@ async function openNinasTimesheet(page: Page, orgId: string, tab: 'Pending' | 'A
   await expect(page.getByRole('heading', { level: 1, name: 'Approvals' })).toBeVisible();
   const panel = page.getByRole('region', { name: 'Timesheets' }).or(page.locator('section').filter({ has: page.getByRole('heading', { name: 'Timesheets', exact: true }) })).first();
   if (tab === 'Approved') await panel.getByRole('button', { name: 'Approved', exact: true }).click();
-  await panel.getByRole('row', { name: /Nina Newcomer/ }).first().click();
+  // Her week of 5 January only: other specs may give Nina other timesheets in these lists.
+  await panel.getByRole('row', { name: /Nina Newcomer.*Jan 5 – Jan 11, 2026/ }).click();
   const sheet = page.getByRole('dialog').filter({ hasText: 'Nina Newcomer' });
   await expect(sheet).toBeVisible();
   return sheet;

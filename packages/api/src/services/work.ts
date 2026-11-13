@@ -37,7 +37,7 @@ import { can, conflict, forbidden, localDate, newId, notFound, businessRule, val
 import type { ClientDto, OffsetPage, ProjectBreakDto, ProjectDto, TaskDto, TeamDto, clientInput, projectInput, taskInput, teamInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { audit, emitFrom } from './events';
-import { applyScopedRates, currentScopedRates, rateChanges } from './finance';
+import { applyScopedRates, currentScopedRates, formRateStart, rateChanges } from './finance';
 import { canOnClient, canOnProject, membershipFilter, projectFilter } from './scope';
 import { iso } from '../lib/http';
 import { likePattern } from '../lib/search';
@@ -256,7 +256,7 @@ export async function upsertClient(x: Ctx, clientId: string | null, input: Parti
 
   // Rates are in the client's currency, as saved (a partial update may not send the currency).
   const [saved] = await x.tx.select({ currency: clients.currency }).from(clients).where(eq(clients.id, id));
-  await applyScopedRates(x, 'CLIENT', id, changes, saved?.currency ?? x.org.currency);
+  await applyScopedRates(x, 'CLIENT', id, changes, saved?.currency ?? x.org.currency, formRateStart(x, input.rate_effective_from));
   if (clientId && input.currency !== undefined) {
     const own = (await x.tx.select({ id: projects.id }).from(projects).where(eq(projects.clientId, id))).map((r) => r.id);
     await assertRatesInCurrency(x, saved?.currency ?? x.org.currency, own, id, 'the client and its projects');
@@ -521,7 +521,8 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
   if (input.breaks) await setProjectBreaks(x, id, input.breaks);
   // Rates are in the client's currency when it has one, like the invoices for this project.
   const [row] = await x.tx.select({ cur: clients.currency }).from(projects).leftJoin(clients, eq(clients.id, projects.clientId)).where(eq(projects.id, id));
-  if (changes.length) await applyScopedRates(x, 'PROJECT', id, changes, row?.cur ?? x.org.currency);
+  // A new project's rates start with the project when it began earlier, so time already worked is priced (BUG-08).
+  if (changes.length) await applyScopedRates(x, 'PROJECT', id, changes, row?.cur ?? x.org.currency, formRateStart(x, input.rate_effective_from, projectId ? null : input.start_date));
   if (projectId && input.client_id !== undefined) await assertRatesInCurrency(x, row?.cur ?? x.org.currency, [id], null, 'this project');
   if (!projectId) await emitFrom(x, 'project.created', { project_id: id, name: input.name });
   else await emitFrom(x, 'project.updated', { project_id: id });

@@ -1,9 +1,10 @@
 'use client';
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
-import type { BudgetStatusDto, ClientDto, ProjectDto, TaskDto, TeamDto, MemberOptionDto } from '@tallywork/contracts';
+import dynamic from 'next/dynamic';
+import { Archive, MoreHorizontal, Pencil, Plus } from 'lucide-react';
+import type { BudgetStatusDto, ProjectDto, TaskDto, TeamDto, MemberOptionDto } from '@tallywork/contracts';
 import {
   Badge,
   BudgetProgress,
@@ -30,10 +31,10 @@ import {
   useToast,
   type Column,
 } from '@tallywork/ui';
-import { ApiError, errorMessage, useOrgQuery } from '@/lib/api';
+import { errorMessage, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
-import { ColorDot, PriorityBadge, ProjectFields, ProjectStatusBadge, TaskDialog, TaskStatusSelect, clientsForProject, projectPayload, projectToForm, useHoursPerDay, useOrgAction, type ProjectForm } from '@/components/workspace/shared';
+import { ColorDot, PriorityBadge, ProjectStatusBadge, TaskDialog, TaskStatusSelect, useHoursPerDay, useOrgAction } from '@/components/workspace/shared';
 import { useMemberOptions } from '@/lib/members';
 import { MemberAvatar } from '@/lib/avatars';
 
@@ -42,6 +43,9 @@ import { MemberAvatar } from '@/lib/avatars';
 const BudgetDialog = lazy(() => import('@/components/finance/budget-dialog').then((m) => ({ default: m.BudgetDialog })));
 const ProjectDocumentsTab = lazy(() => import('@/components/workspace/project-documents').then((m) => ({ default: m.ProjectDocumentsTab })));
 const ProjectMilestones = lazy(() => import('@/components/performance/project-milestones'));
+
+// Loaded when the Settings tab is opened: the project form is large (bundle budget).
+const SettingsTab = dynamic(() => import('./settings-tab').then((m) => m.SettingsTab), { ssr: false });
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -530,112 +534,6 @@ function PlanTab({ project: p, budget, onEditBudget, onEditPlan }: { project: Pr
           </dl>
         </Panel>
       )}
-    </div>
-  );
-}
-
-// ─── Settings ────────────────────────────────────────────────────────────────
-function SettingsTab({ project }: { project: ProjectDto }) {
-  const org = useOrg();
-  const run = useOrgAction();
-  const toast = useToast();
-  const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients' : null);
-  const hoursPerDay = useHoursPerDay();
-  const [f, setF] = useState<ProjectForm>(projectToForm(project, hoursPerDay));
-  const [err, setErr] = useState<ApiError | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [confirm, setConfirm] = useState(false);
-  // The form follows the saved project only while it has no unsaved changes (or right after a save):
-  // a background refresh (window focus, someone's timer updating the totals) must not wipe edits.
-  const loaded = useRef(projectToForm(project, hoursPerDay));
-  const justSaved = useRef(false);
-  useEffect(() => {
-    const next = projectToForm(project, hoursPerDay);
-    setF((cur) => (justSaved.current || JSON.stringify(cur) === JSON.stringify(loaded.current) ? next : cur));
-    loaded.current = next;
-    justSaved.current = false;
-  }, [project, hoursPerDay]);
-
-  // Keep the current client selectable even if it is archived.
-  const clients = useMemo(() => clientsForProject(clientsQ.data ?? [], project) ?? [], [clientsQ.data, project]);
-
-  const save = async () => {
-    setBusy(true);
-    setErr(null);
-    try {
-      // Before the request: the action refreshes the project before it returns.
-      justSaved.current = true;
-      await run('PATCH', `/projects/${project.id}`, projectPayload(f, { hoursPerDay, initial: projectToForm(project, hoursPerDay), canManageRates: org.can('rates:manage') }));
-      toast.success('Project saved');
-    } catch (e) {
-      justSaved.current = false;
-      if (e instanceof ApiError) setErr(e);
-      toast.error(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-  const setArchived = async (archived: boolean) => {
-    setBusy(true);
-    try {
-      await run('POST', `/projects/${project.id}/${archived ? 'archive' : 'restore'}`);
-      toast.success(archived ? 'Project archived' : 'Project restored');
-      setConfirm(false);
-    } catch (e) {
-      toast.error(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      <Panel className="lg:col-span-2" title="Details">
-        <form
-          className="p-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save();
-          }}
-        >
-          <ProjectFields f={f} setF={setF} err={err} clients={clients} showAssignments={false} projectId={project.id} />
-          <div className="mt-4 flex justify-end gap-2">
-            <Button onClick={() => setF(projectToForm(project, hoursPerDay))}>Reset</Button>
-            <Button type="submit" variant="primary" loading={busy} disabled={!f.name.trim()}>
-              Save changes
-            </Button>
-          </div>
-        </form>
-      </Panel>
-      <Panel title={project.archived_at ? 'Archived' : 'Archive'}>
-        <div className="flex flex-col gap-3 p-4 text-sm text-text-muted">
-          {project.archived_at ? (
-            <>
-              <p>This project was archived on {fmtDate(project.archived_at)}. Nobody can track new time to it.</p>
-              <Button icon={<ArchiveRestore className="size-3.5" />} loading={busy} onClick={() => setArchived(false)} className="self-start">
-                Restore project
-              </Button>
-            </>
-          ) : (
-            <>
-              <p>Archiving hides the project from timers and pickers. Tracked time, budgets and invoices are kept.</p>
-              <Button variant="danger" icon={<Archive className="size-3.5" />} onClick={() => setConfirm(true)} className="self-start">
-                Archive project
-              </Button>
-            </>
-          )}
-        </div>
-      </Panel>
-      <ConfirmDialog
-        open={confirm}
-        onOpenChange={setConfirm}
-        title={`Archive ${project.name}?`}
-        description="Nobody can track new time to it. You can restore it later."
-        confirmLabel="Archive"
-        danger
-        loading={busy}
-        onConfirm={() => setArchived(true)}
-      />
     </div>
   );
 }

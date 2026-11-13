@@ -76,7 +76,11 @@ test('the add time dialog checks the duration, the billable part and the project
 
   await dialog.getByRole('button', { name: 'Choose project and task' }).click();
   await page.getByRole('option', { name: new RegExp(data.projects.website.name) }).first().click();
+  // Too long for one entry says so (QA audit C-9: it was told the format was wrong).
   await dialog.getByLabel('Time logged').fill('30h');
+  await add.click();
+  await expect(dialog.getByText('One entry can hold at most 24 hours. Split longer work across days.')).toBeVisible();
+  await dialog.getByLabel('Time logged').fill('two hours');
   await add.click();
   await expect(dialog.getByText('Enter the time worked, e.g. 2:30 or 1.5')).toBeVisible();
 

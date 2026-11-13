@@ -5,7 +5,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { rateLimitBuckets, withQueryStats } from '@tallywork/db';
 import { DomainError, newId } from '@tallywork/domain';
 import type { AppEnv, Deps } from './context';
-import { fromDatabaseError, problemFromError } from './lib/http';
+import { databaseErrorCause, fromDatabaseError, problemFromError } from './lib/http';
 import { safeEqual, verifyToken } from './lib/crypto';
 import { isSafeKey } from './lib/storage';
 import { authenticate } from './middleware/auth';
@@ -76,7 +76,8 @@ export function createApp(deps: Deps) {
     // A bad id or a duplicate is routine; any other database rule that fired means validation missed it, so it is still logged.
     const fromDb = err instanceof DomainError ? null : fromDatabaseError(err);
     if (!(err instanceof DomainError) && (!fromDb || (fromDb.code !== 'resource_not_found' && fromDb.code !== 'duplicate')))
-      console.error(JSON.stringify({ level: fromDb ? 'warn' : 'error', request_id: rid, path: c.req.path, msg: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack?.split('\n').slice(0, 6) : undefined }));
+      // `cause`: the driver's own error under Drizzle's "Failed query: …" wrapper, which named nothing (QA audit BUG-01).
+      console.error(JSON.stringify({ level: fromDb ? 'warn' : 'error', request_id: rid, path: c.req.path, msg: err instanceof Error ? err.message : String(err), cause: databaseErrorCause(err) ?? undefined, stack: err instanceof Error ? err.stack?.split('\n').slice(0, 6) : undefined }));
     const p = problemFromError(err, rid);
     return c.json(p, p.status as 400, { 'Content-Type': 'application/problem+json', ...(p.status === 503 ? { 'Retry-After': '5' } : {}) });
   });

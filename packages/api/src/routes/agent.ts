@@ -10,7 +10,7 @@ import { rateLimit } from '../middleware/rate-limit';
 import { requireUser, userId } from '../middleware/auth';
 import { runInTenantTx } from '../middleware/tenant';
 import { cancelMyTimeOff, myActivity, myClientVisibility, myNotifications, myPayStub, myPayStubs, mySchedule, mySessions, mySummary, myPerformanceData, myTasks, myTimeOff, myTimesheet, readMyNotifications, requestMyTimeOff, submitMyTimesheet } from '../services/agent-me';
-import { acknowledgePolicy, bootstrap, createDeviceAuthCode, heartbeat, ingestBatch, loadAgentCtx, loginDevice, refreshDeviceToken, registerDevice, isOwnScreenshotKey, screenshotKeyPrefix, type AgentCtx } from '../services/agent';
+import { acknowledgePolicy, bootstrap, createDeviceAuthCode, heartbeat, ingestBatch, loadAgentCtx, loginDevice, refreshDeviceToken, registerDevice, isOwnScreenshotKey, screenshotKeyPrefix, signOutDevice, type AgentCtx } from '../services/agent';
 import { agentAvatar } from '../services/avatar';
 
 type AgentEnv = AppEnv & { Variables: AppEnv['Variables'] & { agent: AgentCtx } };
@@ -56,6 +56,11 @@ agentOnly
     return c.body(null, 204);
   })
   .post('/ingest/batch', rateLimit('ingest', 240, 60), tenant, async (c) => c.json(await ingestBatch(c.var.agent, await body(c, ingestBatchInput))))
+  /** Sign out of the desktop app: this device's credentials stop working (BUG-15). Allowed while pending approval. */
+  .post('/logout', rateLimit('agent-me-write', 30, 60), tenantPendingOk, async (c) => {
+    await signOutDevice(c.var.agent);
+    return c.body(null, 204);
+  })
   .post('/heartbeat', rateLimit('heartbeat', 30, 60), tenantPendingOk, async (c) => {
     const i = await body(c, heartbeatInput);
     return c.json(await heartbeat(c.var.agent, { sessionId: i.session_id, agentVersion: i.agent_version, capabilities: i.capabilities }));

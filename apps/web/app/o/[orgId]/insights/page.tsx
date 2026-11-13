@@ -11,6 +11,7 @@ import { BarList, ColumnChart, Donut } from '@/components/charts-lazy';
 import { t } from '@/lib/i18n';
 import { PERIOD_OPTIONS, periodRange, type PeriodMode } from '@/components/insights/period';
 import { downloadText, toCsv } from '@/lib/csv';
+import { UnpricedTimeWarning } from '@/components/finance/unpriced-time';
 
 type Member = InsightsDto['members'][number];
 
@@ -129,6 +130,7 @@ export default function InsightsPage() {
               {data.other_currency && ' Time priced in another currency is not included.'}
             </p>
           )}
+          <UnpricedTimeWarning pay={data.totals.unpriced_pay_seconds} bill={data.totals.unpriced_bill_seconds} paid={data.totals.unpriced_paid_seconds} />
 
           {previous && <p className="-mt-2 text-xs text-text-faint">{t('charts.comparedWith', { period: prev.label })}</p>}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

@@ -5,7 +5,7 @@ const settingsTab = (page: import('@playwright/test').Page, name: string) => pag
 test('13.1', async ({ d, page }) => {
   await d.go('/settings');
   d.begin();
-  await d.click(settingsTab(page, 'Devices'));
+  await d.click(settingsTab(page, 'Devices'), { on: 'Settings, Devices' });
   await expect(page.getByRole('heading', { level: 1, name: 'Devices' })).toBeVisible();
   await d.point(page.getByRole('table', { name: 'Registered devices' }), { hold: 3000 });
   await d.click(page.getByRole('button', { name: /^Actions for / }).first(), { settle: false });
@@ -22,7 +22,7 @@ test('13.1', async ({ d, page }) => {
 test('13.2', async ({ d, page }) => {
   await d.go('/devices');
   d.begin();
-  await d.click(settingsTab(page, 'Security & retention'));
+  await d.click(settingsTab(page, 'Security & retention'), { on: 'Under Security and retention' });
   const twofa = page.getByLabel(label('Require two-factor authentication'));
   await d.mark('zoom to Sign-in & access', twofa, { on: 'Require two-factor authentication' });
   for (const l of ['Require two-factor authentication', 'Session lifetime (hours)', 'Require device approval', 'Allowed networks (IP allowlist)']) await d.point(page.getByText(l, { exact: true }).first(), { hold: 1600 });
@@ -64,7 +64,7 @@ test('13.4', async ({ d, page }) => {
   await expect(created).toBeVisible();
   await d.beat(3000);
   await d.click(created.getByRole('button', { name: 'I have stored the key' }));
-  await d.click(settingsTab(page, 'Webhooks'));
+  await d.click(settingsTab(page, 'Webhooks'), { on: 'Webhooks work the other way around' });
   await d.click(page.getByRole('button', { name: 'Add endpoint' }).first(), { settle: false });
   const hook = page.getByRole('dialog', { name: 'Add endpoint' });
   await d.mark('zoom to the Add endpoint dialog', hook, { on: 'Add the endpoint address' });
@@ -89,8 +89,8 @@ test('13.4', async ({ d, page }) => {
 test('13.5', async ({ d, page }) => {
   await d.go('/developer/webhooks');
   d.begin();
-  await d.click(settingsTab(page, 'Audit log'));
-  await d.type(page.getByLabel('Action starts with'), 'client');
+  await d.click(settingsTab(page, 'Audit log'), { on: 'the audit log records' });
+  await d.type(page.getByLabel('Action starts with'), 'client', { on: 'deleted a client; here is that action' });
   await d.settle();
   await d.beat(1500);
   await d.click(page.getByRole('table', { name: 'Audit log' }).getByRole('row').nth(1), { settle: false });
@@ -98,6 +98,6 @@ test('13.5', async ({ d, page }) => {
   await d.mark('zoom to the entry details', drawer, { on: 'open an entry to see the details' });
   await d.beat(4000);
   await page.keyboard.press('Escape');
-  await d.point(page.getByRole('button', { name: 'Export CSV' }), { hold: 2000 });
+  await d.point(page.getByRole('button', { name: 'Export CSV' }), { hold: 2000, on: 'export it to CSV' });
   await d.finish();
 });

@@ -1,12 +1,12 @@
 import type { Chapter } from '../scenes';
 
-export const ch15: Chapter = {
-  n: 15,
+export const ch17: Chapter = {
+  n: 17,
   title: 'Questions and troubleshooting',
   goal: 'Find answers to the most common questions and fix the most common problems.',
   scenes: [
     {
-      id: '15.1',
+      id: '17.1',
       title: 'Frequently asked questions',
       persona: 'admin',
       app: 'web',
@@ -25,7 +25,7 @@ export const ch15: Chapter = {
       transition: 'Cut (stay in Help).',
     },
     {
-      id: '15.2',
+      id: '17.2',
       title: 'Troubleshooting',
       persona: 'admin',
       app: 'web',

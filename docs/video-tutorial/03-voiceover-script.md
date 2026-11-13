@@ -2,23 +2,23 @@
 
 # Voiceover script
 
-The complete narration, 5,441 words, about 36 minutes at 150 words a minute. Read it in a professional, friendly tone, a little slower than conversation. Leave a breath of about two seconds between scenes, and three seconds at each chapter card.
+The complete narration, 6,201 words, about 41 minutes at 150 words a minute. Read it in a professional, friendly tone, a little slower than conversation. Leave a breath of about two seconds between scenes, and three seconds at each chapter card.
 
 Recording tips: one take per scene, named after the scene number (for example `03.2.wav`), so each take lines up with its clip.
 
 ## Chapter 1 — Welcome to WorkPulse
 
-**[01.1] Opening** *(28 s)*
+**[01.1] Opening** *(33 s)*
 
-Welcome to WorkPulse. Track, focus, achieve. In this tutorial you will learn how to use WorkPulse from beginning to end: setting up your organization, inviting your team, tracking time with the desktop app, approving timesheets, billing your clients, running payroll, and getting the reports you need. Everything you see is the real application, running with a demo company called Northwind Creative, so you can follow along step by step.
+Welcome to WorkPulse, powered by AI. Smarter workforce, better business. In this tutorial you will learn how to use WorkPulse from beginning to end: setting up your organization, inviting your team, tracking time with the desktop app, approving timesheets, billing your clients, running payroll, getting the reports you need, and letting WorkPulse AI point out what needs your attention. Everything you see is the real application, running with a demo company called Northwind Creative, so you can follow along step by step.
 
 **[01.2] Who uses which app** *(41 s)*
 
 WorkPulse has three kinds of users. Administrators and managers use this web app to organize people and projects, approve time, and handle billing and payroll. Workers, the people whose time is tracked, use the WorkPulse desktop app on Windows, macOS or Linux. It tracks their time and shows them their own timesheet, time off and pay stubs. And your clients can get a read-only client portal that shows the work done for them, without any money. What each person sees depends on their role, so two people can see different menus. That is normal, and we will come back to it later.
 
-**[01.3] How this tutorial is organized** *(28 s)*
+**[01.3] How this tutorial is organized** *(33 s)*
 
-The menu on the left follows the way work flows through WorkPulse. You set up the organization and invite people. You organize the work into clients, projects and tasks. Your team tracks time. Managers review and approve it. Approved time becomes invoices and payroll. And reports turn it all into insight. This tutorial follows the same order, and the chapter list in the description lets you jump to any part.
+The menu on the left follows the way work flows through WorkPulse. You set up the organization and invite people. You organize the work into clients, projects and tasks. Your team tracks time. Managers review and approve it. Approved time becomes invoices and payroll. Reports and AI Insights turn it all into insight, and Performance shows how people and teams are doing. This tutorial follows the same order, and the chapter list in the description lets you jump to any part.
 
 ## Chapter 2 — Getting started: sign up, sign in and stay secure
 
@@ -48,9 +48,9 @@ The Overview is your home page. It updates live, so you always see the current p
 
 You can arrange the Overview to suit the way you work. Click Customize. Every card now has controls to change its size, move it up or down, or hide it. Hidden cards wait in the Hidden widgets panel, so you can add them back at any time. There are cards for the current timer, who is working, recent screenshots, time off, attendance, invoices, weekly limits and more. When you are happy with the layout, click Save layout. Each person has their own layout, and Reset brings back the default.
 
-**[03.3] Menu, organizations, notifications and your account** *(41 s)*
+**[03.3] Menu, organizations, notifications and your account** *(42 s)*
 
-The sidebar groups the pages by job: Time Tracking, Workforce, Project Management, Finance and Reports, with Settings and Help at the bottom. Click a group to open it. At the top left is the organization switcher. If you belong to more than one organization, switch between them here, or create a new one. At the top right, the bell shows your notifications, such as a timesheet waiting for approval or a time off request. Click Mark all read to clear them. Next to it is your account menu, with your profile and devices, what is monitored, and the light and dark themes.
+The sidebar groups the pages by job: Time Tracking, Workforce, Project Management, Finance, Reports and Performance, with Settings and Help at the bottom. Click a group to open it. At the top left is the organization switcher. If you belong to more than one organization, switch between them here, or create a new one. At the top right, the bell shows your notifications, such as a timesheet waiting for approval or a time off request. Click Mark all read to clear them. Next to it is your account menu, with your profile and devices, what is monitored, and the light and dark themes.
 
 **[03.4] The Help Center and the product tour** *(40 s)*
 
@@ -58,17 +58,17 @@ Whenever you are unsure, open Help. The Help Center is a plain-language manual f
 
 ## Chapter 4 — Set up your organization
 
-**[04.1] Organization settings** *(32 s)*
+**[04.1] Organization settings** *(33 s)*
 
-Now let us set up the organization. Open Settings. The tabs across the top hold every setting, and you only see the ones your role allows. On the Organization tab, the General panel sets your company name, time zone, the day your week starts, your currency, and how durations are shown. The Company profile below holds your logo, tax ID, address and contact details. They appear on your invoices and pay stubs. After a change, click Save changes.
+Now let us set up the organization. Open Settings in the menu on the left. It lists every settings page, and you only see the ones your role allows. On the Organization page, the General panel sets your company name, time zone, the day your week starts, your currency, and how durations are shown. The Company profile below holds your logo, tax ID, address and contact details. They appear on your invoices and pay stubs. After a change, click Save changes.
 
 **[04.2] Time & pay: periods, rules, overtime and break types** *(46 s)*
 
-The Time and pay tab controls how time becomes pay. The timesheet period sets how often members submit their time, for example every week. Timesheet rules can lock old time so it cannot be changed, set minimum hours, and remind people about missing time. Below are the overtime rules and your time types, such as regular or overtime, each with its own pay and bill multiplier. Break types define the breaks your people can take. Let us add a coffee break: name it Coffee, make it a paid break, with a maximum of fifteen minutes. And a lunch break: unpaid, up to sixty minutes. We will plan these breaks on a project in a moment.
+The Time and pay page controls how time becomes pay. The timesheet period sets how often members submit their time, for example every week. Timesheet rules can lock old time so it cannot be changed, set minimum hours, and remind people about missing time. Below are the overtime rules and your time types, such as regular or overtime, each with its own pay and bill multiplier. Break types define the breaks your people can take. Let us add a coffee break: name it Coffee, make it a paid break, with a maximum of fifteen minutes. And a lunch break: unpaid, up to sixty minutes. We will plan these breaks on a project in a moment.
 
-**[04.3] Choose what the desktop app tracks** *(44 s)*
+**[04.3] Choose what the desktop app tracks** *(55 s)*
 
-Tracking policies decide what the desktop app records. The organization default applies to everyone. Activity counts keyboard and mouse use, never the keys themselves. Idle detection asks people what to do with time when they step away. Screenshots can be switched on, taken a set number of times every ten minutes, and blurred. Apps and URLs record which applications and websites are used. You can override any setting for a team or for one member. Here, the Client Success team has its screenshots blurred. An overridden setting shows Reset to inherited. When you save, the affected members are notified, and each member can always see what is monitored.
+Tracking policies decide what the desktop app records. The organization default applies to everyone. A timer started in the desktop app counts once the app confirms it is running; if it does not confirm in time, the timer stops and adds no time. Activity counts keyboard and mouse use, never the keys themselves. Idle detection asks people what to do with time when they step away. Screenshots can be switched on, taken a set number of times every ten minutes, and blurred. Apps and URLs record which applications and websites are used. You can override any setting for a team or for one member. Here, the Client Success team has its screenshots blurred. An overridden setting shows Reset to inherited. When you save, the affected members are notified, and each member can always see what is monitored.
 
 **[04.4] Roles and permissions** *(34 s)*
 
@@ -98,9 +98,9 @@ Work in WorkPulse is organized into clients, projects and tasks. Start with the 
 
 Sometimes a client is created by mistake, for example twice. A client that was never used can be deleted. Open its actions menu and choose Delete. WorkPulse explains what will be removed: the client with its projects, tasks, rates, budgets and portal access. Deleting only works for a client with no invoices, payments, expenses or tracked time, and it cannot be undone. For a client you have worked with, use Archive instead. Archiving hides the client and its projects but keeps all its history, and you can restore it later. Tick Show archived to see archived clients.
 
-**[06.3] Share a client portal** *(34 s)*
+**[06.3] Share a client portal** *(47 s)*
 
-Clients can follow the work you do for them in a client portal. From the client's actions, open Client portal. Switch the portal on and choose what the client sees: hours per person, task and day, task progress and hour budgets, activity levels, and even screenshots taken on their projects. The portal never shows money. Click Preview as client to see exactly what they will see. To give someone access, enter their email and click Invite. You can revoke access at any time.
+Clients can follow the work you do for them in a client portal. From the client's actions, open Client portal. Switch the portal on and choose what the client sees: hours per person, task and day, task progress and hour budgets, activity levels, and even screenshots taken on their projects. You can also add a short summary written by WorkPulse AI. It uses only the progress the client already sees, never money, hours or names, and is written at most once a day. The portal never shows money. Click Preview as client to see exactly what they will see. To give someone access, enter their email and click Invite. You can revoke access at any time.
 
 **[06.4] Create a project** *(35 s)*
 
@@ -124,9 +124,9 @@ Now let us switch to the worker's side. Workers use WorkPulse through the deskto
 
 Open WorkPulse on your computer and sign in with the same email and password you use for WorkPulse. You can also sign in through your browser instead. If your organization requires it, an administrator approves new computers before they can track time. Once you are signed in, the menu on the left takes you to everything you need: Home, Track, Timesheet, Time off, Schedule, Pay stubs and Settings. The app only shows your own data.
 
-**[07.3] Clock in** *(43 s)*
+**[07.3] Clock in** *(44 s)*
 
-This is Home. To start work, choose a project. The timer starts right away and the status changes to Clocked in. You can also choose a task, and change project at any time with the Change button. Below the timer are the breaks planned for this project, the ones we set up earlier, ready as one-tap buttons. Add a short work note so your manager knows what you are working on. On the right, Today's summary shows your tracked time today and this week, how much was active, and your shift. If your organization records activity, it is shown here too, so nothing is hidden from you.
+This is Home. To start work, choose a project, then click Clock in. The timer starts and the status changes to Clocked in. You can also choose a task, and change project at any time with the Change button. Below the timer are the breaks planned for this project, the ones we set up earlier, ready as one-tap buttons. Add a short work note so your manager knows what you are working on. On the right, Today's summary shows your tracked time today and this week, how much was active, and your shift. If your organization records activity, it is shown here too, so nothing is hidden from you.
 
 **[07.4] Breaks and idle time** *(43 s)*
 
@@ -274,22 +274,54 @@ Finally, the audit log records every important action: who did what, when, and t
 
 Here is the same organization through the eyes of Maya, who manages the Design team. Her Overview shows her team, not the whole company. Her menu is shorter: she can approve her team's timesheets and time off, watch their work, and manage the projects she is assigned to, but she does not see rates, payroll or the organization settings. That is why two people can see different menus, and why a page someone else talks about may be missing for you. If you need access to something, ask an administrator to change your role.
 
-## Chapter 15 — Questions and troubleshooting
+## Chapter 15 — The Performance Center
 
-**[15.1] Frequently asked questions** *(45 s)*
+**[15.1] The performance score** *(42 s)*
+
+Performance shows how work is going, measured from real outcomes. Open Performance, then Performance overview. The organization score runs from 0 to 100 for the period you choose: a week, a month, a quarter or a year. What the score is made of lists its five parts: goal completion, project delivery, approved-work consistency, quality from manager reviews, and attendance. A part with no data yet is left out, and the others count for more. Activity levels, keystrokes and screenshots are never part of a score. Click Scoring rules to decide how much each part counts. The weights must add up to one hundred percent.
+
+**[15.2] Goals and achievements** *(43 s)*
+
+Goals are measured from real work, so nobody types progress in. Open Goals and challenges and click New goal. Name the goal and choose who it is for: a person, a team, a project or the whole organization. Choose how it is measured, such as tasks completed, approved hours or work delivered on time, then set a target and the dates, and click Save goal. From now on its progress updates by itself. Under Achievements and recognition, people earn badges automatically from their work, like Perfect Attendance or Project Finisher, at bronze, silver, gold and platinum levels. Managers can also recognize someone, always with a reason.
+
+**[15.3] Leaderboards and people** *(32 s)*
+
+Leaderboards rank people by their performance score, but only against others in the same role family, so a designer is never compared with an engineer. Rankings never use hours, keyboard activity or screenshots. Someone with too few approved days in the period is scored, but not ranked yet. Switch to Teams or Projects to compare those instead. Worker performance lists everyone's score. Open a person to see what their score is made of and how it has changed over time.
+
+## Chapter 16 — WorkPulse AI
+
+**[16.1] Asking WorkPulse AI** *(42 s)*
+
+WorkPulse AI answers questions about how WorkPulse works and about your own organization. Click Ask WorkPulse AI to open it. It suggests questions for the page you are on, or you can type your own. Ask what needs your attention this week, and it looks through approvals, budgets and attendance for you. Ask how to do something, like approving a timesheet, and it gives you the steps. WorkPulse AI only sees what you are allowed to see. It can be wrong, so check important figures on the page itself. Your conversations are kept under the chat history, and New chat starts a fresh one.
+
+**[16.2] AI Insights** *(40 s)*
+
+AI Insights looks through your organization's data and points out what needs attention. Every finding is measured from your own data, labelled as a fact, a comparison or an estimate, and you only see what your role allows. Choose a period, then a tab: workforce, timesheets, projects, workflow, capacity for the next two weeks, and finance for people who handle money. Each finding says what was found, by how much, and the next step, with a link to the right page. Click Explain with WorkPulse AI, and the assistant explains the finding and what to do about it.
+
+**[16.3] Write with AI** *(39 s)*
+
+WorkPulse AI can also write for you. In a project or task, click Write with AI under the description, and choose Draft from what WorkPulse knows. It writes a description from the project's own facts, which are listed so you can check them. You can also rewrite text you typed, shorter, longer or more professional. The draft only fills the field: edit it, keep it or click Undo, and nothing is saved until you save. In AI Insights, Draft reminder writes a friendly reminder for people who have not submitted their timesheet, ready for you to send.
+
+**[16.4] Staying informed** *(32 s)*
+
+Notifications now come sorted by priority. Urgent and important ones are labelled, and similar notifications are grouped, so ten devices going offline take one line instead of ten. Open a group to see them all. To choose what you are told about, open your account menu, then Profile and devices. Managers can switch on a weekly summary of what needs their attention, written from AI Insights, so the most important things reach you even when you are busy.
+
+## Chapter 17 — Questions and troubleshooting
+
+**[17.1] Frequently asked questions** *(45 s)*
 
 Let us finish with the questions people ask most, all answered in the Help Center. Why are members sent to a download page? Because workers use the desktop app, not the website. Can approved time still be changed? Yes: reopen the timesheet, correct it and approve it again. Once its time is on an invoice, void the invoice first; once it has been paid, correct it with a bonus or deduction on the next payroll. What happens when a computer is offline? The app keeps tracking and sends everything when it is back online. And are keystrokes recorded? No. WorkPulse only counts keyboard and mouse activity. It never records what you type.
 
-**[15.2] Troubleshooting** *(51 s)*
+**[17.2] Troubleshooting** *(51 s)*
 
 Troubleshooting covers the usual problems. A member forgot to stop their timer: force stop it from Live, then edit or split the entry in Time entries. A member's time is missing: check that their app is online, since offline time arrives when they reconnect, and that their computer is approved under Devices. For time they really did not track, add manual time. The Approve button is greyed out: time was added after the timesheet was submitted, so click Request changes and approve it once they resubmit. And if a member does not have the latest desktop app: updates download in the background and install when the member quits the app from its icon in the system tray. Each guide links straight to the page that fixes it.
 
-## Chapter 16 — Wrap-up
+## Chapter 18 — Wrap-up
 
-**[16.1] Recap** *(32 s)*
+**[18.1] Recap** *(32 s)*
 
 Let us recap the whole journey. You created your organization and set the rules for time and pay. You invited your people, organized them into teams, and set up clients, projects and tasks. Workers tracked their time with the desktop app, with breaks, idle checks and end-of-day reports. Managers watched the work, corrected time and approved timesheets. And approved time became invoices and payroll, with reports to tell you how it all went. Everything comes together here on the Overview.
 
-**[16.2] Closing** *(16 s)*
+**[18.2] Closing** *(16 s)*
 
-Thank you for watching. Whenever you need a reminder, open Help inside WorkPulse: every topic in this video has a step-by-step guide there, and the product tour is one click away. Now it is your turn. Track, focus, achieve.
+Thank you for watching. Whenever you need a reminder, open Help inside WorkPulse: every topic in this video has a step-by-step guide there, and the product tour is one click away. Now it is your turn. Smarter workforce, better business.

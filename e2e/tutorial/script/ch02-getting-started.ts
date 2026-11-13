@@ -77,6 +77,7 @@ export const ch02: Chapter = {
       overlays: ['Callout on the QR code: "Scan with your authenticator app"', 'Callout on the codes: "Each recovery code works once"'],
       focus: ['Zoom to the QR code.', 'Zoom to the recovery codes, then to the "Done" button.'],
       transition: 'Wipe to a chapter card: "Chapter 3 — Finding your way".',
+      visuals: { steps: true },
     },
   ],
 };

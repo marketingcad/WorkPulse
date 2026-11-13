@@ -6,22 +6,22 @@ test('09.1', async ({ d, page }) => {
   const nav = page.getByRole('complementary', { name: 'Primary' });
   const group = nav.getByRole('button', { name: 'Time Tracking' });
   if ((await group.getAttribute('aria-expanded')) !== 'true') await d.click(group, { settle: false });
-  await d.click(nav.getByRole('link', { name: 'Time entries' }));
+  await d.click(nav.getByRole('link', { name: 'Time entries' }), { on: 'Time entries is where' });
   await expect(page.getByRole('heading', { level: 1, name: 'Time entries' })).toBeVisible();
   const range = page.getByRole('group', { name: 'Date range' });
   await d.mark('zoom to the filters', range, { on: 'Pick a date range' });
   await d.click(range.getByRole('button', { name: 'This week' }));
   await d.choose(page.getByLabel('Member', { exact: true }), 'Ava Okafor');
   await d.settle();
-  await d.point(page.getByText(/^Time logged/).last(), { hold: 2000 });
+  await d.point(page.getByText(/^Time logged/).last(), { hold: 2000, on: 'The totals at the bottom' });
   // A full-length entry from earlier in the week, not the few minutes Ava tracked in chapter 7.
   const entry = page.getByRole('listitem').filter({ hasText: /\dh \d\dm/ }).filter({ has: page.getByRole('button', { name: 'Entry actions' }) }).first();
-  await d.click(entry.getByRole('button', { name: 'Entry actions' }), { settle: false });
+  await d.click(entry.getByRole('button', { name: 'Entry actions' }), { settle: false, on: 'open its actions' });
   await d.click(page.getByRole('menuitem', { name: 'Edit' }), { settle: false });
   const edit = page.getByRole('dialog', { name: 'Edit time entry' });
   await d.mark('zoom to the Edit dialog', edit, { on: 'choose Edit' });
-  await d.type(edit.getByLabel(label('Note')), 'Homepage hero review with Maya');
-  await d.type(edit.getByLabel(/Reason for change/), 'Added the missing note');
+  await d.type(edit.getByLabel(label('Note')), 'Homepage hero review with Maya', { on: 'Change what you need' });
+  await d.type(edit.getByLabel(/Reason for change/), 'Added the missing note', { on: 'give a reason for the change' });
   await d.click(edit.getByRole('button', { name: 'Save changes' }), { settle: false });
   await expect(page.getByText('Time entry updated')).toBeVisible();
   await d.click(entry.getByRole('button', { name: 'Entry actions' }), { settle: false });
@@ -57,7 +57,7 @@ test('09.2', async ({ d, page }) => {
 test('09.3', async ({ d, page }) => {
   await d.go('/timesheets/all');
   d.begin();
-  await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('link', { name: 'Approvals' }));
+  await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('link', { name: 'Approvals' }), { on: 'they arrive in Approvals' });
   await expect(page.getByRole('heading', { level: 1, name: 'Approvals' })).toBeVisible();
   const rows = page.getByRole('row').filter({ has: page.getByRole('cell') });
   await d.click(rows.first(), { settle: false });
@@ -70,9 +70,9 @@ test('09.3', async ({ d, page }) => {
   await expect(page.getByText(/Timesheet approved/)).toBeVisible();
   await d.beat(1500);
   await d.click(rows.first(), { settle: false });
-  await d.click(page.getByRole('dialog').first().getByRole('button', { name: 'Request changes' }), { settle: false });
+  await d.click(page.getByRole('dialog').first().getByRole('button', { name: 'Request changes' }), { settle: false, on: 'click Request changes' });
   const ask = page.getByRole('dialog').last();
-  await d.type(ask.getByLabel('Comment'), 'Please add a note for Wednesday afternoon.');
+  await d.type(ask.getByLabel('Comment'), 'Please add a note for Wednesday afternoon.', { on: 'explain what is wrong' });
   await d.click(ask.getByRole('button', { name: /^Request changes/ }), { settle: false });
   await expect(page.getByText(/Changes requested/)).toBeVisible();
   await d.beat(1500);
@@ -81,7 +81,7 @@ test('09.3', async ({ d, page }) => {
   await d.mark('zoom to the manual time requests', manual, { on: 'manual time requests wait' });
   await d.beat(2000);
   const approve = page.getByRole('button', { name: 'Approve', exact: true }).last();
-  await d.click(approve, { settle: false });
+  await d.click(approve, { settle: false, on: 'approve or reject each one' });
   await d.beat(2000);
   await d.finish();
 });
@@ -89,11 +89,11 @@ test('09.3', async ({ d, page }) => {
 test('09.4', async ({ d, page }) => {
   await d.go('/timesheets/approvals');
   d.begin();
-  await d.click(page.getByRole('group', { name: 'Sections' }).getByRole('button', { name: 'Team week', exact: true }).or(page.getByRole('link', { name: 'Team week' })).first());
+  await d.click(page.getByRole('group', { name: 'Sections' }).getByRole('button', { name: 'Team week', exact: true }).or(page.getByRole('link', { name: 'Team week' })).first(), { on: 'Team week gives you' });
   const table = page.getByText(/Hours per member/).first();
   await d.mark('zoom to the hours table', table, { on: 'the hours each member worked' });
   await d.point(table, { hold: 3000 });
-  await d.click(page.getByRole('button', { name: 'Previous week' }));
+  await d.click(page.getByRole('button', { name: 'Previous week' }), { on: 'with the arrows' });
   await d.beat(2000);
   await d.click(page.getByRole('button', { name: 'Next week' }));
   await d.finish();

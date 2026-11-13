@@ -81,6 +81,31 @@ describe('planRetime with anchors', () => {
       for (const piece of planRetime({ ...base, clip: 10, target: 12, anchors }).pieces) expect(piece.to).toBeGreaterThan(piece.from);
   });
 
+  it('cuts still footage before an anchor that would be late, then speeds up the rest', () => {
+    const p = planRetime({ ...base, clip: 10, target: 12, anchors: [at(9, 3)], still: [{ from: 2, to: 6 }] });
+    expect(p.pieces.slice(0, 2).map((x) => [x.from, x.to, x.speed])).toEqual([[0, 2.1], [5.9, 9]].map(([a, b]) => [a, b, 1.5]));
+    expect(p.anchors[0]!.driftMs).toBe(467);
+  });
+
+  it('cuts only as much still footage as the anchor needs', () => {
+    const p = planRetime({ ...base, clip: 10, target: 12, anchors: [at(9, 5)], still: [{ from: 2, to: 6 }] });
+    expect(p.pieces.slice(0, 2).map((x) => [x.from, x.to])).toEqual([[0, 2.1], [3.6, 9]]);
+    expect(p.anchors[0]).toMatchObject({ shownAt: 5, driftMs: 0 });
+  });
+
+  it('leaves still footage alone where the anchor is on time, and outside the gap', () => {
+    const onTime = planRetime({ ...base, clip: 10, target: 12, anchors: [at(6, 5)], still: [{ from: 2, to: 5 }] });
+    expect(onTime.pieces[0]).toMatchObject({ from: 0, to: 6 });
+    const outside = planRetime({ ...base, clip: 12, target: 12, anchors: [at(9, 3)], still: [{ from: 9.5, to: 11 }] });
+    expect(outside.pieces[0]).toMatchObject({ from: 0, to: 9, speed: 1.5 });
+  });
+
+  it('maps a time inside a cut to where the footage picks up', () => {
+    const p = planRetime({ ...base, clip: 10, target: 12, anchors: [at(9, 3)], still: [{ from: 2, to: 6 }] });
+    expect(mapTime(p.pieces, 4)).toBe(mapTime(p.pieces, 5.9));
+    expect(mapTime(p.pieces, 9)).toBe(p.anchors[0]!.shownAt);
+  });
+
   it('sorts anchors by when they were recorded', () => {
     const p = planRetime({ ...base, clip: 10, target: 12, anchors: [at(6, 7, 'late'), at(2, 5, 'early')] });
     expect(p.anchors.map((a) => a.on)).toEqual(['early', 'late']);

@@ -61,6 +61,7 @@ export const ch09: Chapter = {
       overlays: ['Callout: "Approved time feeds payroll and invoices"'],
       focus: ['Zoom to the timesheet panel.', 'Highlight the Approve button.', 'Zoom to the manual time requests.'],
       transition: 'Cut to the Team week tab.',
+      visuals: { steps: true },
     },
     {
       id: '09.4',

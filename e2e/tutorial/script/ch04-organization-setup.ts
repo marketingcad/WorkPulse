@@ -13,10 +13,10 @@ export const ch04: Chapter = {
       screen: 'Settings › Organization: the General panel (name, time zone, week start, currency, duration format) and the Company profile panel.',
       actions: ['Click "Settings" in the sidebar.', 'Point at Organization name, Time zone, Week starts on, Currency and Duration format.', 'Scroll to "Company profile" and point at the logo, Tax ID and Full address.', 'Point at "Save changes".'],
       narration:
-        'Now let us set up the organization. Open Settings. The tabs across the top hold every setting, and you only see the ones your role allows. On the Organization tab, the General panel sets your company name, time zone, the day your week starts, your currency, and how durations are shown. The Company profile below holds your logo, tax ID, address and contact details. They appear on your invoices and pay stubs. After a change, click Save changes.',
+        'Now let us set up the organization. Open Settings in the menu on the left. It lists every settings page, and you only see the ones your role allows. On the Organization page, the General panel sets your company name, time zone, the day your week starts, your currency, and how durations are shown. The Company profile below holds your logo, tax ID, address and contact details. They appear on your invoices and pay stubs. After a change, click Save changes.',
       overlays: ['Callout: "Logo and address appear on invoices and pay stubs"'],
-      focus: ['Zoom to the Settings tabs.', 'Zoom to the General panel.'],
-      transition: 'Cut to the Time & pay tab.',
+      focus: ['Zoom to the Settings menu.', 'Zoom to the General panel.'],
+      transition: 'Cut to the Time & pay page.',
     },
     {
       id: '04.2',
@@ -25,7 +25,7 @@ export const ch04: Chapter = {
       app: 'web',
       screen: 'Settings › Time & pay: Timesheet period, Timesheet rules, Overtime, Time types and Break types; the "New break type" dialog.',
       actions: [
-        'Click the "Time & pay" tab.',
+        'Click "Time & pay" in the Settings menu.',
         'Point at "Timesheet period" and "Timesheet rules".',
         'Scroll to "Overtime" and "Time types".',
         'Scroll to "Break types" and click "Add break type".',
@@ -33,10 +33,10 @@ export const ch04: Chapter = {
         'Click "Add break type" again: "Lunch", unpaid, 60 minutes.',
       ],
       narration:
-        'The Time and pay tab controls how time becomes pay. The timesheet period sets how often members submit their time, for example every week. Timesheet rules can lock old time so it cannot be changed, set minimum hours, and remind people about missing time. Below are the overtime rules and your time types, such as regular or overtime, each with its own pay and bill multiplier. Break types define the breaks your people can take. Let us add a coffee break: name it Coffee, make it a paid break, with a maximum of fifteen minutes. And a lunch break: unpaid, up to sixty minutes. We will plan these breaks on a project in a moment.',
+        'The Time and pay page controls how time becomes pay. The timesheet period sets how often members submit their time, for example every week. Timesheet rules can lock old time so it cannot be changed, set minimum hours, and remind people about missing time. Below are the overtime rules and your time types, such as regular or overtime, each with its own pay and bill multiplier. Break types define the breaks your people can take. Let us add a coffee break: name it Coffee, make it a paid break, with a maximum of fifteen minutes. And a lunch break: unpaid, up to sixty minutes. We will plan these breaks on a project in a moment.',
       overlays: ['Callout: "Paid breaks count as paid, non-billable time"'],
       focus: ['Zoom to "Timesheet period".', 'Zoom to the "New break type" dialog while typing.'],
-      transition: 'Cut to the Tracking policies tab.',
+      transition: 'Cut to the Tracking policies page.',
     },
     {
       id: '04.3',
@@ -45,13 +45,14 @@ export const ch04: Chapter = {
       app: 'web',
       screen: 'Settings › Tracking policies: the organization default with sections for Tracking, Activity, Idle, Screenshots, Apps and URLs; then the Team scope for one team.',
       actions: [
-        'Click the "Tracking policies" tab.',
+        'Click "Tracking policies" in the Settings menu.',
+        'Point at "Wait for the desktop app to confirm a new timer for".',
         'Scroll through the Activity, Idle, Screenshots, Apps and URLs sections.',
         'Click "Team" in "Policy scope" and choose "Client Success".',
         'Point at the screenshot blur setting that this team overrides, and at "Reset to inherited".',
       ],
       narration:
-        'Tracking policies decide what the desktop app records. The organization default applies to everyone. Activity counts keyboard and mouse use, never the keys themselves. Idle detection asks people what to do with time when they step away. Screenshots can be switched on, taken a set number of times every ten minutes, and blurred. Apps and URLs record which applications and websites are used. You can override any setting for a team or for one member. Here, the Client Success team has its screenshots blurred. An overridden setting shows Reset to inherited. When you save, the affected members are notified, and each member can always see what is monitored.',
+        'Tracking policies decide what the desktop app records. The organization default applies to everyone. A timer started in the desktop app counts once the app confirms it is running; if it does not confirm in time, the timer stops and adds no time. Activity counts keyboard and mouse use, never the keys themselves. Idle detection asks people what to do with time when they step away. Screenshots can be switched on, taken a set number of times every ten minutes, and blurred. Apps and URLs record which applications and websites are used. You can override any setting for a team or for one member. Here, the Client Success team has its screenshots blurred. An overridden setting shows Reset to inherited. When you save, the affected members are notified, and each member can always see what is monitored.',
       overlays: ['Callout: "Keystrokes are counted, never recorded"', 'Callout: "Members are notified of changes"'],
       focus: ['Highlight the "Screenshots" section.', 'Zoom to the "Policy scope" switch.'],
       transition: 'Cut to the Roles & permissions tab.',

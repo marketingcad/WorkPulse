@@ -4,7 +4,7 @@
 
 ## Video title
 
-**WorkPulse Complete Tutorial: Time Tracking, Timesheets, Payroll and Billing from Start to Finish**
+**WorkPulse Complete Tutorial: Time Tracking, Timesheets, Payroll, Billing and WorkPulse AI from Start to Finish**
 
 Alternatives:
 
@@ -16,7 +16,7 @@ Alternatives:
 Paste as is. The chapter list makes the video player show chapters (the first must start at 0:00).
 
 ```text
-Learn how to use WorkPulse from beginning to end. This complete tutorial follows one demo company, Northwind Creative, through the whole workflow: setting up the organization, inviting people, organizing clients, projects and tasks, tracking time with the desktop app, approving timesheets, invoicing clients, running payroll and reporting.
+Learn how to use WorkPulse from beginning to end. This complete tutorial follows one demo company, Northwind Creative, through the whole workflow: setting up the organization, inviting people, organizing clients, projects and tasks, tracking time with the desktop app, approving timesheets, invoicing clients, running payroll and reporting, then measuring performance and working with WorkPulse AI.
 
 Everything shown is the real application with demo data. Use the chapters below to jump to the part you need.
 
@@ -24,62 +24,66 @@ Who is this for? Administrators and managers who run WorkPulse in the web app, a
 
 Chapters
 0:00 Welcome to WorkPulse
-1:43 Getting started: sign up, sign in and stay secure
-4:23 Finding your way around
-7:13 Set up your organization
-10:00 Add your people
-11:43 Clients, projects and tasks
-15:21 The desktop app for workers
-20:35 Watching the work
-23:22 Time and approvals
-25:44 Schedules, attendance and time off
-27:22 Money: rates, budgets, expenses, invoices and payroll
-31:36 Reports
-33:23 Security and administration
-36:14 The team manager's view
-36:57 Questions and troubleshooting
-38:40 Wrap-up
+1:53 Getting started: sign up, sign in and stay secure
+4:33 Finding your way around
+7:24 Set up your organization
+10:23 Add your people
+12:06 Clients, projects and tasks
+15:57 The desktop app for workers
+21:12 Watching the work
+23:59 Time and approvals
+26:21 Schedules, attendance and time off
+27:59 Money: rates, budgets, expenses, invoices and payroll
+32:13 Reports
+34:00 Security and administration
+36:51 The team manager's view
+37:34 The Performance Center
+39:40 WorkPulse AI
+42:24 Questions and troubleshooting
+44:07 Wrap-up
 
-Tags: WorkPulse, time tracking, timesheets, employee monitoring, payroll, invoicing, workforce management, desktop time tracker, tutorial, how to
+Tags: WorkPulse, time tracking, timesheets, employee monitoring, payroll, invoicing, workforce management, desktop time tracker, WorkPulse AI, AI insights, performance management, tutorial, how to
 ```
 
 ## Chapter timestamps
 
-Planned from the narration length; update them after the final edit. Total: **39:35**.
+Planned from the narration length; update them after the final edit. Total: **45:02**.
 
 | Start | Chapter | Scenes |
 |---|---|---|
 | 0:00 | 1. Welcome to WorkPulse | 01.1, 01.2, 01.3 |
-| 1:43 | 2. Getting started: sign up, sign in and stay secure | 02.1, 02.2, 02.3, 02.4 |
-| 4:23 | 3. Finding your way around | 03.1, 03.2, 03.3, 03.4 |
-| 7:13 | 4. Set up your organization | 04.1, 04.2, 04.3, 04.4 |
-| 10:00 | 5. Add your people | 05.1, 05.2, 05.3 |
-| 11:43 | 6. Clients, projects and tasks | 06.1, 06.2, 06.3, 06.4, 06.5, 06.6 |
-| 15:21 | 7. The desktop app for workers | 07.1, 07.2, 07.3, 07.4, 07.5, 07.6, 07.7, 07.8 |
-| 20:35 | 8. Watching the work | 08.1, 08.2, 08.3, 08.4, 08.5 |
-| 23:22 | 9. Time and approvals | 09.1, 09.2, 09.3, 09.4 |
-| 25:44 | 10. Schedules, attendance and time off | 10.1, 10.2, 10.3 |
-| 27:22 | 11. Money: rates, budgets, expenses, invoices and payroll | 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7 |
-| 31:36 | 12. Reports | 12.1, 12.2, 12.3 |
-| 33:23 | 13. Security and administration | 13.1, 13.2, 13.3, 13.4, 13.5 |
-| 36:14 | 14. The team manager's view | 14.1 |
-| 36:57 | 15. Questions and troubleshooting | 15.1, 15.2 |
-| 38:40 | 16. Wrap-up | 16.1, 16.2 |
+| 1:53 | 2. Getting started: sign up, sign in and stay secure | 02.1, 02.2, 02.3, 02.4 |
+| 4:33 | 3. Finding your way around | 03.1, 03.2, 03.3, 03.4 |
+| 7:24 | 4. Set up your organization | 04.1, 04.2, 04.3, 04.4 |
+| 10:23 | 5. Add your people | 05.1, 05.2, 05.3 |
+| 12:06 | 6. Clients, projects and tasks | 06.1, 06.2, 06.3, 06.4, 06.5, 06.6 |
+| 15:57 | 7. The desktop app for workers | 07.1, 07.2, 07.3, 07.4, 07.5, 07.6, 07.7, 07.8 |
+| 21:12 | 8. Watching the work | 08.1, 08.2, 08.3, 08.4, 08.5 |
+| 23:59 | 9. Time and approvals | 09.1, 09.2, 09.3, 09.4 |
+| 26:21 | 10. Schedules, attendance and time off | 10.1, 10.2, 10.3 |
+| 27:59 | 11. Money: rates, budgets, expenses, invoices and payroll | 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7 |
+| 32:13 | 12. Reports | 12.1, 12.2, 12.3 |
+| 34:00 | 13. Security and administration | 13.1, 13.2, 13.3, 13.4, 13.5 |
+| 36:51 | 14. The team manager's view | 14.1 |
+| 37:34 | 15. The Performance Center | 15.1, 15.2, 15.3 |
+| 39:40 | 16. WorkPulse AI | 16.1, 16.2, 16.3, 16.4 |
+| 42:24 | 17. Questions and troubleshooting | 17.1, 17.2 |
+| 44:07 | 18. Wrap-up | 18.1, 18.2 |
 
 ## Opening script
 
-Scene 01.1, 28 s. Title card: "WorkPulse — Complete Tutorial" · Subtitle: "Track • Focus • Achieve" · Lower third at 0:20: "Demo company: Northwind Creative".
+Scene 01.1, 33 s. Title card: "WorkPulse — Complete Tutorial" · Subtitle: "Powered by AI · Smarter Workforce. Better Business." · Lower third at 0:20: "Demo company: Northwind Creative".
 
-> Welcome to WorkPulse. Track, focus, achieve. In this tutorial you will learn how to use WorkPulse from beginning to end: setting up your organization, inviting your team, tracking time with the desktop app, approving timesheets, billing your clients, running payroll, and getting the reports you need. Everything you see is the real application, running with a demo company called Northwind Creative, so you can follow along step by step.
+> Welcome to WorkPulse, powered by AI. Smarter workforce, better business. In this tutorial you will learn how to use WorkPulse from beginning to end: setting up your organization, inviting your team, tracking time with the desktop app, approving timesheets, billing your clients, running payroll, getting the reports you need, and letting WorkPulse AI point out what needs your attention. Everything you see is the real application, running with a demo company called Northwind Creative, so you can follow along step by step.
 
 ## Closing script
 
-Scene 16.2, 16 s. End card: WorkPulse logo · "Track • Focus • Achieve" · "Help is always in the app: Help › Search".
+Scene 18.2, 16 s. End card: WorkPulse logo · "Smarter Workforce. Better Business." · "Help is always in the app: Help › Search".
 
-> Thank you for watching. Whenever you need a reminder, open Help inside WorkPulse: every topic in this video has a step-by-step guide there, and the product tour is one click away. Now it is your turn. Track, focus, achieve.
+> Thank you for watching. Whenever you need a reminder, open Help inside WorkPulse: every topic in this video has a step-by-step guide there, and the product tour is one click away. Now it is your turn. Smarter workforce, better business.
 
 ## Thumbnail concept
 
 - **Image:** Split screen. Left two-thirds: the WorkPulse Overview (This month figures and Project budgets) on a laptop, slightly angled. Right third: the desktop app's timer card showing "Clocked in" and the Coffee and Lunch break buttons, overlapping the laptop like a floating window.
-- **Text:** Large headline top left: "WorkPulse" in white on the brand indigo (#4B4FC4); second line: "Complete Tutorial" in bold yellow. Small badge bottom right: "Time • Approvals • Payroll".
+- **Text:** Large headline top left: "WorkPulse" in white on the brand indigo (#4B4FC4); second line: "Complete Tutorial" in bold yellow. Small badge bottom right: "Time • Payroll • AI". Small line under the headline: "Powered by AI".
 - **Style:** Clean, high contrast, 1280 × 720 export, no more than five words of headline text, readable at phone size. Use a frame from clips 01.1 (Overview) and 07.3 (timer) rather than a mock-up.

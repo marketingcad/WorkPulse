@@ -7,6 +7,7 @@
  * Each chapter's words live in script/chNN-*.ts; its recording is recordings/NN-*.rec.ts. After
  * changing the words, run `pnpm tutorial:package`; after changing what is on screen, record again.
  */
+import type { SceneVisuals } from './visuals/concepts';
 import { ch01 } from './script/ch01-introduction';
 import { ch02 } from './script/ch02-getting-started';
 import { ch03 } from './script/ch03-finding-your-way';
@@ -21,8 +22,10 @@ import { ch11 } from './script/ch11-money';
 import { ch12 } from './script/ch12-reports';
 import { ch13 } from './script/ch13-security-admin';
 import { ch14 } from './script/ch14-manager-view';
-import { ch15 } from './script/ch15-faq';
-import { ch16 } from './script/ch16-wrap-up';
+import { ch15 } from './script/ch15-performance';
+import { ch16 } from './script/ch16-ai';
+import { ch17 } from './script/ch17-faq';
+import { ch18 } from './script/ch18-wrap-up';
 
 export type Persona = 'admin' | 'manager' | 'worker' | 'guest';
 
@@ -46,6 +49,8 @@ export interface Scene {
   focus: string[];
   /** how the scene hands over to the next one */
   transition: string;
+  /** the animated visuals: step numbers, and concept cards added or turned off (visuals/concepts.ts) */
+  visuals?: SceneVisuals;
 }
 
 export interface Chapter {
@@ -87,7 +92,7 @@ export const CHAPTER_CARD_SECONDS = 3;
 
 /** Publishing details for the video page (build-package.ts adds the chapter timestamps). */
 export const VIDEO = {
-  title: 'WorkPulse Complete Tutorial: Time Tracking, Timesheets, Payroll and Billing from Start to Finish',
+  title: 'WorkPulse Complete Tutorial: Time Tracking, Timesheets, Payroll, Billing and WorkPulse AI from Start to Finish',
   alternativeTitles: [
     'How to Use WorkPulse: The Complete Guide for Admins, Managers and Workers',
     'WorkPulse from A to Z: Set Up, Track Time, Approve, Invoice and Run Payroll',
@@ -95,16 +100,16 @@ export const VIDEO = {
   resolution: '1920 × 1080 (16:9)',
   language: 'English',
   description: [
-    'Learn how to use WorkPulse from beginning to end. This complete tutorial follows one demo company, Northwind Creative, through the whole workflow: setting up the organization, inviting people, organizing clients, projects and tasks, tracking time with the desktop app, approving timesheets, invoicing clients, running payroll and reporting.',
+    'Learn how to use WorkPulse from beginning to end. This complete tutorial follows one demo company, Northwind Creative, through the whole workflow: setting up the organization, inviting people, organizing clients, projects and tasks, tracking time with the desktop app, approving timesheets, invoicing clients, running payroll and reporting, then measuring performance and working with WorkPulse AI.',
     'Everything shown is the real application with demo data. Use the chapters below to jump to the part you need.',
     'Who is this for? Administrators and managers who run WorkPulse in the web app, and workers who track their time with the desktop app (Windows, macOS, Linux).',
   ],
-  tags: ['WorkPulse', 'time tracking', 'timesheets', 'employee monitoring', 'payroll', 'invoicing', 'workforce management', 'desktop time tracker', 'tutorial', 'how to'],
+  tags: ['WorkPulse', 'time tracking', 'timesheets', 'employee monitoring', 'payroll', 'invoicing', 'workforce management', 'desktop time tracker', 'WorkPulse AI', 'AI insights', 'performance management', 'tutorial', 'how to'],
   thumbnail: {
     concept: 'Split screen. Left two-thirds: the WorkPulse Overview (This month figures and Project budgets) on a laptop, slightly angled. Right third: the desktop app\'s timer card showing "Clocked in" and the Coffee and Lunch break buttons, overlapping the laptop like a floating window.',
-    text: 'Large headline top left: "WorkPulse" in white on the brand indigo (#4B4FC4); second line: "Complete Tutorial" in bold yellow. Small badge bottom right: "Time • Approvals • Payroll".',
+    text: 'Large headline top left: "WorkPulse" in white on the brand indigo (#4B4FC4); second line: "Complete Tutorial" in bold yellow. Small badge bottom right: "Time • Payroll • AI". Small line under the headline: "Powered by AI".',
     style: 'Clean, high contrast, 1280 × 720 export, no more than five words of headline text, readable at phone size. Use a frame from clips 01.1 (Overview) and 07.3 (timer) rather than a mock-up.',
   },
 };
 
-export const CHAPTERS: Chapter[] = [ch01, ch02, ch03, ch04, ch05, ch06, ch07, ch08, ch09, ch10, ch11, ch12, ch13, ch14, ch15, ch16];
+export const CHAPTERS: Chapter[] = [ch01, ch02, ch03, ch04, ch05, ch06, ch07, ch08, ch09, ch10, ch11, ch12, ch13, ch14, ch15, ch16, ch17, ch18];

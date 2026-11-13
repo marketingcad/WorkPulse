@@ -6,7 +6,7 @@ test('03.1', async ({ d, page }) => {
   d.begin();
   await d.mark('zoom to This month', page.getByText('This month', { exact: true }).first(), { on: 'This month shows' });
   for (const label of ['Time logged', 'Est. pay', 'Billable time', 'Est. billable']) await d.point(page.getByText(label, { exact: true }).first(), { hold: 1600 });
-  await d.point(page.getByText('Worked today', { exact: true }).first(), { hold: 2500 });
+  await d.point(page.getByText('Worked today', { exact: true }).first(), { hold: 2500, on: 'Worked today shows' });
   const approval = page.getByText('Waiting for approval', { exact: true });
   await d.mark('highlight Waiting for approval', approval, { on: 'Waiting for approval' });
   await d.point(approval, { hold: 2500 });
@@ -25,7 +25,7 @@ test('03.1', async ({ d, page }) => {
 test('03.2', async ({ d, page }) => {
   await d.go('');
   d.begin();
-  await d.click(page.getByRole('button', { name: 'Customize' }), { settle: false });
+  await d.click(page.getByRole('button', { name: 'Customize' }), { settle: false, on: 'Click Customize' });
   const moveUp = page.getByRole('button', { name: 'Move up' }).nth(1);
   await d.mark('zoom to a card’s controls', moveUp, { on: 'Every card now has controls' });
   await d.point(page.getByRole('button', { name: 'Hide widget' }).nth(1), { hold: 1500 });
@@ -33,7 +33,7 @@ test('03.2', async ({ d, page }) => {
   await d.beat(1500);
   const hidden = page.getByText('Hidden widgets');
   await d.scrollTo(hidden);
-  await d.point(hidden, { hold: 3000 });
+  await d.point(hidden, { hold: 3000, on: 'Hidden widgets panel' });
   const save = page.getByRole('button', { name: 'Save layout' });
   await d.scrollTo(save);
   await d.mark('highlight Save layout', save, { on: 'click Save layout' });
@@ -47,6 +47,7 @@ test('03.3', async ({ d, page }) => {
   d.begin();
   const nav = page.getByRole('complementary', { name: 'Primary' });
   const group = nav.getByRole('button', { name: 'Time Tracking' });
+  await d.point(group, { hold: 1200, on: 'Time Tracking' });
   if ((await group.getAttribute('aria-expanded')) !== 'true') await d.click(group, { settle: false });
   await d.beat(2500);
   await d.click(page.getByRole('button', { name: 'Switch organization' }), { settle: false });
@@ -57,14 +58,14 @@ test('03.3', async ({ d, page }) => {
   await d.click(page.getByRole('button', { name: /^Notifications/ }), { settle: false });
   const markAll = page.getByRole('button', { name: 'Mark all read' });
   await d.mark('zoom to notifications', markAll, { on: 'the bell shows your notifications' });
-  await d.point(markAll, { hold: 3000 });
+  await d.point(markAll, { hold: 3000, on: 'Click Mark all read' });
   await page.keyboard.press('Escape');
   await d.click(page.getByRole('button', { name: 'Account menu' }), { settle: false });
   const menu = page.getByRole('menu');
   await d.mark('zoom to the account menu', menu, { on: 'your account menu' });
-  await d.point(menu.getByRole('menuitem', { name: 'Profile & devices' }), { hold: 1500 });
-  await d.point(menu.getByRole('menuitem', { name: 'What is monitored' }), { hold: 1500 });
-  await d.point(page.getByRole('radio', { name: 'dark theme' }), { hold: 2000 });
+  await d.point(menu.getByRole('menuitem', { name: 'Profile & devices' }), { hold: 1500, on: 'profile and devices' });
+  await d.point(menu.getByRole('menuitem', { name: 'What is monitored' }), { hold: 1500, on: 'what is monitored' });
+  await d.point(page.getByRole('menuitemradio', { name: 'dark theme' }).or(page.getByRole('radio', { name: 'dark theme' })).first(), { hold: 2000 });
   await page.keyboard.press('Escape');
   await d.finish();
 });
@@ -72,7 +73,7 @@ test('03.3', async ({ d, page }) => {
 test('03.4', async ({ d, page }) => {
   await d.go('');
   d.begin();
-  await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('link', { name: 'Help' }));
+  await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('link', { name: 'Help' }), { on: 'open Help' });
   const search = page.getByRole('searchbox', { name: 'Search help' });
   await d.type(search, 'invoice');
   const results = page.getByRole('region', { name: 'Search results' });
@@ -86,9 +87,9 @@ test('03.4', async ({ d, page }) => {
   await d.mark('zoom to the tour card', tour.getByRole('dialog'), { on: 'Start the tour' });
   for (let i = 0; i < 3; i++) {
     await d.beat(2200);
-    await d.click(tour.getByRole('button', { name: 'Next' }), { settle: false });
+    await d.click(tour.getByRole('button', { name: 'Next' }), i === 0 ? { settle: false, on: 'Use Next' } : { settle: false });
   }
   await d.beat(2000);
-  await d.click(tour.getByRole('button', { name: 'Skip tour' }), { settle: false });
+  await d.click(tour.getByRole('button', { name: 'Skip tour' }), { settle: false, on: 'Skip tour to close it' });
   await d.finish();
 });

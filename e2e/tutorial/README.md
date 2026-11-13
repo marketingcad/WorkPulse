@@ -61,9 +61,21 @@ Zooms, highlights and clicks are shown when the narrator says what they show, an
 
 - **Anchors.** A recording ties a moment to the words that name it: `d.mark('zoom to the timer card', timer, { on: 'The timer starts' })`, `d.click(button, { on: 'click Approve' })`, or `d.cue('the Coffee break')` for timing alone. `nth: 2` picks a later time the phrase is said. `click`, `type`, `point` and `scrollTo` take `{ on }` too; the moment is when the cursor arrives. The phrase must be in the scene's narration (case and punctuation don't matter), or the recording fails. `pnpm --filter @tallywork/e2e tutorial:test` also checks every anchor against the script, so editing the narration can't silently break one.
 - **Word timing.** Each voice file is aligned word by word with [whisper.cpp](https://github.com/ggml-org/whisper.cpp), which runs on this computer. The Windows build and its `base.en` model (~150 MB) download into `e2e/.tmp/whisper` on first use; results are cached in `e2e/.tmp/tutorial-render/align`. ElevenLabs voices bring their own timestamps instead. If alignment fails, or matches less than 80% of the words, that scene falls back to an estimate from word counts and the render says so. `TUTORIAL_ALIGN=off` uses the estimate everywhere.
-- **Retiming.** Between anchors, the footage plays faster (up to 1.5×) where it runs ahead of the words, and holds on the frame before the anchor where it runs behind. It is never slowed down. A scene without anchors renders as before.
+- **Retiming.** Between anchors, the footage plays faster (up to 1.5×) where it runs ahead of the words, and holds on the frame before the anchor where it runs behind. It is never slowed down. When the footage would still reach a moment after its words, the still stretches before it (the cursor resting, a pause to read, found with ffmpeg freezedetect and cached) are cut first, only as much as needed. A scene without anchors renders as before.
 - **Output.** `video/timeline.json` has every scene's start, word times, anchors, footage pieces and captions. `video/sync-report.json` lists the anchors shown more than 150 ms after their words, or dropped because the narration says them in a different order from the recording; the render prints the same lines (`[render] sync: …`).
 - **Preview.** `TUTORIAL_SCENES=07.3,09.2 pnpm tutorial:render` renders only those scenes into `video/preview.mp4`, with `preview.en.srt`, `preview.timeline.json` and `preview.sync-report.json` (so the full video's timeline stays as it was), without cards, thumbnail or chapter files. Anchor phrases and clips are checked before any voice is made, so a typo stops the render straight away.
+
+### Animated visuals
+
+On top of the recording, the render draws animated visuals timed to the narration (`visuals/`, off with `TUTORIAL_VISUALS=off`):
+
+- **Highlight ring and name label** on each item the voiceover names, when it is said. The ring follows the item through zooms and ends at the next click, scroll or page change. A named button gets 0.9 s under the cursor before the click, so its ring is seen.
+- **Step numbers** inside the rings of scenes marked `visuals: { steps: true }` in their script.
+- **Callouts** (the quoted text of a scene's overlays) slide in when the narration talks about them.
+- **Concept cards** for what the screen cannot show (`visuals/concepts.ts`: operating systems, a phone with a QR code, two-factor, the time-to-money flow, rates, invoices, payroll, offline sync, WorkPulse AI), on their trigger words, in the corner farthest from the ring. A scene's script can add a card on other words or turn one off (`visuals: { add, off }`).
+- **Scene tag** and **branded chapter transitions**.
+
+At most one ring, label, callout and card are on screen at a time. Each element is drawn by `visuals/overlay.html` in Chromium, frame by frame, into a small transparent clip cached in `e2e/.tmp/tutorial-render/visuals` by what it shows, so a re-render only draws what changed. Drawings are original: no real logos.
 
 ## Publishing to the Help Center
 

@@ -1,0 +1,83 @@
+import { expect, test } from '../kit';
+
+const isoDay = (offset: number) => new Date(Date.now() + offset * 86400_000).toISOString().slice(0, 10);
+
+test('15.1', async ({ d, page }) => {
+  await d.go('/performance');
+  await expect(page.getByRole('heading', { level: 1, name: 'Performance overview' })).toBeVisible();
+  d.begin();
+  const nav = page.getByRole('complementary', { name: 'Primary' });
+  await d.point(nav.getByRole('button', { name: /^Performance/ }), { hold: 1200, on: 'Performance shows how work' });
+  await d.point(nav.getByRole('link', { name: 'Performance overview' }), { hold: 1200, on: 'then Performance overview' });
+  const score = page.getByText(/Organization score/).first();
+  await d.mark('zoom to the organization score', score, { on: 'The organization score' });
+  await d.point(score, { hold: 1500 });
+  const month = page.getByRole('radio', { name: 'Month', exact: true }).or(page.getByRole('button', { name: 'Month', exact: true })).first();
+  await d.point(month, { hold: 800, on: 'a month' });
+  await d.click(page.getByRole('radio', { name: 'Quarter', exact: true }).or(page.getByRole('button', { name: 'Quarter', exact: true })).first(), { settle: false, on: 'a quarter' });
+  await d.beat(1200);
+  await d.click(page.getByRole('radio', { name: 'Month', exact: true }).or(page.getByRole('button', { name: 'Month', exact: true })).first(), { settle: false });
+  const parts = page.getByText('What the score is made of', { exact: true }).first();
+  await d.scrollTo(parts, { on: 'What the score is made of' });
+  await d.mark('zoom to what the score is made of', parts.locator('xpath=ancestor::section[1]').or(parts).first(), { on: 'goal completion' });
+  await d.beat(4000);
+  await d.click(page.getByRole('button', { name: 'Scoring rules' }).first(), { on: 'Click Scoring rules' });
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await d.mark('zoom to the Scoring rules dialog', dialog, { on: 'one hundred percent' });
+  await d.beat(3000);
+  await page.keyboard.press('Escape');
+  await d.finish();
+});
+
+test('15.2', async ({ d, page }) => {
+  await d.go('/performance/goals');
+  await expect(page.getByRole('heading', { level: 1, name: 'Goals & challenges' })).toBeVisible();
+  d.begin();
+  await d.click(page.getByRole('button', { name: 'New goal' }).first(), { on: 'click New goal' });
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await d.mark('zoom to the New goal dialog', dialog, { on: 'Name the goal' });
+  await d.type(dialog.getByLabel(/^Goal/), 'Finish the Globex homepage');
+  d.cue('a team');
+  await d.choose(dialog.getByLabel('For', { exact: true }), 'Team');
+  await d.choose(dialog.getByLabel(/^Who or what/), 'Design');
+  d.cue('tasks completed');
+  await d.choose(dialog.getByLabel('Measured by'), 'Tasks completed');
+  await d.type(dialog.getByLabel(/^Target/), '20');
+  await d.point(dialog.getByLabel(/^Ends/), { hold: 900, on: 'the dates' });
+  await d.set(dialog.getByLabel(/^Ends/), isoDay(30));
+  await d.click(dialog.getByRole('button', { name: 'Save goal' }), { on: 'click Save goal' });
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText('Finish the Globex homepage').first()).toBeVisible();
+  await d.beat(1500);
+  await d.go('/performance/achievements');
+  const badge = page.getByText('Perfect Attendance', { exact: true }).first();
+  await d.scrollTo(badge, { on: 'Perfect Attendance' });
+  await d.mark('highlight an achievement and its levels', badge.locator('xpath=ancestor::*[self::article or self::li or self::section][1]').or(badge).first(), { on: 'bronze, silver, gold and platinum' });
+  await d.beat(3000);
+  await d.finish();
+});
+
+test('15.3', async ({ d, page }) => {
+  await d.go('/performance/leaderboards');
+  await expect(page.getByRole('heading', { level: 1, name: 'Leaderboards' })).toBeVisible();
+  d.begin();
+  await d.point(page.getByRole('heading', { level: 1, name: 'Leaderboards' }), { hold: 1000, on: 'Leaderboards rank' });
+  await d.point(page.getByRole('radio', { name: 'People', exact: true }), { hold: 1000, on: 'people by their performance score' });
+  const family = page.getByRole('radiogroup', { name: 'Compare within' });
+  await d.mark('zoom to the Role family filter', family, { on: 'the same role family' });
+  await d.point(family, { hold: 1500 });
+  await d.point(page.getByText('Not ranked', { exact: true }).first(), { hold: 1800, on: 'not ranked yet' });
+  await d.click(page.getByRole('radio', { name: 'Teams', exact: true }), { settle: false, on: 'Switch to Teams' });
+  await d.beat(1800);
+  await d.click(page.getByRole('radio', { name: 'People', exact: true }), { settle: false });
+  await d.go('/performance/workers');
+  await d.point(page.getByText('Hana Rossi').first(), { hold: 600, on: 'Worker performance lists' });
+  await d.click(page.getByText('Hana Rossi').first(), { on: 'Open a person' });
+  const made = page.getByText('Score breakdown', { exact: true }).first();
+  await d.scrollTo(made);
+  await d.mark('zoom to the score breakdown', made.locator('xpath=ancestor::section[1]').or(made).first(), { on: 'what their score is made of' });
+  await d.beat(3000);
+  await d.finish();
+});

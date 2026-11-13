@@ -57,7 +57,7 @@ export const ch03: Chapter = {
         'Click the account menu; point at "Profile & devices", "What is monitored" and the theme buttons; press Escape.',
       ],
       narration:
-        'The sidebar groups the pages by job: Time Tracking, Workforce, Project Management, Finance and Reports, with Settings and Help at the bottom. Click a group to open it. At the top left is the organization switcher. If you belong to more than one organization, switch between them here, or create a new one. At the top right, the bell shows your notifications, such as a timesheet waiting for approval or a time off request. Click Mark all read to clear them. Next to it is your account menu, with your profile and devices, what is monitored, and the light and dark themes.',
+        'The sidebar groups the pages by job: Time Tracking, Workforce, Project Management, Finance, Reports and Performance, with Settings and Help at the bottom. Click a group to open it. At the top left is the organization switcher. If you belong to more than one organization, switch between them here, or create a new one. At the top right, the bell shows your notifications, such as a timesheet waiting for approval or a time off request. Click Mark all read to clear them. Next to it is your account menu, with your profile and devices, what is monitored, and the light and dark themes.',
       overlays: ['Labels pop on as each control is clicked: "Organization switcher", "Notifications", "Account menu"'],
       focus: ['Zoom to the organization switcher menu.', 'Zoom to the notifications panel.', 'Zoom to the account menu.'],
       transition: 'Cut to the Help Center.',

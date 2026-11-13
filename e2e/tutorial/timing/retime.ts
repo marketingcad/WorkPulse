@@ -16,6 +16,8 @@ export interface RetimeInput {
   maxSpeed: number;
   /** clipAt from the trimmed start; wordAt = LEAD + the start of the anchor's first word */
   anchors: Array<{ label: string; on: string; clipAt: number; wordAt: number; key?: number }>;
+  /** stretches of the clip where the picture does not change (trimmed-clip seconds), which can be cut */
+  still?: Array<{ from: number; to: number }>;
 }
 
 export interface RetimePlan {
@@ -24,13 +26,16 @@ export interface RetimePlan {
   anchors: AnchorResult[];
 }
 
+/** What is kept at each end of a still stretch that is cut, so a pause never vanishes completely. */
+export const STILL_KEPT = 0.1;
+
 /** An anchor this far behind its word or more is reported. */
 export const LATE_MS = 150;
 
 const ms = (n: number) => Math.round(n * 1000) / 1000;
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
-export function planRetime({ clip, target, maxSpeed, anchors }: RetimeInput): RetimePlan {
+export function planRetime({ clip, target, maxSpeed, anchors, still = [] }: RetimeInput): RetimePlan {
   const inside = anchors.filter((a) => a.clipAt >= 0 && a.clipAt <= clip).sort((a, b) => a.clipAt - b.clipAt);
   const results: AnchorResult[] = [];
   const kept: Array<(typeof inside)[number] & { result: AnchorResult }> = [];
@@ -57,11 +62,25 @@ export function planRetime({ clip, target, maxSpeed, anchors }: RetimeInput): Re
   let from = 0;
   for (const a of kept) {
     const need = a.wordAt - v;
-    const footage = a.clipAt - from;
+    // Footage that would make the anchor late even at maxSpeed: cut still stretches first (only as
+    // much as needed, keeping STILL_KEPT at each end), then speed up what is left.
+    const cuts: Array<{ from: number; to: number }> = [];
+    let excess = need > 0 ? a.clipAt - from - need * maxSpeed : 0;
+    for (const st of [...still].sort((x, y) => x.from - y.from)) {
+      if (excess <= 0) break;
+      const s0 = Math.max(st.from, from) + STILL_KEPT;
+      const s1 = Math.min(st.to, a.clipAt) - STILL_KEPT;
+      if (s1 <= s0) continue;
+      const take = Math.min(s1 - s0, excess);
+      cuts.push({ from: s0, to: s0 + take });
+      excess -= take;
+    }
+    const footage = a.clipAt - from - cuts.reduce((sum, c) => sum + c.to - c.from, 0);
     const speed = need > 0 && footage > 0 ? clamp(footage / need, 1, maxSpeed) : need > 0 ? 1 : maxSpeed;
     const hold = Math.max(0, need - footage / speed);
     v += footage / speed + hold;
-    add(from, a.clipAt, speed, hold);
+    const bounds = [from, ...cuts.flatMap((c) => [c.from, c.to]), a.clipAt];
+    for (let i = 0; i < bounds.length; i += 2) add(bounds[i]!, bounds[i + 1]!, speed, i + 2 >= bounds.length ? hold : 0);
     const r = a.result;
     r.shownAt = ms(v);
     r.driftMs = Math.round((v - a.wordAt) * 1000);

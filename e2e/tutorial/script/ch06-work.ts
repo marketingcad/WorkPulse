@@ -23,6 +23,7 @@ export const ch06: Chapter = {
       overlays: ['Callout: "Invoices are sent to the contact email"'],
       focus: ['Zoom to the New client dialog.'],
       transition: 'Cut (stay on Clients).',
+      visuals: { steps: true },
     },
     {
       id: '06.2',
@@ -56,7 +57,7 @@ export const ch06: Chapter = {
         'Type "cto@globex.example" in Email and click "Invite".',
       ],
       narration:
-        'Clients can follow the work you do for them in a client portal. From the client\'s actions, open Client portal. Switch the portal on and choose what the client sees: hours per person, task and day, task progress and hour budgets, activity levels, and even screenshots taken on their projects. The portal never shows money. Click Preview as client to see exactly what they will see. To give someone access, enter their email and click Invite. You can revoke access at any time.',
+        'Clients can follow the work you do for them in a client portal. From the client\'s actions, open Client portal. Switch the portal on and choose what the client sees: hours per person, task and day, task progress and hour budgets, activity levels, and even screenshots taken on their projects. You can also add a short summary written by WorkPulse AI. It uses only the progress the client already sees, never money, hours or names, and is written at most once a day. The portal never shows money. Click Preview as client to see exactly what they will see. To give someone access, enter their email and click Invite. You can revoke access at any time.',
       overlays: ['Callout: "The portal never shows money"'],
       focus: ['Zoom to "What the client sees".', 'Zoom to the preview.'],
       transition: 'Cut to Projects.',

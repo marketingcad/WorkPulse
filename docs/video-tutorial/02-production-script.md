@@ -2,7 +2,7 @@
 
 # Production script
 
-**WorkPulse Complete Tutorial: Time Tracking, Timesheets, Payroll and Billing from Start to Finish** · 1920 × 1080 (16:9) · English · planned length **39:35** (16 chapters, 64 scenes)
+**WorkPulse Complete Tutorial: Time Tracking, Timesheets, Payroll, Billing and WorkPulse AI from Start to Finish** · 1920 × 1080 (16:9) · English · planned length **45:02** (18 chapters, 71 scenes)
 
 For every scene: what is on screen, what the presenter does, the narration word for word, the text overlays, the zooms and highlights, and the transition. Each recorded scene has a clip of the real application in `e2e/tutorial/clips` (see the [recording checklist](07-recording-checklist.md)), and a `.markers.json` next to it with the exact second and screen area of every zoom.
 
@@ -14,7 +14,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 30 s (narration 28 s) · starts at 0:00 |
+| **Duration** | 35 s (narration 33 s) · starts at 0:00 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `01.1-opening.webm` |
 | **On screen** | The WorkPulse Overview for the demo company, Northwind Creative, full screen. The cursor rests in the middle of the page. |
@@ -27,9 +27,9 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 **Voiceover**
 
-> Welcome to WorkPulse. Track, focus, achieve. In this tutorial you will learn how to use WorkPulse from beginning to end: setting up your organization, inviting your team, tracking time with the desktop app, approving timesheets, billing your clients, running payroll, and getting the reports you need. Everything you see is the real application, running with a demo company called Northwind Creative, so you can follow along step by step.
+> Welcome to WorkPulse, powered by AI. Smarter workforce, better business. In this tutorial you will learn how to use WorkPulse from beginning to end: setting up your organization, inviting your team, tracking time with the desktop app, approving timesheets, billing your clients, running payroll, getting the reports you need, and letting WorkPulse AI point out what needs your attention. Everything you see is the real application, running with a demo company called Northwind Creative, so you can follow along step by step.
 
-**Text overlays:** Title card: "WorkPulse — Complete Tutorial" · Subtitle: "Track • Focus • Achieve" · Lower third at 0:20: "Demo company: Northwind Creative"
+**Text overlays:** Title card: "WorkPulse — Complete Tutorial" · Subtitle: "Powered by AI · Smarter Workforce. Better Business." · Lower third at 0:20: "Demo company: Northwind Creative"
 
 **Zoom and highlight:** Open on the WorkPulse logo for 3 seconds, then dissolve into the recording. · Slow 110% push-in on the "This month" card while the narration lists the topics.
 
@@ -39,7 +39,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 43 s (narration 41 s) · starts at 0:30 |
+| **Duration** | 43 s (narration 41 s) · starts at 0:35 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `01.2-who-uses-which-app.webm` |
 | **On screen** | Workforce › Members: the list of people with their roles (System Admin, Team Manager, Worker). |
@@ -65,19 +65,19 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 30 s (narration 28 s) · starts at 1:13 |
+| **Duration** | 35 s (narration 33 s) · starts at 1:18 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `01.3-how-this-tutorial-is-organized.webm` |
-| **On screen** | The Overview with the left-hand menu. Each menu group opens in turn: Time Tracking, Workforce, Project Management, Finance, Reports. |
+| **On screen** | The Overview with the left-hand menu. Each menu group opens in turn: Time Tracking, Workforce, Project Management, Finance, Reports, Performance. |
 
 **Presenter actions (clicks, typing, navigation)**
 
-1. Click each menu group in turn to open it: Time Tracking, Workforce, Project Management, Finance, Reports.
+1. Click each menu group in turn to open it: Time Tracking, Workforce, Project Management, Finance, Reports, Performance.
 2. Point at Settings and Help at the bottom of the menu.
 
 **Voiceover**
 
-> The menu on the left follows the way work flows through WorkPulse. You set up the organization and invite people. You organize the work into clients, projects and tasks. Your team tracks time. Managers review and approve it. Approved time becomes invoices and payroll. And reports turn it all into insight. This tutorial follows the same order, and the chapter list in the description lets you jump to any part.
+> The menu on the left follows the way work flows through WorkPulse. You set up the organization and invite people. You organize the work into clients, projects and tasks. Your team tracks time. Managers review and approve it. Approved time becomes invoices and payroll. Reports and AI Insights turn it all into insight, and Performance shows how people and teams are doing. This tutorial follows the same order, and the chapter list in the description lets you jump to any part.
 
 **Text overlays:** Flow ribbon across the bottom: "Organization → People → Work → Tracking → Time → Approval → Money → Insight"
 
@@ -93,7 +93,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 44 s (narration 42 s) · starts at 1:46 |
+| **Duration** | 44 s (narration 42 s) · starts at 1:56 |
 | **Recorded as** | Signed out · web app |
 | **Clip** | `02.1-create-your-organization.webm` |
 | **On screen** | The "Create your organization" page, then the new organization's Overview with the "Getting started" checklist. |
@@ -122,7 +122,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 36 s (narration 34 s) · starts at 2:30 |
+| **Duration** | 36 s (narration 34 s) · starts at 2:40 |
 | **Recorded as** | Signed out · web app |
 | **Clip** | `02.2-sign-in-and-reset-a-forgotten-password.webm` |
 | **On screen** | The "Welcome Back" sign-in page, the "Reset your password" page, then signing in. |
@@ -149,7 +149,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 30 s (narration 28 s) · starts at 3:06 |
+| **Duration** | 30 s (narration 28 s) · starts at 3:16 |
 | **Recorded as** | Signed out · web app |
 | **Clip** | `02.3-join-from-an-invitation.webm` |
 | **On screen** | The "You have been invited" page that opens from an invitation link, then the Overview of the organization the person joined. |
@@ -176,7 +176,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 47 s (narration 45 s) · starts at 3:36 |
+| **Duration** | 47 s (narration 45 s) · starts at 3:46 |
 | **Recorded as** | Signed out · web app |
 | **Clip** | `02.4-turn-on-two-factor-sign-in.webm` |
 | **On screen** | Profile › Two-factor authentication: password check, QR code, the 6-digit code, then the recovery codes. |
@@ -208,7 +208,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 44 s (narration 42 s) · starts at 4:26 |
+| **Duration** | 44 s (narration 42 s) · starts at 4:36 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `03.1-the-overview-dashboard.webm` |
 | **On screen** | Overview for Avery Admin: This month, Worked today, Waiting for approval, Project budgets and the other cards. |
@@ -236,7 +236,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 38 s (narration 36 s) · starts at 5:10 |
+| **Duration** | 38 s (narration 36 s) · starts at 5:20 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `03.2-customize-the-overview.webm` |
 | **On screen** | The Overview in edit mode: each card shows size, move and hide controls; the "Hidden widgets" panel lists the cards you can add. |
@@ -263,7 +263,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 43 s (narration 41 s) · starts at 5:48 |
+| **Duration** | 44 s (narration 42 s) · starts at 5:58 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `03.3-menu-organizations-notifications-and-your-account.webm` |
 | **On screen** | The sidebar, the organization switcher at the top left, the notifications bell and the account menu at the top right. |
@@ -277,7 +277,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 **Voiceover**
 
-> The sidebar groups the pages by job: Time Tracking, Workforce, Project Management, Finance and Reports, with Settings and Help at the bottom. Click a group to open it. At the top left is the organization switcher. If you belong to more than one organization, switch between them here, or create a new one. At the top right, the bell shows your notifications, such as a timesheet waiting for approval or a time off request. Click Mark all read to clear them. Next to it is your account menu, with your profile and devices, what is monitored, and the light and dark themes.
+> The sidebar groups the pages by job: Time Tracking, Workforce, Project Management, Finance, Reports and Performance, with Settings and Help at the bottom. Click a group to open it. At the top left is the organization switcher. If you belong to more than one organization, switch between them here, or create a new one. At the top right, the bell shows your notifications, such as a timesheet waiting for approval or a time off request. Click Mark all read to clear them. Next to it is your account menu, with your profile and devices, what is monitored, and the light and dark themes.
 
 **Text overlays:** Labels pop on as each control is clicked: "Organization switcher", "Notifications", "Account menu"
 
@@ -289,7 +289,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 42 s (narration 40 s) · starts at 6:31 |
+| **Duration** | 42 s (narration 40 s) · starts at 6:42 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `03.4-the-help-center-and-the-product-tour.webm` |
 | **On screen** | Help Center: search, topics and guides; then the product tour stepping through the menu. |
@@ -320,7 +320,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 34 s (narration 32 s) · starts at 7:16 |
+| **Duration** | 35 s (narration 33 s) · starts at 7:27 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `04.1-organization-settings.webm` |
 | **On screen** | Settings › Organization: the General panel (name, time zone, week start, currency, duration format) and the Company profile panel. |
@@ -334,26 +334,26 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 **Voiceover**
 
-> Now let us set up the organization. Open Settings. The tabs across the top hold every setting, and you only see the ones your role allows. On the Organization tab, the General panel sets your company name, time zone, the day your week starts, your currency, and how durations are shown. The Company profile below holds your logo, tax ID, address and contact details. They appear on your invoices and pay stubs. After a change, click Save changes.
+> Now let us set up the organization. Open Settings in the menu on the left. It lists every settings page, and you only see the ones your role allows. On the Organization page, the General panel sets your company name, time zone, the day your week starts, your currency, and how durations are shown. The Company profile below holds your logo, tax ID, address and contact details. They appear on your invoices and pay stubs. After a change, click Save changes.
 
 **Text overlays:** Callout: "Logo and address appear on invoices and pay stubs"
 
-**Zoom and highlight:** Zoom to the Settings tabs. · Zoom to the General panel.
+**Zoom and highlight:** Zoom to the Settings menu. · Zoom to the General panel.
 
-**Transition:** Cut to the Time & pay tab.
+**Transition:** Cut to the Time & pay page.
 
 ### Scene 04.2 — Time & pay: periods, rules, overtime and break types
 
 | | |
 |---|---|
-| **Duration** | 48 s (narration 46 s) · starts at 7:50 |
+| **Duration** | 48 s (narration 46 s) · starts at 8:02 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `04.2-time-and-pay-periods-rules-overtime-and-break-types.webm` |
 | **On screen** | Settings › Time & pay: Timesheet period, Timesheet rules, Overtime, Time types and Break types; the "New break type" dialog. |
 
 **Presenter actions (clicks, typing, navigation)**
 
-1. Click the "Time & pay" tab.
+1. Click "Time & pay" in the Settings menu.
 2. Point at "Timesheet period" and "Timesheet rules".
 3. Scroll to "Overtime" and "Time types".
 4. Scroll to "Break types" and click "Add break type".
@@ -362,33 +362,34 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 **Voiceover**
 
-> The Time and pay tab controls how time becomes pay. The timesheet period sets how often members submit their time, for example every week. Timesheet rules can lock old time so it cannot be changed, set minimum hours, and remind people about missing time. Below are the overtime rules and your time types, such as regular or overtime, each with its own pay and bill multiplier. Break types define the breaks your people can take. Let us add a coffee break: name it Coffee, make it a paid break, with a maximum of fifteen minutes. And a lunch break: unpaid, up to sixty minutes. We will plan these breaks on a project in a moment.
+> The Time and pay page controls how time becomes pay. The timesheet period sets how often members submit their time, for example every week. Timesheet rules can lock old time so it cannot be changed, set minimum hours, and remind people about missing time. Below are the overtime rules and your time types, such as regular or overtime, each with its own pay and bill multiplier. Break types define the breaks your people can take. Let us add a coffee break: name it Coffee, make it a paid break, with a maximum of fifteen minutes. And a lunch break: unpaid, up to sixty minutes. We will plan these breaks on a project in a moment.
 
 **Text overlays:** Callout: "Paid breaks count as paid, non-billable time"
 
 **Zoom and highlight:** Zoom to "Timesheet period". · Zoom to the "New break type" dialog while typing.
 
-**Transition:** Cut to the Tracking policies tab.
+**Transition:** Cut to the Tracking policies page.
 
 ### Scene 04.3 — Choose what the desktop app tracks
 
 | | |
 |---|---|
-| **Duration** | 46 s (narration 44 s) · starts at 8:38 |
+| **Duration** | 57 s (narration 55 s) · starts at 8:50 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `04.3-choose-what-the-desktop-app-tracks.webm` |
 | **On screen** | Settings › Tracking policies: the organization default with sections for Tracking, Activity, Idle, Screenshots, Apps and URLs; then the Team scope for one team. |
 
 **Presenter actions (clicks, typing, navigation)**
 
-1. Click the "Tracking policies" tab.
-2. Scroll through the Activity, Idle, Screenshots, Apps and URLs sections.
-3. Click "Team" in "Policy scope" and choose "Client Success".
-4. Point at the screenshot blur setting that this team overrides, and at "Reset to inherited".
+1. Click "Tracking policies" in the Settings menu.
+2. Point at "Wait for the desktop app to confirm a new timer for".
+3. Scroll through the Activity, Idle, Screenshots, Apps and URLs sections.
+4. Click "Team" in "Policy scope" and choose "Client Success".
+5. Point at the screenshot blur setting that this team overrides, and at "Reset to inherited".
 
 **Voiceover**
 
-> Tracking policies decide what the desktop app records. The organization default applies to everyone. Activity counts keyboard and mouse use, never the keys themselves. Idle detection asks people what to do with time when they step away. Screenshots can be switched on, taken a set number of times every ten minutes, and blurred. Apps and URLs record which applications and websites are used. You can override any setting for a team or for one member. Here, the Client Success team has its screenshots blurred. An overridden setting shows Reset to inherited. When you save, the affected members are notified, and each member can always see what is monitored.
+> Tracking policies decide what the desktop app records. The organization default applies to everyone. A timer started in the desktop app counts once the app confirms it is running; if it does not confirm in time, the timer stops and adds no time. Activity counts keyboard and mouse use, never the keys themselves. Idle detection asks people what to do with time when they step away. Screenshots can be switched on, taken a set number of times every ten minutes, and blurred. Apps and URLs record which applications and websites are used. You can override any setting for a team or for one member. Here, the Client Success team has its screenshots blurred. An overridden setting shows Reset to inherited. When you save, the affected members are notified, and each member can always see what is monitored.
 
 **Text overlays:** Callout: "Keystrokes are counted, never recorded" · Callout: "Members are notified of changes"
 
@@ -400,7 +401,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 36 s (narration 34 s) · starts at 9:24 |
+| **Duration** | 36 s (narration 34 s) · starts at 9:47 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `04.4-roles-and-permissions.webm` |
 | **On screen** | Settings › Roles & permissions: the permission matrix for the built-in roles, and the "Create custom role" dialog. |
@@ -431,7 +432,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 37 s (narration 35 s) · starts at 10:03 |
+| **Duration** | 37 s (narration 35 s) · starts at 10:26 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `05.1-invite-a-member.webm` |
 | **On screen** | Workforce › Members, the "Invite member" dialog, and the "Invitation ready" dialog with the invitation link. |
@@ -460,7 +461,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 31 s (narration 29 s) · starts at 10:40 |
+| **Duration** | 31 s (narration 29 s) · starts at 11:03 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `05.2-a-member-s-profile.webm` |
 | **On screen** | The profile of Ava Okafor, a product designer: Overview, Personal info, Time, Activity, Projects, Devices and Policy tabs. |
@@ -485,7 +486,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 32 s (narration 30 s) · starts at 11:11 |
+| **Duration** | 32 s (narration 30 s) · starts at 11:34 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `05.3-create-a-team-and-choose-its-manager.webm` |
 | **On screen** | Workforce › Teams, the "New team" dialog, and the new team's panel with members and roles. |
@@ -515,7 +516,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 32 s (narration 30 s) · starts at 11:46 |
+| **Duration** | 32 s (narration 30 s) · starts at 12:09 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `06.1-add-a-client.webm` |
 | **On screen** | Project Management › Clients and the "New client" dialog. |
@@ -542,7 +543,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 41 s (narration 39 s) · starts at 12:18 |
+| **Duration** | 41 s (narration 39 s) · starts at 12:41 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `06.2-delete-a-client-created-by-mistake-or-archive-one.webm` |
 | **On screen** | The Clients list: the actions menu of a duplicate client, the "Delete … ?" confirmation, then the Archive option of an existing client. |
@@ -569,7 +570,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 36 s (narration 34 s) · starts at 12:59 |
+| **Duration** | 49 s (narration 47 s) · starts at 13:22 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `06.3-share-a-client-portal.webm` |
 | **On screen** | The client portal settings for Globex Retail, the client preview, and the "People with access" panel. |
@@ -583,7 +584,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 **Voiceover**
 
-> Clients can follow the work you do for them in a client portal. From the client's actions, open Client portal. Switch the portal on and choose what the client sees: hours per person, task and day, task progress and hour budgets, activity levels, and even screenshots taken on their projects. The portal never shows money. Click Preview as client to see exactly what they will see. To give someone access, enter their email and click Invite. You can revoke access at any time.
+> Clients can follow the work you do for them in a client portal. From the client's actions, open Client portal. Switch the portal on and choose what the client sees: hours per person, task and day, task progress and hour budgets, activity levels, and even screenshots taken on their projects. You can also add a short summary written by WorkPulse AI. It uses only the progress the client already sees, never money, hours or names, and is written at most once a day. The portal never shows money. Click Preview as client to see exactly what they will see. To give someone access, enter their email and click Invite. You can revoke access at any time.
 
 **Text overlays:** Callout: "The portal never shows money"
 
@@ -595,7 +596,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 37 s (narration 35 s) · starts at 13:35 |
+| **Duration** | 37 s (narration 35 s) · starts at 14:11 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `06.4-create-a-project.webm` |
 | **On screen** | Project Management › Projects and the "New project" dialog. |
@@ -623,7 +624,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 36 s (narration 34 s) · starts at 14:12 |
+| **Duration** | 36 s (narration 34 s) · starts at 14:48 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `06.5-plan-breaks-for-a-project.webm` |
 | **On screen** | The project "Globex — Website Redesign", Settings tab, Breaks section with a coffee break and a lunch break. |
@@ -649,7 +650,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 33 s (narration 31 s) · starts at 14:48 |
+| **Duration** | 33 s (narration 31 s) · starts at 15:24 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `06.6-add-tasks.webm` |
 | **On screen** | Project Management › Tasks and the "New task" dialog. |
@@ -680,7 +681,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 38 s (narration 36 s) · starts at 15:24 |
+| **Duration** | 38 s (narration 36 s) · starts at 16:00 |
 | **Recorded as** | Signed out · web app |
 | **Clip** | `07.1-download-and-install-the-desktop-app.webm` |
 | **On screen** | The "Get the WorkPulse desktop app" page, the download dialog with short install steps, and the step-by-step Windows setup guide. |
@@ -707,7 +708,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 32 s (narration 30 s) · starts at 16:02 |
+| **Duration** | 32 s (narration 30 s) · starts at 16:38 |
 | **Recorded as** | Ava Okafor (worker) · desktop app |
 | **Clip** | `07.2-sign-in-to-the-desktop-app.webm` |
 | **On screen** | The desktop app's "Welcome Back" sign-in screen, then the Home screen for Ava Okafor. |
@@ -733,24 +734,25 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 45 s (narration 43 s) · starts at 16:34 |
+| **Duration** | 46 s (narration 44 s) · starts at 17:10 |
 | **Recorded as** | Ava Okafor (worker) · desktop app |
 | **Clip** | `07.3-clock-in.webm` |
 | **On screen** | Home: the timer card, the project picker, the planned breaks as buttons, Today's summary and Recent sessions. |
 
 **Presenter actions (clicks, typing, navigation)**
 
-1. Choose "Globex — Website Redesign" in the Project list. The timer starts.
-2. Point at the running timer and the "Clocked in" status.
-3. Point at the planned breaks: "Coffee · 10:30 AM · 15m" and "Lunch · 12:00 PM · 60m".
-4. Type "Homepage hero variations" in the work note.
-5. Point at "Today's summary".
+1. Choose "Globex — Website Redesign" in the Project list.
+2. Click "Clock in to Globex — Website Redesign". The timer starts.
+3. Point at the running timer and the "Clocked in" status.
+4. Point at the planned breaks: "Coffee · 10:30 AM · 15m" and "Lunch · 12:00 PM · 60m".
+5. Type "Homepage hero variations" in the work note.
+6. Point at "Today's summary".
 
 **Voiceover**
 
-> This is Home. To start work, choose a project. The timer starts right away and the status changes to Clocked in. You can also choose a task, and change project at any time with the Change button. Below the timer are the breaks planned for this project, the ones we set up earlier, ready as one-tap buttons. Add a short work note so your manager knows what you are working on. On the right, Today's summary shows your tracked time today and this week, how much was active, and your shift. If your organization records activity, it is shown here too, so nothing is hidden from you.
+> This is Home. To start work, choose a project, then click Clock in. The timer starts and the status changes to Clocked in. You can also choose a task, and change project at any time with the Change button. Below the timer are the breaks planned for this project, the ones we set up earlier, ready as one-tap buttons. Add a short work note so your manager knows what you are working on. On the right, Today's summary shows your tracked time today and this week, how much was active, and your shift. If your organization records activity, it is shown here too, so nothing is hidden from you.
 
-**Text overlays:** Callout: "Choosing a project starts the timer" · Callout on the breaks: "Planned by your admin"
+**Text overlays:** Callout: "Choose a project, then Clock in" · Callout on the breaks: "Planned by your admin"
 
 **Zoom and highlight:** Zoom to the timer card. · Highlight the break buttons.
 
@@ -760,7 +762,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 45 s (narration 43 s) · starts at 17:19 |
+| **Duration** | 45 s (narration 43 s) · starts at 17:56 |
 | **Recorded as** | Ava Okafor (worker) · desktop app |
 | **Clip** | `07.4-breaks-and-idle-time.webm` |
 | **On screen** | Home on a lunch break with its countdown, then clocked back in; then the "You were idle" prompt. |
@@ -787,7 +789,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 36 s (narration 34 s) · starts at 18:04 |
+| **Duration** | 36 s (narration 34 s) · starts at 18:41 |
 | **Recorded as** | Ava Okafor (worker) · desktop app |
 | **Clip** | `07.5-clock-out-with-an-end-of-day-report.webm` |
 | **On screen** | The "Clock out" dialog with the session summary, the end-of-day report and the "This work is finished" box. |
@@ -814,7 +816,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 36 s (narration 34 s) · starts at 18:40 |
+| **Duration** | 36 s (narration 34 s) · starts at 19:17 |
 | **Recorded as** | Ava Okafor (worker) · desktop app |
 | **Clip** | `07.6-projects-tasks-sessions-and-manual-time.webm` |
 | **On screen** | Track › Projects, Tasks and Sessions, then the "Add manual time" form. |
@@ -841,7 +843,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 42 s (narration 40 s) · starts at 19:16 |
+| **Duration** | 42 s (narration 40 s) · starts at 19:53 |
 | **Recorded as** | Ava Okafor (worker) · desktop app |
 | **Clip** | `07.7-your-timesheet-activity-and-reports.webm` |
 | **On screen** | Timesheet with hours by day and the Submit button; the Activity tab with apps and websites; the Reports tab. |
@@ -868,7 +870,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 37 s (narration 35 s) · starts at 19:58 |
+| **Duration** | 37 s (narration 35 s) · starts at 20:35 |
 | **Recorded as** | Ava Okafor (worker) · desktop app |
 | **Clip** | `07.8-time-off-schedule-pay-stubs-and-settings.webm` |
 | **On screen** | Time off with the request form, then Schedule, Pay stubs and Settings. |
@@ -899,7 +901,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 41 s (narration 39 s) · starts at 20:38 |
+| **Duration** | 41 s (narration 39 s) · starts at 21:15 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `08.1-who-is-working-now.webm` |
 | **On screen** | Time Tracking › Live: "Who is working now" with the Working, Idle / paused and Offline counts and the list of members. |
@@ -926,7 +928,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 28 s (narration 26 s) · starts at 21:19 |
+| **Duration** | 28 s (narration 26 s) · starts at 21:56 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `08.2-session-history.webm` |
 | **On screen** | Session history with filters, and the session details panel with its segments and state changes. |
@@ -952,7 +954,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 36 s (narration 34 s) · starts at 21:47 |
+| **Duration** | 36 s (narration 34 s) · starts at 22:24 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `08.3-screenshots-apps-and-websites.webm` |
 | **On screen** | Time Tracking › Activity for Ava Okafor on a working day: the timeline of ten-minute blocks with screenshots; then the Apps and URLs tabs. |
@@ -978,7 +980,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 34 s (narration 32 s) · starts at 22:23 |
+| **Duration** | 34 s (narration 32 s) · starts at 23:00 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `08.4-end-of-day-reports.webm` |
 | **On screen** | Time Tracking › End-of-day reports: the summary counts, the reports grouped by day, and the full report of Ava Okafor. |
@@ -1004,7 +1006,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 25 s (narration 23 s) · starts at 22:57 |
+| **Duration** | 25 s (narration 23 s) · starts at 23:34 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `08.5-what-is-monitored-full-transparency.webm` |
 | **On screen** | The "What is monitored" page: While you track time, Limits and time rules, Who can see this data. |
@@ -1032,7 +1034,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 41 s (narration 39 s) · starts at 23:25 |
+| **Duration** | 41 s (narration 39 s) · starts at 24:02 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `09.1-find-and-correct-time-entries.webm` |
 | **On screen** | Time Tracking › Time entries with date and member filters, the "Edit time entry" dialog, and the revision history. |
@@ -1059,7 +1061,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 36 s (narration 34 s) · starts at 24:06 |
+| **Duration** | 36 s (narration 34 s) · starts at 24:43 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `09.2-add-time-for-someone.webm` |
 | **On screen** | The "Add time" dialog: member, date, time logged, project and task, work performed and reason. |
@@ -1086,7 +1088,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 40 s (narration 38 s) · starts at 24:42 |
+| **Duration** | 40 s (narration 38 s) · starts at 25:19 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `09.3-approve-timesheets-and-manual-time.webm` |
 | **On screen** | Time Tracking › Approvals: the submitted timesheets, a timesheet opened in the side panel, and the manual time requests below. |
@@ -1113,7 +1115,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 22 s (narration 20 s) · starts at 25:22 |
+| **Duration** | 22 s (narration 20 s) · starts at 25:59 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `09.4-your-team-s-week.webm` |
 | **On screen** | Team week: hours per member for the week, with the previous and next week buttons. |
@@ -1142,7 +1144,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 30 s (narration 28 s) · starts at 25:47 |
+| **Duration** | 30 s (narration 28 s) · starts at 26:24 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `10.1-working-hours.webm` |
 | **On screen** | Workforce › Schedules: everyone's week, and the schedule dialog for one member. |
@@ -1168,7 +1170,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 25 s (narration 23 s) · starts at 26:17 |
+| **Duration** | 25 s (narration 23 s) · starts at 26:54 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `10.2-attendance.webm` |
 | **On screen** | The Attendance roster for today: present, late, absent, on leave; then the week view. |
@@ -1194,7 +1196,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 40 s (narration 38 s) · starts at 26:42 |
+| **Duration** | 40 s (narration 38 s) · starts at 27:19 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `10.3-approve-time-off-policies-and-holidays.webm` |
 | **On screen** | Workforce › Time off: the Requests tab with Ava's request, the Calendar, and the Policies & holidays tab. |
@@ -1224,7 +1226,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 39 s (narration 37 s) · starts at 27:25 |
+| **Duration** | 39 s (narration 37 s) · starts at 28:02 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `11.1-pay-and-bill-rates.webm` |
 | **On screen** | Finance › Rates: bill rates charged to clients and pay rates paid to members, and the "Set rate" dialog. |
@@ -1250,7 +1252,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 34 s (narration 32 s) · starts at 28:04 |
+| **Duration** | 34 s (narration 32 s) · starts at 28:41 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `11.2-budgets.webm` |
 | **On screen** | Finance › Budgets: Healthy, Warning and Exceeded counts, the list of budgets, and the "Set budget" dialog. |
@@ -1276,7 +1278,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 34 s (narration 32 s) · starts at 28:38 |
+| **Duration** | 34 s (narration 32 s) · starts at 29:15 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `11.3-expenses.webm` |
 | **On screen** | Finance › Expenses: submitted expenses with receipts, the Approve, Reject and Reimburse actions, and the Export button. |
@@ -1302,7 +1304,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 41 s (narration 39 s) · starts at 29:12 |
+| **Duration** | 41 s (narration 39 s) · starts at 29:49 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `11.4-create-an-invoice.webm` |
 | **On screen** | Finance › Invoices, then the four-step "New invoice" wizard: Client & period, Lines, Dates & notes, Review & create. |
@@ -1329,7 +1331,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 36 s (narration 34 s) · starts at 29:53 |
+| **Duration** | 36 s (narration 34 s) · starts at 30:30 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `11.5-send-the-invoice-and-record-the-payment.webm` |
 | **On screen** | The draft invoice with Download PDF, Send and Record payment; then Payments received. |
@@ -1355,7 +1357,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 38 s (narration 36 s) · starts at 30:29 |
+| **Duration** | 38 s (narration 36 s) · starts at 31:06 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `11.6-run-payroll.webm` |
 | **On screen** | Finance › Payroll: the Pay groups tab, the "Run payroll" dialog, and the draft payroll with its pay stubs and the bonuses dialog. |
@@ -1383,7 +1385,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 29 s (narration 27 s) · starts at 31:07 |
+| **Duration** | 29 s (narration 27 s) · starts at 31:44 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `11.7-pay-stubs-paid-and-owed.webm` |
 | **On screen** | The finalized payroll with the Stub links and "Mark as paid"; then the Owed tab. |
@@ -1412,7 +1414,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 32 s (narration 30 s) · starts at 31:39 |
+| **Duration** | 32 s (narration 30 s) · starts at 32:16 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `12.1-summary.webm` |
 | **On screen** | Reports › Summary: time, pay, billing and activity totals for the month, hours per day, by client, by project, and per person. |
@@ -1439,7 +1441,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 38 s (narration 36 s) · starts at 32:11 |
+| **Duration** | 38 s (narration 36 s) · starts at 32:48 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `12.2-run-and-export-a-report.webm` |
 | **On screen** | The Report library grouped by question, then the "Time & activity" report with filters, grouping and the Export menu. |
@@ -1465,7 +1467,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 34 s (narration 32 s) · starts at 32:49 |
+| **Duration** | 34 s (narration 32 s) · starts at 33:26 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `12.3-save-a-report-and-schedule-it-by-email.webm` |
 | **On screen** | The "Save report" dialog with "Email on a schedule" switched on. |
@@ -1495,7 +1497,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 28 s (narration 26 s) · starts at 33:26 |
+| **Duration** | 28 s (narration 26 s) · starts at 34:03 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `13.1-devices.webm` |
 | **On screen** | Settings › Devices: every computer signed in to the desktop app, and the actions for one device. |
@@ -1520,7 +1522,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 36 s (narration 34 s) · starts at 33:54 |
+| **Duration** | 36 s (narration 34 s) · starts at 34:31 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `13.2-sign-in-security-and-access-review.webm` |
 | **On screen** | Settings › Security & retention, then Access review with its counts and the list of members without two-factor. |
@@ -1545,7 +1547,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 31 s (narration 29 s) · starts at 34:30 |
+| **Duration** | 31 s (narration 29 s) · starts at 35:07 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `13.3-keep-screenshots-for-a-set-time.webm` |
 | **On screen** | Settings › Screenshot retention: the retention policy, the preview of what would be deleted, and the cleanup history. |
@@ -1571,7 +1573,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 41 s (narration 39 s) · starts at 35:01 |
+| **Duration** | 41 s (narration 39 s) · starts at 35:38 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `13.4-connect-other-systems-api-keys-and-webhooks.webm` |
 | **On screen** | Settings › API keys with the "Create API key" dialog and the one-time key; then Webhooks with the "Add endpoint" dialog. |
@@ -1598,7 +1600,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 32 s (narration 30 s) · starts at 35:42 |
+| **Duration** | 32 s (narration 30 s) · starts at 36:19 |
 | **Recorded as** | Avery Admin (system admin) · web app |
 | **Clip** | `13.5-the-audit-log.webm` |
 | **On screen** | Settings › Audit log with filters, one entry opened, and the Export CSV button. |
@@ -1628,7 +1630,7 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 | | |
 |---|---|
-| **Duration** | 40 s (narration 38 s) · starts at 36:17 |
+| **Duration** | 40 s (narration 38 s) · starts at 36:54 |
 | **Recorded as** | Maya Chen (team manager) · web app |
 | **Clip** | `14.1-workpulse-as-a-team-manager.webm` |
 | **On screen** | Maya Chen, manager of the Design team, signed in: her Overview, her shorter menu, and Approvals for her team. |
@@ -1650,17 +1652,213 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 **Transition:** Wipe to a chapter card: "Chapter 15 — Questions and troubleshooting".
 
-## Chapter 15 — Questions and troubleshooting
+## Chapter 15 — The Performance Center
 
-*After this chapter, viewers can:* Find answers to the most common questions and fix the most common problems.
+*After this chapter, viewers can:* Read the performance score, set a measured goal, and understand achievements and leaderboards.
 
-### Scene 15.1 — Frequently asked questions
+### Scene 15.1 — The performance score
 
 | | |
 |---|---|
-| **Duration** | 47 s (narration 45 s) · starts at 37:00 |
+| **Duration** | 44 s (narration 42 s) · starts at 37:37 |
 | **Recorded as** | Avery Admin (system admin) · web app |
-| **Clip** | `15.1-frequently-asked-questions.webm` |
+| **Clip** | `15.1-the-performance-score.webm` |
+| **On screen** | Performance › Performance overview: the organization score out of 100, the period switch, the score trend, and "What the score is made of"; then the Scoring rules dialog. |
+
+**Presenter actions (clicks, typing, navigation)**
+
+1. Open Performance › Performance overview.
+2. Point at the organization score.
+3. Click "Quarter", then "Month".
+4. Scroll to "What the score is made of" and point at its five parts.
+5. Click "Scoring rules"; point at the weights and the total; close the dialog.
+
+**Voiceover**
+
+> Performance shows how work is going, measured from real outcomes. Open Performance, then Performance overview. The organization score runs from 0 to 100 for the period you choose: a week, a month, a quarter or a year. What the score is made of lists its five parts: goal completion, project delivery, approved-work consistency, quality from manager reviews, and attendance. A part with no data yet is left out, and the others count for more. Activity levels, keystrokes and screenshots are never part of a score. Click Scoring rules to decide how much each part counts. The weights must add up to one hundred percent.
+
+**Text overlays:** Callout: "Measured from outcomes, never from keystrokes"
+
+**Zoom and highlight:** Zoom to the organization score. · Zoom to "What the score is made of". · Zoom to the Scoring rules dialog.
+
+**Transition:** Cut to Goals & challenges.
+
+### Scene 15.2 — Goals and achievements
+
+| | |
+|---|---|
+| **Duration** | 45 s (narration 43 s) · starts at 38:21 |
+| **Recorded as** | Avery Admin (system admin) · web app |
+| **Clip** | `15.2-goals-and-achievements.webm` |
+| **On screen** | Performance › Goals & challenges and the "New goal" dialog; then Achievements & recognition with the catalog of badges. |
+
+**Presenter actions (clicks, typing, navigation)**
+
+1. Open Performance › Goals & challenges and click "New goal".
+2. Type "Finish the Globex homepage" as the goal.
+3. Choose "Team" under For, and "Design" as who it is for.
+4. Choose "Tasks completed" under Measured by, and a target of 20; set the dates.
+5. Click "Save goal".
+6. Open Performance › Achievements & recognition and point at a badge with its Bronze to Platinum levels.
+
+**Voiceover**
+
+> Goals are measured from real work, so nobody types progress in. Open Goals and challenges and click New goal. Name the goal and choose who it is for: a person, a team, a project or the whole organization. Choose how it is measured, such as tasks completed, approved hours or work delivered on time, then set a target and the dates, and click Save goal. From now on its progress updates by itself. Under Achievements and recognition, people earn badges automatically from their work, like Perfect Attendance or Project Finisher, at bronze, silver, gold and platinum levels. Managers can also recognize someone, always with a reason.
+
+**Text overlays:** Callout: "Progress is measured, not typed in"
+
+**Zoom and highlight:** Zoom to the New goal dialog. · Highlight one achievement and its levels.
+
+**Transition:** Cut to Leaderboards.
+
+### Scene 15.3 — Leaderboards and people
+
+| | |
+|---|---|
+| **Duration** | 34 s (narration 32 s) · starts at 39:06 |
+| **Recorded as** | Avery Admin (system admin) · web app |
+| **Clip** | `15.3-leaderboards-and-people.webm` |
+| **On screen** | Performance › Leaderboards with the People, Teams and Projects switch and the Role family filter; then Worker performance and one person's profile. |
+
+**Presenter actions (clicks, typing, navigation)**
+
+1. Open Performance › Leaderboards.
+2. Point at the Role family filter and at a "Not ranked" row.
+3. Click "Teams", then "People".
+4. Open Performance › Worker performance and open Hana Rossi.
+5. Point at what her score is made of.
+
+**Voiceover**
+
+> Leaderboards rank people by their performance score, but only against others in the same role family, so a designer is never compared with an engineer. Rankings never use hours, keyboard activity or screenshots. Someone with too few approved days in the period is scored, but not ranked yet. Switch to Teams or Projects to compare those instead. Worker performance lists everyone's score. Open a person to see what their score is made of and how it has changed over time.
+
+**Text overlays:** Callout: "Compared within the same role family"
+
+**Zoom and highlight:** Zoom to the Role family filter. · Zoom to the person's score breakdown.
+
+**Transition:** Wipe to a chapter card: "Chapter 16 — WorkPulse AI".
+
+## Chapter 16 — WorkPulse AI
+
+*After this chapter, viewers can:* Ask WorkPulse AI questions, use AI Insights, draft text with AI, and keep up with what needs attention.
+
+### Scene 16.1 — Asking WorkPulse AI
+
+| | |
+|---|---|
+| **Duration** | 44 s (narration 42 s) · starts at 39:43 |
+| **Recorded as** | Avery Admin (system admin) · web app |
+| **Clip** | `16.1-asking-workpulse-ai.webm` |
+| **On screen** | The Overview with the WorkPulse AI panel open on the right: suggested questions, then an answer, then a how-to answer. |
+
+**Presenter actions (clicks, typing, navigation)**
+
+1. Click "Ask WorkPulse AI".
+2. Click the suggested question "What needs my attention this week?" and let the answer appear.
+3. Type "How do I approve a timesheet?" and send it.
+4. Point at the note "Answers can be wrong. Check important figures on the page itself."
+
+**Voiceover**
+
+> WorkPulse AI answers questions about how WorkPulse works and about your own organization. Click Ask WorkPulse AI to open it. It suggests questions for the page you are on, or you can type your own. Ask what needs your attention this week, and it looks through approvals, budgets and attendance for you. Ask how to do something, like approving a timesheet, and it gives you the steps. WorkPulse AI only sees what you are allowed to see. It can be wrong, so check important figures on the page itself. Your conversations are kept under the chat history, and New chat starts a fresh one.
+
+**Text overlays:** Callout: "It only sees what you can see"
+
+**Zoom and highlight:** Zoom to the WorkPulse AI panel. · Zoom to the answer.
+
+**Transition:** Cut to AI Insights.
+
+### Scene 16.2 — AI Insights
+
+| | |
+|---|---|
+| **Duration** | 42 s (narration 40 s) · starts at 40:27 |
+| **Recorded as** | Avery Admin (system admin) · web app |
+| **Clip** | `16.2-ai-insights.webm` |
+| **On screen** | Reports › AI Insights: the period switch, the tabs (Overview, Workforce, Timesheets, Projects, Workflow, Capacity, Finance), finding cards; then an explanation in the WorkPulse AI panel. |
+
+**Presenter actions (clicks, typing, navigation)**
+
+1. Open Reports › AI Insights.
+2. Point at the period switch and the tabs.
+3. Point at the first finding: its label, what was found, the figure and the next step.
+4. Click "Explain with WorkPulse AI" on the timesheets finding and let the explanation appear.
+5. Click the "Capacity" tab.
+
+**Voiceover**
+
+> AI Insights looks through your organization's data and points out what needs attention. Every finding is measured from your own data, labelled as a fact, a comparison or an estimate, and you only see what your role allows. Choose a period, then a tab: workforce, timesheets, projects, workflow, capacity for the next two weeks, and finance for people who handle money. Each finding says what was found, by how much, and the next step, with a link to the right page. Click Explain with WorkPulse AI, and the assistant explains the finding and what to do about it.
+
+**Text overlays:** Callout: "Measured from your data · labelled · permission-aware"
+
+**Zoom and highlight:** Zoom to a finding card. · Zoom to the explanation.
+
+**Transition:** Cut to a project's settings.
+
+### Scene 16.3 — Write with AI
+
+| | |
+|---|---|
+| **Duration** | 41 s (narration 39 s) · starts at 41:09 |
+| **Recorded as** | Avery Admin (system admin) · web app |
+| **Clip** | `16.3-write-with-ai.webm` |
+| **On screen** | A project's Settings tab with the description field and its "Write with AI" menu; then a timesheets finding in AI Insights and the reminder draft. |
+
+**Presenter actions (clicks, typing, navigation)**
+
+1. Open the project "Globex — Website Redesign" and its Settings tab.
+2. Click "Write with AI" under Description, then "Draft from what WorkPulse knows".
+3. Point at the draft and the "Undo" button.
+4. Open Reports › AI Insights, choose "Last week" and the Timesheets tab, and click "Draft reminder" on "… timesheets have not been submitted".
+5. Point at the reminder draft.
+
+**Voiceover**
+
+> WorkPulse AI can also write for you. In a project or task, click Write with AI under the description, and choose Draft from what WorkPulse knows. It writes a description from the project's own facts, which are listed so you can check them. You can also rewrite text you typed, shorter, longer or more professional. The draft only fills the field: edit it, keep it or click Undo, and nothing is saved until you save. In AI Insights, Draft reminder writes a friendly reminder for people who have not submitted their timesheet, ready for you to send.
+
+**Text overlays:** Callout: "You edit and save. Nothing is sent for you."
+
+**Zoom and highlight:** Zoom to the description and its draft. · Zoom to the reminder draft.
+
+**Transition:** Cut to the notifications.
+
+### Scene 16.4 — Staying informed
+
+| | |
+|---|---|
+| **Duration** | 34 s (narration 32 s) · starts at 41:50 |
+| **Recorded as** | Avery Admin (system admin) · web app |
+| **Clip** | `16.4-staying-informed.webm` |
+| **On screen** | The notifications panel with priority labels and grouped notifications; then Profile and devices with the notification settings and the weekly AI Insights summary. |
+
+**Presenter actions (clicks, typing, navigation)**
+
+1. Click the bell.
+2. Point at an "Urgent" and an "Important" label, and at a "+ more" group.
+3. Open the account menu, choose "Profile & devices", and scroll to the notification settings.
+4. Point at "Weekly summary of what needs my attention (AI Insights)".
+
+**Voiceover**
+
+> Notifications now come sorted by priority. Urgent and important ones are labelled, and similar notifications are grouped, so ten devices going offline take one line instead of ten. Open a group to see them all. To choose what you are told about, open your account menu, then Profile and devices. Managers can switch on a weekly summary of what needs their attention, written from AI Insights, so the most important things reach you even when you are busy.
+
+**Text overlays:** Callout: "Grouped by kind, sorted by priority"
+
+**Zoom and highlight:** Zoom to the notifications panel. · Highlight the weekly summary setting.
+
+**Transition:** Wipe to a chapter card: "Chapter 17 — Frequently asked questions".
+
+## Chapter 17 — Questions and troubleshooting
+
+*After this chapter, viewers can:* Find answers to the most common questions and fix the most common problems.
+
+### Scene 17.1 — Frequently asked questions
+
+| | |
+|---|---|
+| **Duration** | 47 s (narration 45 s) · starts at 42:27 |
+| **Recorded as** | Avery Admin (system admin) · web app |
+| **Clip** | `17.1-frequently-asked-questions.webm` |
 | **On screen** | Help Center › Frequently asked questions, with several answers opened. |
 
 **Presenter actions (clicks, typing, navigation)**
@@ -1681,13 +1879,13 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 **Transition:** Cut (stay in Help).
 
-### Scene 15.2 — Troubleshooting
+### Scene 17.2 — Troubleshooting
 
 | | |
 |---|---|
-| **Duration** | 53 s (narration 51 s) · starts at 37:47 |
+| **Duration** | 53 s (narration 51 s) · starts at 43:14 |
 | **Recorded as** | Avery Admin (system admin) · web app |
-| **Clip** | `15.2-troubleshooting.webm` |
+| **Clip** | `17.2-troubleshooting.webm` |
 | **On screen** | Help Center › Troubleshooting, with the guides opened one by one. |
 
 **Presenter actions (clicks, typing, navigation)**
@@ -1708,17 +1906,17 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 **Transition:** Wipe to the closing chapter.
 
-## Chapter 16 — Wrap-up
+## Chapter 18 — Wrap-up
 
 *After this chapter, viewers can:* Remember the main workflow and where to go next.
 
-### Scene 16.1 — Recap
+### Scene 18.1 — Recap
 
 | | |
 |---|---|
-| **Duration** | 34 s (narration 32 s) · starts at 38:43 |
+| **Duration** | 34 s (narration 32 s) · starts at 44:10 |
 | **Recorded as** | Avery Admin (system admin) · web app |
-| **Clip** | `16.1-recap.webm` |
+| **Clip** | `18.1-recap.webm` |
 | **On screen** | The Overview again, now with this tutorial's work in it; the cursor moves over the cards. |
 
 **Presenter actions (clicks, typing, navigation)**
@@ -1737,14 +1935,14 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 **Transition:** Fade to the end card.
 
-### Scene 16.2 — Closing
+### Scene 18.2 — Closing
 
 | | |
 |---|---|
-| **Duration** | 18 s (narration 16 s) · starts at 39:17 |
+| **Duration** | 18 s (narration 16 s) · starts at 44:44 |
 | **Recorded as** | Made in the editor |
 | **Clip** | — (made in the editor) |
-| **On screen** | End card: the WorkPulse logo, "Track • Focus • Achieve", and where to get help. |
+| **On screen** | End card: the WorkPulse logo, "Smarter Workforce. Better Business.", and where to get help. |
 
 **Presenter actions (clicks, typing, navigation)**
 
@@ -1752,9 +1950,9 @@ For every scene: what is on screen, what the presenter does, the narration word 
 
 **Voiceover**
 
-> Thank you for watching. Whenever you need a reminder, open Help inside WorkPulse: every topic in this video has a step-by-step guide there, and the product tour is one click away. Now it is your turn. Track, focus, achieve.
+> Thank you for watching. Whenever you need a reminder, open Help inside WorkPulse: every topic in this video has a step-by-step guide there, and the product tour is one click away. Now it is your turn. Smarter workforce, better business.
 
-**Text overlays:** End card: WorkPulse logo · "Track • Focus • Achieve" · "Help is always in the app: Help › Search"
+**Text overlays:** End card: WorkPulse logo · "Smarter Workforce. Better Business." · "Help is always in the app: Help › Search"
 
 **Zoom and highlight:** none
 

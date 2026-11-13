@@ -22,6 +22,10 @@ export interface Marker {
   on?: string;
   /** which occurrence of `on`, when the phrase is said more than once (default 1) */
   nth?: number;
+  /** where the anchored item is (point, click, type), for the highlight ring; unlike `box`, never zoomed to */
+  target?: Box;
+  /** a click, scroll or page change: it ends the highlight on the item before it */
+  interaction?: 'click' | 'scroll' | 'navigate';
 }
 
 /** When a word is spoken, in seconds from the start of its voice file. */

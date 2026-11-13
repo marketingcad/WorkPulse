@@ -44,17 +44,19 @@ export const ch07: Chapter = {
       app: 'desktop',
       screen: 'Home: the timer card, the project picker, the planned breaks as buttons, Today\'s summary and Recent sessions.',
       actions: [
-        'Choose "Globex — Website Redesign" in the Project list. The timer starts.',
+        'Choose "Globex — Website Redesign" in the Project list.',
+        'Click "Clock in to Globex — Website Redesign". The timer starts.',
         'Point at the running timer and the "Clocked in" status.',
         'Point at the planned breaks: "Coffee · 10:30 AM · 15m" and "Lunch · 12:00 PM · 60m".',
         'Type "Homepage hero variations" in the work note.',
         'Point at "Today\'s summary".',
       ],
       narration:
-        'This is Home. To start work, choose a project. The timer starts right away and the status changes to Clocked in. You can also choose a task, and change project at any time with the Change button. Below the timer are the breaks planned for this project, the ones we set up earlier, ready as one-tap buttons. Add a short work note so your manager knows what you are working on. On the right, Today\'s summary shows your tracked time today and this week, how much was active, and your shift. If your organization records activity, it is shown here too, so nothing is hidden from you.',
-      overlays: ['Callout: "Choosing a project starts the timer"', 'Callout on the breaks: "Planned by your admin"'],
+        'This is Home. To start work, choose a project, then click Clock in. The timer starts and the status changes to Clocked in. You can also choose a task, and change project at any time with the Change button. Below the timer are the breaks planned for this project, the ones we set up earlier, ready as one-tap buttons. Add a short work note so your manager knows what you are working on. On the right, Today\'s summary shows your tracked time today and this week, how much was active, and your shift. If your organization records activity, it is shown here too, so nothing is hidden from you.',
+      overlays: ['Callout: "Choose a project, then Clock in"', 'Callout on the breaks: "Planned by your admin"'],
       focus: ['Zoom to the timer card.', 'Highlight the break buttons.'],
       transition: 'Cut (stay on Home).',
+      visuals: { steps: true },
     },
     {
       id: '07.4',

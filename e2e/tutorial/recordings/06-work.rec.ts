@@ -67,6 +67,10 @@ test('06.3', async ({ d, page }) => {
   const sees = page.getByLabel('Hours per person, task and day');
   await d.mark('zoom to What the client sees', sees, { on: 'choose what the client sees' });
   for (const label of ['Hours per person, task and day', 'Task progress and hour budgets', 'Activity level of each person', 'Screenshots taken on this client’s projects']) await d.point(page.getByLabel(label), { hold: 1100 });
+  const ai = page.getByLabel('A short summary written by WorkPulse AI');
+  await d.point(ai, { hold: 600, on: 'a short summary written by WorkPulse AI' });
+  if (!(await ai.isChecked())) await d.click(ai, { settle: false });
+  await d.beat(2500);
   const preview = page.getByRole('button', { name: 'Preview as client' });
   await d.click(preview);
   await d.mark('zoom to the preview', page.getByRole('heading', { level: 2, name: 'Globex Retail' }).first(), { on: 'Click Preview as client' });

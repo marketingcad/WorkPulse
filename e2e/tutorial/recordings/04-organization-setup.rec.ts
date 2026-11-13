@@ -50,7 +50,9 @@ test('04.3', async ({ d, page }) => {
   d.begin();
   await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Tracking policies' }));
   await expect(page.getByRole('heading', { level: 1, name: 'Tracking policies' })).toBeVisible();
-  await d.beat(2500);
+  const confirm = page.getByLabel(/Wait for the desktop app to confirm a new timer for/).first();
+  await d.scrollTo(confirm);
+  await d.point(confirm, { hold: 2500, on: 'once the app confirms it is running' });
   for (const section of ['Activity', 'Idle', 'Screenshots', 'Apps', 'URLs']) {
     const h = page.getByRole('heading', { level: 2, name: section, exact: true });
     await d.scrollTo(h);

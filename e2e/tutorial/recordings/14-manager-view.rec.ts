@@ -10,7 +10,7 @@ test('14.1', async ({ d, page }) => {
   await d.point(page.getByRole('button', { name: 'Team', exact: true }).or(page.getByRole('radio', { name: 'Team', exact: true })).first(), { hold: 2500 });
   const nav = page.getByRole('complementary', { name: 'Primary' });
   await d.mark('zoom to the sidebar', nav, { on: 'Her menu is shorter' });
-  for (const group of ['Time Tracking', 'Workforce', 'Project Management', 'Finance', 'Reports']) {
+  for (const group of ['Time Tracking', 'Workforce', 'Project Management', 'Finance', 'Reports', 'Performance']) {
     const button = nav.getByRole('button', { name: group });
     if (!(await button.isVisible())) continue;
     if ((await button.getAttribute('aria-expanded')) !== 'true') await d.click(button, { settle: false });

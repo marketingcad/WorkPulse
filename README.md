@@ -14,313 +14,14 @@ The main flow the product covers is **Organization → People → Work structure
 - **Timesheets:** manual time requests, time edits with full revision history, periods, and submit → approve / reject / request changes.
 - **Operations:** schedules, shifts, attendance, holidays, time-off policies with accruals, a balance ledger, and requests.
 - **Finance:** effective-dated pay and bill rates, billing entries, budgets, expenses with receipts, invoices (PDF), payments.
+- **Payroll:** pay periods, payroll runs from approved time and paid time off, bonuses and deductions, encrypted bank details, and pay stubs as PDFs (also in the desktop app). Each approved hour is paid exactly once.
+- **Performance Center:** a 0–100 score from five outcomes (goals, delivery, approved-work consistency, reviews, attendance; never activity, keystrokes or screenshots), achievements, leaderboards, goals and challenges, manager reviews, team and worker performance, and project milestones.
+- **Client portal:** a read-only view for clients with delivery facts (tasks, milestones, progress, never money), an optional AI-written summary, and appreciation messages that wait for the organization's approval.
+- **WorkPulse AI:** an assistant side panel for admins and managers (read-only, scoped to what the person may see, Claude through `ANTHROPIC_API_KEY`), **AI Insights** (workforce, timesheets, projects, workflow, finance, capacity, forecasts) computed by WorkPulse and explained by the AI, and "Write with AI" drafts.
 - **Insight & platform:** dashboards, end-of-day reports, reports with CSV/XLSX/PDF export, notifications, API keys, signed webhooks, audit log, retention policies.
-- **Help:** a Help Center in the web app (a plain-language manual with search and links into the app) and a product tour for first-time users.
+- **Help:** a Help Center in the web app (a plain-language manual with search and links into the app), a product tour for first-time users, and a recorded video tutorial ([e2e/tutorial](e2e/tutorial/README.md)).
 
 > The original product and architecture plan is in [docs/plan/](docs/plan/README.md). Parts of it are superseded by **Revision 1 — Vercel-only hosting**, **Revision 2 — Supabase for database and file storage** and **Revision 3 — worker desktop app, website capture, screenshots** in [08-decisions.md](docs/plan/08-decisions.md). This README describes the system **as it is built**.
-
----
-
-## Project status
-
-Updated 27 October 2026 · Live at [tallywork-alpha.vercel.app](https://tallywork-alpha.vercel.app) · Desktop app 0.1.9
-
-### ✅ Completed
-
-- Time tracking on the web and the desktop app, including while offline. No tracked time is lost.
-- Activity monitoring with privacy built in: activity levels (keystrokes are counted, never recorded), optional blurred screenshots, and app and website usage, each switched on or off by the organization.
-- Timesheets and approvals: submit, approve, reject or request changes, with a full history of every edit.
-- Workforce tools: schedules, attendance, late and missed-shift alerts, time off with balances, breaks, overtime rules and time limits.
-- Billing: pay and bill rates, invoices, payments, budgets and expenses. Figures match to the cent across invoices and reports.
-- Dashboards that update live, plus an optional daily summary email.
-- Reports with downloads (CSV, Excel, PDF) and scheduled reports by email: 9 in the Report library, and the finance lists (invoices, payments, expenses, budgets, and what members are owed) export straight from their own page.
-- Integrations: API keys and webhooks for connecting other systems.
-- Security and privacy: two-factor sign-in (QR setup, password-checked changes, lockout after wrong codes, owner reset), IP allowlists, a tamper-proof audit log, data retention rules (with automatic screenshot cleanup), a personal data export, a right-to-erasure process, and an access review.
-- Ready for production use: health monitoring, alerts, load tests, recovery procedures and on-call guides.
-- Accessibility: every main screen meets the WCAG 2.1 AA standard, in light and dark mode.
-- Automated end-to-end tests (Playwright) for the web app, the desktop window and the real desktop app, run with one command (`pnpm test:e2e`) and in CI on every change. Every change now ships with tests that were run and passed ([AGENTS.md](AGENTS.md)).
-- Fast lists for large organizations: invoices, payments, expenses, time entries, sessions, approvals, manual time, time off, members, devices, tasks and attendance load one page at a time from the server.
-- Payroll: pay periods, payroll runs from approved time and paid time off, bonuses and deductions, and encrypted bank details. Each approved hour is paid exactly once: time approved after its payroll was finalized is paid by the next one ("from earlier periods"), and overlapping payrolls are refused.
-- Pay stubs as PDFs, also in the desktop app's Pay stubs page for workers.
-- Summary (formerly Insights): time, wages and billable totals by person, client, project and day. Members see only their own time and no money.
-- Time rules: time types with pay and bill multipliers, time entry locking (after a set number of days or before a set date), missing-time reminder emails, duration-only and part-billable entries, a "Time entries" page for managers, and CSV time import with a template.
-- Profiles: clients (contact, document language, colour, logo, rates), projects (dates, estimates, rates, documents) and staff (personal and HR details, private HR notes, employment dates and rates), plus an organization logo.
-- Everyday polish: invitations that set a team role and projects, the invitation link shown when an email can't be sent, sign-in back to the last workspace used, a new organization from the organization switcher, invoices and payments under one menu, budgets in a dialog (money budgets hidden from people who can't see amounts), a fully paged audit log with CSV export, and numbered table pages with a rows-per-page choice.
-
-### 🆕 New updates
-
-- **11 November 2026 (AI Intelligence, phase 4):** an AI summary for clients and two forecasts. Plan: [phase 4](docs/superpowers/plans/2026-11-10-ai-intelligence-phase4.md), ADR-139.
-  - **Client summary:** a client portal can show a short summary written by WorkPulse AI (Client portal › What the client sees › "A short summary written by WorkPulse AI", off by default). It is written from the portal's own delivery facts only (`portalSummaryFacts`: tasks, milestones, estimated finish; never money, hours or names), with no tools, at most once a day per client (`portal_ai_summaries`), and falls back to a plain summary when AI is off. `GET /portal/:accessId/ai-summary`, audited as `portal.ai_summary_viewed`.
-  - **Forecasts (estimates):** AI Insights › Projects shows when a project is likely to finish at the pace of the last four weeks (`finish_forecast`, flagged when after its end date); Workforce projects this month's hours (`month_end_hours`) and Finance this month's pay per currency (`month_end_pay`). Without recent progress, or in the first working days of a month, they say so instead of guessing.
-- **10 November 2026 (AI Intelligence, phase 3):** finance, capacity and performance explanations. Plan: [phase 3](docs/superpowers/plans/2026-11-10-ai-intelligence-phase3.md), ADR-138.
-  - **Finance:** AI Insights › Finance (payroll, invoice or payment access only) shows the payroll change per currency, overtime cost share, an estimate of the current pay period's payroll from approved time, overdue invoices and payments collected. Each view is audited as `insights.finance_viewed` (period only, never amounts). Not part of the overview. Tool `getFinancialInsights`.
-  - **Capacity:** AI Insights › Capacity compares each team's scheduled hours (minus approved time off) for the next two weeks with its recent pace and open task estimates: overloaded, underused, a time-off dip, and where work could move. A team without schedules is reported as such, never as zero. Tool `getCapacityInsights`.
-  - **Performance:** "Explain with WorkPulse AI" on a worker's performance profile explains the Performance Center score: the change, the two biggest drivers, one development suggestion. No private notes. Tool `explainPerformance`.
-- **10 November 2026 (AI Intelligence, phase 2):** workflow assistance, drafts and smarter notifications. Plan: [phase 2](docs/superpowers/plans/2026-11-10-ai-intelligence-phase2.md), ADR-136.
-  - **Workflow:** AI Insights › Workflow lists what waits for your decision (timesheets, manual time, time off, expenses) in a suggested order, what has waited over 3 days, and the average days to decide a timesheet. Tool `getWorkflowInsights`.
-  - **Write with AI:** in project and task descriptions (draft from the saved record, or rewrite what you typed), and Draft reminder on missing timesheets. Editable, with Undo; never sent or saved for you (`POST /assistant/drafts`).
-  - **Notifications:** each type has a fixed priority (urgent, important, info); the bell groups notifications of one kind ("+N more") and loads its list when opened. A weekly "needs your attention" summary from AI Insights, in-app, by email if you opt in (`insights.weekly`).
-  - **Expenses:** a suggested category from the description (keyword rules), only while the category is empty.
-- **10 November 2026 (AI Insights, phase 1):** a new **AI Insights** page (Reports › AI Insights) and four new WorkPulse AI tools. Design: [gap analysis](docs/superpowers/specs/2026-11-10-ai-intelligence-gap-analysis.md), [plan](docs/superpowers/plans/2026-11-10-ai-intelligence-phase1.md), ADR-135.
-  - **Workforce:** hours against the previous period, overtime and workload by team, approved share, approvals waiting, missing timesheets, time off.
-  - **Timesheets:** overlapping and repeated entries (found on read), very long days, mostly manual time, large changes, approval-queue flags, timesheets not submitted. Neutral wording; nothing is approved or changed.
-  - **Projects:** budgets exceeded or near their limit, budget projections (labelled estimates), overdue tasks and milestones, possible deadline risks (estimates), and projects with no warning signs.
-  - **Report summaries:** "Summarize with WorkPulse AI" on the report runner; the assistant runs the same report with the same permissions.
-  - **How it works:** findings are computed by WorkPulse from what the person may see (`@tallywork/domain/insights`, `services/ai-insights`, `GET /assistant/insights/:section`), labelled measured / compared / estimate, and cached 5 minutes per member. The AI only explains them, so the page works without `ANTHROPIC_API_KEY`.
-- **7 November 2026 (WorkPulse AI assistant):** admins and managers can ask questions in a side panel (the ✨ button above the calculator) about how WorkPulse works and about their organization's data. Design: [spec](docs/superpowers/specs/2026-11-07-workpulse-ai-assistant-design.md), ADR-134.
-  - **What it can answer:** product questions, from the same help articles as the Help Center. Read-only data questions through 12 server-side tools that call the existing scoped services: members, who is tracking now, hours, pending approvals, timesheet status per pay period, projects, budgets, teams, time off, and an organization overview. It suggests pages only from a fixed allowlist of links.
-  - **What it never does:** write anything; see more than the person asking; reach another organization; send emails, rates, pay, screenshots, activity, URLs, reasons or review notes to the model. Money (budgets) is sent only to people who may see it, in major units.
-  - **Model:** Claude through the Anthropic API (`ANTHROPIC_API_KEY`). Without a key it is hidden in production, and tests and E2E use a deterministic fake.
-  - **Conversations** are private to the member, kept 90 days by default (retention class `AI_CONVERSATIONS`, adjustable in Settings → Security), deleted when a member is anonymized, and included in their data export. Tool results are never stored.
-- **6 November 2026 (page weight back under budget):** every web page is under the 250 KB first-load JavaScript budget again (`apps/web/scripts/check-bundle-budget.mjs`, run in CI). 20 routes were over, up to 285 KB; the largest is now 248.9 KB.
-  - **Loaded when needed, not on every page:** the calculator's modes, the product tour, two-factor setup on the "two-factor required" screen, and the new-organization dialog. Every organization page now shares about 231 KB instead of 241 KB.
-  - **Tracking policies:** it imported one label helper from the root of `@tallywork/contracts`, which brought every schema and zod into the browser (about 35 KB). It now uses the `@tallywork/contracts/messages` subpath.
-  - **Workspace helpers** (`useOrgAction`, colour dots, status badges, hour conversions, the colour picker) moved to `components/workspace/basics.tsx`, so pages that need only them no longer load the task and project dialogs. The project page loads its budget dialog, Documents tab and "new client" dialog on demand.
-  - **Guarded by** `apps/web/test/bundle-imports.test.ts`, which fails when one of these modules is imported statically again, or when browser code imports the contracts package root.
-- **6 November 2026 (Performance Center, phases 2–6 and the screens):** achievements, leaderboards, goals, reviews, team and worker performance, and client Insights, on the web, in the desktop app and in the client portal. Status and remaining gaps: [Performance.md](Performance.md).
-  - **Web:** a **Performance** group in the sidebar (marked New) with Performance overview, Achievements (appreciation from clients waits in "Waiting for approval"), Leaderboards, Team performance, Worker performance (a list, and a profile with score history, goals, badges, project contributions and manager reviews) and Goals & challenges. Projects get a **Milestones** tab. Only people with team or organization scope see the group.
-  - **Desktop:** a **My performance** screen after Timesheet: this week's work, goals, the next badge, badges, recognition, milestones and reviews shared with the worker. The score shows only when the organization shares it. The last copy is kept for when the device is offline.
-  - **Client portal:** an **Insights** tab with delivery facts only (completion, tasks, the milestones the team shared, as a stepper, and weekly progress). Clients can thank the team; the message waits for the organization's approval.
-  - **Scores and ranks:** a period stays open for 14 days after it ends, then its scores are final and are never recalculated. When an organization hides rankings from managers, ranks are hidden on Team performance and on profiles too. Score refreshes run separately from event notifications and the daily job, so a failed refresh doesn't hold them up; it is retried.
-  - **Privacy:** a manager review's private note is never shown to the person reviewed, in any app. No score is based on activity levels, keystrokes or screenshots.
-  - **API** (under `/api/v1/orgs/:orgId/performance`, not open to API keys): `overview`, `leaderboard`, `teams`, `members` (with `/:id/profile`, `/:id/reviews`), `recalculate`, `achievements`, `awards` (and `/:id/revoke`), `appreciations` (and `/:id/approve|decline`), `goals` (and `/:id`), `reviews` (and `/:id`). Plus `GET /api/v1/agent/me/performance` for the desktop app, and `GET /portal/:accessId/insights` and `POST /portal/:accessId/appreciations` for clients ([docs/api](docs/api/README.md#client-portal)).
-- **5 November 2026 (Performance Center, phase 1: foundation, no screens yet):** the base for achievements, leaderboards, goals and worker and team performance. Designs: the "Performance Center designs" canvas.
-  - **Scoring** (`packages/domain/src/performance.ts`): a 0–100 score from five outcomes only. Goal completion 30%, project delivery against due dates 25%, approved-work consistency 20%, quality from manager reviews 15%, attendance 10%. Activity levels, keystrokes and screenshots are never inputs. A metric with no data is left out and the others are re-weighted, never counted as zero; below half the weight measured there is no score. Weights are organization-configurable, must total 100%, and each change is a new rules version.
-  - **Data** (migration `0030_performance_center`): scoring rules (versioned), visibility settings, project milestones, goals and their progress history, the achievement catalogue and awards (one per recipient, level and period), manager reviews (with a private note), score snapshots (rule version and inputs saved; a closed period is never recalculated) and client appreciation. Every table is tenant-owned with RLS and composite foreign keys.
-  - **Permissions:** `performance:read`, `performance:manage` (org only), `goals:read`, `goals:manage`, `achievements:read`, `achievements:manage` (org only), `achievements:award`, `reviews:read`, `reviews:manage`. Admins hold them for the organization, team managers for their teams, workers `performance:read`, `goals:read` and `achievements:read` for themselves only. Existing organizations' built-in roles get them in the migration.
-  - **API:** `GET/PUT /api/v1/orgs/:orgId/performance/settings`, `GET /performance/members/:id/score?from&to`, `GET /performance/members/:id/history`, and project milestones: `GET/POST /projects/:id/milestones`, `PATCH/DELETE /milestones/:id`. New events: `task.completed`, `milestone.completed`, `performance.rules.changed`.
-- **5 November 2026 (charts):** one chart system for web and desktop (`@tallywork/ui/charts`, still no chart library): theme tokens for every color (light and dark), a zero axis with round ticks and fine gridlines, tooltips in the theme's colors, keyboard reading of every column, legends that show or hide series, and loading, empty and error states at the chart's height.
-  - **Summary:** hours per day with the previous period as a dashed outline; time, billable time and (in one currency only) estimated pay and billing compared with the previous period, a period in progress against the same days so far; a billable-share donut. Days still to come show as "no data", not zero.
-  - **Overview:** "Tracked this week" compared with the same days of last week (it compared a week in progress with all of last week, so it always looked like a drop; the widget data now has `previous_by_day`). Ring, bars and limit meters from the shared set.
-  - **Reports:** categories (members, projects…) as ranked bars; days as columns. **Apps and websites**, **activity timeline** and the **desktop** reports and limits use the same pieces.
-- **5 November 2026 (desktop "What WorkPulse records" card):** a system admin shows or hides the card for the whole organization (Settings › Tracking policies › Desktop app). Hidden by default (`settings.showMonitoringCard`, no migration). The desktop app reads it at start-up and with every heartbeat, so a change applies within about a minute without a "tracking settings changed" notice, and its saved copy keeps the choice offline. When hidden, the card is gone from both Home and Settings; the switch says the organization must then tell staff what is monitored another way where it has to.
-- **5 November 2026 (profile pictures):** people can upload a photo (cropped and zoomed in the browser), choose one of 14 curated avatars, or keep their initials.
-  - **One picture per account**, the same in every organization (`users.avatar_url` holds `photo:<id>` or `preset:<id>`; no migration). Photos are checked by their contents, re-encoded on the server to a 512 px WebP without metadata (`sharp`), and kept in private storage at `avatars/{userId}/{imageId}.webp`; the API streams them after an authorization check, at an address that changes with the picture.
-  - **Who sees a photo:** the person, and whom their members:read grant covers (everyone with organization scope, a manager's team). Everyone else sees initials, in a color from the person's id. Another organization sees nothing.
-  - **Where:** profile, account menu, Members, Teams, a member's page, Time entries, approvals, manual time, time off, activity, tasks, the Overview, and the desktop app (the worker's own, through the device's own-data API; initials offline).
-  - **API:** `GET/POST/PUT/DELETE /api/v1/me/avatar`, `GET /api/v1/orgs/:orgId/avatars`, `GET /api/v1/orgs/:orgId/avatars/:membershipId`, `GET /api/v1/agent/me/avatar`.
-- **4 November 2026 (UX remediation, phases 1–2):** from a usability audit of the web and desktop apps. The rule: workers never have to guess whether their time is being recorded, whether their computer is approved, or whether their work has synced.
-  - **Lists on phones:** every table keeps its row actions (approve, reject, edit, download…) and its selection checkboxes on phones; rows open with Enter or Space and show a focus ring. A test guards all 37 pages built on the shared table.
-  - **Desktop app offline:**
-    - It starts without internet: it uses the account, projects and tracking settings it last loaded (encrypted on the computer) and says so ("Using … saved on …").
-    - Offline tracking stops being offered after the organization's **Max offline hours**, the same window the server applies.
-    - Records the server refuses (time recorded while tracking was turned off, data from a monitor turned off) are kept on the computer and shown with the reason until the worker asks for it as manual time or removes it; it was dropped silently before.
-    - Signing out removes the saved account and settings; unsent time stays queued. A revoked computer says it was revoked (it said "session expired").
-  - **Desktop app, everyday:**
-    - Choosing a project only selects it; **Clock in** or **Switch** starts tracking (arrow keys in the list used to start sessions).
-    - Clear states for a computer waiting for approval, for no projects assigned, and for missing macOS permissions (with a button to the right setting).
-    - Signing out or quitting while clocked in asks for the end-of-day report first.
-    - **What WorkPulse records** on Home and in Settings, from the organization's policy (since 5 November, shown only when an admin turns it on).
-    - Errors in plain words instead of network codes.
-  - **Web:** the Overview tells a failed load ("Try again") from missing access; the download page tells phones to use a computer and explains that the app is called "Tallywork" on the computer.
-- **4 November 2026 (UX remediation, phase 3):** nobody finishes an important action wondering what to do next.
-  - **Offline expiry while clocked in:** the desktop app pauses tracking at the moment offline tracking runs out, shows that time, keeps everything recorded before it, and does not restart on its own: the worker clocks back in once online.
-  - **Time not added** (Approvals › Time not added, migration 0028): managers see offline time the server refused (since the 29 October offline-sync rules, only time recorded while tracking was turned off; time whose project changed meanwhile is kept and flagged Needs review), for the members they may see: who, when, how long, why, and where it stands. It is never added on its own; the worker asks for it as manual time from the desktop app, which goes through the usual approval (linked, so the status follows it), or removes it (recorded in the audit log).
-  - **Navigation:** sidebar groups start open; a **My work** group holds My timesheet, My pay stubs and What is monitored; Settings shows its 11 pages under five topics (a list on phones); a **Help** link in the top bar opens the guide for the page.
-  - **Filters in the address:** Time entries, Sessions, Attendance, End-of-day reports, Time off, a member's profile tab and Time not added keep their filters on refresh, Back and shared links; broken links fall back to the defaults.
-  - **Next steps:** a new client offers "Add a project"; an invitation says what happens next (download page, device approval); a member's profile adds them to a project and links to Devices; attendance rows open that day; Devices links to the download page; an outdated report link leads back to the library.
-  - **Confirmations that say what will happen:** removing someone from a team, archiving a client with its projects, saving a tracking policy (what changes, for whom), requiring two-factor (who is not ready), rejecting or reimbursing an expense, sharing activity or screenshots with a client portal. A role still held cannot be deleted, and the screen says so.
-  - **Plain words:** session history, permission descriptions on Roles, time-entry history (time type names, who changed it), approval history ("approved it"), policy settings ("Treat a silent app as stopped after"), one description of activity everywhere, "Create pay group", "Billable by default".
-- **4 November 2026 (UX remediation, phase 4):** accessibility, phones and tablets, and forms that never fail silently.
-  - **Accessibility:** no serious or critical axe violation (WCAG 2.1 A/AA) on 45 web pages at desktop and phone width, the sign-in pages, and every desktop screen (`e2e/tests/web/a11y-sweep.spec.ts`, `e2e/tests/desktop/accessibility.spec.ts`). Fixed: secondary badge contrast, a link told apart by colour only, a scrollable secret not reachable by keyboard, pending time off shown by transparency. Every dialog returns focus to the button that opened it (it dropped to the page). The desktop idle sheet, clock-out sheet and navigation drawer keep Tab inside, close on Escape where that is safe, and return focus.
-  - **Phones and tablets:** every table's row actions are on screen at 390, 768 and 1024 px, without sideways scrolling; the main create dialogs fit a phone. Dialogs no longer slide in from the left.
-  - **Forms:** custom invoice lines, budget warning levels and payroll bonus lines say what is wrong; buttons that are unavailable say why on the page; currencies are picked from a list; recording a payment says when no invoice balance will go down; leaving a settings page or a new invoice with unsaved changes asks first.
-  - **Expense rejection reasons** (migration 0029): required to reject, shown to the member with who and when, sent as a notification, kept after a later approval, and audited.
-  - **Invoices:** Send reminder (at most 3 a day per invoice); Export matches the client and search shown.
-  - **Payroll:** Run payroll explains pay groups and creates one in place when there is none; finalizing lists unapproved hours and other currencies first.
-  - **Time off:** approvers see the balance after approval and who else is away; bulk approval names who failed and why; members cancel their own requests from the desktop app.
-- **4 November 2026 (sidebar names):** the web sidebar groups are now **Time Tracking** (was Time), **Workforce** (People), **Project Management** (Work) and **Finance** (Money). Same pages, same order; the product tour uses the new names.
-
-- **27 October 2026 (PRs #63–#72):**
-  - **Two-factor sign-in hardening** (PR #63):
-    - Setup shows a QR code drawn on our own server; the secret never goes to an outside service. An unfinished setup expires after 15 minutes.
-    - Every change (turning it on or off, replacing the app, new recovery codes) asks for the password, and all but the first setup also ask for a current code.
-    - Replacing the authenticator keeps the old app working until the new one is confirmed.
-    - 10 wrong codes in 15 minutes lock the code step for the account, on the web and the desktop app.
-    - An email goes out for every change. The organization owner can reset two-factor for a member who lost both phone and codes (audited, and the member is signed out everywhere).
-  - **Clients, projects and tasks** (an audit, PRs #64–#68 and #70):
-    - **Access:** "Manage projects" or "Manage clients" at a narrower scope than the organization covers only the person's assigned projects and their clients (it used to cover everything). A client's project count no longer reveals projects the person can't see.
-    - **Clients:** editing a client changes only what was edited (missing fields were wiped). Archiving a client archives its projects; restoring it brings exactly those back. Two active clients can't share a name, and a client's currency can't change while rates in the old currency are in use.
-    - **Projects:** a project moved to another client shows that client only the work done after the move (portal hours, tasks and screenshots; migration 0024). Two active projects of the same client can't share a name, and an archived client takes no new projects.
-    - **Tasks:** archived tasks can be listed and restored. An archived project takes no new tasks, and a task created as done gets its completion date.
-    - **People:** someone removed and invited back starts with only what the new invitation gives, not their old projects and tasks.
-    - **Forms:** pressing Enter twice saves once, and unsaved project edits are no longer wiped by background refreshes.
-  - **Money** (an audit, PRs #69 and #71). Fixed first:
-    - A paid holiday inside paid time off is paid once (it was paid twice).
-    - An amount typed with a decimal comma ("12,50") is refused instead of saved as 1,250.00.
-    - "Amounts owed" reads pay in the pay rate's currency, so it matches payroll when pay and bill currencies differ.
-    - Voiding an invoice, recording or deleting a payment, and reopening a timesheet are safe when two people act at the same moment (no void invoice holding money, no time paid twice).
-    - Payroll access can only be given for the whole organization (a team-level grant gave everyone's pay and bank details).
-    - An expense submitted as not reimbursable can't be reimbursed, and a receipt backs one expense, by its uploader.
-    - When someone else changes a member's bank details, the member is told in the app and by email; when members change their own, payroll managers are told. Opening someone's full bank details is in the audit log.
-    - Finalize and Mark as paid say they can't be undone; corrections go on the next payroll.
-    - The Payroll Export lists people who only had paid time off, and no longer counts unpaid leave.
-  - **Help Center** (PR #72): the guides explain all of these rules, and the FAQ on changing approved time now matches the app (invoiced or paid timesheets can't be reopened).
-  - Tests: every change ships with API tests that fail on the old code, plus Playwright tests for what people see. There are 235 Playwright tests.
-- **26–27 October 2026:**
-  - **Time and pay accuracy** (an audit of Time & Timesheets, PRs #57–#60). Approved pay, rounded per entry, is the official figure, and every other screen now agrees with it:
-    - **Desktop:** "Today" and "This week" no longer count a running timer twice, so the daily limit no longer stops the timer early. This works for every installed desktop version.
-    - **Idle time:**
-      - Discarding an idle period from the web removes only the idle minutes (it used to remove the work done after them).
-      - Unanswered idle gets the organization's default after its timeout, for idle recorded from 28 October.
-      - "Keep" after resuming on the web is no longer lost.
-      - The desktop's "Away" figure shows the day's idle time (it was always 0).
-    - **No double counting:** tracked time that overlaps time already recorded is trimmed, not added twice (for example a late offline sync over manual time). Each trim is in the audit log.
-    - **Locks and periods:**
-      - Time can't be added to a period approved before the pay period changed.
-      - The pay period or week start can't change once the current period has a submitted timesheet.
-      - The age lock also covers resolving idle time and counts from the worker's own date.
-      - Weekly limits use the organization's week start.
-      - Two approvers deciding at once can no longer leave a timesheet or time-off request in a mixed state.
-    - **Attendance:**
-      - Time is matched to shifts by when it happened, so a schedule in another time zone, or a split overnight shift, no longer shows ABSENT.
-      - Scheduled time for split shifts excludes the gap between them.
-    - **Money:**
-      - "Estimated owed", Summary and the reports' estimates round per entry like approved pay, so they equal "Approved owed" once everything is approved.
-      - Payroll Export has an **Approved pay** column next to **Estimated earnings**.
-      - Overtime is worked out on whole weeks, so a week split between two pay periods keeps its overtime.
-      - Invoice lines are split by time type, so hours × price equals the amount.
-    - **Paid breaks and holidays:**
-      - A break of a paid break type is paid, non-billable time, up to the break type's maximum.
-      - Payroll pays each paid holiday as the person's scheduled hours that day (8 h on a weekday without a schedule).
-    - **Smaller fixes:**
-      - A "not billable" time type stays non-billable.
-      - The dashboard's week billable includes running timers.
-      - The Duplicate dialog no longer shows "0:60".
-      - CSV hours have 4 decimals.
-      - A team manager can't move an outside member's schedule.
-      - A desktop heartbeat no longer keeps alive a session the app doesn't know.
-  - **Security** (PR #61): "Approve new devices" is enforced. A pending device can only check its status until an administrator approves it, and its time waits on the computer. Next.js 16.3.6 → 16.3.8 (security fixes). These close the open items from the 16 October audit.
-  - **Database under load** (PR #56):
-    - A request waits at most 10 s for a database connection and then gets a `503 service_busy` instead of hanging.
-    - Queries are limited to 30 s.
-    - The minute job runs once a minute across all servers, without writing to the database on every request.
-    - New settings: `DB_POOL_MAX`, `DB_CONNECT_TIMEOUT_MS`, `DB_STATEMENT_TIMEOUT_MS`, `DB_IDLE_IN_TX_TIMEOUT_MS`.
-  - Tests: 42 new automated tests for these changes (32 API, 4 database, 4 domain, 2 web); all 224 Playwright tests pass.
-- **21–23 October 2026:**
-  - **Screenshot retention** (Settings › Screenshot retention): an organization keeps screenshots for a set period (30 days by default), and older ones are deleted with their files on a schedule (daily at 02:00 in the organization's time zone by default).
-    - Nothing is deleted until an admin previews what would go and approves it. Making the period shorter withdraws the approval. The server enforces this, not just the page.
-    - Cleanups run in small batches in the background, retry files that fail to delete, pick up where they left off after a crash, and alert admins when one stalls.
-    - The page shows run history and a storage estimate; each change and run is in the audit log. It has its own Help guide (45 guides now).
-    - Changing it needs the `retention:manage` permission (System Admin by default). Migration 0023 carries over existing screenshot retention periods, unapproved.
-    - Details: [docs/ops/screenshot-retention.md](docs/ops/screenshot-retention.md).
-  - **Setup guides for the desktop app:** downloading an installer opens a dialog with the short install steps and a link to the full guide for that system. The guides (`/download/guide/windows`, `/macos`, `/linux`) are public pages with numbered steps, a screenshot for each step, tips, the Ubuntu terminal commands, how updates work, and the AppImage route for other Linux distributions. The download page no longer has "Sign out of the website". Replacing the screenshots: [docs/ops/download-guide-screenshots.md](docs/ops/download-guide-screenshots.md).
-  - **Desktop app 0.1.9** (released 21 October 2026): no visible changes from 0.1.8. It is a version release that updates on its own from 0.1.6 on.
-- **20–21 October 2026:**
-  - **Desktop app 0.1.8** (released 20 October 2026, updates on its own from 0.1.6 on):
-    - **Clock in / Clock out**, with the project's **planned breaks** as one-tap buttons (for example "Lunch · 12:00 PM · 60m"), a countdown during a break, a reminder when a break is due, and a note when it is over.
-    - **End-of-day report:** clocking out asks what was completed and whether the work is finished. It is saved on the computer first, so it is never lost offline.
-    - **Force stop works:** when an admin force-stops a timer, the app stops within about a minute (before, it kept running).
-    - Clicking the project that is already running no longer restarts the timer.
-  - **Breaks per project:** on a project (new or Settings tab), admins plan breaks from the organization's break types, with an optional time and length.
-  - **End-of-day reports page** (Time Tracking › End-of-day reports): a summary (reports, people reporting, finished, time covered), reports grouped by day, search, and a dialog with the full report, its session, Previous/Next and Copy.
-  - **A simpler admin menu**, from 36 items in 9 groups to 21 in 7 (Overview; Time; People; Work; Money; Reports; Settings and Help), with no page or permission removed and every old address still working:
-    - Related pages are tabs under one item: **Timesheets** (Approvals and Team week), **Members** (Members and Teams), **Schedules & attendance**, **Invoices** (Invoices and Payments received), **Payroll** (Payrolls, Owed and Pay groups) and **Settings** (Organization, Time & pay, Tracking policies, Devices, Roles, Access review, Security, API keys, Webhooks, Audit log; Screenshot retention was added on 21 October).
-    - **Approvals** shows submitted timesheets and manual time requests on one page.
-    - **Rates** (formerly Billing & rates) holds only rates; what members are owed moved to **Payroll › Owed**.
-    - The Organization settings are split into **Organization** and **Time & pay** (pay period, timesheet rules, overtime, time types and break types in one place).
-    - My timesheet, My pay stubs and What is monitored moved to the account menu; Sessions is reached from Live (**Session history**).
-    - Renamed: Time entries, Summary, Report library.
-  - **Help Center and product tour:** **Help** in the menu opens a plain-language manual (44 guides, search, step-by-step instructions with buttons to the right page, FAQs, troubleshooting, and a guide to every menu item). Complex pages have a **Help** link to their own guide. A short product tour starts once for new users and can be restarted from Help.
-  - **Export on the finance pages:** Invoices, Payments received, Expenses, Budgets and Payroll › Owed have a period filter and an **Export** button (CSV, Excel, PDF). The reports that only repeated these lists left the Report library (saved and scheduled ones still run).
-  - **Report access follows the pages:** team managers get the Expenses and Budgets reports (for their own team and projects), and Payroll Export needs payroll access.
-  - **Smaller fixes:** the "Weekly limits" dashboard card works (it said "Coming soon"); a running session can be force-stopped from its details on Session history; the same rate notes on member, client and project forms, with a link to all rates; consistent payroll names; the "Tracking settings were updated" notice no longer links to a page workers can't open; the download page no longer repeats the install steps.
-  - **Safer database updates:** migrations run one at a time (a database lock), and the new ones are safe to run again. This followed a failed deploy on 20 October (migration 0022 met a column that already existed); production kept running on the previous version until the fix was deployed.
-- New name and look: **WorkPulse**, with a new logo and app icon.
-- Sign in to the desktop app with your email and password (browser sign-in is still there).
-- Workers use the desktop app only: after accepting an invitation they land on a download page for their computer.
-- Desktop app for Windows, macOS and Linux, published on GitHub Releases, with automatic updates.
-- Real email through Resend or any SMTP server (for example Gmail), and optional email verification before first sign-in.
-- Owners, admins and managers are no longer tracked by default, so only workers appear in Live tracking.
-- Worker desktop app dashboard: people see their own time, timesheet, activity, schedule and time off in the app.
-- Browser extension for website tracking on Windows.
-- Language & region setting: dates, numbers and money appear in each person's local format.
-- Support console: WorkPulse support can help customers, but can only see their data when the customer allows it, for a limited time.
-- Company-wide desktop rollout: installers and central settings for IT teams.
-- Client portal: a read-only, no-money dashboard per client (hours, tasks, and optionally activity and screenshots), with its own invitations, and a notice to workers when a client can see their monitoring data.
-- **New design everywhere** (16–17 October 2026, rolled out in five phases):
-  - **Sign-in and onboarding:** a new sign-in page (brand panel, icons in the fields, "Remember me"), used on sign-up, password reset, invitations, the download page and the desktop app. With "Remember me" unticked, the session ends when the browser closes.
-  - **One design system** for colours, buttons, cards, shadows and corners, in light and dark mode, with text contrast checked against WCAG AA.
-  - **Admin and manager dashboards:** a navy sidebar, KPI cards with icons and trends, an activity ring on Overview, and clearer Live tracking and Attendance pages. Managers who see only their team read "your team".
-  - **Worker desktop app** (0.1.7): the same look, with the logo, a navy sidebar and blue highlights.
-  - **Client portal:** a branded header and the same cards and tables.
-  - **Documents:** invoice and pay stub PDFs have a cleaner layout: a status label (Paid, Overdue…), a tinted table header, the balance or net pay in a highlighted box, and page numbers with the organization's contact details. They carry only the organization's branding.
-  - **Support console:** a WorkPulse header, so staff always know they are in the internal tool.
-- **Desktop app 0.1.7** (released 17 October 2026):
-  - The new design, on the sign-in screen and across the whole app.
-  - Updates on its own for everyone on 0.1.6 (checked on a real Windows computer: it found and downloaded 0.1.7 by itself).
-- **The repository is public** (17 October 2026), so GitHub Actions runs again: CI checks every change, and the Desktop release workflow builds Windows, macOS and Linux. Before the switch, the full history was checked: it contains no secrets, keys or `.env` files.
-- **Desktop app 0.1.6** (released 16 October 2026):
-  - Automatic updates work. They never ran in earlier versions (the update check failed silently at start-up), so 0.1.6 has to be installed by hand once; after that, updates download in the background, a notification says when one is ready, and it installs when the app quits from the tray.
-  - On a shared computer, time recorded offline by one person is only ever sent as that person, even after someone else signs in.
-- **Desktop app 0.1.5** (released 15 October 2026):
-  - A simpler worker app. The sidebar is Home, Track, Timesheet, Time off, Schedule, Pay stubs and Settings, with Track and Timesheet grouping their related screens as tabs.
-  - The profile menu holds only Sign out, and Settings shows the signed-in person, organization, device status and version.
-  - Home leads with the timer, then things that need attention and quick actions.
-  - The "What is monitored" screen and its acknowledgement step are gone, so workers can start tracking straight after signing in.
-- Website deploys are automatic: Vercel is connected to GitHub, so every merge into `main` deploys production.
-- CI passes again: the Electron desktop tests had failed since 12 October because the CI screen is narrower than the app's sidebar breakpoint. The tests now work at any window width.
-- Linux desktop packages fixed and tested on Ubuntu 24.04 (the `.deb` is the recommended download). The app now explains what's wrong instead of failing silently when a desktop keyring is missing. On Wayland it reports what can't be tracked instead of recording partial data.
-- **Branded emails:** invitations, sign-up confirmation, password reset, notifications, reminders, the daily summary, invoices, client dashboard invitations and scheduled reports share one WorkPulse design (logo, clear button, details box, and a note on why you got the email), with a plain-text version. Links in notification emails now open the right page.
-- **Getting started checklist:** admins of a new organization see the next steps on the Overview page (invite people, create a project, set rates, connect the desktop app, review tracking), ticked off as they are done.
-- **Safer actions:** resetting the dashboard, removing support access and discarding unsaved tracking settings now ask for confirmation first.
-- **Recording a payment** offers all of a client's open invoices, oldest first.
-- **Full project audit** (16 October 2026, [docs/audit/2026-10-16-full-project-audit.md](docs/audit/2026-10-16-full-project-audit.md)): security, money, desktop, integrations and ease of use, with a prioritized fix list. Fixed since:
-  - A custom role that can manage members can no longer give itself (or anyone) more access than it has.
-  - Manual time can no longer overlap a running timer, so time is never counted twice.
-  - Sign-in can no longer be used to send people to another website.
-  - Payment references (for example cheque numbers) are unique per organization, with a clear message for a repeat; malformed links show "not found" instead of a server error.
-  - On a shared computer, time recorded offline by one person is only ever sent as that person (desktop 0.1.6).
-  - Payroll pays each approved hour exactly once (see Completed).
-  - A deployed demo gets its own private password (`SEED_PASSWORD`), so the public demo password can't open it.
-  - Links in notification emails open the right page.
-
-### 🚧 Work in progress
-
-Everything built through 27 October (PR #72) is merged into `main` (see New updates).
-
-- **QA of the new features in the live app:** desktop 0.1.8 and 0.1.9 (clock in/out, breaks and reminders, end-of-day reports), the new admin menu and tabs, Approvals, Payroll › Owed, Export, the Help Center and the product tour, the End-of-day reports page, Screenshot retention (preview, approval and a first scheduled cleanup), and the setup guides on each system. From 26–27 October:
-  - a paid break and a paid holiday through to a payroll run;
-  - Owed and Summary figures against approved pay;
-  - Payroll Export's new columns;
-  - attendance for a worker in another time zone;
-  - device approval with the desktop app.
-  - From 27 October: two-factor setup, replacement and the owner's reset; archiving and restoring a client; a holiday inside time off on a payroll run; the bank-detail change emails.
-- **Money, the rest of the audit's fix list:**
-  - **Currency** (waiting on a decision): a bill rate in another currency than the client's drops that time from the invoice. Proposed: skip such a rate and use the next one. Billable expenses in another currency also need a warning on the invoice.
-  - **Time off after a payroll draft** (waiting on approval of a small migration): time off cancelled after the draft is still paid, and time off approved after its period was finalized is never paid.
-  - **Later:** totals and exports that add up different currencies, a currency choice when recording a payment, deleting a rate reopening the previous one, applying unallocated payment money to an invoice, and removing someone from a pay group.
-- **Scaling to 1,000 concurrent users** (planned, waiting on the Supabase and Vercel plan and region details):
-  - put the Vercel functions in the same region as the database;
-  - split the daily job by organization;
-  - extend the k6 load tests and run them on staging;
-  - add indexes only where measurements show they're needed.
-
-**Needs attention**
-
-- **From the audit, still open** (anyone can read the audit report now that the repository is public, so these come first): the audit's remediation plan lists what remains by priority. Fixed on 27 October: "approve new devices" is enforced (a pending device can only check its status until approved; its time waits on the computer), and Next.js is on 16.3.8 with the security fixes.
-- **Desktop app, pending devices:** while a device waits for approval, Home shows errors instead of a clear "waiting for approval" message (Settings already shows the status). Planned for the next desktop release.
-- **Desktop updates give no sign while downloading.** The installer (about 114 MB) downloads in the background with nothing on screen until "WorkPulse x.y.z is ready" appears. If the app is restarted mid-download, the download starts over. Planned: a "Downloading update…" line, and resuming an interrupted download.
-- **Install desktop 0.1.6 or later by hand once** if a computer still has 0.1.5 or older (quit the app from the tray first): those versions cannot update themselves. From 0.1.6 on, updates are automatic. An update installs when the app is quit from the tray; closing the window with the X leaves it running.
-- **The production database is empty** (cleared on 16 October 2026 for manual QA from scratch; the database structure is kept). Old screenshots from the demo data are still in Supabase Storage (bucket `tallywork`, folder `org`) and can be deleted from the Supabase dashboard.
-- **After changing a setting in Vercel:** Vercel moves `tallywork-alpha.vercel.app` to a new deployment only when it comes from a merge to `main` (or `vercel --prod`). A dashboard **Redeploy** (needed after changing an environment variable) is not moved there: open that deployment and choose **⋯ → Promote to Production**, or the live site keeps the old settings.
-- **Preview builds:** Vercel blocks Preview builds for commits whose author isn't a member of the Vercel team. Add the committing GitHub account to the team, or commit as a member.
-- **Pull requests from outside the team:** now that the repository is public, set **Settings → Actions → General → Require approval for all outside collaborators**, so a stranger's pull request can't run CI without approval.
-- **Monitoring notice:** the desktop app no longer shows workers what is monitored or records their acknowledgement. The `/agent/policy/ack` endpoint and the web `/me/monitoring` page still exist, but the desktop doesn't use them. Make sure workers are told about monitoring some other way where the law requires it. The server's "Tracking settings were updated" notification no longer links anywhere (workers cannot open the web page); by decision, the desktop app will not show what is monitored again.
-- **Paging:** person pickers load every member (a light list with no rates or teams). For very large organizations, a search-as-you-type picker would avoid that. A few plain tables (Schedules, Roles, invoice lines, the client portal) have no paging.
-- **Check whether Preview builds can reach the production database:** in Vercel → Settings → Environment Variables, `DATABASE_URL` should be set for **Production** only. If Preview has it, every pull request's preview build runs migrations on the live database before anything is merged (the likely cause of the 20 October failed deploy).
-- **End-to-end coverage added in November 2026** for roles and tracking policies (9 November), and for API keys (scopes, revoke), webhooks (secret, rotate, private addresses), Report library exports (CSV, Excel, PDF, background), schedules and time-off decisions (10 November). See `e2e/tests/web/`.
-
-**Next / planned**
-
-- Admin simplification, phase 3 (behind the scenes, no visible change): one shared date-range filter, one time-entry list and one member picker instead of several copies.
-- Help and a product tour in the worker desktop app (the Help Center is in the web app only).
-- Full-scale load test (10,000 devices) on a test environment.
-- A backup restore drill.
-- Public uptime monitoring and a status page.
-- Code signing for the desktop installers (Windows) and Apple signing and notarization (macOS), so Macs can update automatically.
-- Translation of the app into other languages.
-- Planned later: single sign-on (SSO), links to project tools such as Jira, accounting sync (QuickBooks or Xero), and mobile apps.
 
 ---
 
@@ -1196,8 +897,15 @@ Run from the repo root unless noted.
 | `pnpm test` | Run all Vitest suites |
 | `pnpm test:e2e` | Run the Playwright E2E suite: builds, starts isolated servers on :3100/:3101, runs, reports ([e2e/README.md](e2e/README.md)) |
 | `pnpm test:e2e:smoke` | Only the critical E2E journeys (`@smoke`) |
+| `pnpm test:e2e:regression` | The web, desktop-window and Electron projects |
 | `pnpm test:e2e:install` | Install the Playwright browsers (first run) |
 | `pnpm test:e2e:ui` / `:headed` / `:debug` / `:report` | Interactive runner, visible browser, inspector, last HTML report |
+| `pnpm test:e2e:audit` | Every page as every role, at four screen sizes and in dark mode, with axe. Run it on its own |
+| `pnpm test:live` | Read-only smoke against the deployed site with a dedicated test account; every write is blocked |
+| `pnpm test:gates` | Check that every test file belongs to a quality gate ([docs/QUALITY_GATES.md](docs/QUALITY_GATES.md)) |
+| `pnpm test:gate1` / `:gate2` / `:gate3` | Run one gate: money, time, access and tenant isolation / product functionality / accessibility, layout, performance |
+| `pnpm tutorial:record` / `:package` / `:render` / `:publish` | Record the video tutorial's scenes, regenerate [docs/video-tutorial](docs/video-tutorial/README.md), render the MP4 (narration-timed captions, zooms and highlights), and publish the chapters to the Help Center ([e2e/tutorial](e2e/tutorial/README.md)) |
+| `pnpm --filter @tallywork/e2e tutorial:test` | Unit tests for the tutorial's narration timing (`e2e/tutorial/timing`) |
 | `pnpm lint` | Run lint tasks |
 | `pnpm db:generate` | Generate a new SQL migration from schema changes (`drizzle-kit generate`) |
 | `pnpm db:migrate` | Apply migrations, RLS policies and app-role grants to `DATABASE_URL` |
@@ -1289,7 +997,7 @@ Tests use **Vitest** with an in-memory **PGlite** database. This is real Postgre
 | [apps/desktop/test/nav.test.ts](apps/desktop/test/nav.test.ts) | Sidebar model: the item order, every screen reachable, no orphan views |
 | [packages/ui/test](packages/ui/test/) | Shared UI: table pagination, translated messages (placeholders, plurals, fallback to English) and the English message catalog |
 | [packages/api/test/new-organization.test.ts](packages/api/test/new-organization.test.ts) | Creating another organization: owner and admin, defaults, kept apart from the first, validation |
-| [e2e/tests](e2e/tests/) | Playwright (91 tests). **Web:** sign-in, the last workspace and safe return links, navigation, invitations, the client portal (the dashboard, no money, and who can't open it), CSV import, budgets, invoices and payments, payroll, insights, time types, locking and reminders, duration and part-billable entries, client, project and staff profiles, new organizations and the getting-started checklist, the audit log, server paging of every long list, and who must *not* see money pages. **Desktop window:** navigation and pay stubs. **Electron app:** sign-in, pay stub download, IPC checks, sign-out |
+| [e2e/tests](e2e/tests/) | Playwright, in `e2e/tests/web` and `e2e/tests/desktop`. **Web:** sign-in, the last workspace and safe return links, navigation, invitations, the client portal (the dashboard, no money, and who can't open it), CSV import, budgets, invoices and payments, payroll, insights, time types, locking and reminders, duration and part-billable entries, client, project and staff profiles, new organizations and the getting-started checklist, the audit log, server paging of every long list, and who must *not* see money pages. **Desktop window:** navigation and pay stubs. **Electron app:** sign-in, pay stub download, IPC checks, sign-out |
 | [apps/desktop/test/urls.test.ts](apps/desktop/test/urls.test.ts) | URL capture: browser detection, address-bar parsing, extension bridge access control (live HTTP), source selection, domain-only trimming |
 
 **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every push to `main` and on every PR:
@@ -1310,7 +1018,7 @@ The web app and API deploy together to **Vercel** as one project (root directory
 2. Set `APP_SECRET` (32+ random characters) and `CRON_SECRET`. Optionally set `APP_URL`, an email provider (`RESEND_API_KEY` or `SMTP_*`, plus `MAIL_FROM`; see [Send real email](#send-real-email)), `REQUIRE_EMAIL_VERIFICATION=true`, and the `DESKTOP_DOWNLOAD_URL_*` links for `/download`.
 3. Deploy. The `vercel-build` script runs `pnpm --filter @tallywork/db migrate` **before** `next build`, so every deploy applies migrations and RLS. Migrations run one at a time (a Postgres advisory lock), so two deploys starting together wait for each other. If a migration fails, the build stops and production keeps serving the previous deployment.
    - **From GitHub (normal):** the project is connected to `marketingcad/WorkPulse` with `main` as the production branch. Every merge into `main` deploys production, and every other branch gets a Preview.
-   - **Preview builds:** these should have no database (`DATABASE_URL` set for Production only), so their migrations are skipped and their API returns errors. If Preview is given `DATABASE_URL`, its builds migrate the production database before a merge; see Needs attention. Vercel blocks a Preview when the commit's author isn't a member of the Vercel team.
+   - **Preview builds:** these should have no database (`DATABASE_URL` set for Production only), so their migrations are skipped and their API returns errors. If Preview is given `DATABASE_URL`, its builds migrate the production database before a merge, so check that Preview doesn't have it (Vercel → Settings → Environment Variables). Vercel blocks a Preview when the commit's author isn't a member of the Vercel team.
    - **By hand:** `npx vercel --prod` from the repo root (the folder is linked to the `tallywork` project in `.vercel/`).
    - The live address `tallywork-alpha.vercel.app` is a project domain with **Auto-assign Custom Production Domains** on, so every merge to `main` moves it to the new deployment. A dashboard **Redeploy** (after changing an environment variable) does not move it: promote that deployment (**⋯ → Promote to Production**). To roll back, promote the previous deployment.
 4. [apps/web/vercel.json](apps/web/vercel.json) registers the cron jobs (`/api/v1/cron/tick` every minute, `/api/v1/cron/daily` at 03:15 UTC) and gives the API function a 300s max duration.

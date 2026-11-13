@@ -6,7 +6,7 @@ import { openDesktop, WorkerDevice, type DesktopOptions } from './desktop';
 import { CLIPS_DIR, STATE, TUTORIAL_DATA, TUTORIAL_DESKTOP_URL } from './env';
 import type { TutorialData } from './setup';
 import { anchorWords } from './timing/anchors';
-import type { Marker } from './timing/types';
+import type { Box, Marker } from './timing/types';
 import type { PortalAiSummaryDto } from '@tallywork/contracts';
 import { ScriptedAssistant } from './assistant';
 
@@ -84,6 +84,7 @@ export class Director {
   /** Opens a page of the demo organization (`/workers`) or any other path (`!/download`). */
   async go(to: string): Promise<void> {
     const url = to.startsWith('!') ? to.slice(1) : `/o/${this.data.orgId}${to}`;
+    this.interaction('navigate');
     await this.page.goto(url);
     await this.settle();
     // A new document starts without the cursor; a move puts it back where it was.
@@ -124,10 +125,15 @@ export class Director {
    * Notes that this moment belongs to the narration words `a.on`, as "<action>: <words>". Throws first
    * when the scene's narration does not say them, so a typo cannot quietly put a scene out of time.
    */
-  private anchor(action: string, a: Anchor): void {
+  private anchor(action: string, a: Anchor, target?: Box | null): void {
     if (!a.on) return;
     anchorWords(this.scene, a.on, a.nth);
-    this.markers.push({ at: this.seconds(), label: `${action}: ${a.on}`, on: a.on, ...(a.nth && a.nth > 1 ? { nth: a.nth } : {}) });
+    this.markers.push({ at: this.seconds(), label: `${action}: ${a.on}`, on: a.on, ...(a.nth && a.nth > 1 ? { nth: a.nth } : {}), ...(target ? { target } : {}) });
+  }
+
+  /** Notes a click, scroll or page change: the highlight ring on the item before it ends here. */
+  private interaction(kind: 'click' | 'scroll' | 'navigate'): void {
+    this.markers.push({ at: this.seconds(), label: `interaction: ${kind}`, interaction: kind });
   }
 
   /** A moment tied to the narration words `on`, with nothing drawn: it only times the footage. */
@@ -137,12 +143,12 @@ export class Director {
 
   /** Glides the cursor to the middle of `target` with an ease-in-out curve. With `on`, the anchor is when it arrives. */
   async point(target: Locator, opts: { hold?: number } & Anchor = {}): Promise<void> {
-    await this.glide(target);
-    this.anchor('point', opts);
+    const box = await this.glide(target);
+    this.anchor('point', opts, box);
     await this.page.waitForTimeout(opts.hold ?? 250);
   }
 
-  private async glide(target: Locator): Promise<void> {
+  private async glide(target: Locator): Promise<Box> {
     await target.scrollIntoViewIfNeeded();
     const box = await target.boundingBox();
     if (!box) throw new Error(`cannot point at an element that is not visible: ${target}`);
@@ -156,13 +162,16 @@ export class Director {
       await this.page.waitForTimeout(12);
     }
     this.mouse = to;
+    return { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) };
   }
 
   /** Moves to `target` and clicks it, then lets the page react. With `on`, the anchor is when the cursor arrives. */
   async click(target: Locator, opts: { settle?: boolean } & Anchor = {}): Promise<void> {
-    await this.glide(target);
-    this.anchor('click', opts);
-    await this.page.waitForTimeout(200);
+    const box = await this.glide(target);
+    this.anchor('click', opts, box);
+    // A named button gets a moment under the cursor, so its highlight is seen as it is said.
+    await this.page.waitForTimeout(opts.on ? 900 : 200);
+    this.interaction('click');
     await target.click();
     if (opts.settle !== false) await this.settle();
     else await this.page.waitForTimeout(350);
@@ -172,8 +181,8 @@ export class Director {
 
   /** Clicks into a field and types at a readable speed (replacing what was there). */
   async type(target: Locator, text: string, anchor: Anchor = {}): Promise<void> {
-    await this.glide(target);
-    this.anchor('type', anchor);
+    const box = await this.glide(target);
+    this.anchor('type', anchor, box);
     await this.page.waitForTimeout(150);
     await target.click();
     await target.fill('');
@@ -209,12 +218,14 @@ export class Director {
   /** Scrolls `target` smoothly to the middle of the screen. */
   async scrollTo(target: Locator, anchor: Anchor = {}): Promise<void> {
     this.anchor('scroll', anchor);
+    this.interaction('scroll');
     await target.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
     await this.page.waitForTimeout(900);
   }
 
   /** Scrolls the page by `dy` CSS pixels, smoothly. */
   async scroll(dy: number): Promise<void> {
+    this.interaction('scroll');
     await this.page.mouse.wheel(0, dy);
     await this.page.waitForTimeout(900);
   }

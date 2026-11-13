@@ -298,6 +298,31 @@ const audioIn = (voice: string | undefined) => (voice ? ['-i', voice] : ['-f', '
 const audioGraph = (length: number, fadeOut: number | null) =>
   `[1:a]aresample=48000,aformat=channel_layouts=stereo,adelay=${LEAD * 1000}:all=1,apad,atrim=0:${round(length)}${fadeOut ? `,afade=t=out:st=${round(length - fadeOut)}:d=${fadeOut}` : ''}[a]`;
 
+/**
+ * The stretches of a clip's scene where the picture does not change (the cursor resting, a pause to
+ * read), from ffmpeg's freezedetect, in seconds from the scene's start. The retiming cuts these first
+ * when an anchor would otherwise show after its words. Cached by the clip's size and time.
+ */
+function stillStretches(clip: string, start: number, end: number): Array<{ from: number; to: number }> {
+  const st = statSync(clip);
+  const cache = path.join(WORK, 'still', `${hash(clip, String(st.size), String(st.mtimeMs), String(start), String(end))}.json`);
+  if (existsSync(cache)) return JSON.parse(readFileSync(cache, 'utf8')) as Array<{ from: number; to: number }>;
+  const r = spawnSync(FFMPEG, ['-hide_banner', '-ss', String(start), '-to', String(end), '-i', clip, '-vf', 'freezedetect=n=0.003:d=0.6', '-an', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const out: Array<{ from: number; to: number }> = [];
+  let from: number | null = null;
+  for (const m of (r.stderr ?? '').matchAll(/freeze_(start|end): ([\d.]+)/g)) {
+    if (m[1] === 'start') from = Number(m[2]);
+    else if (from !== null) {
+      out.push({ from: round(from), to: round(Number(m[2])) });
+      from = null;
+    }
+  }
+  if (from !== null) out.push({ from: round(from), to: round(end - start) });
+  mkdirSync(path.dirname(cache), { recursive: true });
+  writeFileSync(cache, JSON.stringify(out), 'utf8');
+  return out;
+}
+
 async function scene(s: Scene, voice: string, first: boolean, last: boolean): Promise<Segment> {
   const base = `${s.id}-${slug(s.title)}`;
   const clip = path.join(CLIPS, `${base}.webm`);
@@ -315,6 +340,7 @@ async function scene(s: Scene, voice: string, first: boolean, last: boolean): Pr
     clip: end - start,
     target: LEAD + speech + TAIL,
     maxSpeed: MAX_SPEED,
+    still: stillStretches(clip, start, end),
     // key: the marker's index, so each zoom finds its own anchor (zoomMarks)
     anchors: markers.flatMap((m, key) => (m.on ? [{ label: m.label, on: m.on, key, clipAt: m.at - start, wordAt: round(LEAD + words[anchorWords(s, m.on, m.nth).first]!.start) }] : [])),
   });

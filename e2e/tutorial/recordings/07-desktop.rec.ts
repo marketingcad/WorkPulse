@@ -25,8 +25,9 @@ test('07.3', async ({ d, page }) => {
   await d.desktop();
   d.begin();
   const timer = page.getByRole('region', { name: 'Timer' });
-  await d.mark('zoom to the timer card', timer, { on: 'The timer starts right away' });
+  await d.mark('zoom to the timer card', timer, { on: 'choose a project' });
   await d.choose(timer.getByRole('combobox', { name: 'Project', exact: true }), PROJECT);
+  await d.click(timer.getByRole('button', { name: `Clock in to ${PROJECT}` }), { settle: false, on: 'click Clock in' });
   await expect(timer.getByText('Clocked in', { exact: true })).toBeVisible();
   await d.point(timer.getByText('Clocked in', { exact: true }), { hold: 2500 });
   const breaks = timer.getByRole('group', { name: 'Breaks' });

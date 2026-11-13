@@ -130,6 +130,9 @@ export async function openDesktop(page: Page, device: WorkerDevice, opts: Deskto
         if (type === 'session.start') device.seq = 0;
         const at = new Date().toISOString();
         await device.call('POST', '/agent/ingest/batch', { sent_at: at, events: [{ event_id: crypto.randomUUID(), type, session_id: sessionId, seq: ++device.seq, occurred_at: at, ...rest }] });
+        // A desktop start holds no time until the device confirms it (the 120-second confirm window):
+        // the app's next heartbeat names the session, so the stand-in sends one straight away.
+        if (type === 'session.start') await device.call('POST', '/agent/heartbeat', { sent_at: new Date().toISOString(), session_id: sessionId, agent_version: '0.1.9' });
         return undefined;
       }
       case 'remember':

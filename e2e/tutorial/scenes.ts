@@ -7,6 +7,7 @@
  * Each chapter's words live in script/chNN-*.ts; its recording is recordings/NN-*.rec.ts. After
  * changing the words, run `pnpm tutorial:package`; after changing what is on screen, record again.
  */
+import type { SceneVisuals } from './visuals/concepts';
 import { ch01 } from './script/ch01-introduction';
 import { ch02 } from './script/ch02-getting-started';
 import { ch03 } from './script/ch03-finding-your-way';
@@ -48,6 +49,8 @@ export interface Scene {
   focus: string[];
   /** how the scene hands over to the next one */
   transition: string;
+  /** the animated visuals: step numbers, and concept cards added or turned off (visuals/concepts.ts) */
+  visuals?: SceneVisuals;
 }
 
 export interface Chapter {

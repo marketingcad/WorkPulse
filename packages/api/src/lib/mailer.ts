@@ -1,10 +1,19 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 
+export interface MailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+}
+
 export interface MailMessage {
   to: string;
   subject: string;
   text: string;
   html?: string;
+  /** Where replies go, e.g. the organization's own address for an invoice (the sender is no-reply). */
+  replyTo?: string;
+  attachments?: MailAttachment[];
 }
 
 export interface Mailer {
@@ -36,7 +45,15 @@ export class ResendMailer implements Mailer {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: this.from, to: msg.to, subject: msg.subject, text: msg.text, html: msg.html }),
+      body: JSON.stringify({
+        from: this.from,
+        to: msg.to,
+        subject: msg.subject,
+        text: msg.text,
+        html: msg.html,
+        ...(msg.replyTo ? { reply_to: msg.replyTo } : {}),
+        ...(msg.attachments?.length ? { attachments: msg.attachments.map((a) => ({ filename: a.filename, content: a.content.toString('base64'), content_type: a.contentType })) } : {}),
+      }),
     });
     if (!res.ok) throw new Error(`Email provider responded ${res.status}`);
   }
@@ -69,7 +86,15 @@ export class SmtpMailer implements Mailer {
       });
   }
   async send(msg: MailMessage): Promise<void> {
-    await this.transport.sendMail({ from: this.from, to: msg.to, subject: msg.subject, text: msg.text, html: msg.html });
+    await this.transport.sendMail({
+      from: this.from,
+      to: msg.to,
+      subject: msg.subject,
+      text: msg.text,
+      html: msg.html,
+      replyTo: msg.replyTo,
+      attachments: msg.attachments?.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })),
+    });
   }
 }
 

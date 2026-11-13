@@ -64,7 +64,7 @@ test('03.3', async ({ d, page }) => {
   await d.mark('zoom to the account menu', menu, { on: 'your account menu' });
   await d.point(menu.getByRole('menuitem', { name: 'Profile & devices' }), { hold: 1500 });
   await d.point(menu.getByRole('menuitem', { name: 'What is monitored' }), { hold: 1500 });
-  await d.point(page.getByRole('radio', { name: 'dark theme' }), { hold: 2000 });
+  await d.point(page.getByRole('menuitemradio', { name: 'dark theme' }).or(page.getByRole('radio', { name: 'dark theme' })).first(), { hold: 2000 });
   await page.keyboard.press('Escape');
   await d.finish();
 });

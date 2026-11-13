@@ -21,6 +21,8 @@ import { ch11 } from './script/ch11-money';
 import { ch12 } from './script/ch12-reports';
 import { ch13 } from './script/ch13-security-admin';
 import { ch14 } from './script/ch14-manager-view';
+import { ch15 } from './script/ch15-performance';
+import { ch16 } from './script/ch16-ai';
 import { ch17 } from './script/ch17-faq';
 import { ch18 } from './script/ch18-wrap-up';
 
@@ -107,4 +109,4 @@ export const VIDEO = {
   },
 };
 
-export const CHAPTERS: Chapter[] = [ch01, ch02, ch03, ch04, ch05, ch06, ch07, ch08, ch09, ch10, ch11, ch12, ch13, ch14, ch17, ch18];
+export const CHAPTERS: Chapter[] = [ch01, ch02, ch03, ch04, ch05, ch06, ch07, ch08, ch09, ch10, ch11, ch12, ch13, ch14, ch15, ch16, ch17, ch18];

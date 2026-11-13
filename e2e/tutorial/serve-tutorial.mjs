@@ -35,6 +35,13 @@ const env = {
   RESEND_API_KEY: '',
   SMTP_HOST: '',
   REQUIRE_EMAIL_VERIFICATION: 'false',
+  // WorkPulse AI is on, as in production, but never a real model: the server uses its built-in
+  // test mode (both flags, as e2e/scripts/serve-web.mjs), and every AI text shown on camera is
+  // scripted in the browser (tutorial/assistant.ts). An API key in the shell is ignored here.
+  ANTHROPIC_API_KEY: '',
+  ASSISTANT_ENABLED: 'true',
+  ASSISTANT_FAKE: '1',
+  TALLYWORK_E2E: '1',
   // A fixed, recording-only secret: never reuse a real APP_SECRET here.
   APP_SECRET: 'tutorial-only-secret-0123456789abcdef0123456789ab',
   APP_URL: `http://localhost:${port}`,

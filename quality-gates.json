@@ -8,7 +8,7 @@
       "vitest": {
         "packages/domain": ["domain", "overtime"],
         "packages/db": ["rls", "migrations", "pool-session", "performance", "assistant"],
-        "apps/web": ["qa-phase6"],
+        "apps/web": ["qa-phase6", "timesheet-conflict"],
         "packages/api": [
           "access-consistency", "agent-login", "agent-logout", "ai-insights", "ai-insights-finance", "ai-insights-capacity", "ai-insights-forecast", "portal-ai-summary", "assistant-performance-tool", "assistant-insight-tools", "assistant-drafts", "assistant", "assistant-security", "assistant-tools", "agent-me", "audit-oct28", "audit-phase1", "breaks-eod", "compliance", "confirm-window", "device-approval",
           "finance", "flow", "forms-phase4", "integrations", "invitations", "invitation-peek", "mfa-hardening", "money-p0", "money-p1-safety", "money-phase3", "multi-monitor",
@@ -21,7 +21,7 @@
       "playwright": [
         "web/auth", "web/two-factor", "web/qa/api-security", "web/performance-permissions", "web/roles", "web/api-keys",
         "web/time-entries", "web/add-time-picker", "web/time-rules", "web/timesheet-decisions", "web/consolidated", "web/offline-sync",
-        "web/money-p0", "web/invoices", "web/payroll", "web/rates-start", "web/navigation-wording",
+        "web/money-p0", "web/invoices", "web/payroll", "web/rates-start", "web/navigation-wording", "web/stale-decisions",
         "desktop/clock-breaks", "desktop/worker-status", "desktop/pay-stubs",
         "electron/desktop-app", "electron/offline"
       ]

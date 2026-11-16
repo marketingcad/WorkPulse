@@ -16,14 +16,14 @@ import {
   users,
   type PayAdjustment,
 } from '@tallywork/db';
-import { DEFAULT_OVERTIME, addDaysToDate, amountForSeconds, businessRule, conflict, forbidden, localDate, newId, notFound, periodFor, resolveRate, validation } from '@tallywork/domain';
-import { overtimeInRange, paidHolidayHours } from './pay-figures';
+import { DEFAULT_OVERTIME, addDaysToDate, businessRule, conflict, forbidden, localDate, newId, notFound, periodFor, validation } from '@tallywork/domain';
+import { overtimeInRange, paidHolidayHours, priceTimeOff } from './pay-figures';
 import type { BankDetailsDto, PayStubDto, PayrollProfileDto, PayrollRunDto, bankDetailsInput, payAdjustmentsInput, payrollProfileInput, payrollProfilePatchInput, payrollRunInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { audit } from './events';
 import { loadRates } from './finance';
 import { membersWith, notificationEmail, notify } from './notify';
-import { timeOffHoursInRange } from './reports';
+import { timeOffDays } from './reports';
 import { memberNames } from './timer';
 import { decrypt, encrypt } from '../lib/crypto';
 
@@ -321,28 +321,16 @@ async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect
     const total = worked.reduce((s, r) => s + r.trackedSeconds + r.manualSeconds, 0);
     // Whole weeks: a week split between two payrolls keeps the overtime worked on this period's days.
     const { regular, overtime } = split.get(m) ?? { regular: 0, overtime: 0 };
-    let offHours = 0;
-    let offPay = 0;
     const warnings = new Set<string>();
-    // Paid at the member's own pay rate (worker, else organization) in effect on each day (F9), so a
-    // raise in the middle of a request is respected. No such rate: nothing is invented, the line is flagged.
-    const payOffDay = (d: string, h: number) => {
-      const rate = resolveRate(rates, 'PAY', { date: d, membershipId: m, projectId: null, clientId: null });
-      if (!rate) warnings.add('time_off_no_rate');
-      else if (rate.currency !== profile.currency) otherCurrency = true;
-      else offPay += amountForSeconds(Math.round(h * 3600), rate.amountMinor);
-    };
-    for (const o of off.filter((r) => r.t.membershipId === m && r.paid)) {
-      const h = timeOffHoursInRange(o.t, from, to, hols, o.hpd || 8);
-      offHours += h;
-      if (o.t.dayHours) for (const [d, dh] of Object.entries(o.t.dayHours)) if (d >= from && d <= to) payOffDay(d, dh);
-      if (!o.t.dayHours) payOffDay(o.t.startDate < from ? from : o.t.startDate, h);
-    }
-    // Paid holidays are paid time off too: the hours the person would normally work that day.
-    for (const { date: d, hours: h } of holidayPay.get(m) ?? []) {
-      offHours += h;
-      payOffDay(d, h);
-    }
+    // Paid time off and paid holidays (the hours the person would normally work that day), priced at
+    // the member's own pay rate on each day (F9); shared with the Payroll export report (BUG-30).
+    const offDays = [...off.filter((r) => r.t.membershipId === m && r.paid).flatMap((o) => timeOffDays(o.t, from, to, hols, o.hpd || 8)), ...(holidayPay.get(m) ?? [])];
+    const offHours = offDays.reduce((s, d) => s + d.hours, 0);
+    const priced = priceTimeOff(rates, m, offDays, profile.currency);
+    // No such rate: nothing is invented, the line is flagged.
+    if (priced.noRate) warnings.add('time_off_no_rate');
+    if (priced.otherCurrency) otherCurrency = true;
+    const offPay = priced.payMinor;
     return { membershipId: m, approvedSeconds, carriedSeconds, unapprovedSeconds: Math.max(0, total - (approvedSeconds - carriedSeconds)), regularSeconds: regular, overtimeSeconds: overtime, timePayMinor: timePay, timeOffHours: Math.round(offHours * 100) / 100, timeOffPayMinor: offPay, grossMinor: timePay + offPay, warnings: [...warnings] };
   });
   return { lines, otherCurrency };

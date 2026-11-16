@@ -82,7 +82,7 @@ agentOnly
   .get('/me/summary', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await mySummary(c.var.agent, query(c, rangeQuery))))
   .get('/me/sessions', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await mySessions(c.var.agent, query(c, rangeQuery))))
   .get('/me/timesheet', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myTimesheet(c.var.agent, query(c, dateQuery).date)))
-  .post('/me/timesheet/submit', rateLimit('agent-me-write', 30, 60), tenant, async (c) => c.json(await submitMyTimesheet(c.var.agent, await body(c, z.object({ date: isoDate, version: z.number().int().positive().optional() })))))
+  .post('/me/timesheet/submit', rateLimit('agent-me-write', 30, 60), tenant, async (c) => c.json(await submitMyTimesheet(c.var.agent, await body(c, z.object({ date: isoDate, version: z.number().int().nonnegative().optional() })))))
   .get('/me/activity', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myActivity(c.var.agent, query(c, dateQuery).date)))
   .get('/me/tasks', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await myTasks(c.var.agent)))
   .get('/me/schedule', rateLimit('agent-me', 240, 60), tenant, async (c) => c.json(await mySchedule(c.var.agent, query(c, rangeQuery))))

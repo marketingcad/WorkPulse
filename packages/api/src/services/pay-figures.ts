@@ -1,6 +1,6 @@
 import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
 import { billingEntries, billingRates, holidays, projects, rollupWorkerDay, timeEntries, timeOffPolicies, timeOffRequests, workSchedules, workerProfiles, type Tx } from '@tallywork/db';
-import { addDaysToDate, amountForSeconds, dayOfWeek, overtimeByDay, resolveRate, startOfWeek, type OvertimeRules } from '@tallywork/domain';
+import { addDaysToDate, amountForSeconds, dayOfWeek, overtimeByDay, resolveRate, startOfWeek, type OvertimeRules, type Rate } from '@tallywork/domain';
 import { loadRates } from './finance';
 import { computeShifts } from './operations';
 import { timeTypeCoefficients } from './time-types';
@@ -142,6 +142,26 @@ export async function paidHolidayHours(tx: Tx, membershipIds: string[], from: st
     }
   }
   return out;
+}
+
+/**
+ * Pay for paid time off (and paid holidays), as a payroll run pays it: the member's own pay rate
+ * (worker, else organization) in effect on each day (F9), so a raise in the middle of a request is
+ * respected. A day with no such rate is not invented (`noRate`); a rate in another currency is not
+ * paid here (`otherCurrency`). Shared by payroll and the Payroll export report so they cannot differ
+ * (QA audit BUG-30: the report listed time-off hours but no money).
+ */
+export function priceTimeOff(rates: Rate[], membershipId: string, days: Array<{ date: string; hours: number }>, currency: string): { payMinor: number; noRate: boolean; otherCurrency: boolean } {
+  let payMinor = 0;
+  let noRate = false;
+  let otherCurrency = false;
+  for (const { date, hours } of days) {
+    const rate = resolveRate(rates, 'PAY', { date, membershipId, projectId: null, clientId: null });
+    if (!rate) noRate = true;
+    else if (rate.currency !== currency) otherCurrency = true;
+    else payMinor += amountForSeconds(Math.round(hours * 3600), rate.amountMinor);
+  }
+  return { payMinor, noRate, otherCurrency };
 }
 
 /**

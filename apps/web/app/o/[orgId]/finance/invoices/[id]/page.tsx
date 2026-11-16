@@ -29,6 +29,7 @@ import { ApiError, errorMessage, invalidateOrg, useOrgMutation, useOrgQuery } fr
 import { useOrg } from '@/lib/org';
 import { RecordPaymentDialog } from '@/components/finance/record-payment-dialog';
 import { methodLabel, type InvoiceDetail } from '@/components/finance/types';
+import { invoiceQuantity } from '@/components/finance/invoice-quantity';
 
 export default function InvoiceDetailPage() {
   const org = useOrg();
@@ -205,7 +206,7 @@ export default function InvoiceDetailPage() {
                         </Badge>
                       )}
                     </td>
-                    <td className="tabular px-3 text-right">{l.kind === 'TIME' ? `${l.quantity.toFixed(2)} h` : l.quantity}</td>
+                    <td className="tabular px-3 text-right">{invoiceQuantity(l.kind, l.quantity)}</td>
                     <td className="tabular px-3 text-right">{money(l.unit_price_minor)}</td>
                     <td className="tabular px-6 text-right font-medium">{money(l.amount_minor)}</td>
                   </tr>

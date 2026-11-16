@@ -25,9 +25,9 @@ import type { reportQueryInput } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
 import { narrowMemberships } from './scope';
 import { memberNames } from './timer';
-import { overtimeInRange, paidHolidayHours, priceEntries } from './pay-figures';
+import { overtimeInRange, paidHolidayHours, priceEntries, priceTimeOff } from './pay-figures';
 import { listAttendance } from './operations';
-import { amountsOwed, listBudgets, listExpenses, listInvoices, listPayments } from './finance';
+import { amountsOwed, listBudgets, listExpenses, listInvoices, listPayments, loadRates } from './finance';
 import { listManualTime } from './timesheets';
 import { usage } from './activity';
 import { listTimeOffRequests } from './operations';
@@ -566,6 +566,16 @@ export function timeOffHoursInRange(t: { startDate: string; endDate: string; hou
   return Math.min(t.hours, days * hoursPerDay);
 }
 
+/**
+ * The days a payroll pays a time-off request on, with their hours: each day of a request with
+ * per-day hours, otherwise all its hours in [from, to] on its first day in range (as payroll has
+ * always priced it). Used by payroll and the Payroll export report.
+ */
+export function timeOffDays(t: { startDate: string; endDate: string; hours: number; halfDay: boolean; dayHours?: Record<string, number> | null }, from: string, to: string, hols: Set<string>, hoursPerDay: number): Array<{ date: string; hours: number }> {
+  if (t.dayHours) return Object.entries(t.dayHours).filter(([d]) => d >= from && d <= to).map(([date, hours]) => ({ date, hours }));
+  return [{ date: t.startDate < from ? from : t.startDate, hours: timeOffHoursInRange(t, from, to, hols, hoursPerDay) }];
+}
+
 /** Payroll-ready export: regular/overtime, billable split, time off, earnings, approval status. */
 async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
   const rows = await rollupRows(x, p, 'payroll:read');
@@ -591,6 +601,7 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
   const timeOff = members.length ? (await x.tx.select({ t: timeOffRequests }).from(timeOffRequests).innerJoin(timeOffPolicies, eq(timeOffPolicies.id, timeOffRequests.policyId)).where(and(inArray(timeOffRequests.membershipId, members), eq(timeOffRequests.status, 'APPROVED'), eq(timeOffPolicies.paid, true), lte(timeOffRequests.startDate, p.to), gte(timeOffRequests.endDate, p.from)))).map((r) => r.t) : [];
   const hols = new Set((await x.tx.select({ d: holidays.date }).from(holidays).where(and(gte(holidays.date, p.from), lte(holidays.date, p.to)))).map((h) => h.d));
   const hoursPerDay = new Map((await x.tx.select({ id: timeOffPolicies.id, h: timeOffPolicies.hoursPerDay }).from(timeOffPolicies)).map((r) => [r.id, r.h]));
+  const rates = await loadRates(x.tx);
   const ts = members.length ? await x.tx.select().from(timesheets).where(and(inArray(timesheets.membershipId, members), gte(timesheets.periodEnd, p.from), lte(timesheets.periodStart, p.to))) : [];
   const out = members.map((m) => {
     const mine = rows.filter((r) => r.r.membershipId === m);
@@ -602,6 +613,10 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
     // Approved pay is the official figure (what a payroll pays for this time); the estimate adds the
     // time not approved yet, priced per entry at today's rates.
     const approvedPay = myPriced.filter((e) => e.approved).reduce((s, e) => s + e.payMinor, 0);
+    // Paid time off, including paid holidays, priced as a payroll run pays them (QA audit BUG-30: the
+    // hours were listed but not priced, so the report came to less than the payroll).
+    const offDays = [...timeOff.filter((t) => t.membershipId === m).flatMap((t) => timeOffDays(t, p.from, p.to, hols, hoursPerDay.get(t.policyId) ?? 8)), ...(holidayPay.get(m) ?? [])];
+    const timeOffPay = priceTimeOff(rates, m, offDays, x.org.currency).payMinor;
     const earnings = myPriced.reduce((s, e) => s + e.payMinor, 0);
     const statuses = ts.filter((t) => t.membershipId === m).map((t) => t.status);
     return {
@@ -610,21 +625,20 @@ async function payroll(x: Ctx, p: ReportParams): Promise<ReportResult> {
       overtime,
       billable,
       non_billable: total - billable,
-      // Paid time off, including paid holidays (as a payroll run pays them).
-      time_off_hours:
-        Math.round(
-          (timeOff.filter((t) => t.membershipId === m).reduce((s, t) => s + timeOffHoursInRange(t, p.from, p.to, hols, hoursPerDay.get(t.policyId) ?? 8), 0) + (holidayPay.get(m) ?? []).reduce((s, h) => s + h.hours, 0)) * 100,
-        ) / 100,
+      time_off_hours: Math.round(offDays.reduce((s, d) => s + d.hours, 0) * 100) / 100,
       approved_pay: approvedPay,
+      time_off_pay: timeOffPay,
+      // What a payroll run for this period pays before bonuses and deductions.
+      total_pay: approvedPay + timeOffPay,
       earnings,
       approval: statuses.length === 0 ? 'NOT_SUBMITTED' : statuses.every((s) => s === 'APPROVED') ? 'APPROVED' : statuses.some((s) => s === 'SUBMITTED') ? 'PENDING' : 'PARTIAL',
     };
   });
   return {
-    columns: [{ key: 'worker', label: 'Member', type: 'text' }, { key: 'regular', label: 'Regular', type: 'duration' }, { key: 'overtime', label: 'Overtime', type: 'duration' }, { key: 'billable', label: 'Billable', type: 'duration' }, { key: 'non_billable', label: 'Non-billable', type: 'duration' }, { key: 'time_off_hours', label: 'Time off (h)', type: 'number' }, { key: 'approved_pay', label: 'Approved pay', type: 'money' }, { key: 'earnings', label: 'Estimated earnings', type: 'money' }, { key: 'approval', label: 'Approval', type: 'status' }],
+    columns: [{ key: 'worker', label: 'Member', type: 'text' }, { key: 'regular', label: 'Regular', type: 'duration' }, { key: 'overtime', label: 'Overtime', type: 'duration' }, { key: 'billable', label: 'Billable', type: 'duration' }, { key: 'non_billable', label: 'Non-billable', type: 'duration' }, { key: 'time_off_hours', label: 'Time off (h)', type: 'number' }, { key: 'approved_pay', label: 'Approved pay', type: 'money' }, { key: 'time_off_pay', label: 'Time off pay', type: 'money' }, { key: 'total_pay', label: 'Total to pay', type: 'money' }, { key: 'earnings', label: 'Estimated earnings', type: 'money' }, { key: 'approval', label: 'Approval', type: 'status' }],
     rows: out.sort((a, b) => a.worker.localeCompare(b.worker)),
-    totals: { regular: out.reduce((s, r) => s + r.regular, 0), overtime: out.reduce((s, r) => s + r.overtime, 0), approved_pay: out.reduce((s, r) => s + r.approved_pay, 0), earnings: out.reduce((s, r) => s + r.earnings, 0) },
-    summary: [{ label: 'Regular', value: out.reduce((s, r) => s + r.regular, 0), type: 'duration' }, { label: 'Overtime', value: out.reduce((s, r) => s + r.overtime, 0), type: 'duration' }, { label: 'Approved pay', value: out.reduce((s, r) => s + r.approved_pay, 0), type: 'money' }, { label: 'Estimated earnings', value: out.reduce((s, r) => s + r.earnings, 0), type: 'money' }],
+    totals: { regular: out.reduce((s, r) => s + r.regular, 0), overtime: out.reduce((s, r) => s + r.overtime, 0), approved_pay: out.reduce((s, r) => s + r.approved_pay, 0), time_off_pay: out.reduce((s, r) => s + r.time_off_pay, 0), total_pay: out.reduce((s, r) => s + r.total_pay, 0), earnings: out.reduce((s, r) => s + r.earnings, 0) },
+    summary: [{ label: 'Regular', value: out.reduce((s, r) => s + r.regular, 0), type: 'duration' }, { label: 'Overtime', value: out.reduce((s, r) => s + r.overtime, 0), type: 'duration' }, { label: 'Approved pay', value: out.reduce((s, r) => s + r.approved_pay, 0), type: 'money' }, { label: 'Time off pay', value: out.reduce((s, r) => s + r.time_off_pay, 0), type: 'money' }, { label: 'Total to pay', value: out.reduce((s, r) => s + r.total_pay, 0), type: 'money' }, { label: 'Estimated earnings', value: out.reduce((s, r) => s + r.earnings, 0), type: 'money' }],
     currency: x.org.currency,
   };
 }

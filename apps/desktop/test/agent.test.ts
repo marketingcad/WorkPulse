@@ -135,6 +135,12 @@ describe('IPC contract', () => {
     expect(IPC['me:get'].safeParse({ resource: 'screenshots' }).success).toBe(false);
     // No screen shows client visibility since "What is monitored" was removed, so the window can't ask for it.
     expect(IPC['me:get'].safeParse({ resource: 'client-visibility' }).success).toBe(false);
+    // QA audit BUG-25: a week never saved is version 0 and must be submittable; negatives and fractions are not.
+    expect(IPC['me:submitTimesheet'].safeParse({ date: '2026-11-09', version: 0 }).success).toBe(true);
+    expect(IPC['me:submitTimesheet'].safeParse({ date: '2026-11-09', version: 3 }).success).toBe(true);
+    expect(IPC['me:submitTimesheet'].safeParse({ date: '2026-11-09' }).success).toBe(true);
+    expect(IPC['me:submitTimesheet'].safeParse({ date: '2026-11-09', version: -1 }).success).toBe(false);
+    expect(IPC['me:submitTimesheet'].safeParse({ date: '2026-11-09', version: 1.5 }).success).toBe(false);
     expect(IPC['me:get'].safeParse({ resource: 'sessions', from: '2026-09-25&membership_id=x' }).success).toBe(false);
     expect(IPC['me:readNotifications'].safeParse({ ids: ['nope'] }).success).toBe(false);
     expect(IPC['me:requestTimeOff'].safeParse({ policy_id: 'x', start_date: '2026-10-01', end_date: '2026-10-01' }).success).toBe(false);

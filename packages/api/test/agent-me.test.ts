@@ -136,7 +136,10 @@ describe('/agent/me own data', () => {
     expect(r.status).toBe(200);
     expect(r.body.membership_id).toBe(waltId);
     expect(r.body.total_seconds).toBe(30 * 60);
-    const s = await agent.post('/agent/me/timesheet/submit', { date: today() });
+    // The desktop sends back the version it read. A week never saved is version 0 (QA audit BUG-25:
+    // the route refused 0, so no worker could submit a new week from the desktop app).
+    expect(r.body.version).toBe(0);
+    const s = await agent.post('/agent/me/timesheet/submit', { date: today(), version: r.body.version });
     expect(s.status).toBe(200);
     expect((await agent.get('/agent/me/timesheet')).body.status).toBe('SUBMITTED');
   });

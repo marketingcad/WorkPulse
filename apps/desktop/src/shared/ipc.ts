@@ -50,7 +50,8 @@ export const IPC = {
     to: z.iso.date().optional(),
     date: z.iso.date().optional(),
   }),
-  'me:submitTimesheet': z.object({ date: z.iso.date(), version: z.number().int().positive().optional() }),
+  // A week that was never saved is version 0 (QA audit BUG-25: 0 was refused, so a new week could not be submitted).
+  'me:submitTimesheet': z.object({ date: z.iso.date(), version: z.number().int().nonnegative().optional() }),
   'me:requestTimeOff': z.object({ policy_id: z.uuid(), start_date: z.iso.date(), end_date: z.iso.date(), half_day: z.boolean().optional(), reason: z.string().trim().max(1000).optional() }),
   'me:cancelTimeOff': z.object({ id: z.uuid() }),
   'me:readNotifications': z.object({ ids: z.union([z.literal('all'), z.array(z.uuid()).max(200)]) }),

@@ -30,6 +30,7 @@ import { addDays, todayIn, useOrg } from '@/lib/org';
 import { Stepper } from '@/components/finance/stepper';
 import { extraLineErrors } from '@/components/finance/extra-lines';
 import { previewIsCurrent } from '@/components/finance/preview-state';
+import { invoiceQuantity } from '@/components/finance/invoice-quantity';
 import { useUnsavedChanges } from '@/lib/unsaved';
 import { monthRange, toMinor, type InvoiceDetail, type InvoicePreview } from '@/components/finance/types';
 import { suggestedPeriod, unbilledOutside, type UnbilledRange } from '@/components/finance/invoice-period';
@@ -476,7 +477,7 @@ function LinesTable({ lines, currency }: { lines: InvoicePreview['lines']; curre
                   {l.kind === 'TIME' && l.entries > 0 && <span className="text-xs text-text-faint">{l.entries} {l.entries === 1 ? 'entry' : 'entries'}</span>}
                 </span>
               </td>
-              <td className="tabular px-3 text-right">{l.kind === 'TIME' ? `${l.quantity.toFixed(2)} h` : l.quantity}</td>
+              <td className="tabular px-3 text-right">{invoiceQuantity(l.kind, l.quantity)}</td>
               <td className="tabular px-3 text-right">
                 {fmtMoney(l.unit_price_minor, currency)}
                 {l.kind === 'TIME' && <span className="text-text-faint"> /h</span>}

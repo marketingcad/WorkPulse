@@ -106,6 +106,8 @@ export const organizations = pgTable('organizations', {
   isDemo: boolean().notNull().default(false),
   /** company profile printed on invoices and reports */
   logo: text(),
+  /** uncropped logo for PDFs (PNG/JPEG data URL, wide shapes allowed); falls back to `logo` when empty */
+  documentLogo: text(),
   brief: text(),
   taxId: text(),
   address: text(),

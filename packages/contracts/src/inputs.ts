@@ -1,3 +1,4 @@
+import { DOCUMENT_LOGO_MAX_CHARS } from './limits';
 import { z } from 'zod';
 import { PERMISSIONS, SCOPES, API_KEY_SCOPES } from '@tallywork/domain';
 import { currency, hhmm, id, isoDate, isoDateTime, nonEmpty, optionalText, timeZone } from './common';
@@ -20,6 +21,15 @@ export const DOCUMENT_LANGUAGES = ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl'] as 
 const pdfSafeLogo = z
   .string()
   .max(140_000, 'Use a smaller image')
+  .regex(/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+=*$/, 'Use a PNG or JPEG image');
+
+/**
+ * The logo printed on invoices, pay stubs and other PDFs: PNG/JPEG data URL, any shape (not cropped).
+ * The web app scales it to fit 600 × 200 px before upload, which keeps typical logos well under the cap.
+ */
+const documentLogo = z
+  .string()
+  .max(DOCUMENT_LOGO_MAX_CHARS, 'Use a smaller image (at most about 150 KB)')
   .regex(/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+=*$/, 'Use a PNG or JPEG image');
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
@@ -87,6 +97,7 @@ export const updateOrgInput = z.object({
     .partial()
     .optional(),
   logo: pdfSafeLogo.nullable().optional(),
+  document_logo: documentLogo.nullable().optional(),
   brief: optionalText(300),
   tax_id: optionalText(50),
   address: optionalText(500),

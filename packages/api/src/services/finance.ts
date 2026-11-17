@@ -61,7 +61,7 @@ import { renderInvoicePdf } from '../lib/invoice-pdf';
 /** The issuing company as printed on invoices. */
 export async function companyProfile(x: Ctx) {
   const [o] = await x.tx
-    .select({ name: organizations.name, logo: organizations.logo, brief: organizations.brief, taxId: organizations.taxId, address: organizations.address, phone: organizations.phone, email: organizations.email })
+    .select({ name: organizations.name, logo: organizations.logo, documentLogo: organizations.documentLogo, brief: organizations.brief, taxId: organizations.taxId, address: organizations.address, phone: organizations.phone, email: organizations.email })
     .from(organizations)
     .where(eq(organizations.id, x.org.id));
   return o ?? { name: x.org.name };

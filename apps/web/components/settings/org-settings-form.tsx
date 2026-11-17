@@ -6,6 +6,7 @@ import { ApiError, useOrgMutation } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { CURRENCIES, WEEKDAYS, timeZones } from '@/components/settings/options';
 import { LANGUAGES, LogoEditor } from '@/components/workspace/logo-editor';
+import { DocumentLogoEditor } from '@/components/settings/document-logo-editor';
 import { hoursToSeconds, secondsToHours } from '@/components/workspace/basics';
 import { useUnsavedChanges } from '@/lib/unsaved';
 
@@ -22,6 +23,7 @@ interface Form {
   lateGraceMinutes: number;
   budgetWarnPct: number;
   logo: string;
+  document_logo: string;
   brief: string;
   tax_id: string;
   address: string;
@@ -54,7 +56,7 @@ export type OrgSettingsPart = 'organization' | 'time';
 
 /** The form fields each page edits (and compares to tell whether it has unsaved changes). */
 const FIELDS: Record<OrgSettingsPart, Array<keyof Form>> = {
-  organization: ['name', 'timezone', 'week_start', 'currency', 'durationFormat', 'logo', 'brief', 'tax_id', 'address', 'phone', 'email', 'document_language'],
+  organization: ['name', 'timezone', 'week_start', 'currency', 'durationFormat', 'logo', 'document_logo', 'brief', 'tax_id', 'address', 'phone', 'email', 'document_language'],
   time: ['payType', 'anchorDate', 'hoursPerDay', 'lockDays', 'lockDate', 'minDaily', 'minWeekly', 'reminder', 'checkAt', 'lateGraceMinutes', 'budgetWarnPct'],
 };
 
@@ -72,6 +74,7 @@ function fromOrg(o: OrgContextDto['organization']): Form {
     lateGraceMinutes: s.lateGraceMinutes ?? 5,
     budgetWarnPct: s.budgetWarnPct ?? 80,
     logo: o.logo ?? '',
+    document_logo: o.document_logo ?? '',
     brief: o.brief ?? '',
     tax_id: o.tax_id ?? '',
     address: o.address ?? '',
@@ -98,6 +101,7 @@ const SHOWN_FIELDS = [
   'brief',
   'currency',
   'document_language',
+  'document_logo',
   'email',
   'logo',
   'name',
@@ -137,6 +141,8 @@ export function OrgSettingsForm({ part, title, description }: { part: OrgSetting
         week_start: f.week_start,
         currency: f.currency,
         logo: f.logo || null,
+        // Sent only when changed, so saving other fields never re-uploads the image.
+        ...(f.document_logo !== initial.document_logo ? { document_logo: f.document_logo || null } : {}),
         brief: f.brief.trim() || null,
         tax_id: f.tax_id.trim() || null,
         address: f.address.trim() || null,
@@ -254,7 +260,7 @@ export function OrgSettingsForm({ part, title, description }: { part: OrgSetting
             </Panel>
 
             <Panel title="Company profile">
-              <p className="px-4 pt-4 text-sm text-text-muted">Printed on the invoices you send to clients.</p>
+              <p className="px-4 pt-4 text-sm text-text-muted">Printed on the invoices you send to clients and on your team's pay stubs.</p>
               <div className="grid grid-cols-1 gap-5 p-4 sm:grid-cols-[132px_1fr]">
                 <LogoEditor label="Company logo" format="png" value={f.logo} onChange={(logo) => set('logo', logo)} name={f.name} error={err?.field('logo')} />
                 <div className="grid grid-cols-1 content-start gap-4 sm:grid-cols-2">
@@ -284,6 +290,9 @@ export function OrgSettingsForm({ part, title, description }: { part: OrgSetting
                     <Textarea id="org-address" value={f.address} maxLength={500} onChange={(e) => set('address', e.target.value)} className="min-h-16" />
                   </Field>
                 </div>
+              </div>
+              <div className="border-t border-border p-4">
+                <DocumentLogoEditor value={f.document_logo} onChange={(v) => set('document_logo', v)} name={f.name} fallback={f.logo} error={err?.field('document_logo')} />
               </div>
             </Panel>
           </>

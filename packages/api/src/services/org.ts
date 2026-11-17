@@ -46,6 +46,8 @@ export async function orgContext(x: Ctx): Promise<OrgContextDto> {
       settings: o!.settings as unknown as Record<string, unknown>,
       is_demo: o!.isDemo,
       logo: o!.logo,
+      document_logo: x.actor.grants['org:update'] ? o!.documentLogo : null,
+      has_document_logo: !!o!.documentLogo,
       brief: o!.brief,
       tax_id: o!.taxId,
       address: o!.address,
@@ -84,6 +86,7 @@ export async function updateOrg(x: Ctx, input: z.infer<typeof updateOrgInput>) {
     if (closed) throw businessRule('period_in_use', 'Timesheets for the current pay period are already submitted or approved. Change the pay period or week start at the beginning of a new period, before anyone submits.');
   }
   if (input.logo !== undefined) patch.logo = input.logo;
+  if (input.document_logo !== undefined) patch.documentLogo = input.document_logo;
   if (input.brief !== undefined) patch.brief = input.brief;
   if (input.tax_id !== undefined) patch.taxId = input.tax_id;
   if (input.address !== undefined) patch.address = input.address;
@@ -106,7 +109,12 @@ export async function updateOrg(x: Ctx, input: z.infer<typeof updateOrgInput>) {
     patch.settings = { ...before!.settings, ...input.settings };
   }
   await x.tx.update(organizations).set(patch).where(eq(organizations.id, x.org.id));
-  const shrink = <T extends { logo?: string | null }>(o: T) => ({ ...o, logo: o.logo ? '(image)' : o.logo });
+  // Images never go into the audit trail, only whether one was set.
+  const shrink = <T extends { logo?: string | null; documentLogo?: string | null }>(o: T) => ({
+    ...o,
+    logo: o.logo ? '(image)' : o.logo,
+    ...('documentLogo' in o ? { documentLogo: o.documentLogo ? '(image)' : o.documentLogo } : {}),
+  });
   await audit(x, { action: 'organization.updated', targetType: 'organization', targetId: x.org.id, before: shrink(before!), after: shrink(patch) });
   return orgContext(x);
 }

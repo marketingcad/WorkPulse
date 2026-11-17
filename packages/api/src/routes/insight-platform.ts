@@ -8,6 +8,7 @@ import type { AppEnv } from '../context';
 import { body, formFile, idList, parse, query } from '../lib/http';
 import { insights } from '../services/insights';
 import { toCsv, toPdf, toXlsx } from '../lib/export';
+import { companyProfile } from '../services/finance';
 import { ctx } from '../services/ctx';
 import { audit } from '../services/events';
 import { getLayout, resetLayout, saveLayout, widgetData } from '../services/dashboard';
@@ -106,7 +107,7 @@ export const insightRoutes = new Hono<AppEnv>()
     const base = `${result.key}_${params.from}_${params.to}`;
     if (format === 'CSV') return new Response(toCsv(result), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${base}.csv"` } });
     if (format === 'XLSX') return new Response(new Uint8Array(await toXlsx(result)), { headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${base}.xlsx"` } });
-    return new Response(new Uint8Array(await toPdf(result, `${x.org.name} · ${params.from} – ${params.to}`)), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"` } });
+    return new Response(new Uint8Array(await toPdf(result, { company: await companyProfile(x), from: params.from, to: params.to, generatedAt: x.deps.now(), timezone: x.org.timezone })), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${base}.pdf"` } });
   })
   /** Background export: returns the queued run; the file is delivered by signed link when done. */
   .post('/reports/:key/export-runs', async (c) => {

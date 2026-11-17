@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { OrgInfo } from '../context';
 
 interface InvoiceView {
@@ -21,7 +21,10 @@ interface InvoiceView {
 
 /** The issuing company as printed on documents. */
 export interface CompanyProfile extends Pick<OrgInfo, 'name'> {
+  /** square logo (avatars); printed when there is no document logo */
   logo?: string | null;
+  /** uncropped logo for documents, any shape */
+  documentLogo?: string | null;
   brief?: string | null;
   taxId?: string | null;
   address?: string | null;
@@ -76,10 +79,8 @@ export async function renderInvoicePdf(inv: InvoiceView, org: CompanyProfile): P
   };
 
   page.drawRectangle({ x: 0, y: size[1] - 6, width: size[0], height: 6, color: PDF.blue });
-  const logoSize = 44;
-  const logo = await embedLogo(doc, org.logo);
-  const textX = logo ? M + logoSize + 12 : M;
-  if (logo) page.drawImage(logo, { x: M, y: y - logoSize + 14, width: logoSize, height: logoSize });
+  const logo = await drawCompanyLogo(doc, page, org, M, y + 14);
+  const textX = logo ? M + logo.width + 12 : M;
   draw(org.name, textX, y, { size: 16, f: bold, color: navy });
   draw('INVOICE', size[0] - M, y, { size: 20, f: bold, color: navy, right: true });
   y -= 22;
@@ -101,7 +102,7 @@ export async function renderInvoicePdf(inv: InvoiceView, org: CompanyProfile): P
     draw(line.length > 70 ? `${line.slice(0, 69)}…` : line, textX, cy, { size: 8.5, color: muted });
     cy -= 11;
   }
-  y = Math.min(y, cy, logo ? y - logoSize + 14 - 4 : y) - 22;
+  y = Math.min(y, cy, logo ? y + 14 - logo.height - 4 : y) - 22;
   draw('Bill to', M, y, { size: 9, color: muted });
   draw('Issued', 360, y, { size: 9, color: muted });
   draw(inv.issue_date, size[0] - M, y, { right: true });
@@ -191,6 +192,36 @@ export function formatQuantity(q: number): string {
 
 export function winAnsi(s: string): string {
   return s.replace(/−/g, '-').replace(/[^\x20-\x7E -ÿ–—‘’“”•…€]/g, '?');
+}
+
+/** The box a document logo is fitted into, in PDF points (keeps its shape; wide logos use the width). */
+export const DOC_LOGO_BOX = { width: 160, height: 48 } as const;
+/** The square logo's size when there is no document logo (unchanged from before document logos). */
+export const SQUARE_LOGO_SIZE = 44;
+
+/** Scale `w × h` to fit inside `box` without distorting it. Null for an image with no size. */
+export function fitLogo(w: number, h: number, box: { width: number; height: number } = DOC_LOGO_BOX): { width: number; height: number } | null {
+  if (!(w > 0 && h > 0)) return null;
+  const s = Math.min(box.width / w, box.height / h);
+  return { width: w * s, height: h * s };
+}
+
+/**
+ * Draws the organization's logo with its top edge at `top`: the document logo, fitted to DOC_LOGO_BOX,
+ * or else the square logo. Returns the size drawn, or null when there is no usable logo, so the caller
+ * can place the company name beside it. A broken image is skipped and never breaks the document.
+ */
+export async function drawCompanyLogo(doc: PDFDocument, page: PDFPage, org: CompanyProfile, x: number, top: number): Promise<{ width: number; height: number } | null> {
+  const wide = await embedLogo(doc, org.documentLogo);
+  const fit = wide && fitLogo(wide.width, wide.height);
+  if (wide && fit) {
+    page.drawImage(wide, { x, y: top - fit.height, ...fit });
+    return fit;
+  }
+  const square = await embedLogo(doc, org.logo);
+  if (!square) return null;
+  page.drawImage(square, { x, y: top - SQUARE_LOGO_SIZE, width: SQUARE_LOGO_SIZE, height: SQUARE_LOGO_SIZE });
+  return { width: SQUARE_LOGO_SIZE, height: SQUARE_LOGO_SIZE };
 }
 
 /** PNG/JPEG data URLs only; anything unreadable is skipped rather than failing the invoice. */

@@ -24,6 +24,13 @@ export interface OrgContextDto {
     settings: Record<string, unknown>;
     is_demo: boolean;
     logo: string | null;
+    /**
+     * The uncropped logo printed on PDFs. Only people who may edit the organization receive the image
+     * (it can be ~150 KB and is only needed in Settings); everyone else gets null here and
+     * `has_document_logo` instead.
+     */
+    document_logo: string | null;
+    has_document_logo: boolean;
     brief: string | null;
     tax_id: string | null;
     address: string | null;

@@ -232,6 +232,13 @@
       "when": 1794329277999,
       "tag": "0032_portal_ai_summary",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794934746476,
+      "tag": "0033_document_logo",
+      "breakpoints": true
     }
   ]
 }

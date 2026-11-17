@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import type { PayStubDto } from '@tallywork/contracts';
-import { PDF, PDF_STATUS, footer, winAnsi, type CompanyProfile } from './invoice-pdf';
+import { PDF, PDF_STATUS, drawCompanyLogo, footer, winAnsi, type CompanyProfile } from './invoice-pdf';
 
 const hours = (s: number) => `${(s / 3600).toFixed(2)} h`;
 
@@ -25,13 +25,18 @@ export async function renderPayStubPdf(stub: PayStubDto, org: CompanyProfile): P
   };
 
   page.drawRectangle({ x: 0, y: size[1] - 6, width: size[0], height: 6, color: PDF.blue });
-  draw(org.name, M, y, { size: 16, f: bold, color: navy });
+  // The organization's logo, as on the invoice: the company name and details sit beside it.
+  const logoTop = y + 14;
+  const logo = await drawCompanyLogo(doc, page, org, M, logoTop);
+  const textX = logo ? M + logo.width + 12 : M;
+  draw(org.name, textX, y, { size: 16, f: bold, color: navy });
   draw('PAY STUB', size[0] - M, y, { size: 20, f: bold, color: navy, right: true });
   y -= 18;
   for (const line of [org.address?.split('\n')[0], org.taxId ? `Tax ID: ${org.taxId}` : null].filter((s): s is string => !!s)) {
-    draw(line, M, y, { size: 8.5, color: muted });
+    draw(line, textX, y, { size: 8.5, color: muted });
     y -= 11;
   }
+  if (logo) y = Math.min(y, logoTop - logo.height - 4);
   y -= 20;
   draw('Employee', M, y, { size: 9, color: muted });
   draw('Pay period', 360, y, { size: 9, color: muted });

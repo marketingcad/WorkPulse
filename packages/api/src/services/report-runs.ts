@@ -6,6 +6,7 @@ import { reportQueryInput, type savedReportInput } from '@tallywork/contracts';
 import type { Actor, Deps } from '../context';
 import { signToken } from '../lib/crypto';
 import { csvStream, toPdf, toXlsx } from '../lib/export';
+import { companyProfile } from './finance';
 import { loadActor, loadOrg } from '../middleware/tenant';
 import type { Ctx } from './ctx';
 import { audit } from './events';
@@ -131,7 +132,7 @@ async function executeRun(tx: Tx, deps: Deps, run: RunRow) {
   const params = run.params as ReportParams;
   const result = await runReport(x, run.reportKey, params);
   const fmt = EXT[run.format];
-  const body = run.format === 'CSV' ? csvStream(result) : run.format === 'XLSX' ? await toXlsx(result) : await toPdf(result, `${x.org.name} · ${params.from} – ${params.to}`);
+  const body = run.format === 'CSV' ? csvStream(result) : run.format === 'XLSX' ? await toXlsx(result) : await toPdf(result, { company: await companyProfile(x), from: params.from, to: params.to, generatedAt: deps.now(), timezone: x.org.timezone });
   const storageKey = `org/${run.organizationId}/exports/${run.id}.${fmt.ext}`;
   await deps.storage.put(storageKey, body, fmt.type);
   const fileId = newId();

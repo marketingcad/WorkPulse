@@ -66,8 +66,8 @@
       "severity": "Standard",
       "covers": "Accessibility, responsive layout, page weight, page health, loading and error states, form feedback and latency budgets.",
       "vitest": {
-        "packages/db": ["pool-settings", "query-stats"],
-        "packages/api": ["ops", "server-timing", "validation-feedback"],
+        "packages/db": ["pool-settings", "query-stats", "hot-read-indexes"],
+        "packages/api": ["ops", "server-timing", "validation-feedback", "perf-budgets"],
         "packages/ui": ["field-aria", "brand"],
         "apps/web": ["bundle-imports"]
       },

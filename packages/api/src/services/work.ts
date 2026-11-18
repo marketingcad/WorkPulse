@@ -402,7 +402,8 @@ export async function listProjects(x: Ctx, opts: { includeArchived?: boolean; cl
       b: sql<number>`coalesce(sum(${rollupWorkerDay.trackedSeconds} + ${rollupWorkerDay.manualSeconds}) filter (where ${rollupWorkerDay.billable}),0)::int`,
     })
     .from(rollupWorkerDay)
-    .where(inArray(rollupWorkerDay.projectId, ids))
+    // The organization stated, not left to RLS alone, so the (organization_id, project_id) index serves it.
+    .where(and(eq(rollupWorkerDay.organizationId, x.org.id), inArray(rollupWorkerDay.projectId, ids)))
     .groupBy(rollupWorkerDay.projectId);
   const trackedMap = new Map(tracked.map((t) => [t.projectId, t]));
   const rates = x.actor.grants['rates:read'] ? await currentScopedRates(x, 'PROJECT') : null;
@@ -644,7 +645,7 @@ async function toTaskDtos(x: Ctx, rows: Array<{ t: typeof tasks.$inferSelect; pr
   const tracked = await x.tx
     .select({ taskId: timeEntries.taskId, s: sql<number>`coalesce(sum(${timeEntries.durationSeconds}),0)::int` })
     .from(timeEntries)
-    .where(and(inArray(timeEntries.taskId, ids), isNull(timeEntries.deletedAt)))
+    .where(and(eq(timeEntries.organizationId, x.org.id), inArray(timeEntries.taskId, ids), isNull(timeEntries.deletedAt)))
     .groupBy(timeEntries.taskId);
   const tmap = new Map(tracked.map((t) => [t.taskId, t.s]));
   return rows.map(({ t, projectName }) => ({

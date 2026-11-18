@@ -253,6 +253,13 @@
       "when": 1795030950994,
       "tag": "0035_device_enrollment_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795041249531,
+      "tag": "0036_hot_read_indexes",
+      "breakpoints": true
     }
   ]
 }

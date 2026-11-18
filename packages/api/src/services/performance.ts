@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import {
   memberships,
@@ -144,6 +144,24 @@ async function projectFor(x: Ctx, projectId: string) {
   // Same answer for a project that does not exist and one the actor cannot see.
   if (!p || !can(x.actor, 'projects:read', { projectId })) throw notFound('project');
   return p;
+}
+
+/**
+ * The milestones of several projects in one query: the same rows, in the same order per project, as
+ * listMilestones gives for each. Projects the actor cannot read are left out (no error), so a caller
+ * that lists many projects never makes one query per project.
+ */
+export async function listMilestonesByProject(x: Ctx, projectIds: string[]): Promise<Map<string, MilestoneDto[]>> {
+  const ids = [...new Set(projectIds)].filter((projectId) => can(x.actor, 'projects:read', { projectId }));
+  const out = new Map<string, MilestoneDto[]>(ids.map((id) => [id, []]));
+  if (!ids.length) return out;
+  const rows = await x.tx
+    .select()
+    .from(projectMilestones)
+    .where(and(inArray(projectMilestones.projectId, ids), isNull(projectMilestones.archivedAt)))
+    .orderBy(asc(projectMilestones.dueDate), asc(projectMilestones.position), asc(projectMilestones.createdAt));
+  for (const m of rows) out.get(m.projectId)!.push(milestoneDto(m, x.org.timezone));
+  return out;
 }
 
 export async function listMilestones(x: Ctx, projectId: string): Promise<MilestoneDto[]> {

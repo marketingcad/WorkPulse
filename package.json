@@ -11,6 +11,7 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "perf:index-review": "pnpm --filter @tallywork/api exec tsx scripts/perf-index-review.ts",
     "test:gates": "node scripts/quality-gates.mjs check",
     "test:gate1": "node scripts/quality-gates.mjs run 1",
     "test:gate2": "node scripts/quality-gates.mjs run 2",

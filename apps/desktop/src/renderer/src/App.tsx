@@ -432,6 +432,11 @@ function SignIn({ s }: { s: AgentState }) {
               {busy && viaBrowser ? <RefreshCw className="size-4 animate-spin" aria-hidden /> : <ExternalLink className="size-4" aria-hidden />}
               {busy && viaBrowser ? 'Waiting for browser…' : 'Sign in with browser instead'}
             </button>
+            {s.enrollmentManaged && (
+              <p className="mt-4 rounded-lg border border-border px-3 py-2 text-xs text-text-muted" data-testid="enrollment-managed">
+                Set up by your organization’s IT. Sign in with your own account; this computer joins your organization automatically.
+              </p>
+            )}
             <div className="mt-5 flex items-start gap-3 rounded-xl bg-surface-muted px-4 py-3">
               <ShieldCheck className="mt-0.5 size-5 shrink-0 text-interactive" aria-hidden />
               <div className="text-xs leading-relaxed">

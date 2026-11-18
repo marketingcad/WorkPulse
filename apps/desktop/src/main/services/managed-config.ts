@@ -4,16 +4,24 @@ import { readFile } from 'node:fs/promises';
 /**
  * Settings pushed by an organization's device management (MDM / Group Policy). Managed values win
  * over the user's own choices and lock them in the UI:
- * - Windows: registry HKLM\SOFTWARE\Policies\Tallywork (REG_SZ ServerUrl, UpdateChannel; REG_DWORD LaunchAtLogin)
- * - macOS:   configuration profile for app.tallywork.desktop (keys ServerUrl, UpdateChannel, LaunchAtLogin)
- * - Linux:   /etc/tallywork/config.json ({ "serverUrl": …, "updateChannel": …, "launchAtLogin": … })
+ * - Windows: registry HKLM\SOFTWARE\Policies\Tallywork (REG_SZ ServerUrl, UpdateChannel, EnrollmentToken; REG_DWORD LaunchAtLogin)
+ * - macOS:   configuration profile for app.tallywork.desktop (keys ServerUrl, UpdateChannel, LaunchAtLogin, EnrollmentToken)
+ * - Linux:   /etc/tallywork/config.json ({ "serverUrl": …, "updateChannel": …, "launchAtLogin": …, "enrollmentToken": … })
  * See docs/ops/desktop-deployment.md.
  */
 export interface ManagedConfig {
   serverUrl?: string;
   updateChannel?: 'latest' | 'beta';
   launchAtLogin?: boolean;
+  /**
+   * An enrollment token from the organization (wpe_…): at sign-in it pins this computer to that
+   * organization and pre-approves it. It never signs anyone in. Kept in memory only, never shown.
+   */
+  enrollmentToken?: string;
 }
+
+/** The shape the server accepts; anything else (spaces inside, another prefix) is ignored. */
+const ENROLLMENT_TOKEN = /^wpe_[A-Za-z0-9_-]{43}$/;
 
 function clean(raw: Record<string, unknown>): ManagedConfig {
   const out: ManagedConfig = {};
@@ -32,6 +40,8 @@ function clean(raw: Record<string, unknown>): ManagedConfig {
   if (typeof launch === 'boolean') out.launchAtLogin = launch;
   else if (launch === 1 || launch === '1' || launch === 'true') out.launchAtLogin = true;
   else if (launch === 0 || launch === '0' || launch === 'false') out.launchAtLogin = false;
+  const token = raw.enrollmentToken ?? raw.EnrollmentToken;
+  if (typeof token === 'string' && ENROLLMENT_TOKEN.test(token.trim())) out.enrollmentToken = token.trim();
   return out;
 }
 

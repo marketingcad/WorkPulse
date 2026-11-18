@@ -104,6 +104,8 @@ export interface AgentState {
   serverUrl: string;
   /** the server is set by the organization's device management and cannot be changed */
   serverManaged: boolean;
+  /** this computer was set up by the organization's IT with an enrollment token (the token itself never leaves the main process) */
+  enrollmentManaged: boolean;
   version: string;
   account: { name: string; email: string; organization: string; organizationId: string; membershipId: string; timezone: string } | null;
   device: { id: string; status: string } | null;

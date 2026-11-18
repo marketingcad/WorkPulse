@@ -223,6 +223,10 @@ export const projectInput = z.object({
   change_reason: optionalText(500),
 });
 
+// ─── Device enrollment ──────────────────────────────────────────────────────
+/** A token IT puts in the desktop app's managed settings so company computers join this organization, already approved. */
+export const enrollmentTokenInput = z.object({ name: nonEmpty(100), expires_at: isoDateTime.nullable().optional() });
+
 // ─── Client folders ──────────────────────────────────────────────────────────
 /** A folder for one client; the name defaults to the client's. */
 export const clientFolderInput = z.object({

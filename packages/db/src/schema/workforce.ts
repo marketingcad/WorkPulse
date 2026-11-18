@@ -241,6 +241,31 @@ export const policyAcks = pgTable(
   (t) => [index().on(t.organizationId, t.membershipId)],
 );
 
+/**
+ * Enrollment tokens for managed installs: IT puts one in the desktop app's managed settings so a
+ * computer joins this organization, already approved. A token never signs anyone in (the person still
+ * signs in with their own account). Stored only as a SHA-256 hash; `prefix` is shown to tell them apart.
+ * Revoking stops new enrollments; devices already enrolled keep working.
+ */
+export const deviceEnrollmentTokens = pgTable(
+  'device_enrollment_tokens',
+  {
+    id: pk(),
+    organizationId: orgId().references(() => organizations.id, { onDelete: 'cascade' }),
+    name: text().notNull(),
+    tokenHash: text().notNull().unique(),
+    /** the first characters after "wpe_", to recognize a token without revealing it */
+    prefix: text().notNull(),
+    createdBy: uuid(),
+    expiresAt: tstz(),
+    revokedAt: tstz(),
+    lastUsedAt: tstz(),
+    useCount: integer().notNull().default(0),
+    createdAt: tstz().notNull().default(sql`now()`),
+  },
+  (t) => [unique('device_enrollment_tokens_org_id_uq').on(t.organizationId, t.id), index().on(t.organizationId, t.createdAt)],
+);
+
 export const devices = pgTable(
   'devices',
   {
@@ -258,11 +283,14 @@ export const devices = pgTable(
     lastSyncAt: tstz(),
     clockSkewMs: integer().notNull().default(0),
     revokedAt: tstz(),
+    /** set when the device joined through an enrollment token (managed install) */
+    enrollmentTokenId: uuid(),
     ...timestamps,
   },
   (t) => [
     unique('devices_org_id_uq').on(t.organizationId, t.id),
     foreignKey({ columns: [t.organizationId, t.membershipId], foreignColumns: [memberships.organizationId, memberships.id] }).onDelete('cascade'),
+    foreignKey({ columns: [t.organizationId, t.enrollmentTokenId], foreignColumns: [deviceEnrollmentTokens.organizationId, deviceEnrollmentTokens.id] }),
     index().on(t.organizationId, t.status),
     index().on(t.membershipId),
   ],

@@ -150,9 +150,13 @@ export const heartbeatInput = z.object({
   capabilities: z.record(z.string(), z.union([z.boolean(), z.string().max(100)])).optional(),
 });
 
+/** An enrollment token from the computer's managed settings (IT): pins the organization and pre-approves the device. Never signs anyone in. */
+export const enrollmentToken = z.string().regex(/^wpe_[A-Za-z0-9_-]{43}$/, 'Not a valid enrollment token');
+
 export const agentRegisterInput = z.object({
   code: z.string().min(20).max(200),
   code_verifier: z.string().min(43).max(128),
+  enrollment_token: enrollmentToken.optional(),
   device: z.object({
     name: z.string().min(1).max(100),
     platform: z.enum(['windows', 'macos', 'linux']),
@@ -169,6 +173,7 @@ export const agentLoginInput = z.object({
   password: z.string().min(1).max(200),
   mfa_code: z.string().trim().min(6).max(20).optional(),
   organization_id: id.optional(),
+  enrollment_token: enrollmentToken.optional(),
   device: agentRegisterInput.shape.device,
 });
 

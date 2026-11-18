@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import {
+  enrollmentTokenInput,
   clientFolderInput,
   clientFolderPatchInput,
   clientInput,
@@ -27,6 +28,7 @@ import { body, formFile, parse, query } from '../lib/http';
 import { requirePermission } from '../middleware/tenant';
 import { requireUser } from '../middleware/auth';
 import { ctx } from '../services/ctx';
+import { createEnrollmentToken, listEnrollmentTokens, revokeEnrollmentToken } from '../services/enrollment';
 import { addProjectsToFolder, createClientFolder, getClientFolder, listClientFolders, listProjectRevisions, setClientFolderArchived, updateClientFolder } from '../services/client-folders';
 import { avatarResponse, memberAvatarImage, memberAvatars } from '../services/avatar';
 import {
@@ -286,5 +288,12 @@ export const orgRoutes = new Hono<AppEnv>()
     const q = query(c, pageQuery.extend({ membership_id: z.uuid().optional(), status: z.enum(['PENDING', 'ACTIVE', 'OFFLINE', 'REVOKED']).optional() }));
     const filters = { membershipId: q.membership_id, status: q.status, search: q.q };
     return c.json(q.page ? await pageDevices(ctx(c), { ...filters, page: q.page, pageSize: q.page_size }) : await listDevices(ctx(c), filters));
+  })
+  // Enrollment tokens for managed installs (org-wide devices:manage; the secret is returned once, by POST)
+  .get('/enrollment-tokens', async (c) => c.json(await listEnrollmentTokens(ctx(c))))
+  .post('/enrollment-tokens', async (c) => c.json(await createEnrollmentToken(ctx(c), await body(c, enrollmentTokenInput)), 201))
+  .delete('/enrollment-tokens/:id', async (c) => {
+    await revokeEnrollmentToken(ctx(c), c.req.param('id'));
+    return c.body(null, 204);
   })
   .post('/devices/:id/:action{revoke|approve|reauth}', async (c) => c.json(await setDeviceStatus(ctx(c), c.req.param('id'), c.req.param('action') as 'revoke')));

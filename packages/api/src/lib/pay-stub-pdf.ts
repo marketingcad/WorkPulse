@@ -1,90 +1,93 @@
-import { PDFDocument, StandardFonts } from 'pdf-lib';
 import type { PayStubDto } from '@tallywork/contracts';
-import { PDF, PDF_STATUS, drawCompanyLogo, footer, winAnsi, type CompanyProfile } from './invoice-pdf';
+import { INK, PdfDoc, TYPE, drawTable, drawTotals, fmtDate, fmtRange, hours2, money, type CompanyProfile, type TableColumn, type TableRow } from './pdf-kit';
 
-const hours = (s: number) => `${(s / 3600).toFixed(2)} h`;
-
-/** One-page pay stub (A4 portrait), in the same style as the invoice. */
+/**
+ * One pay stub (A4 portrait), in the same system as the invoice. Figures are printed as the payroll
+ * line holds them; nothing is recalculated here.
+ */
 export async function renderPayStubPdf(stub: PayStubDto, org: CompanyProfile): Promise<Buffer> {
-  const doc = await PDFDocument.create();
-  doc.setTitle(`Pay stub ${stub.period_start} – ${stub.period_end}`);
-  doc.setProducer('Tallywork');
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const { ink, muted, navy } = PDF;
-  const money = (m: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: stub.currency }).format(m / 100);
-  const size: [number, number] = [595, 842];
-  const page = doc.addPage(size);
-  const M = 48;
-  let y = size[1] - M;
-  const draw = (s: string, x: number, yy: number, o: { size?: number; f?: typeof font; color?: typeof ink; right?: boolean } = {}) => {
-    const sz = o.size ?? 10;
-    const f = o.f ?? font;
-    const t = winAnsi(s);
-    page.drawText(t, { x: o.right ? x - f.widthOfTextAtSize(t, sz) : x, y: yy, size: sz, font: f, color: o.color ?? ink });
-  };
+  const k = await PdfDoc.create({ title: `Pay stub ${stub.period_start} – ${stub.period_end}` });
+  const $ = (m: number) => money(m, stub.currency);
+  const paid = stub.status === 'PAID';
+  await k.drawHeader(org, {
+    title: 'Pay stub',
+    reference: fmtRange(stub.period_start, stub.period_end),
+    meta: [
+      ['Pay period', fmtRange(stub.period_start, stub.period_end)],
+      ['Pay group', stub.profile_name],
+      ...(paid && stub.paid_at ? ([['Pay date', fmtDate(stub.paid_at)]] as Array<[string, string]>) : []),
+      ['Currency', stub.currency],
+    ],
+    status: { key: paid ? 'PAID' : 'FINALIZED' },
+  });
+  k.footnote = 'Confidential: this statement is intended only for the employee named above.';
 
-  page.drawRectangle({ x: 0, y: size[1] - 6, width: size[0], height: 6, color: PDF.blue });
-  // The organization's logo, as on the invoice: the company name and details sit beside it.
-  const logoTop = y + 14;
-  const logo = await drawCompanyLogo(doc, page, org, M, logoTop);
-  const textX = logo ? M + logo.width + 12 : M;
-  draw(org.name, textX, y, { size: 16, f: bold, color: navy });
-  draw('PAY STUB', size[0] - M, y, { size: 20, f: bold, color: navy, right: true });
-  y -= 18;
-  for (const line of [org.address?.split('\n')[0], org.taxId ? `Tax ID: ${org.taxId}` : null].filter((s): s is string => !!s)) {
-    draw(line, textX, y, { size: 8.5, color: muted });
-    y -= 11;
-  }
-  if (logo) y = Math.min(y, logoTop - logo.height - 4);
-  y -= 20;
-  draw('Employee', M, y, { size: 9, color: muted });
-  draw('Pay period', 360, y, { size: 9, color: muted });
-  draw(`${stub.period_start} – ${stub.period_end}`, size[0] - M, y, { right: true });
-  y -= 14;
-  draw(stub.name, M, y, { f: bold });
-  draw('Payroll', 360, y, { size: 9, color: muted });
-  draw(stub.profile_name, size[0] - M, y, { right: true });
-  y -= 14;
-  draw('Status', 360, y, { size: 9, color: muted });
-  const pill = PDF_STATUS[stub.status === 'PAID' ? 'PAID' : 'FINALIZED']!;
-  const label = stub.status === 'PAID' ? `PAID${stub.paid_at ? ` ${stub.paid_at.slice(0, 10)}` : ''}` : pill.label;
-  const pw = bold.widthOfTextAtSize(label, 7.5) + 14;
-  page.drawRectangle({ x: size[0] - M - pw, y: y - 3.5, width: pw, height: 14, color: pill.bg });
-  draw(label, size[0] - M - 7, y, { size: 7.5, f: bold, color: pill.fg, right: true });
-  y -= 34;
+  // Employee (left) and the three figures that matter (right).
+  const top = k.y;
+  k.text('EMPLOYEE', k.left, k.y, { size: TYPE.label, bold: true, color: INK.slate });
+  k.y -= 16;
+  k.text(stub.name, k.left, k.y, { size: TYPE.body + 3, bold: true, color: INK.navy, maxWidth: 180 });
+  k.y -= 13;
+  k.text(stub.profile_name, k.left, k.y, { size: TYPE.body, color: INK.slate, maxWidth: 180 });
+  const adj = stub.adjustments.reduce((s, a) => s + a.amount_minor, 0);
+  k.y = top + 10;
+  k.tiles(
+    [
+      { label: 'Gross pay', value: $(stub.gross_minor) },
+      { label: 'Adjustments', value: adj ? `${adj < 0 ? '-' : '+'}${$(Math.abs(adj))}` : $(0) },
+      { label: 'Net pay', value: $(stub.net_minor), strong: true },
+    ],
+    { x: k.left + 200, width: k.width - 200, perRow: 3 },
+  );
+  k.y -= 8;
 
-  const row = (label: string, detail: string, amount: string, strong = false) => {
-    draw(label, M, y, { f: strong ? bold : font });
-    draw(detail, 380, y, { color: muted, right: true });
-    draw(amount, size[0] - M, y, { f: strong ? bold : font, right: true });
-    y -= 18;
-  };
-  page.drawRectangle({ x: M - 8, y: y - 8, width: size[0] - 2 * M + 16, height: 24, color: PDF.tint });
-  draw('EARNINGS', M, y, { size: 8, f: bold, color: navy });
-  draw('HOURS', 380, y, { size: 8, f: bold, color: navy, right: true });
-  draw('AMOUNT', size[0] - M, y, { size: 8, f: bold, color: navy, right: true });
-  y -= 28;
-  row('Approved time', hours(stub.approved_seconds), money(stub.time_pay_minor));
-  if (stub.overtime_seconds) row('  of which overtime', hours(stub.overtime_seconds), '');
-  if (stub.time_off_hours) row('Paid time off', `${stub.time_off_hours.toFixed(2)} h`, money(stub.time_off_pay_minor));
-  row('Gross pay', '', money(stub.gross_minor), true);
+  // Earnings.
+  const cols: TableColumn[] = [
+    { key: 'item', label: 'Earnings', flex: 1 },
+    { key: 'hours', label: 'Hours', align: 'right', width: 80 },
+    { key: 'amount', label: 'Amount', align: 'right', width: 100 },
+  ];
+  const earnings: TableRow[] = [{ cells: { item: 'Approved time', hours: hours2(stub.approved_seconds), amount: $(stub.time_pay_minor) } }];
+  if (stub.overtime_seconds) earnings.push({ cells: { item: 'of which overtime', hours: hours2(stub.overtime_seconds), amount: '' }, indent: true, color: { item: INK.slate, hours: INK.slate } });
+  if (stub.carried_seconds) earnings.push({ cells: { item: 'of which approved after an earlier payroll', hours: hours2(stub.carried_seconds), amount: '' }, indent: true, color: { item: INK.slate, hours: INK.slate } });
+  if (stub.time_off_hours || stub.time_off_pay_minor) earnings.push({ cells: { item: 'Paid time off', hours: stub.time_off_hours.toFixed(2), amount: $(stub.time_off_pay_minor) } });
+  earnings.push({ cells: { item: 'Gross pay', hours: '', amount: $(stub.gross_minor) }, kind: 'subtotal' });
+  drawTable(k, cols, earnings, { zebra: false });
+
+  // Adjustments: additions and deductions apart.
   if (stub.adjustments.length) {
-    y -= 6;
-    draw('Adjustments', M, y, { size: 9, f: bold });
-    y -= 18;
-    for (const a of stub.adjustments) row(a.label.length > 60 ? `${a.label.slice(0, 59)}…` : a.label, '', `${a.amount_minor < 0 ? '-' : ''}${money(Math.abs(a.amount_minor))}`);
+    k.y -= 16;
+    const plus = stub.adjustments.filter((a) => a.amount_minor >= 0);
+    const minus = stub.adjustments.filter((a) => a.amount_minor < 0);
+    const rows: TableRow[] = [];
+    if (plus.length) {
+      rows.push({ cells: { item: 'Additions', amount: '' }, kind: 'section' });
+      for (const a of plus) rows.push({ cells: { item: a.label, amount: `+${$(a.amount_minor)}` }, color: { amount: INK.positive } });
+    }
+    if (minus.length) {
+      rows.push({ cells: { item: 'Deductions', amount: '' }, kind: 'section' });
+      for (const a of minus) rows.push({ cells: { item: a.label, amount: `-${$(-a.amount_minor)}` }, color: { amount: INK.negative } });
+    }
+    rows.push({ cells: { item: 'Total adjustments', amount: `${adj < 0 ? '-' : adj > 0 ? '+' : ''}${$(Math.abs(adj))}` }, kind: 'subtotal' });
+    drawTable(k, [{ key: 'item', label: 'Adjustments', flex: 1 }, { key: 'amount', label: 'Amount', align: 'right', width: 100 }], rows, { zebra: false });
   }
-  y -= 4;
-  y -= 6;
-  page.drawRectangle({ x: M - 8, y: y - 10, width: size[0] - 2 * M + 16, height: 30, color: navy });
-  draw('Net pay', M, y, { size: 12, f: bold, color: PDF.white });
-  draw(money(stub.net_minor), size[0] - M, y, { size: 13, f: bold, color: PDF.white, right: true });
-  y -= 30;
+
+  // Net pay.
+  k.y -= 6;
+  drawTotals(
+    k,
+    [
+      { label: 'Gross pay', value: $(stub.gross_minor) },
+      ...(stub.adjustments.length ? [{ label: 'Adjustments', value: `${adj < 0 ? '-' : '+'}${$(Math.abs(adj))}`, color: adj < 0 ? INK.negative : INK.positive }] : []),
+      { label: 'Net pay', value: $(stub.net_minor), band: true },
+    ],
+    { width: 260 },
+  );
+
   if (stub.unapproved_seconds) {
-    y -= 10;
-    draw(`${hours(stub.unapproved_seconds)} in this period was not approved at the time of this payroll and is not included.`, M, y, { size: 8.5, color: muted });
+    k.y -= 8;
+    k.section('Note');
+    k.paragraph(`${hours2(stub.unapproved_seconds)} h in this period was not approved at the time of this payroll and is not included. It will be paid in a later payroll once approved.`, { size: TYPE.small + 0.5, color: INK.slate, width: k.width * 0.75 });
   }
-  footer(doc, font, org, M);
-  return Buffer.from(await doc.save());
+  return k.finish();
 }

@@ -59,6 +59,18 @@ The indexes are in migration `0036_hot_read_indexes.sql`. Every change keeps res
 | portal summary, 30 days | 20 | screenshots, one day | 6 |
 | portal insights | 16 | | |
 
+### Page speed (Largest Contentful Paint, production build)
+
+Measured by `page-speed.spec.ts` against the E2E server (`next build` + `next start`, local, no network latency), three loads each:
+
+| Page | Loads (ms) | Budget |
+|---|---|---|
+| Overview dashboard | 368, 244, 236 | median < 2,500 |
+| Reports | 312, 284, 284 | median < 2,500 |
+| Timesheets | 248, 228, 224 | median < 2,500 |
+
+Well under the roadmap budget. Locally this guards against front-end regressions (a heavy bundle, render-blocking work); it does not predict times over a real network.
+
 ## What was left, and why
 
 - **AI Insights still makes 48 queries.** It runs four sections, each reusing the screens' own services. It is cached per person and period, so this is the first view only. Merging sections would duplicate those services; left as is.

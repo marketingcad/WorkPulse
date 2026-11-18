@@ -72,7 +72,7 @@
         "apps/web": ["bundle-imports"]
       },
       "playwright": [
-        "web/a11y-sweep", "web/qa/a11y", "web/account-menu-theme", "web/menu-layout-shift", "web/mobile-dialogs", "web/mobile-sweep",
+        "web/a11y-sweep", "web/qa/a11y", "web/page-speed", "web/account-menu-theme", "web/menu-layout-shift", "web/mobile-dialogs", "web/mobile-sweep",
         "web/mobile-tables", "web/qa/responsive", "web/qa/page-health", "web/qa/forms", "web/qa/naming", "web/qa/validation-feedback",
         "web/forms-feedback", "web/branding",
         "desktop/a11y", "desktop/accessibility"

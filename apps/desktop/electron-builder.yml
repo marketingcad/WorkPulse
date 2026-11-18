@@ -31,6 +31,9 @@ win:
 nsis:
   oneClick: false
   perMachine: false
+  # Stated here, not only under `win`: built together with the msi, the installer otherwise took the
+  # msi's versioned name (0.3.0 shipped Tallywork-0.3.0-x64.exe and the stable download link broke).
+  artifactName: Tallywork-Setup.${ext}
   allowToChangeInstallationDirectory: true
 msi:
   perMachine: true

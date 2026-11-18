@@ -19,7 +19,9 @@ Every release is published on GitHub Releases in the public repo [marketingcad/t
 
 The web app's `/download` page offers the same files when its `DESKTOP_DOWNLOAD_URL_*` variables point at these links.
 
-The per-machine Windows `.msi` (`Tallywork-<version>-x64.msi`) and macOS `.pkg` (`Tallywork-<version>.pkg`) are configured but not published yet. Build them yourself with `pnpm --filter @tallywork/desktop dist:win` or `dist:mac` if you need them.
+**Per-machine Windows installer:** every release also publishes `Tallywork-<version>-x64.msi`, a silent, per-machine install for Intune, Group Policy and SCCM. Download it from the [latest release](https://github.com/marketingcad/tallywork-desktop/releases/latest). Its name includes the version, so there is no fixed link.
+
+The macOS `.pkg` (`Tallywork-<version>.pkg`) is configured but not published yet: it needs the Developer ID Installer certificate. Build it yourself with `pnpm --filter @tallywork/desktop dist:mac` if you need it.
 
 **Signing is not in place yet:**
 
@@ -27,6 +29,12 @@ The per-machine Windows `.msi` (`Tallywork-<version>-x64.msi`) and macOS `.pkg` 
 - **macOS:** the app is ad-hoc signed and not notarized, so the first launch is blocked. Open **System Settings → Privacy & Security** and choose **Open Anyway**. Updates can't install themselves (see [Updates](#updates)).
 
 ## Silent install
+
+**Windows (per machine, `.msi`):**
+
+```bat
+msiexec /i Tallywork-<version>-x64.msi /qn
+```
 
 **Windows (per user):**
 
@@ -62,6 +70,7 @@ Managed values override anything a person set, and lock the matching controls in
 | `ServerUrl` | string (https) | Your WorkPulse address, e.g. `https://time.acme.com`. Required for self-hosted or custom domains. |
 | `UpdateChannel` | `latest` \| `beta` | `beta` also gets prerelease versions (such as `0.2.0-beta.1`) when they are published. Useful for a pilot group. |
 | `LaunchAtLogin` | boolean | Start WorkPulse when the person signs in to the computer. |
+| `EnrollmentToken` | string (`wpe_…`) | Joins the computer to your organization, already approved. See [Enrollment tokens](#enrollment-tokens). |
 
 Invalid values are ignored, including non-https URLs and unknown channels. The app starts normally without them.
 
@@ -73,6 +82,7 @@ Push these as `HKLM\SOFTWARE\Policies\Tallywork`, through a Group Policy Prefere
 reg add "HKLM\SOFTWARE\Policies\Tallywork" /v ServerUrl /t REG_SZ /d "https://time.acme.com" /f
 reg add "HKLM\SOFTWARE\Policies\Tallywork" /v UpdateChannel /t REG_SZ /d "latest" /f
 reg add "HKLM\SOFTWARE\Policies\Tallywork" /v LaunchAtLogin /t REG_DWORD /d 1 /f
+reg add "HKLM\SOFTWARE\Policies\Tallywork" /v EnrollmentToken /t REG_SZ /d "wpe_…" /f
 ```
 
 ### macOS: configuration profile
@@ -91,6 +101,7 @@ Deploy a profile with a Custom Settings payload for the preference domain `app.t
     <key>ServerUrl</key><string>https://time.acme.com</string>
     <key>UpdateChannel</key><string>latest</string>
     <key>LaunchAtLogin</key><true/>
+    <key>EnrollmentToken</key><string>wpe_…</string>
   </dict></array>
   <key>PayloadDisplayName</key><string>Tallywork</string>
   <key>PayloadIdentifier</key><string>com.acme.tallywork</string>
@@ -112,7 +123,7 @@ Grant them with a Privacy Preferences Policy Control (PPPC) payload for bundle I
 
 ```bash
 sudo mkdir -p /etc/tallywork
-echo '{ "serverUrl": "https://time.acme.com", "updateChannel": "latest", "launchAtLogin": true }' | sudo tee /etc/tallywork/config.json
+echo '{ "serverUrl": "https://time.acme.com", "updateChannel": "latest", "launchAtLogin": true, "enrollmentToken": "wpe_…" }' | sudo tee /etc/tallywork/config.json
 ```
 
 On Wayland, activity, applications and screenshots aren't available (see [Linux packages](#linux-packages)), and the app says so on its **What is monitored** screen.
@@ -126,3 +137,21 @@ A release normally reaches everyone at once. Staged rollouts are in [runbooks.md
 ## Device approval
 
 If **Settings → Security → Require device approval** is on, newly installed apps stay pending until an admin approves them under **Devices**.
+
+## Enrollment tokens
+
+An enrollment token lets company computers join your organization without an admin approving each one.
+
+1. An admin opens **Devices → Enrollment tokens → New token**, names it (for example after the office or rollout) and can set an expiry date. The token (`wpe_` followed by 43 characters) is shown **once**, with setup lines for each system. Only people who manage devices for the whole organization (System Admins by default) can create, see or revoke tokens.
+2. IT puts it in the managed settings as `EnrollmentToken` (above), next to `ServerUrl`, and installs the app.
+3. Each person signs in with **their own** email and password (plus two-factor if they use it), or with the browser. The computer joins the token's organization and is **approved at once**, even when device approval is required. It shows a **Managed** badge under Devices, and the app's sign-in screen says the computer was set up by your IT.
+
+What a token does **not** do:
+
+- It never signs anyone in. Without the person's password nothing happens, and the sign-in rate limit applies as usual.
+- It works only for members of that organization. Someone who isn't, or who picks another organization on that computer, is refused with "This computer is set up for another organization."
+- It is never shown in the app, written to the app's files or logs, or listed again in the web app. WorkPulse stores only a hash of it.
+
+**Revoking and expiry:** new sign-ins on a computer that still has the token are refused with "This computer's enrollment token is no longer valid. Ask your IT team." Computers already set up keep working; to cut one off, revoke that device. To rotate a token, create a new one, push it, then revoke the old one.
+
+**Keep it private.** Treat the token like a Wi-Fi password. On Linux, `/etc/tallywork/config.json` must stay readable by the people who use the app (it runs as them), so any local account can read the token. A leaked token only lets *members of your organization* skip device approval: revoke it and push a new one.

@@ -54,7 +54,7 @@
         "web/csv-import", "web/form-checks", "web/public-hydration", "web/data-export", "web/download", "web/finance-paging", "web/help", "web/help-video", "web/insights", "web/invitations",
         "web/member-profile", "web/monitoring-card-setting", "web/multi-monitor", "web/navigation", "web/navigation-flows", "web/organizations", "web/people-paging",
         "web/performance-achievements", "web/performance-goals", "web/performance-leaderboards", "web/performance-overview", "web/performance-teams",
-        "web/performance-workers", "web/portal", "web/portal-insights", "web/profile-avatar", "web/profiles", "web/project-milestones", "web/client-folders",
+        "web/performance-workers", "web/portal", "web/portal-insights", "web/profile-avatar", "web/profiles", "web/project-milestones", "web/client-folders", "web/enrollment-tokens",
         "web/qa/activity-default", "web/qa/people-flows", "web/qa/public-auth", "web/qa/settings-integrations", "web/qa/work-flows",
         "web/screenshot-retention", "web/simplified-nav", "web/support-console", "web/time-paging", "web/work-forms", "web/document-logo",
         "desktop/avatar", "desktop/navigation", "desktop/performance", "desktop/startup-transparency",

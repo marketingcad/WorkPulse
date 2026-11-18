@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { CheckCircle2, KeyRound, Laptop, MoreHorizontal, ShieldOff } from 'lucide-react';
 import type { DeviceDto, OffsetPage } from '@tallywork/contracts';
 import {
@@ -26,6 +27,9 @@ import {
 import { errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
+
+// Enrollment tokens (managed installs) load only for organization-wide device managers.
+const EnrollmentTokensPanel = dynamic(() => import('@/components/settings/enrollment-tokens').then((m) => m.EnrollmentTokensPanel), { ssr: false });
 
 type Action = 'approve' | 'reauth' | 'revoke';
 const PLATFORM: Record<string, string> = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
@@ -76,6 +80,7 @@ export default function DevicesPage() {
         <span className="flex min-w-0 items-center gap-2">
           <Laptop className="size-4 shrink-0 text-text-faint" aria-hidden />
           <span className="truncate font-medium">{d.name}</span>
+          {d.enrolled && <Badge className="shrink-0">Managed</Badge>}
         </span>
       ),
       value: (d) => d.name,
@@ -200,6 +205,7 @@ export default function DevicesPage() {
           </div>
         </Panel>
       </div>
+      {canApprove && <EnrollmentTokensPanel />}
 
       <ConfirmDialog
         open={!!pending}

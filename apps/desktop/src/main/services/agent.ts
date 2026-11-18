@@ -135,6 +135,8 @@ export class Agent extends EventEmitter {
     private readonly version: string,
     /** set by device management: the only server this app may use */
     private readonly managedServer: string | null = null,
+    /** set by device management: pins sign-in to the organization and pre-approves this computer. Never put in state, logs or files. */
+    private readonly enrollmentToken: string | null = null,
   ) {
     super();
     this.session = this.store.readJson<LocalSession>('session');
@@ -204,7 +206,7 @@ export class Agent extends EventEmitter {
     this.error = null;
     this.emitState();
     try {
-      await signIn(this.api, this.serverUrl, this.capabilities);
+      await signIn(this.api, this.serverUrl, this.capabilities, this.enrollmentToken ?? undefined);
       this.phase = 'ready';
       await this.refreshBootstrap();
     } catch (e) {
@@ -222,7 +224,7 @@ export class Agent extends EventEmitter {
     this.emitState();
     let result: PasswordSignInResult | { status: 'error' };
     try {
-      result = await signInWithPassword(this.api, this.serverUrl, this.capabilities, creds);
+      result = await signInWithPassword(this.api, this.serverUrl, this.capabilities, creds, this.enrollmentToken ?? undefined);
       if (result.status === 'signed_in') {
         this.phase = 'ready';
         await this.refreshBootstrap();
@@ -999,6 +1001,7 @@ export class Agent extends EventEmitter {
       error: this.error,
       serverUrl: this.serverUrl,
       serverManaged: !!this.managedServer,
+      enrollmentManaged: !!this.enrollmentToken,
       version: this.version,
       account: this.boot
         ? { name: this.boot.worker.name, email: this.boot.worker.email, organization: this.boot.organization.name, organizationId: this.boot.organization.id, membershipId: this.boot.worker.membership_id, timezone: this.boot.worker.timezone }

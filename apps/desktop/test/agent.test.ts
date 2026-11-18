@@ -226,6 +226,18 @@ describe('managed configuration (MDM / Group Policy)', async () => {
     const out = '{\n    LaunchAtLogin = 0;\n    ServerUrl = "https://time.acme.com";\n    UpdateChannel = latest;\n}\n';
     expect(parseDefaultsRead(out)).toEqual({ serverUrl: 'https://time.acme.com', updateChannel: 'latest', launchAtLogin: false });
   });
+  it('reads an enrollment token from each platform, and ignores a malformed one', () => {
+    const token = `wpe_${'Ab9_-'.repeat(8)}xyz`;
+    expect(token).toHaveLength(47);
+    expect(parseRegQuery(`\r\n    EnrollmentToken    REG_SZ    ${token}\r\n`)).toEqual({ enrollmentToken: token });
+    expect(parseDefaultsRead(`{\n    EnrollmentToken = "${token}";\n}\n`)).toEqual({ enrollmentToken: token });
+    expect(parseJsonConfig(JSON.stringify({ enrollmentToken: ` ${token} ` }))).toEqual({ enrollmentToken: token });
+    // A space inside, another prefix, or the wrong length: ignored, as if none were set.
+    expect(parseJsonConfig(JSON.stringify({ enrollmentToken: `wpe_${'A'.repeat(20)} ${'A'.repeat(22)}` }))).toEqual({});
+    expect(parseJsonConfig(JSON.stringify({ enrollmentToken: `tw_live_${'A'.repeat(43)}` }))).toEqual({});
+    expect(parseJsonConfig(JSON.stringify({ enrollmentToken: 'wpe_short' }))).toEqual({});
+    expect(parseJsonConfig(JSON.stringify({ enrollmentToken: 12 }))).toEqual({});
+  });
   it('reads /etc/tallywork/config.json and ignores unsafe or invalid values', () => {
     expect(parseJsonConfig('{"serverUrl":"https://time.acme.com/x","launchAtLogin":true}')).toEqual({ serverUrl: 'https://time.acme.com', launchAtLogin: true });
     expect(parseJsonConfig('{"serverUrl":"http://evil.example","updateChannel":"nightly"}')).toEqual({});

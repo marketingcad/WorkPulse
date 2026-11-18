@@ -665,7 +665,30 @@ export interface DeviceDto {
   capabilities: Record<string, boolean | string>;
   last_seen_at: string | null;
   last_sync_at: string | null;
+  /** joined through an enrollment token (managed install) */
+  enrolled: boolean;
   created_at: string;
+}
+
+/** An enrollment token as listed: never the secret itself. */
+export interface EnrollmentTokenDto {
+  id: string;
+  name: string;
+  /** the first characters after "wpe_" */
+  prefix: string;
+  status: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+  created_by_name: string | null;
+  created_at: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  /** computers that joined with it */
+  use_count: number;
+}
+
+/** Returned once, when the token is created. */
+export interface EnrollmentTokenCreatedDto extends EnrollmentTokenDto {
+  token: string;
 }
 
 export interface EffectivePolicyDto {

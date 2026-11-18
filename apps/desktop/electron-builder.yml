@@ -24,7 +24,10 @@ win:
   target: [nsis, msi]
   # No version in the name, so .../releases/latest/download/Tallywork-Setup.exe always serves the newest build.
   artifactName: Tallywork-Setup.${ext}
-  # Authenticode signing: set CSC_LINK / CSC_KEY_PASSWORD (EV certificate recommended).
+  # Both are published by the "Desktop release" workflow (--win nsis msi).
+  # Authenticode signing is not set up yet. Signing keys now live in a cloud vault or on hardware
+  # (Microsoft Trusted Signing via `azureSignOptions`, or a cloud-HSM OV certificate), and an EV
+  # certificate no longer skips SmartScreen's reputation check.
 nsis:
   oneClick: false
   perMachine: false

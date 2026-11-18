@@ -850,6 +850,26 @@ export const HELP_ARTICLES: HelpArticle[] = [
     keywords: ['device', 'computer', 'laptop', 'approve', 'revoke', 'lost'],
   },
   {
+    id: 'managed-install',
+    category: 'settings',
+    title: 'Install the desktop app on company computers',
+    summary: 'Let your IT team roll the app out with Intune, Group Policy, Jamf or a script, so computers join your organization already approved.',
+    steps: [
+      'Open Settings › Devices and choose New token under Enrollment tokens. Copy the token: it is shown only once.',
+      'Give it to your IT team with the setup lines shown for Windows, macOS or Linux. They put it in the app’s managed settings on each computer.',
+      'Install the app: the per-machine .msi for Intune and Group Policy, or the normal installer.',
+      'Each person signs in with their own account. The computer joins your organization and is approved at once, even when device approval is required.',
+    ],
+    points: [
+      'A token never signs anyone in. Passwords and two-factor work as usual.',
+      'Revoking a token stops new computers from joining with it. Computers already set up keep working.',
+      'Devices that joined this way show a Managed badge in the device list.',
+    ],
+    links: [{ label: 'Open Devices', href: '/devices' }],
+    keywords: ['enrollment', 'token', 'msi', 'intune', 'group policy', 'jamf', 'mdm', 'rollout', 'it', 'deploy', 'silent install'],
+    perms: ['devices:manage'],
+  },
+  {
     id: 'roles',
     category: 'settings',
     title: 'Create a custom role',

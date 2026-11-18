@@ -39,6 +39,7 @@ import type { z } from 'zod';
 import type { Deps } from '../context';
 import { pkceMatches, randomToken, sha256, signToken } from '../lib/crypto';
 import { auditSystem, emit } from './events';
+import { claimEnrollmentToken, enrollmentOtherOrg, resolveEnrollmentToken } from './enrollment';
 import { login } from './identity';
 import { hasMfa, verifySecondFactor } from './mfa';
 import { effectivePolicy, policyHash } from './policies';
@@ -103,17 +104,25 @@ export async function registerDevice(deps: Deps, input: z.infer<typeof agentRegi
   const [code] = await deps.db.select().from(deviceAuthCodes).where(and(eq(deviceAuthCodes.codeHash, sha256(input.code)), isNull(deviceAuthCodes.usedAt))).limit(1);
   if (!code || code.expiresAt < deps.now()) throw new DomainError('unauthenticated', 'invalid_code', 'The sign-in code is invalid or expired. Please sign in again.');
   if (!pkceMatches(input.code_verifier, code.codeChallenge)) throw new DomainError('unauthenticated', 'pkce_mismatch', 'Sign-in verification failed');
+  // A managed computer joins only the organization its enrollment token names.
+  const enrollment = input.enrollment_token ? await resolveEnrollmentToken(deps, input.enrollment_token) : null;
+  if (enrollment && enrollment.organizationId !== code.organizationId) throw enrollmentOtherOrg();
   // Conditional claim: the same code exchanged twice at once registers one device, not two.
   const [claimed] = await deps.db.update(deviceAuthCodes).set({ usedAt: deps.now() }).where(and(eq(deviceAuthCodes.id, code.id), isNull(deviceAuthCodes.usedAt))).returning({ id: deviceAuthCodes.id });
   if (!claimed) throw new DomainError('unauthenticated', 'invalid_code', 'The sign-in code is invalid or expired. Please sign in again.');
-  return createDevice(deps, { organizationId: code.organizationId, membershipId: code.membershipId, userId: code.userId }, input.device);
+  return createDevice(deps, { organizationId: code.organizationId, membershipId: code.membershipId, userId: code.userId }, input.device, enrollment?.id);
 }
 
-async function createDevice(deps: Deps, owner: { organizationId: string; membershipId: string; userId: string }, device: z.infer<typeof agentRegisterInput>['device']) {
+/**
+ * Register the device. Through an enrollment token (a managed install IT set up) it is approved at
+ * once, whatever "approve new devices" says; otherwise that setting decides.
+ */
+async function createDevice(deps: Deps, owner: { organizationId: string; membershipId: string; userId: string }, device: z.infer<typeof agentRegisterInput>['device'], enrollmentTokenId?: string) {
   return withTenant(deps.db, owner.organizationId, async (tx) => {
     const [org] = await tx.select().from(organizations).where(eq(organizations.id, owner.organizationId));
+    if (enrollmentTokenId) await claimEnrollmentToken(tx, deps, enrollmentTokenId);
     const deviceId = newId();
-    const status = org?.settings.requireDeviceApproval ? 'PENDING' : 'ACTIVE';
+    const status = enrollmentTokenId || !org?.settings.requireDeviceApproval ? 'ACTIVE' : 'PENDING';
     await tx.insert(devices).values({
       id: deviceId,
       organizationId: owner.organizationId,
@@ -125,9 +134,10 @@ async function createDevice(deps: Deps, owner: { organizationId: string; members
       capabilities: device.capabilities,
       publicKey: device.public_key ?? null,
       status,
+      enrollmentTokenId: enrollmentTokenId ?? null,
       lastSeenAt: deps.now(),
     });
-    await auditSystem(tx, owner.organizationId, { action: 'device.registered', actorType: 'user', actorId: owner.membershipId, targetType: 'device', targetId: deviceId, after: { name: device.name, platform: device.platform, status } });
+    await auditSystem(tx, owner.organizationId, { action: 'device.registered', actorType: 'user', actorId: owner.membershipId, targetType: 'device', targetId: deviceId, after: { name: device.name, platform: device.platform, status }, metadata: enrollmentTokenId ? { enrolled: true, enrollment_token_id: enrollmentTokenId } : undefined });
     await emit(tx, owner.organizationId, 'device.registered', { device_id: deviceId, membership_id: owner.membershipId, status }, { workerId: owner.membershipId, deviceId });
     const tokens = await issueTokens(tx, deps, { id: deviceId, organizationId: owner.organizationId, membershipId: owner.membershipId }, owner.userId);
     return { device_id: deviceId, organization_id: owner.organizationId, status, ...tokens };
@@ -152,6 +162,14 @@ export async function loginDevice(deps: Deps, input: z.infer<typeof agentLoginIn
       .where(and(eq(memberships.userId, uid), eq(memberships.status, 'ACTIVE'))),
   );
   if (!orgs.length) throw new DomainError('forbidden', 'no_organization', 'This account is not part of any organization yet');
+  // Checked only after the password and 2FA: a token alone tells an unauthenticated caller nothing.
+  if (input.enrollment_token) {
+    const enrollment = await resolveEnrollmentToken(deps, input.enrollment_token);
+    if (input.organization_id && input.organization_id !== enrollment.organizationId) throw enrollmentOtherOrg();
+    const pinned = orgs.find((o) => o.organizationId === enrollment.organizationId);
+    if (!pinned) throw enrollmentOtherOrg();
+    return createDevice(deps, { organizationId: pinned.organizationId, membershipId: pinned.membershipId, userId: uid }, input.device, enrollment.id);
+  }
   const chosen = input.organization_id ? orgs.find((o) => o.organizationId === input.organization_id) : orgs.length === 1 ? orgs[0] : undefined;
   if (!chosen) {
     if (input.organization_id) throw notFound('organization');

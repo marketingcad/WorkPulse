@@ -87,6 +87,7 @@ async function toDeviceDtos(x: Ctx, rows: Array<typeof devices.$inferSelect>): P
     capabilities: d.capabilities,
     last_seen_at: iso(d.lastSeenAt),
     last_sync_at: iso(d.lastSyncAt),
+    enrolled: !!d.enrollmentTokenId,
     created_at: d.createdAt.toISOString(),
   }));
 }

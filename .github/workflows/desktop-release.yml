@@ -60,10 +60,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # nsis for people; msi (per-machine, silent) for Intune, Group Policy and SCCM.
           - name: Windows
             os: windows-latest
-            targets: --win nsis
+            targets: --win nsis msi
           # Universal: one .dmg for Intel and Apple Silicon Macs. Unsigned until the Apple Developer Program.
+          # The per-machine .pkg waits for the Developer ID Installer certificate (same enrollment).
           - name: macOS
             os: macos-latest
             targets: --mac dmg zip --universal

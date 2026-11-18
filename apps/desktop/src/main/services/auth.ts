@@ -18,7 +18,7 @@ function platform(): 'windows' | 'macos' | 'linux' {
  * 4. exchange code + verifier for device credentials (POST /agent/register)
  * The alternative to signInWithPassword below, for people who prefer to confirm in the browser.
  */
-export async function signIn(api: AgentApi, serverUrl: string, capabilities: Record<string, boolean>): Promise<void> {
+export async function signIn(api: AgentApi, serverUrl: string, capabilities: Record<string, boolean>, enrollmentToken?: string): Promise<void> {
   const verifier = randomBytes(32).toString('base64url');
   const challenge = createHash('sha256').update(verifier).digest('base64url');
   const state = randomBytes(16).toString('base64url');
@@ -60,6 +60,8 @@ export async function signIn(api: AgentApi, serverUrl: string, capabilities: Rec
     body: JSON.stringify({
       code,
       code_verifier: verifier,
+      // From managed settings only: pins this computer to the organization and pre-approves it.
+      enrollment_token: enrollmentToken,
       device: deviceInfo(capabilities),
     }),
   });
@@ -84,11 +86,11 @@ export type PasswordSignInResult = { status: 'signed_in' } | { status: 'mfa_requ
  * Desktop sign-in with the account's email and password (POST /agent/login).
  * The password is sent once over the connection to the server and never stored; only device tokens are kept.
  */
-export async function signInWithPassword(api: AgentApi, serverUrl: string, capabilities: Record<string, boolean>, creds: PasswordCredentials): Promise<PasswordSignInResult> {
+export async function signInWithPassword(api: AgentApi, serverUrl: string, capabilities: Record<string, boolean>, creds: PasswordCredentials, enrollmentToken?: string): Promise<PasswordSignInResult> {
   const res = await net.fetch(`${serverUrl}/api/v1/agent/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: creds.email, password: creds.password, mfa_code: creds.mfaCode || undefined, organization_id: creds.organizationId, device: deviceInfo(capabilities) }),
+    body: JSON.stringify({ email: creds.email, password: creds.password, mfa_code: creds.mfaCode || undefined, organization_id: creds.organizationId, enrollment_token: enrollmentToken, device: deviceInfo(capabilities) }),
   });
   const p = (await res.json().catch(() => ({}))) as { code?: string; title?: string; organization_required?: boolean; organizations?: Array<{ id: string; name: string }> };
   if (!res.ok) {

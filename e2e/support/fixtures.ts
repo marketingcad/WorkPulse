@@ -82,6 +82,7 @@ function readyState(d: Device): AgentState {
     error: null,
     serverUrl: WEB_URL,
     serverManaged: false,
+    enrollmentManaged: false,
     version: '0.1.5',
     account: { name: b.worker.name, email: b.worker.email, organization: b.organization.name, organizationId: b.organization.id, membershipId: b.worker.membership_id, timezone: b.worker.timezone },
     device: b.device,

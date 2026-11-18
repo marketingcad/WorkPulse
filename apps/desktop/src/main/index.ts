@@ -283,7 +283,7 @@ app.whenReady().then(async () => {
   }
   const managed = await readManagedConfig();
   if (managed.launchAtLogin !== undefined) app.setLoginItemSettings({ openAtLogin: managed.launchAtLogin });
-  agent = new Agent(managed.serverUrl ?? DEFAULT_SERVER, app.getVersion(), managed.serverUrl ?? null);
+  agent = new Agent(managed.serverUrl ?? DEFAULT_SERVER, app.getVersion(), managed.serverUrl ?? null, managed.enrollmentToken ?? null);
   registerIpc();
   await agent.init();
   win = createWindow();

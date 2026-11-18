@@ -171,7 +171,7 @@
 - **Tests:** k6 load tests, chaos tests (Redis outage → outbox backlog drains after recovery; PG failover), full cross-browser plus responsive plus a11y audit.
 - **Acceptance:** SLOs met (API p95 < 300ms for reads, ingest p95 < 500ms, 99.9% availability target); restore drill succeeds within the RTO.
 - **Dependencies:** all prior. **Risks:** unknown hot spots, handled by measure-first optimization.
-- **Delivered (Revision 4):** ✓ desktop installers published with stable names and a `/download` page that picks the visitor's OS (ADR-128, ADR-131). ✓ Managed settings for MDM (registry policy, macOS configuration profile), see [desktop-deployment.md](../ops/desktop-deployment.md). The MSI/PKG targets are configured but not published, and there is no enrollment token yet.
+- **Delivered (Revision 4):** ✓ desktop installers published with stable names and a `/download` page that picks the visitor's OS (ADR-128, ADR-131). ✓ Managed settings for MDM (registry policy, macOS configuration profile), see [desktop-deployment.md](../ops/desktop-deployment.md). ✓ The per-machine `.msi` is published with every release, and enrollment tokens join managed computers to an organization already approved (ADR-141). The `.pkg` waits for the Developer ID Installer certificate.
 
 ### Also delivered outside the phase plan (Revision 4)
 - ✓ WorkPulse brand in the UI (mark, lockup, favicon, desktop icon), technical names kept as Tallywork (ADR-125).
@@ -186,7 +186,7 @@
 - **Optional rename of the desktop system name to WorkPulse** (install folder, app bundle, Linux executable, installer files). Needs a `userData` migration so installed apps keep their sign-in and offline queue, and a plan for the update feed and managed-policy paths.
 - **GNOME/KDE Wayland support** for activity, apps and screenshots (e.g. a GNOME Shell extension, KDE/KWin scripting, or portal-based screenshots), replacing the current "unavailable on Wayland" reporting.
 - **Custom domain for sending email** (SPF/DKIM/DMARC on our own domain with Resend or another provider), plus bounce handling, instead of a shared or personal SMTP mailbox.
-- Publish the per-machine `.msi` and `.pkg` from the release workflow.
+- Publish the per-machine `.pkg` from the release workflow (needs the Developer ID Installer certificate; the `.msi` is published, ADR-141).
 
 ### Future (tracked, not dropped)
 Mobile apps with GPS/geofences/job sites (Location subsystem schema is ready from Phase 1), PM integrations (Jira/Asana/Trello/GitHub/Linear), accounting sync (QuickBooks/Xero), worker payouts, SSO/SCIM, kiosk mode, anomaly insights, WebAuthn.

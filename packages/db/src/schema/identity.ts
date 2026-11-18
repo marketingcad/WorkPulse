@@ -91,6 +91,8 @@ export interface OrgSettings {
   workingHoursPerDay?: number;
   /** show workers the "What WorkPulse records" card in the desktop app (hidden unless set to true) */
   showMonitoringCard?: boolean;
+  /** organize projects into client folders on the Projects page (off unless set to true) */
+  clientFolders?: boolean;
 }
 
 export const organizations = pgTable('organizations', {

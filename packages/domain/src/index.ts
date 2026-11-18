@@ -14,3 +14,4 @@ export * from './refused';
 export * from './performance';
 export * from './notifications';
 export * from './expense-categories';
+export * from './project-revisions';

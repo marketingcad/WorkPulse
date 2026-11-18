@@ -43,6 +43,7 @@ import { MemberAvatar } from '@/lib/avatars';
 const BudgetDialog = lazy(() => import('@/components/finance/budget-dialog').then((m) => ({ default: m.BudgetDialog })));
 const ProjectDocumentsTab = lazy(() => import('@/components/workspace/project-documents').then((m) => ({ default: m.ProjectDocumentsTab })));
 const ProjectMilestones = lazy(() => import('@/components/performance/project-milestones'));
+const ProjectRevisions = lazy(() => import('@/components/workspace/project-revisions').then((m) => ({ default: m.ProjectRevisions })));
 
 // Loaded when the Settings tab is opened: the project form is large (bundle budget).
 const SettingsTab = dynamic(() => import('./settings-tab').then((m) => m.SettingsTab), { ssr: false });
@@ -77,7 +78,7 @@ export default function ProjectDetailPage() {
     { value: 'plan', label: 'Plan & budget' },
     { value: 'members', label: 'Members & teams', count: p.member_ids.length + p.team_ids.length },
     { value: 'documents', label: 'Documents' },
-    ...(canManage ? [{ value: 'settings', label: 'Settings' }] : []),
+    ...(canManage ? [{ value: 'history', label: 'History' }, { value: 'settings', label: 'Settings' }] : []),
   ];
   const tracked = p.tracked_seconds ?? 0;
   const estimate = p.estimate_seconds;
@@ -186,6 +187,11 @@ export default function ProjectDetailPage() {
       {activeTab === 'documents' && (
         <Suspense fallback={<SkeletonRows rows={4} cols={2} />}>
           <ProjectDocumentsTab project={p} />
+        </Suspense>
+      )}
+      {activeTab === 'history' && canManage && (
+        <Suspense fallback={<SkeletonRows rows={4} cols={2} />}>
+          <ProjectRevisions projectId={p.id} currency={p.currency} />
         </Suspense>
       )}
       {activeTab === 'settings' && canManage && <SettingsTab project={p} />}

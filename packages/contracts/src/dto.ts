@@ -209,6 +209,86 @@ export interface ProjectDto {
   created_at: string;
 }
 
+/** A client folder (settings.clientFolders): one client's projects, grouped. */
+export interface ClientFolderDto {
+  id: string;
+  client_id: string;
+  client_name: string;
+  client_color: string | null;
+  client_logo: string | null;
+  /** the client itself is archived (its projects are too) */
+  client_archived: boolean;
+  name: string;
+  description: string | null;
+  /** projects in the folder the viewer may see (not archived) */
+  project_count: number;
+  /** of those, ACTIVE ones */
+  active_project_count: number;
+  archived_at: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
+/** One project in a folder, with what its accordion shows. */
+export interface FolderProjectDto {
+  id: string;
+  name: string;
+  color: string;
+  short_name: string | null;
+  status: 'ACTIVE' | 'ON_HOLD' | 'COMPLETED';
+  archived_at: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  task_count: number;
+  tasks_done: number;
+  tasks_pending: number;
+  /** done tasks / all tasks, in percent; null without tasks */
+  progress_pct: number | null;
+  milestone_count: number;
+  milestones_done: number;
+  /** the earliest open milestone */
+  next_milestone: { id: string; title: string; due_date: string } | null;
+  /** direct members (not through a team) */
+  members: Array<{ id: string; name: string }>;
+  team_count: number;
+  updated_at: string;
+  /** revisions in the project's history; null when the viewer may not see the history */
+  revision_count: number | null;
+}
+
+export interface ClientFolderDetailDto {
+  folder: ClientFolderDto;
+  projects: FolderProjectDto[];
+  /** can this viewer change the folder, its projects and see revision history */
+  can_manage: boolean;
+}
+
+export interface ClientFoldersDto {
+  /** settings.clientFolders */
+  enabled: boolean;
+  folders: ClientFolderDto[];
+}
+
+/** One revision of a project, from the audit log. */
+export interface ProjectRevisionDto {
+  id: string;
+  /** 1 = the oldest */
+  number: number;
+  action: 'project.created' | 'project.updated' | 'project.archived' | 'project.restored';
+  actor_type: string;
+  actor_name: string | null;
+  changes: Array<{ field: string; before: unknown; after: unknown; before_known: boolean }>;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface ProjectRevisionsDto {
+  total: number;
+  data: ProjectRevisionDto[];
+  /** names for ids found in changes (members, teams, clients), so they can be shown as names */
+  names: Record<string, string>;
+}
+
 /** A project's planned break (from an organization break type). */
 export interface ProjectBreakDto {
   break_type_id: string;

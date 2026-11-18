@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Archive, ArchiveRestore } from 'lucide-react';
 import type { ClientDto, ProjectDto } from '@tallywork/contracts';
-import { Button, ConfirmDialog, Panel, fmtDate, useToast } from '@tallywork/ui';
+import { Button, ConfirmDialog, Field, Input, Panel, fmtDate, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { useRatePricingConfirm } from '@/components/finance/rate-pricing-confirm';
@@ -25,6 +25,8 @@ export function SettingsTab({ project }: { project: ProjectDto }) {
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  // Why this change was made: kept with the revision in the project's history, not on the project.
+  const [reason, setReason] = useState('');
   const pricing = useRatePricingConfirm();
   // The form follows the saved project only while it has no unsaved changes (or right after a save):
   // a background refresh (window focus, someone's timer updating the totals) must not wipe edits.
@@ -50,7 +52,8 @@ export function SettingsTab({ project }: { project: ProjectDto }) {
       if (!(await pricing.confirm(previewRatesFromBody(body, { scope: 'PROJECT', scopeId: project.id }, currency, todayIn(org.organization.timezone))))) return;
       // Before the request: the action refreshes the project before it returns.
       justSaved.current = true;
-      await run('PATCH', `/projects/${project.id}`, body);
+      await run('PATCH', `/projects/${project.id}`, reason.trim() ? { ...body, change_reason: reason.trim() } : body);
+      setReason('');
       toast.success('Project saved');
     } catch (e) {
       justSaved.current = false;
@@ -84,9 +87,12 @@ export function SettingsTab({ project }: { project: ProjectDto }) {
           }}
         >
           <ProjectFields f={f} setF={setF} err={err} clients={clients} showAssignments={false} projectId={project.id} />
+          <Field label="Reason for this change" htmlFor="project-change-reason" hint="Optional. Shown in the project’s revision history." className="mt-4">
+            <Input id="project-change-reason" value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Client moved the launch date" />
+          </Field>
           {pricing.dialog}
           <div className="mt-4 flex justify-end gap-2">
-            <Button onClick={() => setF(projectToForm(project, hoursPerDay))}>Reset</Button>
+            <Button onClick={() => (setF(projectToForm(project, hoursPerDay)), setReason(''))}>Reset</Button>
             <Button type="submit" variant="primary" loading={busy} disabled={!f.name.trim()}>
               Save changes
             </Button>

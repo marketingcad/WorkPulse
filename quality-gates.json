@@ -7,10 +7,10 @@
       "covers": "Time tracking, session state, timesheets, payroll, invoicing, money maths, permissions, authentication and tenant isolation.",
       "vitest": {
         "packages/domain": ["domain", "overtime"],
-        "packages/db": ["rls", "migrations", "pool-session", "performance", "assistant"],
+        "packages/db": ["rls", "client-folders", "migrations", "pool-session", "performance", "assistant"],
         "apps/web": ["qa-phase6", "timesheet-conflict", "invoice-preview-state", "invoice-quantity"],
         "packages/api": [
-          "access-consistency", "agent-login", "agent-logout", "qa-phase9", "finance-calculations", "ai-insights", "ai-insights-finance", "ai-insights-capacity", "ai-insights-forecast", "portal-ai-summary", "assistant-performance-tool", "assistant-insight-tools", "assistant-drafts", "assistant", "assistant-security", "assistant-tools", "agent-me", "audit-oct28", "audit-phase1", "breaks-eod", "compliance", "confirm-window", "device-approval",
+          "access-consistency", "client-folders", "agent-login", "agent-logout", "qa-phase9", "finance-calculations", "ai-insights", "ai-insights-finance", "ai-insights-capacity", "ai-insights-forecast", "portal-ai-summary", "assistant-performance-tool", "assistant-insight-tools", "assistant-drafts", "assistant", "assistant-security", "assistant-tools", "agent-me", "audit-oct28", "audit-phase1", "breaks-eod", "compliance", "confirm-window", "device-approval",
           "finance", "flow", "forms-phase4", "integrations", "invitations", "invitation-peek", "mfa-hardening", "money-p0", "money-p1-safety", "money-phase3", "multi-monitor",
           "offline-sync", "offline-sync.property", "payroll", "qa-phase6", "rates-effective-date", "refused-time", "route-boundaries", "security", "security-auth", "security-authz", "tenant-context",
           "session-timeouts", "staff-profile", "support", "time-accuracy", "time-integrity", "time-money", "time-overlap", "time-product",
@@ -31,7 +31,7 @@
       "severity": "High",
       "covers": "Web workflows, desktop screens, integrations, reports, notifications, the client portal, the Performance Center and the support console.",
       "vitest": {
-        "packages/domain": ["performance", "screenshot-retention", "insights-compare", "insights-timesheets", "insights-workforce", "insights-projects", "insights-workflow", "insights-performance", "insights-finance", "insights-capacity", "insights-forecast", "portal-summary", "notifications", "expense-categories", "assistant-navigation", "help-search"],
+        "packages/domain": ["performance", "project-revisions", "screenshot-retention", "insights-compare", "insights-timesheets", "insights-workforce", "insights-projects", "insights-workflow", "insights-performance", "insights-finance", "insights-capacity", "insights-forecast", "portal-summary", "notifications", "expense-categories", "assistant-navigation", "help-search"],
         "packages/contracts": ["assistant"],
         "e2e/tutorial": ["anchors", "align", "captions", "retime", "voice-timing", "timeline", "recordings-anchors", "assistant", "coverage", "coverage-scenes", "visuals-plan"],
         "packages/api": [
@@ -54,7 +54,7 @@
         "web/csv-import", "web/form-checks", "web/public-hydration", "web/data-export", "web/download", "web/finance-paging", "web/help", "web/help-video", "web/insights", "web/invitations",
         "web/member-profile", "web/monitoring-card-setting", "web/multi-monitor", "web/navigation", "web/navigation-flows", "web/organizations", "web/people-paging",
         "web/performance-achievements", "web/performance-goals", "web/performance-leaderboards", "web/performance-overview", "web/performance-teams",
-        "web/performance-workers", "web/portal", "web/portal-insights", "web/profile-avatar", "web/profiles", "web/project-milestones",
+        "web/performance-workers", "web/portal", "web/portal-insights", "web/profile-avatar", "web/profiles", "web/project-milestones", "web/client-folders",
         "web/qa/activity-default", "web/qa/people-flows", "web/qa/public-auth", "web/qa/settings-integrations", "web/qa/work-flows",
         "web/screenshot-retention", "web/simplified-nav", "web/support-console", "web/time-paging", "web/work-forms", "web/document-logo",
         "desktop/avatar", "desktop/navigation", "desktop/performance", "desktop/startup-transparency",

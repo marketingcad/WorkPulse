@@ -487,6 +487,8 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
       .limit(1);
     if (same) throw conflict('duplicate_name', client ? 'This client already has a project with this name' : 'A project with this name already exists', { errors: [{ field: 'name', message: 'Use another name, or archive the other project' }] });
   }
+  // The values being replaced, for the project's revision history (previous and new value per field).
+  const prior = projectId ? (await listProjects(x, { includeArchived: true, ids: [projectId] }))[0] : undefined;
   let id = projectId;
   if (id) {
     // Moving to another client: that client sees the project's work from now on, not what was done for the previous one.
@@ -526,7 +528,16 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
   if (projectId && input.client_id !== undefined) await assertRatesInCurrency(x, row?.cur ?? x.org.currency, [id], null, 'this project');
   if (!projectId) await emitFrom(x, 'project.created', { project_id: id, name: input.name });
   else await emitFrom(x, 'project.updated', { project_id: id });
-  await audit(x, { action: projectId ? 'project.updated' : 'project.created', targetType: 'project', targetId: id, after: input });
+  const { change_reason: reason, ...changed } = input;
+  const before = prior ? Object.fromEntries(Object.keys(changed).filter((k) => k in prior).map((k) => [k, prior[k as keyof ProjectDto]])) : undefined;
+  await audit(x, {
+    action: projectId ? 'project.updated' : 'project.created',
+    targetType: 'project',
+    targetId: id,
+    before,
+    after: changed,
+    metadata: reason ? { reason } : undefined,
+  });
   // Freshly assigned projects must be visible to the editor too.
   x.actor.assignedProjectIds.add(id);
   return getProject(x, id);

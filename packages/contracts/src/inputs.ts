@@ -93,6 +93,8 @@ export const updateOrgInput = z.object({
       workingHoursPerDay: z.number().min(1).max(24),
       /** show workers the "What WorkPulse records" card in the desktop app */
       showMonitoringCard: z.boolean(),
+      /** organize projects into client folders on the Projects page */
+      clientFolders: z.boolean(),
     })
     .partial()
     .optional(),
@@ -217,7 +219,20 @@ export const projectInput = z.object({
   rate_effective_from: isoDate.optional(),
   /** planned breaks, in order; replaces the project's list when given */
   breaks: z.array(projectBreakInput).max(12).optional(),
+  /** why this change was made; kept with the project's revision history, not on the project */
+  change_reason: optionalText(500),
 });
+
+// ─── Client folders ──────────────────────────────────────────────────────────
+/** A folder for one client; the name defaults to the client's. */
+export const clientFolderInput = z.object({
+  client_id: id,
+  name: nonEmpty(150).optional(),
+  description: optionalText(500),
+});
+export const clientFolderPatchInput = z.object({ name: nonEmpty(150), description: optionalText(500) }).partial();
+/** Existing projects to place in a folder: each must have no client yet, or already be this client's. */
+export const folderProjectsInput = z.object({ project_ids: z.array(id).min(1).max(200) });
 
 export const taskInput = z.object({
   title: nonEmpty(300),

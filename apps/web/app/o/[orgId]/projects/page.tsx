@@ -19,6 +19,7 @@ import {
   PageHeader,
   Panel,
   PermissionState,
+  SegmentedControl,
   Select,
   cx,
   fmtDate,
@@ -33,6 +34,8 @@ import { ColorDot, PROJECT_STATUSES, ProjectStatusBadge, useOrgAction } from '@/
 
 // The project form loads when it is opened, not with the list (bundle budget).
 const ProjectDialog = dynamic(() => import('@/components/workspace/project-fields').then((m) => m.ProjectDialog), { ssr: false });
+// Client folders are optional (settings.clientFolders): their view loads only when it is opened.
+const ClientFoldersView = dynamic(() => import('@/components/workspace/client-folders').then((m) => m.ClientFoldersView), { ssr: false });
 import { useMemberOptions } from '@/lib/members';
 
 export default function ProjectsPage() {
@@ -48,6 +51,9 @@ function Projects() {
   const router = useRouter();
   const params = useSearchParams();
   const canManage = org.can('projects:manage');
+  const foldersOn = (org.organization.settings as { clientFolders?: boolean }).clientFolders === true && org.can('clients:read');
+  const view = foldersOn && params.get('view') === 'folders' ? 'folders' : 'list';
+  const setView = (v: 'list' | 'folders') => router.replace(`${org.base}/projects${v === 'folders' ? '?view=folders' : ''}`, { scroll: false });
   const [status, setStatus] = useState('');
   const [clientId, setClientId] = useState(params.get('client') ?? '');
   const [archived, setArchived] = useState(false);
@@ -58,7 +64,7 @@ function Projects() {
   const run = useOrgAction();
   const toast = useToast();
 
-  const q = useOrgQuery<ProjectDto[]>(org.can('projects:read') ? `/projects${qs({ include_archived: archived || undefined, client_id: clientId || undefined })}` : null);
+  const q = useOrgQuery<ProjectDto[]>(org.can('projects:read') && view === 'list' ? `/projects${qs({ include_archived: archived || undefined, client_id: clientId || undefined })}` : null);
   // Archived clients too: the filter must show them ("View projects" on an archived client), and a
   // project's archived client stays visible when it is edited. Only active clients can be picked.
   const clientsQ = useOrgQuery<ClientDto[]>(org.can('clients:read') ? '/clients?include_archived=true' : null);
@@ -185,13 +191,30 @@ function Projects() {
         title="Projects"
         description="Where time is tracked. Members and teams on a project can track to it."
         actions={
-          canManage && (
-            <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setEdit('new')}>
-              New project
-            </Button>
-          )
+          <div className="flex flex-wrap items-center gap-2">
+            {foldersOn && (
+              <SegmentedControl
+                label="View"
+                value={view}
+                onChange={setView}
+                options={[
+                  { value: 'list', label: 'All projects' },
+                  { value: 'folders', label: 'Client folders' },
+                ]}
+              />
+            )}
+            {canManage && view === 'list' && (
+              <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setEdit('new')}>
+                New project
+              </Button>
+            )}
+          </div>
         }
       />
+      {view === 'folders' ? (
+        <ClientFoldersView />
+      ) : (
+        <>
       <FilterBar>
         <Select aria-label="Filter by status" value={status} onChange={(e) => setStatus(e.target.value)} className="w-36">
           <option value="">All statuses</option>
@@ -245,6 +268,8 @@ function Projects() {
           />
         )}
       </Panel>
+        </>
+      )}
 
       {edit !== null && (
         <ProjectDialog

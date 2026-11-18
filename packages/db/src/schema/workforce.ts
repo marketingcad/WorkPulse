@@ -57,6 +57,31 @@ export const clients = pgTable(
   (t) => [unique('clients_org_id_uq').on(t.organizationId, t.id), index().on(t.organizationId, t.archivedAt)],
 );
 
+/**
+ * A client folder: an optional way to organize projects by client (settings.clientFolders). One per
+ * client. It holds no projects of its own: its projects are the client's (projects.client_id), so a
+ * project never leaves its client and nothing is copied. Its name is a label for navigation only;
+ * invoices keep the client's name, and archiving a folder hides it without touching the client.
+ */
+export const clientFolders = pgTable(
+  'client_folders',
+  {
+    id: pk(),
+    organizationId: orgId().references(() => organizations.id, { onDelete: 'cascade' }),
+    clientId: uuid().notNull(),
+    name: text().notNull(),
+    description: text(),
+    archivedAt: tstz(),
+    createdBy: uuid(),
+    ...timestamps,
+  },
+  (t) => [
+    unique('client_folders_org_id_uq').on(t.organizationId, t.id),
+    unique('client_folders_client_uq').on(t.organizationId, t.clientId),
+    foreignKey({ columns: [t.organizationId, t.clientId], foreignColumns: [clients.organizationId, clients.id] }).onDelete('cascade'),
+  ],
+);
+
 export const clientContacts = pgTable('client_contacts', {
   id: pk(),
   organizationId: orgId(),

@@ -1,7 +1,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import {
+  clientFolderInput,
+  clientFolderPatchInput,
   clientInput,
+  folderProjectsInput,
   pageQuery,
   clientPortalInviteInput,
   clientPortalSettingsInput,
@@ -24,6 +27,7 @@ import { body, formFile, parse, query } from '../lib/http';
 import { requirePermission } from '../middleware/tenant';
 import { requireUser } from '../middleware/auth';
 import { ctx } from '../services/ctx';
+import { addProjectsToFolder, createClientFolder, getClientFolder, listClientFolders, listProjectRevisions, setClientFolderArchived, updateClientFolder } from '../services/client-folders';
 import { avatarResponse, memberAvatarImage, memberAvatars } from '../services/avatar';
 import {
   deleteRole,
@@ -189,6 +193,21 @@ export const orgRoutes = new Hono<AppEnv>()
   })
   .get('/clients/:id/portal/preview/screenshots', requirePermission('clients:manage'), async (c) => c.json(await previewScreenshots(ctx(c), c.req.param('id'), query(c, portalRangeInput))))
 
+  // Client folders (optional: settings.clientFolders). A folder's projects are its client's.
+  .get('/client-folders', async (c) => c.json(await listClientFolders(ctx(c), { includeArchived: query(c, z.object({ include_archived: bool })).include_archived })))
+  .post('/client-folders', async (c) => c.json(await createClientFolder(ctx(c), await body(c, clientFolderInput)), 201))
+  .get('/client-folders/:id', async (c) => c.json(await getClientFolder(ctx(c), c.req.param('id'), { includeArchived: query(c, z.object({ include_archived: bool })).include_archived })))
+  .patch('/client-folders/:id', async (c) => c.json(await updateClientFolder(ctx(c), c.req.param('id'), await body(c, clientFolderPatchInput))))
+  .post('/client-folders/:id/archive', async (c) => {
+    await setClientFolderArchived(ctx(c), c.req.param('id'), true);
+    return c.body(null, 204);
+  })
+  .post('/client-folders/:id/restore', async (c) => {
+    await setClientFolderArchived(ctx(c), c.req.param('id'), false);
+    return c.body(null, 204);
+  })
+  .post('/client-folders/:id/projects', async (c) => c.json(await addProjectsToFolder(ctx(c), c.req.param('id'), await body(c, folderProjectsInput))))
+
   // Projects & tasks
   .get('/projects', async (c) => {
     const q = query(c, z.object({ include_archived: bool, client_id: z.uuid().optional() }));
@@ -204,6 +223,11 @@ export const orgRoutes = new Hono<AppEnv>()
   .post('/projects/:id/restore', async (c) => {
     await setProjectArchived(ctx(c), c.req.param('id'), false);
     return c.body(null, 204);
+  })
+  // Revision history of the project (from the audit log; time-entry edits are not part of it)
+  .get('/projects/:id/revisions', async (c) => {
+    const q = query(c, pageQuery.extend({ order: z.enum(['asc', 'desc']).default('desc') }));
+    return c.json(await listProjectRevisions(ctx(c), c.req.param('id'), { page: q.page ?? 1, pageSize: q.page_size, order: q.order }));
   })
   .get('/projects/:id/documents', async (c) => c.json(await listProjectDocuments(ctx(c), c.req.param('id'))))
   .post('/projects/:id/documents', async (c) => {

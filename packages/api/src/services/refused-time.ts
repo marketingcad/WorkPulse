@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { manualTimeRequests, projects, refusedTime } from '@tallywork/db';
 import { addDaysToDate, newId, notFound, startOfLocalDay, type DomainError } from '@tallywork/domain';
 import type { AgentEvent, RefusedTimeDto } from '@tallywork/contracts';
@@ -90,6 +90,9 @@ export async function listRefusedTime(x: Ctx, q: { from: string; to: string; sta
         eq(refusedTime.kind, 'time'),
         gte(refusedTime.startedAt, from),
         lt(refusedTime.startedAt, to),
+        // Open (nothing done yet) or a correction asked for, chosen before the 500-row limit (QA, BUG-54:
+        // the limit came first, so open records past the newest 500 of the range were dropped).
+        q.status === 'all' ? undefined : or(eq(manualTimeRequests.status, 'PENDING'), and(isNull(refusedTime.manualRequestId), isNull(refusedTime.dismissedAt))),
       ),
     )
     .orderBy(desc(refusedTime.startedAt))

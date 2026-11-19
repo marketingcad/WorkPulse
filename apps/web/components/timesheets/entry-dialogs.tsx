@@ -8,6 +8,7 @@ import { fieldError, timeRangeProblem } from '@/lib/form-checks';
 import { useOrg } from '@/lib/org';
 import { ProjectTaskPicker, type PickerValue } from '@/components/project-task-picker';
 import { fromLocalInput, toLocalInput, useAssignmentsFor, useReasonPolicy, type EntryRevision } from './shared';
+import { editedInstant } from '@/lib/zoned';
 import { useMemberOptions } from '@/lib/members';
 import { asHm, entryDurationProblem, parseDuration } from '@/lib/duration';
 
@@ -81,7 +82,9 @@ export function EditEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onClo
     if (!s || !e) return setErr(new ApiError(422, 'validation', 'Enter a valid start and end'));
     if (!target.projectId) return setErr(new ApiError(422, 'validation', 'Choose a project'));
     // The server's rules, beside their fields (form validation audit, 20 Nov 2026).
-    const order = timeRangeProblem(s, e);
+    const startEdit = editedInstant(start, entry.started_at, tz);
+    const endEdit = editedInstant(end, entry.ended_at, tz);
+    const order = timeRangeProblem(startEdit ?? entry.started_at, endEdit ?? entry.ended_at);
     if (order) return setErr(fieldError('ended_at', order));
     if (saving) return;
     setSaving(true);
@@ -90,8 +93,9 @@ export function EditEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onClo
       await api(`/orgs/${org.organization.id}/time-entries/${entry.id}`, {
         method: 'PATCH',
         body: {
-          ...(s !== new Date(entry.started_at).toISOString() ? { started_at: s } : {}),
-          ...(e !== new Date(entry.ended_at).toISOString() ? { ended_at: e } : {}),
+          // Only a time that was changed here: the field has no seconds (BUG-53).
+          ...(startEdit ? { started_at: startEdit } : {}),
+          ...(endEdit ? { ended_at: endEdit } : {}),
           ...(target.projectId !== entry.project_id ? { project_id: target.projectId } : {}),
           ...(target.taskId !== entry.task_id ? { task_id: target.taskId } : {}),
           ...((timeType || null) !== (entry.time_type_id ?? null) ? { time_type_id: timeType || null } : {}),

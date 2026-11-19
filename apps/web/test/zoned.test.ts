@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayEndIn, dayStartIn, fromZonedInput, toZonedInput } from '../lib/zoned';
+import { dayEndIn, dayStartIn, editedInstant, fromZonedInput, toZonedInput } from '../lib/zoned';
 
 // Audit 28 Oct 2026 (U7/FE-4): entry times are edited on the member's clock, not the browser's.
 describe('wall-clock times in a named time zone', () => {
@@ -37,5 +37,23 @@ describe('a calendar day in a named time zone', () => {
   it('is nothing for no date', () => {
     expect(dayStartIn('', 'UTC')).toBeUndefined();
     expect(dayEndIn('', 'UTC')).toBeUndefined();
+  });
+});
+
+// QA BUG-53: an edit form sends a time only when its field was changed. The field has no seconds, so a
+// tracked time like 09:14:37 must not come back as 09:14:00 when only the note changed.
+describe('a time field of an edit form', () => {
+  const tracked = '2026-11-18T01:14:37.000Z'; // 9:14:37 AM in Manila
+
+  it('left as opened, changes nothing', () => {
+    expect(editedInstant(toZonedInput(tracked, 'Asia/Manila'), tracked, 'Asia/Manila')).toBeUndefined();
+  });
+
+  it('changed, gives the new instant in the entry’s zone', () => {
+    expect(editedInstant('2026-11-18T09:30', tracked, 'Asia/Manila')).toBe('2026-11-18T01:30:00.000Z');
+  });
+
+  it('not a time, gives nothing', () => {
+    expect(editedInstant('', tracked, 'Asia/Manila')).toBeUndefined();
   });
 });

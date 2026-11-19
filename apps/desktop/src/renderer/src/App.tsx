@@ -542,7 +542,9 @@ function ManualTime({ s, prefill, onBack }: { s: AgentState; prefill: ManualPref
   const [to, setTo] = useState(prefill ? hhmm(prefill.to) : '10:00');
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  // The request just made, followed until the server answers: "Request sent." only once it is accepted (BUG-23).
+  const [sentId, setSentId] = useState<string | null>(null);
+  const sent = sentId ? s.manualRequests.find((r) => r.id === sentId) : undefined;
   const project = s.assignments.find((a) => a.project_id === projectId);
   const startedAt = new Date(`${date}T${from}`);
   const endedAt = new Date(`${date}T${to}`);
@@ -558,10 +560,10 @@ function ManualTime({ s, prefill, onBack }: { s: AgentState; prefill: ManualPref
 
   const submit = async () => {
     setError(null);
-    setSaved(false);
+    setSentId(null);
     try {
       // Asking for refused time links the request to it, so managers see it corrected (and the note goes).
-      await bridge.requestManualTime({
+      const id = await bridge.requestManualTime({
         projectId,
         taskId: taskId || null,
         startedAt: startedAt.toISOString(),
@@ -570,7 +572,7 @@ function ManualTime({ s, prefill, onBack }: { s: AgentState; prefill: ManualPref
         ...(prefill ? { refusedSessionId: prefill.notAddedId } : {}),
       });
       setReason('');
-      setSaved(true);
+      setSentId(id);
     } catch (e) {
       setError(errorText(e, 'Could not save'));
     }
@@ -631,7 +633,21 @@ function ManualTime({ s, prefill, onBack }: { s: AgentState; prefill: ManualPref
           {seconds > 0 ? fmtHm(seconds) : '—'} · times in this computer's time zone. {policy.requiresApproval ? 'Your manager approves manual time before it counts.' : 'It is added to your timesheet right away.'}
         </p>
         {error && <p className="mt-2 rounded-sm bg-danger-soft px-2.5 py-1.5 text-xs text-danger">{error}</p>}
-        {saved && <p className="mt-2 rounded-sm bg-success-soft px-2.5 py-1.5 text-xs text-success">{s.sync.online ? 'Request sent.' : 'Saved on this computer. It will be sent when you are back online.'}</p>}
+        {sent?.status === 'queued' && (
+          <p role="status" className="mt-2 rounded-sm bg-surface-muted px-2.5 py-1.5 text-xs text-text-muted">
+            {s.sync.online ? 'Sending…' : 'Saved on this computer. It will be sent when you are back online.'}
+          </p>
+        )}
+        {sent?.status === 'sent' && (
+          <p role="status" className="mt-2 rounded-sm bg-success-soft px-2.5 py-1.5 text-xs text-success">
+            {policy.requiresApproval ? 'Request sent. Your manager will review it.' : 'Added to your timesheet.'}
+          </p>
+        )}
+        {sent?.status === 'rejected' && (
+          <p role="alert" className="mt-2 rounded-sm bg-danger-soft px-2.5 py-1.5 text-xs text-danger">
+            Not added: {sent.message ?? 'the request was not accepted.'}
+          </p>
+        )}
         <button
           disabled={!projectId || seconds <= 0}
           onClick={() => void submit()}

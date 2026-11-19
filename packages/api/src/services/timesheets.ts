@@ -336,7 +336,11 @@ export async function assertPeriodsOpen(x: Ctx, membershipId: string, dates: str
     .from(timesheets)
     .where(and(eq(timesheets.membershipId, membershipId), inArray(timesheets.status, ['SUBMITTED', 'APPROVED']), lte(timesheets.periodStart, sorted[sorted.length - 1]!), gte(timesheets.periodEnd, sorted[0]!)));
   const closed = candidates.find((t) => dates.some((d) => d >= t.periodStart && d <= t.periodEnd));
-  if (closed) throw businessRule('timesheet_locked', `The timesheet for this period is ${closed.status.toLowerCase()}; reopen it before changing its time`, { period_start: closed.periodStart });
+  if (closed) {
+    // Only an approver can reopen a timesheet: a worker is told who to ask, not to do it (QA round 6, BUG-23).
+    const next = can(x.actor, 'timesheets:approve', { ownerMembershipId: membershipId }) ? 'reopen it before changing its time' : 'ask your manager to reopen it, then try again';
+    throw businessRule('timesheet_locked', `The timesheet for this period is ${closed.status.toLowerCase()}; ${next}`, { period_start: closed.periodStart });
+  }
 }
 
 export async function updateTimeEntry(x: Ctx, entryId: string, input: z.infer<typeof timeEntryUpdateInput>) {

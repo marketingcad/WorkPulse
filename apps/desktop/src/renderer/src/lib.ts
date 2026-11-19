@@ -1,3 +1,4 @@
+import { localDateInput, todayIn } from './dates';
 import { useEffect, useRef, useState } from 'react';
 import type { AgentState, MeResource } from '../../shared/ipc';
 import { plainError } from '../../shared/errors';
@@ -156,9 +157,7 @@ export function fmtTime(iso: string): string {
   });
 }
 
-export function localDateInput(d = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+export { localDateInput, todayIn };
 
 /** Message from a failed bridge call, without Electron's "Error invoking remote method…" prefix. */
 /** An error from main, in words a worker understands (no Chromium codes or bare status numbers). */

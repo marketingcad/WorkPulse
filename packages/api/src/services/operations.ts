@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   breakTypes,
@@ -12,6 +12,8 @@ import {
   timeSegments,
   trackingSessions,
   timeOffLedger,
+  payrollRunLines,
+  payrollRuns,
   timeOffPolicies,
   timeOffPolicyMembers,
   timeOffRequests,
@@ -485,6 +487,8 @@ async function approveRequestLedger(tx: Tx, orgId: string, r: typeof timeOffRequ
 export async function requestTimeOff(x: Ctx, input: z.infer<typeof timeOffRequestInput>) {
   if (!x.actor.grants['time_off:request']) throw forbidden();
   if (input.end_date < input.start_date) throw validation('End date must be on or after the start date');
+  // A half day is one day: on a longer request it was ignored and full days were charged (QA, BUG-62).
+  if (input.half_day && input.end_date !== input.start_date) throw validation('A half day is a single day. Choose the same start and end date, or untick Half day', { errors: [{ field: 'half_day', message: 'Only for a single day' }] });
   // Two requests sent at once must not both pass the overlap and balance checks.
   await lockWorker(x.tx, x.actor.membershipId);
   const ps = await policiesForMember(x.tx, x.actor.membershipId);
@@ -541,13 +545,42 @@ export async function decideTimeOff(x: Ctx, id: string, action: 'APPROVE' | 'REJ
       const today = localDate(x.deps.now(), await workerTimezone(x.tx, r.membershipId, x.org.timezone));
       if (r.startDate <= today) throw businessRule('time_off_started', 'This time off has already started. Ask an approver to cancel it.');
     }
+    // Time off a finalized or paid payroll has paid can't be handed back: the hours would return to the
+    // balance and the pay would stay (QA, BUG-60). Corrections go on the next payroll.
+    if (r.status === 'APPROVED') {
+      const [paid] = await x.tx
+        .select({ start: payrollRuns.periodStart, end: payrollRuns.periodEnd })
+        .from(payrollRunLines)
+        .innerJoin(payrollRuns, eq(payrollRuns.id, payrollRunLines.runId))
+        .where(
+          and(
+            eq(payrollRunLines.organizationId, x.org.id),
+            eq(payrollRunLines.membershipId, r.membershipId),
+            gt(payrollRunLines.timeOffHours, 0),
+            inArray(payrollRuns.status, ['FINALIZED', 'PAID']),
+            lte(payrollRuns.periodStart, r.endDate),
+            gte(payrollRuns.periodEnd, r.startDate),
+          ),
+        )
+        .limit(1);
+      if (paid) throw businessRule('time_off_paid', `A finalized payroll (${paid.start} to ${paid.end}) has paid this time off, so it can't be cancelled. Make the correction on the next payroll.`);
+    }
     if (r.status === 'APPROVED') {
       await x.tx.insert(timeOffLedger).values({ id: newId(), organizationId: x.org.id, policyId: r.policyId, membershipId: r.membershipId, hours: r.hours, kind: 'REVERSAL', requestId: r.id, effectiveDate: r.startDate, createdBy: x.actor.membershipId });
     }
   } else {
     if (own || !can(x.actor, 'time_off:approve', { ownerMembershipId: r.membershipId })) throw forbidden();
     if (r.status !== 'PENDING') throw businessRule('already_decided', 'This request has already been decided');
-    if (action === 'APPROVE') await approveRequestLedger(x.tx, x.org.id, r, x.actor.membershipId);
+    if (action === 'APPROVE') {
+      // The balance may have changed since the request (an adjustment, another approval): check it again
+      // (QA, BUG-61). Other pending requests are checked when they are approved.
+      const [p] = await x.tx.select({ accrual: timeOffPolicies.accrual }).from(timeOffPolicies).where(eq(timeOffPolicies.id, r.policyId));
+      if (p && (p.accrual as { type: string }).type !== 'none') {
+        const bal = (await balances(x, r.membershipId)).find((b) => b.policy_id === r.policyId);
+        if (bal && bal.balance_hours !== null && bal.balance_hours < Number(r.hours)) throw businessRule('insufficient_balance', `Not enough balance to approve: ${bal.balance_hours}h available, ${Number(r.hours)}h asked`);
+      }
+      await approveRequestLedger(x.tx, x.org.id, r, x.actor.membershipId);
+    }
   }
   const status = action === 'APPROVE' ? 'APPROVED' : action === 'REJECT' ? 'REJECTED' : 'CANCELLED';
   await x.tx.update(timeOffRequests).set({ status, decidedBy: x.actor.membershipId, decidedAt: new Date(), decisionComment: comment, updatedAt: new Date() }).where(eq(timeOffRequests.id, id));

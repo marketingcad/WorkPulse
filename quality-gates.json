@@ -10,7 +10,7 @@
         "packages/db": ["rls", "client-folders", "migrations", "pool-session", "performance", "assistant"],
         "apps/web": ["qa-phase6", "timesheet-conflict", "invoice-preview-state", "invoice-quantity"],
         "packages/api": [
-          "access-consistency", "expense-rules", "team-rules", "privacy-rules", "role-rules", "invoice-rules", "time-entry-rules", "rate-rules", "activity-access", "payroll-unpriced", "invoice-unpriced", "timesheet-locked-message", "client-folders", "enrollment-tokens", "agent-login", "agent-logout", "qa-phase9", "finance-calculations", "ai-insights", "ai-insights-finance", "ai-insights-capacity", "ai-insights-forecast", "portal-ai-summary", "assistant-performance-tool", "assistant-insight-tools", "assistant-drafts", "assistant", "assistant-security", "assistant-tools", "agent-me", "audit-oct28", "audit-phase1", "breaks-eod", "compliance", "confirm-window", "device-approval",
+          "access-consistency", "expense-rules", "team-rules", "privacy-rules", "role-rules", "invoice-rules", "time-entry-rules", "rate-rules", "time-off-rules", "activity-access", "payroll-unpriced", "invoice-unpriced", "timesheet-locked-message", "client-folders", "enrollment-tokens", "agent-login", "agent-logout", "qa-phase9", "finance-calculations", "ai-insights", "ai-insights-finance", "ai-insights-capacity", "ai-insights-forecast", "portal-ai-summary", "assistant-performance-tool", "assistant-insight-tools", "assistant-drafts", "assistant", "assistant-security", "assistant-tools", "agent-me", "audit-oct28", "audit-phase1", "breaks-eod", "compliance", "confirm-window", "device-approval",
           "finance", "flow", "forms-phase4", "integrations", "invitations", "invitation-peek", "mfa-hardening", "money-p0", "money-p1-safety", "money-phase3", "multi-monitor",
           "offline-sync", "offline-sync.property", "payroll", "pdf-documents", "qa-phase6", "rates-effective-date", "refused-time", "route-boundaries", "security", "security-auth", "security-authz", "tenant-context",
           "session-timeouts", "staff-profile", "support", "time-accuracy", "time-integrity", "time-money", "time-overlap", "time-product",
@@ -47,7 +47,7 @@
           "download-guides", "download-platform", "duration-input", "form-checks", "help", "invoice-extra-lines", "money-input", "multi-monitor", "nav", "page-help", "redirect",
           "placeholder", "policy-fields", "project-rate-start", "queue", "rate-pricing", "table-actions", "time-off-overlap", "unsaved", "url-range", "zoned", "document-logo"
         ],
-        "apps/desktop": ["agent-account", "enrollment", "release-names", "manual-request", "agent-connect", "agent-monitoring-card", "disclosure", "errors", "nav", "updater", "urls"]
+        "apps/desktop": ["agent-account", "today-in", "enrollment", "release-names", "manual-request", "agent-connect", "agent-monitoring-card", "disclosure", "errors", "nav", "updater", "urls"]
       },
       "playwright": [
         "web/form-validation", "web/assistant", "web/ai-insights", "web/ai-workflow", "web/ai-advanced", "web/ai-forecast-portal", "web/tracking-policies", "web/webhooks", "web/report-exports", "web/schedules", "web/stale-screens", "web/time-off", "web/attendance-scheduled", "web/breaks-eod", "web/budgets", "web/calculator", "web/calculator-accuracy", "web/charts", "web/client-delete",

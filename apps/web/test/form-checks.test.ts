@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { inviteInput, issueMessage, loginInput, password, signupInput } from '@tallywork/contracts';
-import { EMAIL_MESSAGE, dateOrderProblem, emailProblem, fieldError, loginProblems, passwordProblem, signupProblems } from '../lib/form-checks';
+import { EMAIL_MESSAGE, confirmPasswordProblem, dateOrderProblem, optionalNameProblem, requiredNameProblem, emailProblem, fieldError, loginProblems, passwordProblem, signupProblems } from '../lib/form-checks';
 
 /**
  * QA audit, 11 Nov 2026 (BUG-05, BUG-10): forms sent malformed emails, reversed dates and short
@@ -88,5 +88,32 @@ describe('loginProblems matches the server (QA audit BUG-17)', () => {
     const server = loginInput.safeParse({ email: f.email.trim(), password: f.password }, { reportInput: true });
     const expected = server.success ? [] : server.error.issues.map((i) => ({ field: String(i.path[0]), message: issueMessage(i as never) }));
     expect(loginProblems(f)).toEqual(expected);
+  });
+});
+
+/** Form validation audit, 20 Nov 2026: names, and new passwords typed twice. */
+describe('personNameProblem matches the server', () => {
+  const names = ['Ada Lovelace', 'José Álvarez', "Seán O'Brien", 'Mary-Jane', '李小龙', 'Nguyễn Văn An', 'Martin Luther King Jr.', 'QA Worker 2', '12345', '<script>x</script>', 'Ada@home', 'Bob#1', '---', 'n'.repeat(101), '   ', ''];
+  it.each(names)('%s', (n) => {
+    const server = signupInput.shape.name.safeParse(n);
+    const browser = requiredNameProblem(n, 100);
+    expect(browser === null).toBe(server.success);
+    if (!server.success) {
+      const issue = server.error.issues[0]!;
+      expect(browser).toBe(issue.code === 'custom' ? issue.message : issueMessage(issue as never));
+    }
+  });
+
+  it('optional names may be blank', () => {
+    expect(optionalNameProblem('   ')).toBeNull();
+    expect(optionalNameProblem('123')).toBe('A name needs at least one letter');
+  });
+});
+
+describe('confirmPasswordProblem', () => {
+  it('needs the same password typed again', () => {
+    expect(confirmPasswordProblem('correct-horse-1', '')).toBe('Type the password again');
+    expect(confirmPasswordProblem('correct-horse-1', 'correct-horse-2')).toBe('The passwords do not match');
+    expect(confirmPasswordProblem('correct-horse-1', 'correct-horse-1')).toBeNull();
   });
 });

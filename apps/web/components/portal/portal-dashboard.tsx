@@ -1,6 +1,8 @@
 'use client';
+import { useEffect, useState } from 'react';
 import { BriefcaseBusiness, CalendarRange, Clock3, HandCoins, Users } from 'lucide-react';
 import type { PortalScreenshotDto, PortalSummaryDto } from '@tallywork/contracts';
+import { PORTAL_MAX_RANGE_DAYS, portalRangeProblem } from '@tallywork/contracts/limits';
 import { ActivityBar, BrandLockup, BrandSignature, KpiStrip, Panel, PersonCell, Spinner, StatusBadge, type Kpi } from '@tallywork/ui';
 import { t } from '@/lib/i18n';
 
@@ -36,6 +38,15 @@ export function PortalDashboard({
   embedded?: boolean;
 }) {
   const Title = embedded ? 'h2' : 'h1';
+  // The fields edit a draft; only a period the server accepts is applied, so a cleared or mistyped date
+  // never replaces the dashboard with an error the client cannot leave (QA 13 Nov 2026, BUG-22).
+  const [draft, setDraft] = useState(range);
+  useEffect(() => setDraft(range), [range]);
+  const problem = portalRangeProblem(draft);
+  const edit = (next: { from: string; to: string }) => {
+    setDraft(next);
+    if (!portalRangeProblem(next)) onRange(next);
+  };
   const total = s.totals.tracked_seconds + s.totals.manual_seconds;
   const kpis: Kpi[] = [
     { label: t('portal.dash.total'), value: hours(total), icon: <Clock3 />, tone: 'blue' },
@@ -61,11 +72,16 @@ export function PortalDashboard({
             <span className="text-sm font-medium text-[#c7d2e8]" aria-hidden>
               {t('portal.dash.range')}
             </span>
-            <input type="date" aria-label={t('portal.dash.from')} value={range.from} max={range.to} onChange={(e) => onRange({ ...range, from: e.target.value })} className={dateField} />
+            <input type="date" aria-label={t('portal.dash.from')} value={draft.from} max={draft.to || undefined} onChange={(e) => edit({ ...draft, from: e.target.value })} aria-invalid={!!problem} aria-describedby={problem ? 'portal-range-problem' : undefined} className={dateField} />
             <span className="text-[#9fb0cf]" aria-hidden>
               –
             </span>
-            <input type="date" aria-label={t('portal.dash.to')} value={range.to} min={range.from} onChange={(e) => onRange({ ...range, to: e.target.value })} className={dateField} />
+            <input type="date" aria-label={t('portal.dash.to')} value={draft.to} min={draft.from || undefined} onChange={(e) => edit({ ...draft, to: e.target.value })} aria-invalid={!!problem} aria-describedby={problem ? 'portal-range-problem' : undefined} className={dateField} />
+            {problem && (
+              <p id="portal-range-problem" role="alert" className="basis-full text-sm font-medium text-[#ffc9c9]">
+                {problem === 'too_long' ? t('portal.dash.rangeTooLong', { days: PORTAL_MAX_RANGE_DAYS }) : t(problem === 'order' ? 'portal.dash.rangeOrder' : 'portal.dash.rangeMissing')}
+              </p>
+            )}
           </fieldset>
         </div>
       </header>

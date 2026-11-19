@@ -1,10 +1,12 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ClientDto } from '@tallywork/contracts';
 import { Button, Checkbox, Dialog, Field, Input, Select, Textarea, cx, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage } from '@/lib/api';
-import { emailProblem, fieldError } from '@/lib/form-checks';
+import { emailProblem, formErrors, optionalNameProblem } from '@/lib/form-checks';
+import { phoneProblem } from '@tallywork/contracts/phone';
+import { PhoneInput, defaultPhoneCountry } from '@/components/phone-input';
 import { todayIn, useOrg } from '@/lib/org';
 import { useRatePricingConfirm } from '@/components/finance/rate-pricing-confirm';
 import { previewRatesFromBody } from '@/components/finance/rate-pricing';
@@ -65,12 +67,19 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
   };
 
   const pricing = useRatePricingConfirm();
+  const phoneCountry = useMemo(() => defaultPhoneCountry(), []);
 
   const save = async () => {
     if (saving.current) return;
     // Checked here first, with the server's rule and wording (QA audit BUG-05). The email is optional.
-    const emailIssue = f.email.trim() ? emailProblem(f.email.trim()) : null;
-    if (emailIssue) return setErr(fieldError('email', emailIssue));
+    // Contact name and phone too (form validation audit, 20 Nov 2026).
+    const problems: Array<{ field: string; message: string }> = [];
+    const add = (field: string, message: string | null) => void (message && problems.push({ field, message }));
+    add('email', f.email.trim() ? emailProblem(f.email.trim()) : null);
+    add('contact_name', optionalNameProblem(f.contact_name, 150));
+    const phoneChanged = f.phone !== (client?.phone ?? '');
+    if (phoneChanged) add('phone', phoneProblem(f.phone));
+    if (problems.length) return setErr(formErrors(problems));
     saving.current = true;
     setBusy(true);
     setErr(null);
@@ -78,7 +87,8 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
       const body = {
         name: f.name,
         email: f.email.trim() || null,
-        phone: f.phone || null,
+        // Sent when changed, so a number saved before numbers were checked does not block other edits.
+        ...(phoneChanged ? { phone: f.phone || null } : {}),
         address: f.address || null,
         currency: f.currency || null,
         notes: f.notes || null,
@@ -165,10 +175,10 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
               <Input id="cl-contact" value={f.contact_name} onChange={(e) => setF({ ...f, contact_name: e.target.value })} maxLength={150} />
             </Field>
             <Field label="Contact email" htmlFor="cl-email" error={err?.field('email')}>
-              <Input id="cl-email" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="billing@client.com" />
+              <Input id="cl-email" type="email" maxLength={254} value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="billing@client.com" />
             </Field>
             <Field label="Phone number" htmlFor="cl-phone" error={err?.field('phone')}>
-              <Input id="cl-phone" type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} maxLength={50} />
+              <PhoneInput key={openCount} id="cl-phone" value={f.phone} defaultCountry={phoneCountry} onChange={(phone) => setF((cur) => ({ ...cur, phone }))} />
             </Field>
             <Field label="Document language" htmlFor="cl-lang" error={err?.field('document_language')}>
               <Select id="cl-lang" value={f.document_language} onChange={(e) => setF({ ...f, document_language: e.target.value })}>

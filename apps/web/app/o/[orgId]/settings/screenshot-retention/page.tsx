@@ -153,7 +153,7 @@ function PolicyPanel({ s }: { s: ScreenshotCleanupSettingsDto }) {
                 ))}
                 <option value="custom">Custom…</option>
               </Select>
-              {f.retention === 'custom' && <Input aria-label="Days to keep" type="number" min={1} max={3650} value={f.custom} disabled={readOnly} onChange={(e) => setF({ ...f, custom: e.target.value })} className="w-24" />}
+              {f.retention === 'custom' && <Input aria-label="Days to keep" aria-invalid={!!daysError || undefined} aria-describedby={daysError ? 'cleanup-days-message' : undefined} type="number" min={1} max={3650} step={1} value={f.custom} disabled={readOnly} onChange={(e) => setF({ ...f, custom: e.target.value })} className="w-24" />}
             </div>
           </Field>
           <Field label="How often" htmlFor="cleanup-frequency">

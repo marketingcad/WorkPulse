@@ -17,6 +17,7 @@ import {
   rolePermissions,
   roles,
   teamMembers,
+  teams,
   trackingPolicies,
   userSessions,
   users,
@@ -368,7 +369,9 @@ export async function acceptInvitation(
       await tx.insert(workerProfiles).values({ membershipId, organizationId: inv.organizationId, timezone: org?.tz ?? 'UTC', trackingEnabled: role?.key === 'WORKER' });
     }
     // Teams (with the invited team role) and projects apply to new and returning members alike.
-    for (const teamId of inv.teamIds) {
+    // Not a team archived since the invitation was sent (QA, BUG-41).
+    const liveTeams = inv.teamIds.length ? (await tx.select({ id: teams.id }).from(teams).where(and(eq(teams.organizationId, inv.organizationId), inArray(teams.id, inv.teamIds), isNull(teams.archivedAt)))).map((r) => r.id) : [];
+    for (const teamId of liveTeams) {
       await tx.insert(teamMembers).values({ organizationId: inv.organizationId, teamId, membershipId, role: inv.teamRole }).onConflictDoUpdate({ target: [teamMembers.teamId, teamMembers.membershipId], set: { role: inv.teamRole } });
     }
     for (const projectId of inv.projectIds) {

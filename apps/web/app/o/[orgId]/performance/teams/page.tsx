@@ -6,7 +6,7 @@ import { qs, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { t } from '@/components/performance/i18n';
 import '@/components/performance/messages/teams';
-import { PeriodPicker, ratio, scoreText, usePerfPeriod } from '@/components/performance/ui';
+import { PeriodPicker, ratio, scoreText, usePerfPeriod, ScoresAsOf } from '@/components/performance/ui';
 import { ScoreLines } from '@/components/performance/score-lines';
 import type { TeamPerformance } from '@/components/performance/types';
 
@@ -46,6 +46,7 @@ export default function TeamPerformancePage() {
       <PageHeader title={t('perf.teams.title')} description={t('perf.teams.description')} />
       <FilterBar className="flex-wrap">
         <PeriodPicker p={p} />
+        <ScoresAsOf at={q.data?.calculated_at} />
       </FilterBar>
 
       {q.error ? (

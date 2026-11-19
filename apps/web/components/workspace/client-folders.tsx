@@ -117,6 +117,8 @@ export function FolderDialog({ folder, existing = [], onClose, onSaved }: { fold
   const fieldError = (f: string) => err?.field(f) ?? null;
 
   const save = async () => {
+    // Enter submits the form even while the button is disabled (form validation audit, 20 Nov 2026).
+    if (busy || (folder ? !name.trim() : !clientId)) return;
     setBusy(true);
     setErr(null);
     try {

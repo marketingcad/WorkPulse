@@ -21,6 +21,7 @@ import {
   overtimeRulesInput,
   bankDetailsInput,
   payAdjustmentsInput,
+  finalizePayrollInput,
   payrollProfileInput,
   payrollProfilePatchInput,
   payrollRunInput,
@@ -233,7 +234,11 @@ export const financeRoutes = new Hono<AppEnv>()
   .post('/payroll/runs', async (c) => c.json(await createPayrollRun(ctx(c), await body(c, payrollRunInput)), 201))
   .get('/payroll/runs/:id', async (c) => c.json(await getPayrollRun(ctx(c), c.req.param('id'))))
   .post('/payroll/runs/:id/recalculate', async (c) => c.json(await recalculatePayrollRun(ctx(c), c.req.param('id'))))
-  .post('/payroll/runs/:id/finalize', async (c) => c.json(await finalizePayrollRun(ctx(c), c.req.param('id'))))
+  // The body is optional (older callers send none); `confirm_unpriced` accepts paying approved time with no rate at $0 (BUG-32).
+  .post('/payroll/runs/:id/finalize', async (c) => {
+    const input = c.req.header('content-type') ? await body(c, finalizePayrollInput) : {};
+    return c.json(await finalizePayrollRun(ctx(c), c.req.param('id'), { confirmUnpriced: input.confirm_unpriced }));
+  })
   .post('/payroll/runs/:id/paid', async (c) => c.json(await markPayrollPaid(ctx(c), c.req.param('id'))))
   .put('/payroll/runs/:id/lines/:lineId/adjustments', async (c) => c.json(await setPayAdjustments(ctx(c), c.req.param('id'), c.req.param('lineId'), await body(c, payAdjustmentsInput))))
   .delete('/payroll/runs/:id', async (c) => {

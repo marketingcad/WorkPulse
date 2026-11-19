@@ -143,14 +143,14 @@ describe('desktop agent', () => {
 
     // Screenshot: upload intent → upload (dev path) → captured event
     const shotId = newId();
-    const intent = await agent.post('/agent/screenshots/upload-intent', { screenshot_id: shotId, session_id: sessionId, captured_at: iso(5 * 60_000), content_type: 'image/webp', bytes: 4 });
+    const intent = await agent.post('/agent/screenshots/upload-intent', { screenshot_id: shotId, session_id: sessionId, captured_at: iso(5 * 60_000), content_type: 'image/webp', bytes: 12 });
     expect(intent.status).toBe(200);
     expect(intent.body.method).toBe('api');
-    const up = await agent.req('PUT', intent.body.upload_url.replace('/api/v1', ''), new Uint8Array([1, 2, 3, 4]), { 'Content-Type': 'image/webp' });
+    const up = await agent.req('PUT', intent.body.upload_url.replace('/api/v1', ''), new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]), { 'Content-Type': 'image/webp' }); // a WebP header
     expect(up.status).toBe(204);
     const cap = await agent.post('/agent/ingest/batch', {
       sent_at: t.clock.now.toISOString(),
-      events: [{ event_id: newId(), type: 'screenshot.captured', session_id: sessionId, occurred_at: iso(5 * 60_000), screenshot_id: shotId, captured_at: iso(5 * 60_000), display_index: 0, blurred: false, width: 1920, height: 1080, bytes: 4, sha256: 'a'.repeat(64), storage_key: intent.body.storage_key }],
+      events: [{ event_id: newId(), type: 'screenshot.captured', session_id: sessionId, occurred_at: iso(5 * 60_000), screenshot_id: shotId, captured_at: iso(5 * 60_000), display_index: 0, blurred: false, width: 1920, height: 1080, bytes: 12, sha256: 'a'.repeat(64), storage_key: intent.body.storage_key }],
     });
     expect(cap.body.results[0].status).toBe('accepted');
     // A forged key outside the worker's prefix is rejected.
@@ -204,7 +204,7 @@ describe('desktop agent', () => {
     const shot = day.body.blocks.find((b: { screenshots: unknown[] }) => b.screenshots.length)!.screenshots[0];
     const media = await t.app.request(shot.full_url);
     expect(media.status).toBe(200);
-    expect(await media.arrayBuffer()).toHaveProperty('byteLength', 4);
+    expect(await media.arrayBuffer()).toHaveProperty('byteLength', 12);
     void today;
   });
 });

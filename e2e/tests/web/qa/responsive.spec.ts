@@ -93,7 +93,7 @@ test.describe('QA · Responsive navigation shell (admin)', () => {
   test('at tablet width a wide table scrolls inside its box, not the page (QA-05)', async ({ page, data, adminApi }) => {
     // Long values make the clients table wider than the content area, whatever else the run created.
     for (let i = 0; i < 3; i++)
-      await ok(await adminApi.api.post(adminApi.orgApi('/clients'), { data: { name: `Northwind Traders International ${uid()}`, email: `billing-${uid()}@northwind-traders-international.example.com`, phone: '+1 (555) 010-2030', contact_name: 'Bartholomew Longname-Smythe' } }), 'client');
+      await ok(await adminApi.api.post(adminApi.orgApi('/clients'), { data: { name: `Northwind Traders International ${uid()}`, email: `billing-${uid()}@northwind-traders-international.example.com`, phone: '+1 (415) 555-2030', contact_name: 'Bartholomew Longname-Smythe' } }), 'client');
     await page.setViewportSize({ width: 768, height: 1024 });
     await page.goto(`/o/${data.orgId}/clients`);
     const table = page.getByRole('table').first();

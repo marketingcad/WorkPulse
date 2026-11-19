@@ -28,6 +28,37 @@ export function passwordProblem(value: string): string | null {
   return null;
 }
 
+/** The confirmation of a new password must match it. */
+export const PASSWORD_MISMATCH_MESSAGE = 'The passwords do not match';
+export function confirmPasswordProblem(password: string, confirm: string): string | null {
+  if (!confirm) return 'Type the password again';
+  return confirm === password ? null : PASSWORD_MISMATCH_MESSAGE;
+}
+
+/**
+ * The server's rule for a person's name (contracts `personNameProblem`): letters from any language,
+ * spaces, hyphens, apostrophes, periods, commas, brackets and digits, with at least one letter
+ * (form validation audit, 20 Nov 2026). Checked on trimmed, non-empty text.
+ */
+const PERSON_NAME = /^[\p{L}\p{M}\p{N}\s'’.,\-()]+$/u;
+export const PERSON_NAME_MESSAGE = 'Use letters, spaces, hyphens, apostrophes and periods';
+export function personNameProblem(value: string): string | null {
+  if (!/\p{L}/u.test(value)) return 'A name needs at least one letter';
+  return PERSON_NAME.test(value) ? null : PERSON_NAME_MESSAGE;
+}
+
+/** A required person's name: the required-text rule, then the name rule. */
+export function requiredNameProblem(value: string, max = 100): string | null {
+  return requiredTextProblem(value, max) ?? personNameProblem(value.trim());
+}
+
+/** An optional person's name: blank is fine. */
+export function optionalNameProblem(value: string, max = 100): string | null {
+  const v = value.trim();
+  if (!v) return null;
+  return v.length > max ? `Use at most ${max} characters` : personNameProblem(v);
+}
+
 /** The server's message when an end date ('YYYY-MM-DD') is before the start date; null otherwise or when either is empty. */
 export function dateOrderProblem(start: string, end: string): string | null {
   return start && end && end < start ? 'Must be on or after the start date' : null;
@@ -62,7 +93,7 @@ export interface SignupForm {
 export function signupProblems(f: SignupForm): Array<{ field: keyof SignupForm; message: string }> {
   const out: Array<{ field: keyof SignupForm; message: string }> = [];
   const add = (field: keyof SignupForm, message: string | null) => void (message && out.push({ field, message }));
-  add('name', requiredTextProblem(f.name, 100));
+  add('name', requiredNameProblem(f.name, 100));
   const email = f.email.trim();
   add('email', email ? emailProblem(email) : REQUIRED_MESSAGE);
   add('password', passwordProblem(f.password));
@@ -88,4 +119,21 @@ export function loginProblems(f: { email: string; password: string }): Array<{ f
   if (!f.password) out.push({ field: 'password', message: REQUIRED_MESSAGE });
   else if (f.password.length > 200) out.push({ field: 'password', message: 'Use at most 200 characters' });
   return out;
+}
+
+/** The server's receipt rules (platform.ts uploadReceipt): JPEG, PNG, WebP or PDF, not empty, at most 10 MB. */
+export const RECEIPT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const;
+export const RECEIPT_MAX_BYTES = 10 * 1024 * 1024;
+export function receiptProblem(file: { type: string; size: number }): string | null {
+  if (!(RECEIPT_TYPES as readonly string[]).includes(file.type)) return 'Use a JPEG, PNG, WebP or PDF file';
+  if (!file.size) return 'This file is empty. Choose the receipt again.';
+  return file.size > RECEIPT_MAX_BYTES ? 'Use a file of 10 MB or less' : null;
+}
+
+/** The server's rule for a time range (ISO instants): the end after the start, and not in the future. */
+export function timeRangeProblem(startIso: string, endIso: string, now = Date.now()): string | null {
+  const s = Date.parse(startIso);
+  const e = Date.parse(endIso);
+  if (e <= s) return 'Must be after the start';
+  return e > now ? 'Cannot be in the future' : null;
 }

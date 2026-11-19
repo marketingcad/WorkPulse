@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowUp, Check, Copy, History, MessageSquarePlus, RotateCcw, Sparkles, Trash2, X } from 'lucide-react';
 import { AiBadge, Button, ConfirmDialog, IconButton, Spinner, cx, useToast } from '@tallywork/ui';
 import type { AssistantMessageDto } from '@tallywork/contracts';
-import { api } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import './messages';
 import { Markdown } from './markdown-view';
@@ -81,6 +81,7 @@ export function AssistantPanel({ orgId, onClose, ask }: { orgId: string; onClose
   const [view, setView] = useState<'chat' | 'history'>('chat');
   const [draft, setDraft] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
+  const toast = useToast();
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -163,7 +164,8 @@ export function AssistantPanel({ orgId, onClose, ask }: { orgId: string; onClose
               }
               if (e.key === 'Enter') {
                 const v = e.currentTarget.value.trim();
-                if (v) await a.rename(a.active!.id, v);
+                // A failed rename is said, not an unhandled error (form validation audit, 20 Nov 2026).
+                if (v) await a.rename(a.active!.id, v).catch((x: unknown) => toast.error(errorMessage(x)));
                 setRenaming(null);
               }
             }}

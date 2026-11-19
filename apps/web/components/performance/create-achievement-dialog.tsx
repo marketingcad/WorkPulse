@@ -47,7 +47,7 @@ export default function CreateAchievementDialog({ onClose }: { onClose: () => vo
   // Filled levels in order; an empty one in the middle is a gap, which is refused.
   const lastFilled = levels.reduce((n, v, i) => (v.trim() ? i + 1 : n), 0);
   const thresholds = levels.slice(0, lastFilled).map((v) => (v.trim() === '' ? Number.NaN : Number(v)));
-  const levelsBad = mode === 'AUTOMATIC' && (thresholds.length === 0 || thresholds.some((n) => !Number.isFinite(n)) || thresholdIssues(thresholds).length > 0);
+  const levelsBad = mode === 'AUTOMATIC' && (thresholds.length === 0 || thresholds.some((n) => !Number.isInteger(n)) || thresholdIssues(thresholds).length > 0);
   const missing = { name: !name.trim(), text: !text.trim() };
 
   const submit = async () => {
@@ -144,9 +144,9 @@ export default function CreateAchievementDialog({ onClose }: { onClose: () => vo
                   </label>
                 ))}
               </div>
-              {tried && levelsBad && (
+              {((tried && levelsBad) || err?.field('thresholds')) && (
                 <p role="alert" className="mt-1 text-xs text-danger">
-                  {t('perf.ach.new.levelsInvalid')}
+                  {tried && levelsBad ? t('perf.ach.new.levelsInvalid') : err?.field('thresholds')}
                 </p>
               )}
             </fieldset>
@@ -168,9 +168,9 @@ export default function CreateAchievementDialog({ onClose }: { onClose: () => vo
           </Select>
         </Field>
       </div>
-      {err && !err.errors?.length && (
+      {err?.general(['name', 'description', 'thresholds']) && (
         <p role="alert" className="mt-3 text-sm text-danger">
-          {err.title}
+          {err.general(['name', 'description', 'thresholds'])}
         </p>
       )}
     </Dialog>

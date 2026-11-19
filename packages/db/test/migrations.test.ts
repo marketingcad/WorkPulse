@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { newId } from '@tallywork/domain';
 import { createDb, type DbHandle } from '../src/client';
-import { expenses, holidays, memberships, organizations, projectMembers, projects, roles, teamMembers, teams, timeOffPolicies, timeOffRequests, users, withSystem } from '../src/index';
+import { expenses, holidays, memberships, organizations, projectMembers, projectTeams, projects, roles, teamMembers, teams, timeOffPolicies, timeOffRequests, users, withSystem } from '../src/index';
 
 /**
  * Migrations must be safe to run again. Production once had the users.tour_done_at column before
@@ -199,5 +199,30 @@ describe('migrations', () => {
     expect(of(custom)).toEqual({});
     const [t] = await rows<{ n: number }>(sql`select count(*)::int as n from information_schema.tables where table_name in ('performance_rules', 'performance_settings', 'project_milestones', 'performance_goals', 'performance_goal_progress', 'achievement_definitions', 'achievement_awards', 'performance_reviews', 'performance_score_snapshots', 'client_appreciations')`);
     expect(t!.n).toBe(10);
+  });
+
+  it('0038 lets go of the members and projects of teams archived before archiving did, and runs again cleanly (QA, BUG-38)', async () => {
+    const [org, role, user, m, live, gone, project] = [newId(), newId(), newId(), newId(), newId(), newId(), newId()];
+    await withSystem(h.db, async (tx) => {
+      await tx.insert(organizations).values({ id: org, name: 'Archived teams', slug: `archived-${org}`, timezone: 'UTC', settings: {} as never });
+      await tx.insert(roles).values({ id: role, organizationId: org, key: 'WORKER', name: 'Worker' });
+      await tx.insert(users).values({ id: user, email: `archived-${user}@example.test`, name: 'Archived', passwordHash: 'x' });
+      await tx.insert(memberships).values({ id: m, organizationId: org, userId: user, roleId: role, status: 'ACTIVE' });
+      await tx.insert(projects).values({ id: project, organizationId: org, name: 'Project' });
+      await tx.insert(teams).values([{ id: live, organizationId: org, name: 'Live' }, { id: gone, organizationId: org, name: 'Gone', archivedAt: new Date() }]);
+      for (const teamId of [live, gone]) {
+        await tx.insert(teamMembers).values({ organizationId: org, teamId, membershipId: m });
+        await tx.insert(projectTeams).values({ organizationId: org, teamId, projectId: project });
+      }
+    });
+    const when = journalWhen('0038_archived_team_links');
+    await h.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at >= ${when}`);
+
+    await expect(h.migrate()).resolves.toBeUndefined();
+
+    const teamsOf = async (table: 'project_teams' | 'team_members') => (await rows<{ t: string }>(sql`select team_id as t from ${sql.identifier(table)} where organization_id = ${org}`)).map((r) => r.t);
+    expect(await teamsOf('project_teams')).toEqual([live]);
+    expect(await teamsOf('team_members')).toEqual([live]);
+    expect((await rows<{ n: number }>(sql`select count(*)::int as n from drizzle.__drizzle_migrations where created_at = ${when}`))[0]!.n).toBe(1);
   });
 });

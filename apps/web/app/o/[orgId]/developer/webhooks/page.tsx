@@ -338,7 +338,7 @@ function EndpointDialog({ open, endpoint, events, onOpenChange }: { open: boolea
         }}
       >
         <Field label="Endpoint URL" htmlFor="wh-url" hint="Must be a public https:// address." error={err?.field('url') ?? (url.length > 8 && !httpsOk ? 'Use a full https:// URL' : undefined)} required>
-          <Input id="wh-url" type="url" inputMode="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/hooks/tallywork" className="font-mono text-xs" autoFocus />
+          <Input id="wh-url" type="url" inputMode="url" maxLength={2000} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/hooks/tallywork" className="font-mono text-xs" autoFocus />
         </Field>
         <Field label="Description" htmlFor="wh-desc" error={err?.field('description')}>
           <Input id="wh-desc" value={description} maxLength={300} onChange={(e) => setDescription(e.target.value)} placeholder="What consumes these events?" />

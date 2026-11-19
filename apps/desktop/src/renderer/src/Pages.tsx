@@ -310,8 +310,9 @@ export function TimesheetPage({ s }: { s: AgentState }) {
           <>
             <Stepper label={`${fmtDay(ts.period_start, { month: 'short', day: 'numeric' })} – ${fmtDay(ts.period_end, { month: 'short', day: 'numeric' })}`} onPrev={() => setDate(addDays(ts.period_start, -1))} onNext={() => setDate(addDays(ts.period_end, 1))} nextDisabled={ts.period_end >= today()} />
             {canSubmit && (
-              <button onClick={() => void submit()} disabled={busy} className={primary}>
-                <Send className="size-4" /> {ts.status === 'REJECTED' ? 'Resubmit' : 'Submit'}
+              // While the server answers (several seconds on a slow connection) the button says so (QA round 7, OBS-R7-2).
+              <button onClick={() => void submit()} disabled={busy} aria-busy={busy} className={primary}>
+                {busy ? <RefreshCw className="size-4 animate-spin" aria-hidden /> : <Send className="size-4" aria-hidden />} {busy ? 'Submitting…' : ts.status === 'REJECTED' ? 'Resubmit' : 'Submit'}
               </button>
             )}
           </>

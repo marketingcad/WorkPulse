@@ -9,7 +9,7 @@ import { ApiError, errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/a
 import { todayIn, useOrg } from '@/lib/org';
 import { t } from '@/components/performance/i18n';
 import '@/components/performance/messages/leaderboards';
-import { PeriodPicker, Sparkline, ratio, scoreText, usePerfPeriod } from '@/components/performance/ui';
+import { PeriodPicker, Sparkline, ratio, scoreText, usePerfPeriod, ScoresAsOf } from '@/components/performance/ui';
 import type { Leaderboard, LeaderboardRow } from '@/components/performance/types';
 
 type Kind = Leaderboard['type'];
@@ -59,6 +59,7 @@ export default function LeaderboardsPage() {
             ]}
           />
         )}
+        <ScoresAsOf at={q.data?.calculated_at} />
       </FilterBar>
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">

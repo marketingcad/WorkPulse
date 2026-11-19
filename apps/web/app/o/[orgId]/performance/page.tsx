@@ -8,7 +8,7 @@ import { errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { t } from '@/components/performance/i18n';
 import '@/components/performance/messages/overview';
-import { PeriodPicker, usePerfPeriod } from '@/components/performance/ui';
+import { PeriodPicker, usePerfPeriod, ScoresAsOf } from '@/components/performance/ui';
 // Opened on demand: not part of the page's first load (the 250 KB budget).
 // Fetched as soon as the page loads, in parallel with the data (not part of the first load).
 const overviewBody = import('@/components/performance/overview-body');
@@ -113,6 +113,7 @@ export default function PerformanceOverviewPage() {
             </Select>
           </div>
         )}
+        <ScoresAsOf at={q.data?.calculated_at} showRecalcHint={false} />
       </FilterBar>
 
       {q.error ? (

@@ -44,16 +44,18 @@ export default function PortalPage() {
     return (
       <>
         {toolbar}
-        <div className="flex min-h-[80dvh] items-center justify-center"><ErrorState error={summary.error} onRetry={() => summary.refetch()} /></div>
+        <main id="main" className="flex min-h-[80dvh] items-center justify-center"><ErrorState error={summary.error} onRetry={() => summary.refetch()} /></main>
       </>
     );
-  if (!summary.data) return <div className="flex min-h-dvh items-center justify-center"><Spinner /></div>;
+  if (!summary.data) return <main id="main" className="flex min-h-dvh items-center justify-center"><Spinner /></main>;
   // If the screenshots request fails (e.g. transient network error), fall back to an empty list rather than
   // surfacing a broken state; the rest of the dashboard (hours, projects, tasks) still renders normally.
   // While it's still loading, pass screenshotsLoading so the dashboard shows a spinner instead of an empty grid.
+  // The content is the page's main landmark, the skip link's target; the toolbar is page chrome (BUG-27).
   return (
     <>
       {toolbar}
+      <main id="main">
       <div className="mx-auto max-w-6xl px-4 pt-2">
         <Tabs
           value={tab}
@@ -86,6 +88,7 @@ export default function PortalPage() {
           </Suspense>
         </div>
       )}
+      </main>
     </>
   );
 }

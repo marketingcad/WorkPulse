@@ -140,6 +140,21 @@ async function snapshotsFor(tx: Tx, subjectType: Snapshot['subjectType'], period
 }
 
 /**
+ * When this period's scores were last calculated: every refresh rewrites the organization snapshot,
+ * so its time is the time of the figures on the page. Pages show it, because scores are refreshed once
+ * a day (or by an admin), not on every approval (QA round 7, BUG-31). Null when never calculated.
+ */
+async function calculatedAt(x: Ctx, periodType: PerformancePeriod, start: string): Promise<string | null> {
+  const [r] = await x.tx
+    .select({ at: performanceScoreSnapshots.calculatedAt })
+    .from(performanceScoreSnapshots)
+    .where(and(eq(performanceScoreSnapshots.subjectType, 'ORG'), eq(performanceScoreSnapshots.periodType, periodType), eq(performanceScoreSnapshots.periodStart, start)))
+    .orderBy(desc(performanceScoreSnapshots.calculatedAt))
+    .limit(1);
+  return r ? r.at.toISOString() : null;
+}
+
+/**
  * Make sure a period that is still open has snapshots before it is read (filled once; the daily job
  * keeps them current). A settled period is only ever read: reading an old date never computes final
  * history from today's members and rules, so a period with no snapshots simply shows no scores.
@@ -250,6 +265,7 @@ export async function leaderboard(x: Ctx, q: { type: 'workers' | 'teams' | 'proj
     period: q.period,
     start: current.start,
     end: current.end,
+    calculated_at: await calculatedAt(x, q.period, current.start),
     rule_version: rule.version,
     min_eligible_days: rule.minEligibleDays,
     compare: q.compare ?? 'role',
@@ -293,6 +309,7 @@ export async function teamPerformance(x: Ctx, q: { period: PerformancePeriod; da
     period: q.period,
     start: current.start,
     end: current.end,
+    calculated_at: await calculatedAt(x, q.period, current.start),
     periods: periods.map((p) => p.start),
     ranks_hidden: hideRanks,
     teams: teamIds.map((id) => {
@@ -381,6 +398,7 @@ export async function performanceOverview(x: Ctx, q: { period: PerformancePeriod
     period: q.period,
     start: current.start,
     end: current.end,
+    calculated_at: await calculatedAt(x, q.period, current.start),
     kpis: {
       active_workers: people.length,
       active_teams: teamIds.length,
@@ -450,6 +468,7 @@ export async function memberPerformanceList(x: Ctx, q: { period: PerformancePeri
   return {
     start: current.start,
     end: current.end,
+    calculated_at: await calculatedAt(x, q.period, current.start),
     rows: people
       .map((p) => {
         const s = snaps.find((v) => v.subjectId === p.id);
@@ -501,6 +520,7 @@ export async function memberProfile(x: Ctx, membershipId: string, q: { period: P
   return {
     member: { id: membershipId, name: info?.name ?? '', title: info?.title ?? null, role: info?.role ?? '', teams, projects: projectRows },
     period: { type: q.period, start: p.start, end: p.end },
+    calculated_at: await calculatedAt(x, q.period, p.start),
     score,
     ranks_hidden: hideRanks,
     rank: hideRanks ? null : (myRank?.rank ?? null),

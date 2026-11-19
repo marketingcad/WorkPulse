@@ -2,7 +2,7 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { OrgContextDto } from '@tallywork/contracts';
 import type { Permission, Scope } from '@tallywork/domain';
-import { fmtDuration as baseFmt, type DurationFormat } from '@tallywork/ui';
+import { fmtDuration as baseFmt, setDefaultTimeZone, type DurationFormat } from '@tallywork/ui';
 
 export interface OrgValue extends OrgContextDto {
   can: (p: Permission, scope?: Scope) => boolean;
@@ -17,6 +17,9 @@ const Ctx = createContext<OrgValue | null>(null);
 
 export function OrgProvider({ value, children }: { value: OrgContextDto; children: ReactNode }) {
   const grants = value.grants;
+  // Times that name no zone are shown in this person's profile zone (else the organization's), like the
+  // pages that pass it, never in the browser's (BUG-34).
+  setDefaultTimeZone(value.membership.timezone || value.organization.timezone);
   const format = ((value.organization.settings as { durationFormat?: DurationFormat }).durationFormat ?? 'hm') as DurationFormat;
   const v: OrgValue = {
     ...value,

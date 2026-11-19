@@ -3,6 +3,7 @@ import { fileObjects, projectDocuments } from '@tallywork/db';
 import { businessRule, forbidden, newId, notFound } from '@tallywork/domain';
 import type { ProjectDocumentDto } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
+import { contentMatchesType } from '../lib/file-sniff';
 import { audit } from './events';
 import { memberNames } from './timer';
 import { getProject } from './work';
@@ -19,6 +20,8 @@ const ALLOWED = new Map<string, string>([
   ['text/plain', 'txt'],
   ['text/csv', 'csv'],
   ['application/zip', 'zip'],
+  // What Windows browsers report for a .zip file.
+  ['application/x-zip-compressed', 'zip'],
   ['application/msword', 'doc'],
   ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'],
   ['application/vnd.ms-excel', 'xls'],
@@ -49,10 +52,13 @@ export async function uploadProjectDocument(x: Ctx, projectId: string, file: Fil
   if (!ext) throw businessRule('file_type', 'Upload a PDF, image, Office document, text, CSV or ZIP file');
   if (file.size > MAX_BYTES) throw businessRule('file_too_large', 'Documents are limited to 25 MB');
   if (!file.size) throw businessRule('file_empty', 'The file is empty');
+  const bytes = Buffer.from(await file.arrayBuffer());
+  // The type comes from the file's name; its content must agree (a renamed program is not a PDF).
+  if (!contentMatchesType(bytes, file.type)) throw businessRule('file_content', `This file's content does not match its type (.${ext}). Upload the original file.`);
   const id = newId();
   const fileId = newId();
   const key = `org/${x.org.id}/projects/${projectId}/${fileId}.${ext}`;
-  await x.deps.storage.put(key, Buffer.from(await file.arrayBuffer()), file.type);
+  await x.deps.storage.put(key, bytes, file.type);
   await x.tx.insert(fileObjects).values({ id: fileId, organizationId: x.org.id, purpose: 'PROJECT_DOCUMENT', storageKey: key, contentType: file.type, bytes: file.size, uploadedBy: x.actor.membershipId });
   const name = cleanName(file.name);
   await x.tx.insert(projectDocuments).values({ id, organizationId: x.org.id, projectId, fileId, name, contentType: file.type, bytes: file.size, uploadedBy: x.actor.membershipId });

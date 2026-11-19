@@ -226,6 +226,7 @@ function stubDto(l: typeof payrollRunLines.$inferSelect, r: typeof payrollRuns.$
     approved_seconds: l.approvedSeconds,
     unapproved_seconds: l.unapprovedSeconds,
     carried_seconds: l.carriedSeconds,
+    unpriced_seconds: l.unpricedSeconds,
     regular_seconds: l.regularSeconds,
     overtime_seconds: l.overtimeSeconds,
     time_pay_minor: l.timePayMinor,
@@ -278,7 +279,7 @@ async function payableSince(x: Ctx, profileId: string, from: string): Promise<st
 async function payableEntries(x: Ctx, profile: typeof payrollProfiles.$inferSelect, members: string[], since: string, to: string) {
   if (!members.length) return [];
   const rows = await x.tx
-    .select({ id: billingEntries.id, m: billingEntries.membershipId, d: billingEntries.localDate, s: billingEntries.seconds, pay: billingEntries.payAmountMinor, cur: billingRates.currency })
+    .select({ id: billingEntries.id, m: billingEntries.membershipId, d: billingEntries.localDate, s: billingEntries.seconds, pay: billingEntries.payAmountMinor, payRateId: billingEntries.payRateId, cur: billingRates.currency })
     .from(billingEntries)
     .leftJoin(billingRates, eq(billingRates.id, billingEntries.payRateId))
     .where(and(isNull(billingEntries.voidedAt), isNull(billingEntries.payrollLineId), inArray(billingEntries.membershipId, members), gte(billingEntries.localDate, since), lte(billingEntries.localDate, to)));
@@ -317,6 +318,8 @@ async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect
     const timePay = mine.reduce((s, a) => s + a.pay, 0);
     const approvedSeconds = mine.reduce((s, a) => s + a.s, 0);
     const carriedSeconds = mine.filter((a) => a.d < from).reduce((s, a) => s + a.s, 0);
+    // Approved time with no pay rate for its day is paid $0: counted and flagged, never silent (BUG-32).
+    const unpricedSeconds = mine.filter((a) => a.payRateId === null).reduce((s, a) => s + a.s, 0);
     const worked = rollups.filter((r) => r.membershipId === m);
     const total = worked.reduce((s, r) => s + r.trackedSeconds + r.manualSeconds, 0);
     // Whole weeks: a week split between two payrolls keeps the overtime worked on this period's days.
@@ -329,9 +332,10 @@ async function computeLines(x: Ctx, profile: typeof payrollProfiles.$inferSelect
     const priced = priceTimeOff(rates, m, offDays, profile.currency);
     // No such rate: nothing is invented, the line is flagged.
     if (priced.noRate) warnings.add('time_off_no_rate');
+    if (unpricedSeconds > 0) warnings.add('time_no_rate');
     if (priced.otherCurrency) otherCurrency = true;
     const offPay = priced.payMinor;
-    return { membershipId: m, approvedSeconds, carriedSeconds, unapprovedSeconds: Math.max(0, total - (approvedSeconds - carriedSeconds)), regularSeconds: regular, overtimeSeconds: overtime, timePayMinor: timePay, timeOffHours: Math.round(offHours * 100) / 100, timeOffPayMinor: offPay, grossMinor: timePay + offPay, warnings: [...warnings] };
+    return { membershipId: m, approvedSeconds, carriedSeconds, unpricedSeconds, unapprovedSeconds: Math.max(0, total - (approvedSeconds - carriedSeconds)), regularSeconds: regular, overtimeSeconds: overtime, timePayMinor: timePay, timeOffHours: Math.round(offHours * 100) / 100, timeOffPayMinor: offPay, grossMinor: timePay + offPay, warnings: [...warnings] };
   });
   return { lines, otherCurrency };
 }
@@ -410,14 +414,34 @@ export async function setPayAdjustments(x: Ctx, runId: string, lineId: string, i
   return getPayrollRun(x, runId);
 }
 
-export async function finalizePayrollRun(x: Ctx, id: string) {
+/**
+ * Finalizes a draft. Approved time with no pay rate is paid $0, so finalizing such a payroll needs
+ * `confirmUnpriced` (the admin saw which hours and agreed, BUG-32). Lines with nothing on them (no time,
+ * no time off, no pay, no adjustments) are dropped here, so nobody gets an empty pay stub (C-28); they
+ * stay in the draft until then, so an adjustment can still be added to anyone.
+ */
+export async function finalizePayrollRun(x: Ctx, id: string, opts: { confirmUnpriced?: boolean } = {}) {
   need(x, 'payroll:manage');
   const run = await loadRun(x, id, 'DRAFT');
+  // Stale first: a draft calculated before the approved time changed has out-of-date counts. A refusal
+  // below rolls this claim back with the rest of the request.
   await claimPaidTime(x, run);
+  const draftLines = await x.tx.select().from(payrollRunLines).where(eq(payrollRunLines.runId, id));
+  const unpriced = draftLines.filter((l) => l.unpricedSeconds > 0);
+  if (unpriced.length && !opts.confirmUnpriced) {
+    const names = await memberNames(x, unpriced.map((l) => l.membershipId));
+    const seconds = unpriced.reduce((s, l) => s + l.unpricedSeconds, 0);
+    throw businessRule('payroll_unpriced_time', `${Math.round((seconds / 3600) * 100) / 100} h of approved time has no pay rate and would be paid $0. Set the pay rates and recalculate, or confirm to finalize anyway.`, {
+      unpriced_seconds: seconds,
+      members: unpriced.map((l) => ({ membership_id: l.membershipId, name: names.get(l.membershipId) ?? null, unpriced_seconds: l.unpricedSeconds })),
+    });
+  }
+  const empty = draftLines.filter((l) => !l.approvedSeconds && !l.unapprovedSeconds && !Number(l.timeOffHours) && !l.grossMinor && !l.adjustments.length).map((l) => l.id);
+  if (empty.length) await x.tx.delete(payrollRunLines).where(inArray(payrollRunLines.id, empty));
   await x.tx.update(payrollRuns).set({ status: 'FINALIZED', finalizedAt: new Date(), finalizedBy: x.actor.membershipId, updatedAt: new Date() }).where(eq(payrollRuns.id, id));
   const lines = await x.tx.select({ m: payrollRunLines.membershipId }).from(payrollRunLines).where(eq(payrollRunLines.runId, id));
   await notify(x.tx, x.deps, x.org.id, lines.map((l) => l.m), { type: 'payroll.stub_ready', title: 'Your pay stub is ready', body: `Pay period ${run.periodStart} – ${run.periodEnd}`, link: '/pay-stubs' });
-  await audit(x, { action: 'payroll.finalized', targetType: 'payroll_run', targetId: id });
+  await audit(x, { action: 'payroll.finalized', targetType: 'payroll_run', targetId: id, metadata: { ...(unpriced.length ? { unpriced_seconds: unpriced.reduce((s, l) => s + l.unpricedSeconds, 0), confirmed: true } : {}), ...(empty.length ? { empty_lines_dropped: empty.length } : {}) } });
   return getPayrollRun(x, id);
 }
 

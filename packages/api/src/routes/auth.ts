@@ -11,6 +11,7 @@ import {
   forgotPasswordInput,
   loginInput,
   resetPasswordInput,
+  personName,
   signupInput,
 } from '@tallywork/contracts';
 import { DomainError, validation } from '@tallywork/domain';
@@ -201,7 +202,7 @@ export const meRoutes = new Hono<AppEnv>()
   .get('/', async (c) => c.json(await getMe(c.var.deps.db, userId(c), await hasMfa(c.var.deps, userId(c)))))
   /** The person's own settings: display name, locale (languages and formats) and whether they have seen the product tour. */
   .patch('/', async (c) => {
-    const i = await body(c, z.object({ name: z.string().trim().min(1).max(100).optional(), locale: z.string().max(35).optional(), tour: z.enum(['done', 'reset']).optional() }));
+    const i = await body(c, z.object({ name: personName(100).optional(), locale: z.string().max(35).optional(), tour: z.enum(['done', 'reset']).optional() }));
     const patch: { name?: string; locale?: string; tourDoneAt?: Date | null; updatedAt: Date } = { updatedAt: new Date() };
     if (i.name !== undefined) patch.name = i.name;
     // Finished or skipped: don't start it again on its own. Reset: show it again on the next visit.

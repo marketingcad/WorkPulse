@@ -10,6 +10,8 @@ import { Client, addMember, createHarness, pkce, signup, type Harness } from './
 // answers only its own idle time; AUTHZ-007 keys of members who leave are revoked; AUTHZ-008 roles are
 // edited by people who hold them; TEN-001 payments take this organization's clients only.
 let t: Harness;
+/** A WebP file header: the upload's content must match its declared type. */
+const WEBP = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
 let owner: Client;
 let orgId: string;
 const o = (p: string) => `/orgs/${orgId}${p}`;
@@ -58,7 +60,7 @@ describe('AUTHZ-002: screenshot keys', () => {
     const a = await addMember(t, owner, orgId, 'Ann', 'ann@sec-authz.test');
     const b = await addMember(t, owner, orgId, 'Bea', 'bea@sec-authz.test');
     const agent = await device(a.client);
-    const put = (key: string) => t.app.request(`/api/v1/agent/screenshots/upload?key=${encodeURIComponent(key)}`, { method: 'PUT', headers: { Authorization: `Bearer ${agent.bearer}`, 'Content-Type': 'image/webp' }, body: new Uint8Array([1, 2, 3]) });
+    const put = (key: string) => t.app.request(`/api/v1/agent/screenshots/upload?key=${encodeURIComponent(key)}`, { method: 'PUT', headers: { Authorization: `Bearer ${agent.bearer}`, 'Content-Type': 'image/webp' }, body: WEBP });
     const prefix = `org/${orgId}/screenshots/${a.membershipId}/`;
     expect((await put(`${prefix}../${b.membershipId}/2026-10-29/${newId()}.webp`)).status).toBe(403); // was 204
     expect((await put(`${prefix}../../../../org/other/screenshots/x/2026-10-29/${newId()}.webp`)).status).toBe(403);

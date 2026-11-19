@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { CreditCard, Plus, Trash2 } from 'lucide-react';
 import type { OffsetPage } from '@tallywork/contracts';
 import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, FilterBar, IconButton, Input, PageHeader, Panel, PermissionState, fmtDate, fmtMoney, useToast, type Column } from '@tallywork/ui';
-import { errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
+import { errorMessage, qs, useOrgMutation, useOrgPage } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { useListPeriod } from '@/components/finance/list-period';
@@ -21,7 +21,7 @@ export default function PaymentsReceivedPage() {
   // The server searches and pages every payment, not only the newest 1000.
   const filters = { ...period.filter, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
-  const q = useOrgQuery<OffsetPage<PaymentRow>>(allowed ? `/payments${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  const q = useOrgPage<OffsetPage<PaymentRow>>(allowed ? `/payments${qs({ ...filters, ...paging.params })}` : null);
   useClampPage(paging, q.data, q.isPlaceholderData);
   const [open, setOpen] = useState(false);
   const [removing, setRemoving] = useState<PaymentRow | null>(null);

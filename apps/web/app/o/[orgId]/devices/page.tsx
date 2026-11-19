@@ -24,7 +24,7 @@ import {
   useToast,
   type Column,
 } from '@tallywork/ui';
-import { errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
+import { errorMessage, qs, useOrgMutation, useOrgPage } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 
@@ -46,9 +46,8 @@ export default function DevicesPage() {
   const search = useSearch();
   // The server searches and pages the devices (one or more per member), most recently seen first.
   const paging = useServerPage(search.term);
-  const q = useOrgQuery<OffsetPage<DeviceDto> & { summary: { counts: Record<string, number> } }>(allowed ? `/devices${qs({ q: search.term || undefined, ...paging.params })}` : null, {
+  const q = useOrgPage<OffsetPage<DeviceDto> & { summary: { counts: Record<string, number> } }>(allowed ? `/devices${qs({ q: search.term || undefined, ...paging.params })}` : null, {
     refetchInterval: 60_000,
-    placeholderData: (p) => p,
   });
   useClampPage(paging, q.data, q.isPlaceholderData);
   const [pending, setPending] = useState<{ device: DeviceDto; action: Action } | null>(null);

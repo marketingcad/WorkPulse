@@ -336,7 +336,11 @@ export async function assertPeriodsOpen(x: Ctx, membershipId: string, dates: str
     .from(timesheets)
     .where(and(eq(timesheets.membershipId, membershipId), inArray(timesheets.status, ['SUBMITTED', 'APPROVED']), lte(timesheets.periodStart, sorted[sorted.length - 1]!), gte(timesheets.periodEnd, sorted[0]!)));
   const closed = candidates.find((t) => dates.some((d) => d >= t.periodStart && d <= t.periodEnd));
-  if (closed) throw businessRule('timesheet_locked', `The timesheet for this period is ${closed.status.toLowerCase()}; reopen it before changing its time`, { period_start: closed.periodStart });
+  if (closed) {
+    // Only an approver can reopen a timesheet: a worker is told who to ask, not to do it (QA round 6, BUG-23).
+    const next = can(x.actor, 'timesheets:approve', { ownerMembershipId: membershipId }) ? 'reopen it before changing its time' : 'ask your manager to reopen it, then try again';
+    throw businessRule('timesheet_locked', `The timesheet for this period is ${closed.status.toLowerCase()}; ${next}`, { period_start: closed.periodStart });
+  }
 }
 
 export async function updateTimeEntry(x: Ctx, entryId: string, input: z.infer<typeof timeEntryUpdateInput>) {
@@ -347,9 +351,9 @@ export async function updateTimeEntry(x: Ctx, entryId: string, input: z.infer<ty
   if (policy.timeEdits.reasonRequired && !isManager && isSelf && !input.reason) throw validation('A reason is required to edit time');
   const start = input.started_at ? new Date(input.started_at) : e.startedAt;
   const end = input.ended_at ? new Date(input.ended_at) : e.endedAt;
-  if (end <= start) throw validation('End must be after start');
+  if (end <= start) throw validation('End must be after start', { errors: [{ field: 'ended_at', message: 'Must be after the start' }] });
   if (end.getTime() - start.getTime() > 24 * 3600_000) throw validation('A single entry cannot exceed 24 hours');
-  if (end > x.deps.now()) throw validation('Time entries cannot end in the future');
+  if (end > x.deps.now()) throw validation('Time entries cannot end in the future', { errors: [{ field: 'ended_at', message: 'Cannot be in the future' }] });
   const projectId = input.project_id ?? e.projectId;
   const taskId = input.task_id !== undefined ? input.task_id : e.taskId;
   if (input.project_id || input.task_id !== undefined) await validateTrackTarget(x.tx, e.membershipId, projectId, taskId);
@@ -549,8 +553,8 @@ export async function requestManualTime(x: Ctx, input: z.infer<typeof manualTime
   const { start, end } = durationOnly
     ? await freeSlot(x, membershipId, tz, input.local_date!, input.duration_seconds!)
     : { start: new Date(input.started_at!), end: new Date(input.ended_at!) };
-  if (end <= start) throw validation('End must be after start');
-  if (end > x.deps.now()) throw validation('Manual time cannot be in the future');
+  if (end <= start) throw validation('End must be after start', { errors: [{ field: 'ended_at', message: 'Must be after the start' }] });
+  if (end > x.deps.now()) throw validation('Manual time cannot be in the future', { errors: [{ field: 'ended_at', message: 'Cannot be in the future' }] });
   if (end.getTime() - start.getTime() > 24 * 3600_000) throw validation('Manual time is limited to 24 hours per entry');
   const totalSeconds = Math.round((end.getTime() - start.getTime()) / 1000);
   if (input.billable_seconds !== undefined && input.billable_seconds > totalSeconds) throw validation('Billable time cannot be more than the time logged', { errors: [{ field: 'billable_seconds', message: 'At most the time logged' }] });
@@ -671,6 +675,8 @@ export async function decideManualTime(x: Ctx, id: string, approve: boolean, com
   const [found] = await x.tx.select().from(manualTimeRequests).where(eq(manualTimeRequests.id, id));
   if (!found) throw notFound('manual_time');
   if (!can(x.actor, 'manual_time:approve', { ownerMembershipId: found.membershipId }) || found.membershipId === x.actor.membershipId) throw forbidden();
+  // As for timesheets, a rejection tells the person why; the web form already required it, the API did not (form validation audit, 20 Nov 2026).
+  if (!approve && !comment?.trim()) throw validation('Please add a comment for the worker', { errors: [{ field: 'comment', message: 'Say why the time is rejected' }] });
   await lockWorker(x.tx, found.membershipId);
   // Read again under the lock: another approver may have decided it while we waited.
   const [r] = (await x.tx.select().from(manualTimeRequests).where(eq(manualTimeRequests.id, id))) as [typeof found];

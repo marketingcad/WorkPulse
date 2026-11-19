@@ -7,3 +7,4 @@ export * from './avatars';
 export * from './performance';
 export * from './assistant';
 export * from './limits';
+export * from './phone';

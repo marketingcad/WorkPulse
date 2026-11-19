@@ -383,7 +383,8 @@ export function ActivityReview({ member: memberParam, date, onChange }: { member
               ]}
             />
             <Panel title="Timeline" bodyClassName="p-4">
-              <DayRibbon segments={data.timeline} dayStart={start} dayEnd={start + 24 * HOUR_MS} onSelect={scrollToHour} />
+              {/* The same time zone as the blocks below (it used to fall back to the browser's, BUG-28). */}
+              <DayRibbon segments={data.timeline} dayStart={start} dayEnd={start + 24 * HOUR_MS} onSelect={scrollToHour} timeZone={tz} />
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-2xs text-text-muted">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-3 rounded-[1px] bg-secondary" /> Tracked (project colour)

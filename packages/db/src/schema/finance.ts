@@ -76,6 +76,8 @@ export const payrollRunLines = pgTable(
     unapprovedSeconds: integer().notNull().default(0),
     /** approved time from earlier periods that no payroll had paid yet (approved late); included in approvedSeconds */
     carriedSeconds: integer().notNull().default(0),
+    /** approved time with no pay rate for its day: included in approvedSeconds, paid $0 (BUG-32) */
+    unpricedSeconds: integer().notNull().default(0),
     regularSeconds: integer().notNull().default(0),
     overtimeSeconds: integer().notNull().default(0),
     timePayMinor: bigint({ mode: 'number' }).notNull().default(0),

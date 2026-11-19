@@ -4,6 +4,7 @@ import { Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import type { MemberOptionDto } from '@tallywork/contracts';
 import { Badge, Button, Checkbox, ConfirmDialog, DataTable, Dialog, EmptyState, ErrorState, Field, IconButton, Input, Panel, Select, Switch, Textarea, fmtDate, useToast, type Column } from '@tallywork/ui';
 import { ApiError, errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
+import { formErrors } from '@/lib/form-checks';
 import { todayIn, useOrg } from '@/lib/org';
 import { fmtHours, type AccrualType, type HolidayRow, type TimeOffBalance, type TimeOffPolicy } from './shared';
 import { useMemberOptions } from '@/lib/members';
@@ -101,6 +102,21 @@ function PolicyDialog({ policy, workers, onClose }: { policy: TimeOffPolicy | nu
 
   const num = (s: string) => (s.trim() === '' ? null : Number(s));
   const submit = async () => {
+    if (pending) return;
+    // The server's ranges, beside their fields; an empty or negative number was sent as is (form validation audit, 20 Nov 2026).
+    const problems: Array<{ field: string; message: string }> = [];
+    const range = (field: string, text: string, min: number, max: number, optional: boolean) => {
+      if (!text.trim()) return void (optional || problems.push({ field, message: 'This field is required' }));
+      const n = Number(text);
+      if (!Number.isFinite(n) || n < min || n > max) problems.push({ field, message: `Enter a number from ${min} to ${max.toLocaleString()}` });
+    };
+    range('hours_per_day', hoursPerDay, 1, 24, false);
+    if (accrualType !== 'none') {
+      range('accrual.amountHours', amount, 0, 1000, true);
+      range('accrual.maxBalanceHours', maxBalance, 0, 10_000, true);
+      range('accrual.carryOverHours', carryOver, 0, 10_000, true);
+    }
+    if (problems.length) return setError(formErrors(problems));
     setError(null);
     const body: PolicyBody = {
       name: name.trim(),
@@ -174,7 +190,7 @@ function PolicyDialog({ policy, workers, onClose }: { policy: TimeOffPolicy | nu
           <Field label="Name" htmlFor="pol-name" required error={error?.field('name')}>
             <Input id="pol-name" value={name} maxLength={100} placeholder="Vacation" onChange={(e) => setName(e.target.value)} />
           </Field>
-          <Field label="Hours per day" htmlFor="pol-hpd" error={error?.field('hours_per_day')} hint="Hours deducted per full day">
+          <Field label="Hours per day" htmlFor="pol-hpd" required error={error?.field('hours_per_day')} hint="Hours deducted per full day">
             <Input id="pol-hpd" type="number" min={1} max={24} step={0.5} value={hoursPerDay} onChange={(e) => setHoursPerDay(e.target.value)} />
           </Field>
         </div>
@@ -202,10 +218,10 @@ function PolicyDialog({ policy, workers, onClose }: { policy: TimeOffPolicy | nu
                 <Input id="pol-amt" type="number" min={0} max={1000} step={accrualType === 'per_hour_worked' ? 0.001 : 0.5} value={amount} onChange={(e) => setAmount(e.target.value)} />
               </Field>
               <Field label="Max balance" htmlFor="pol-max" hint="Blank = no cap" error={error?.field('accrual.maxBalanceHours')}>
-                <Input id="pol-max" type="number" min={0} step={0.5} value={maxBalance} onChange={(e) => setMaxBalance(e.target.value)} />
+                <Input id="pol-max" type="number" min={0} max={10000} step={0.5} value={maxBalance} onChange={(e) => setMaxBalance(e.target.value)} />
               </Field>
               <Field label="Carry over" htmlFor="pol-carry" hint="Blank = unlimited" error={error?.field('accrual.carryOverHours')}>
-                <Input id="pol-carry" type="number" min={0} step={0.5} value={carryOver} onChange={(e) => setCarryOver(e.target.value)} />
+                <Input id="pol-carry" type="number" min={0} max={10000} step={0.5} value={carryOver} onChange={(e) => setCarryOver(e.target.value)} />
               </Field>
             </div>
           )}
@@ -397,10 +413,10 @@ function HolidaysPanel() {
           void submit();
         }}
       >
-        <Field label="Date" htmlFor="hol-date" error={error?.field('date')}>
+        <Field label="Date" htmlFor="hol-date" required error={error?.field('date')}>
           <Input id="hol-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-40" />
         </Field>
-        <Field label="Name" htmlFor="hol-name" error={error?.field('name')} className="min-w-48 flex-1">
+        <Field label="Name" htmlFor="hol-name" required error={error?.field('name')} className="min-w-48 flex-1">
           <Input id="hol-name" value={name} maxLength={100} placeholder="New Year's Day" onChange={(e) => setName(e.target.value)} />
         </Field>
         <Checkbox label="Paid" checked={paid} onChange={(e) => setPaid(e.target.checked)} className="h-8" />

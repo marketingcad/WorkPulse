@@ -140,7 +140,8 @@ test.describe('Seeded people, a February 2026 week per journey', () => {
     await approvedHour(adminApi, person, project.id, day);
     const group = await ok<{ id: string }>(await adminApi.api.post(adminApi.orgApi('/payroll/profiles'), { data: { name: `Zero group ${uid()}`, period: { type: 'weekly' }, currency: 'USD', member_ids: [person] } }), 'pay group');
     const run = await ok<{ id: string }>(await adminApi.api.post(adminApi.orgApi('/payroll/runs'), { data: { profile_id: group.id, date: day } }), 'payroll');
-    await ok(await adminApi.api.post(adminApi.orgApi(`/payroll/runs/${run.id}/finalize`), { data: {} }), 'finalize');
+    // Paying unpriced time at $0 now has to be confirmed (BUG-32); this journey is about exactly that case.
+    await ok(await adminApi.api.post(adminApi.orgApi(`/payroll/runs/${run.id}/finalize`), { data: { confirm_unpriced: true } }), 'finalize');
 
     await openWeek(page, data.orgId, person, day);
     const warning = page.getByRole('status').filter({ hasText: 'finalized payroll' });

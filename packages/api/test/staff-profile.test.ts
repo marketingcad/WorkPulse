@@ -24,7 +24,7 @@ afterAll(() => t.close());
 
 describe('personal details', () => {
   it('admins read and write every field, including HR notes', async () => {
-    const r = await admin.patch(o(`/workers/${workerId}/details`), { first_name: 'Walter', birth_date: '1990-04-02', emergency_contact_name: 'Wendy', emergency_contact_phone: '+1 555 0100', notes: 'Prefers mornings' });
+    const r = await admin.patch(o(`/workers/${workerId}/details`), { first_name: 'Walter', birth_date: '1990-04-02', emergency_contact_name: 'Wendy', emergency_contact_phone: '+1 415 555 0100', notes: 'Prefers mornings' });
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ first_name: 'Walter', birth_date: '1990-04-02', emergency_contact_name: 'Wendy', notes: 'Prefers mornings' });
   });
@@ -34,13 +34,13 @@ describe('personal details', () => {
     expect(mine.status).toBe(200);
     expect(mine.body.first_name).toBe('Walter');
     expect(mine.body).not.toHaveProperty('notes');
-    expect((await worker.patch(o(`/workers/${workerId}/details`), { phone: '+1 555 0199' })).body.phone).toBe('+1 555 0199');
+    expect((await worker.patch(o(`/workers/${workerId}/details`), { phone: '+1 415 555 0199' })).body.phone).toBe('+14155550199');
     expect((await worker.patch(o(`/workers/${workerId}/details`), { notes: 'x' })).status).toBe(403);
   });
 
   it('members cannot read someone else’s details', async () => {
     expect((await worker.get(o(`/workers/${otherId}/details`))).status).toBe(403);
-    expect((await worker.patch(o(`/workers/${otherId}/details`), { phone: '1' })).status).toBe(403);
+    expect((await worker.patch(o(`/workers/${otherId}/details`), { phone: '+1 415 555 0123' })).status).toBe(403);
   });
 
   it('keeps personal values out of the audit trail', async () => {
@@ -78,7 +78,7 @@ describe('employment and rates on the member profile', () => {
 
 describe('company profile', () => {
   it('stores the profile shown on invoices', async () => {
-    const r = await admin.patch(o(''), { brief: 'Remote staffing', tax_id: 'TX-123', address: '1 Main St\nSpringfield', phone: '+1 555 0000', email: 'billing@ada.test', logo: PNG, document_language: 'es' });
+    const r = await admin.patch(o(''), { brief: 'Remote staffing', tax_id: 'TX-123', address: '1 Main St\nSpringfield', phone: '+1 415 555 0000', email: 'billing@ada.test', logo: PNG, document_language: 'es' });
     expect(r.status).toBe(200);
     expect(r.body.organization).toMatchObject({ brief: 'Remote staffing', tax_id: 'TX-123', logo: PNG, document_language: 'es' });
   });

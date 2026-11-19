@@ -97,7 +97,7 @@ export function RecognizeForm({ definitions }: { definitions: AchievementDefinit
           </Select>
         </div>
       </Field>
-      <Field label={t('perf.ach.form.achievement')} htmlFor={`${id}-ach`} required error={tried && missing.achievement ? t('perf.ach.form.needAchievement') : null}>
+      <Field label={t('perf.ach.form.achievement')} htmlFor={`${id}-ach`} required error={tried && missing.achievement ? t('perf.ach.form.needAchievement') : (err?.field('definition_id') ?? null)}>
         <Select id={`${id}-ach`} value={definitionId} onChange={(e) => setDefinitionId(e.target.value)} aria-invalid={tried && missing.achievement}>
           <option value="">{t('perf.ach.form.chooseAchievement')}</option>
           {awardable.map((d) => (

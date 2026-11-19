@@ -99,6 +99,8 @@ export interface InvoicePreview {
   total_minor: number;
   /** approved entries for this client and period billed in another currency (left out) */
   other_currency_entries: number;
+  /** approved billable time in the period with no bill rate: worth 0, so never invoiced (BUG-26) */
+  unpriced_bill_seconds: number;
   /** with nothing to invoice in the period: the invoices that already hold its approved time */
   already_invoiced: Array<{ id: string; number: string }>;
   lines: Array<{ kind: 'TIME' | 'EXPENSE' | 'CUSTOM'; description: string; quantity: number; unit_price_minor: number; amount_minor: number; tax_minor: number; entries: number }>;

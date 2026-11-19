@@ -33,7 +33,7 @@ export default function ForgotPasswordPage() {
             setError(null);
             // Known and unknown addresses get the same answer; a request that failed is not "sent" (VF-14).
             try {
-              await api('/auth/password/forgot', { body: { email } });
+              await api('/auth/password/forgot', { body: { email: email.trim() } });
               setSent(true);
             } catch (err) {
               setError(errorMessage(err));
@@ -41,8 +41,8 @@ export default function ForgotPasswordPage() {
             }
           }}
         >
-          <Field label={t('auth.workEmail')} htmlFor="email">
-            <AuthInput icon={Mail} id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+          <Field label={t('auth.workEmail')} htmlFor="email" required>
+            <AuthInput icon={Mail} id="email" type="email" autoComplete="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
           </Field>
           {error && (
             <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">

@@ -5,7 +5,7 @@ import { qs, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { t } from '@/components/performance/i18n';
 import '@/components/performance/messages/workers';
-import { PeriodPicker, ratio, scoreText, usePerfPeriod } from '@/components/performance/ui';
+import { PeriodPicker, ratio, scoreText, usePerfPeriod, ScoresAsOf } from '@/components/performance/ui';
 import type { MemberPerformanceList } from '@/components/performance/types';
 
 type Row = MemberPerformanceList['rows'][number];
@@ -48,6 +48,7 @@ export default function WorkerPerformancePage() {
       <PageHeader title={t('perf.w.title')} description={t('perf.w.description')} />
       <FilterBar className="flex-wrap">
         <PeriodPicker p={p} />
+        <ScoresAsOf at={q.data?.calculated_at} />
       </FilterBar>
       {q.error ? (
         <ErrorState error={q.error} onRetry={() => q.refetch()} />

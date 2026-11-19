@@ -526,8 +526,11 @@ export class Agent extends EventEmitter {
   }
 
   // ─── Manual time ───────────────────────────────────────────────────────────
-  /** Queue a manual time request. It is saved on this computer first, so it works offline. */
-  async requestManualTime(r: IpcPayload<'manualTime:request'>): Promise<void> {
+  /**
+   * Queue a manual time request. It is saved on this computer first, so it works offline. Returns its id,
+   * so the form can follow it: it is only "sent" once the server has accepted it (QA round 6, BUG-23).
+   */
+  async requestManualTime(r: IpcPayload<'manualTime:request'>): Promise<string> {
     if (!this.boot) throw new Error('Not ready');
     const problem = manualRequestError(r, this.boot.policy, this.boot.assignments);
     if (problem) throw new Error(problem);
@@ -551,6 +554,7 @@ export class Agent extends EventEmitter {
     this.store.writeJson('manual-requests', this.manualRequests);
     this.emitState();
     void this.sync();
+    return id;
   }
 
   /** Delivery results for queued manual requests; rejections (overlap, locked timesheet…) are shown to the worker. */

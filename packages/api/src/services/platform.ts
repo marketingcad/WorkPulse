@@ -28,6 +28,7 @@ import { policyHash, policyLayers } from './policies';
 import { membershipFilter } from './scope';
 import { memberNames } from './timer';
 import { decrypt, encrypt, hmac, randomToken } from '../lib/crypto';
+import { contentMatchesType } from '../lib/file-sniff';
 import { assertPublicUrl, postToPublicUrl } from '../lib/ssrf';
 import { iso } from '../lib/http';
 import { isUuid, likePattern } from '../lib/search';
@@ -474,10 +475,14 @@ export async function uploadReceipt(x: Ctx, file: File) {
   // The file is the problem, not the person's access: 400 with the field, so the form can say what to change.
   if (!RECEIPT_TYPES.has(file.type)) throw validation('Receipts must be JPEG, PNG, WebP or PDF', { errors: [{ field: 'file', message: 'Use a JPEG, PNG, WebP or PDF file' }] });
   if (file.size > MAX_RECEIPT_BYTES) throw validation('Receipts are limited to 10 MB', { errors: [{ field: 'file', message: 'Use a file of 10 MB or less' }] });
+  if (!file.size) throw validation('The receipt file is empty', { errors: [{ field: 'file', message: 'This file is empty. Choose the receipt again.' }] });
+  const bytes = Buffer.from(await file.arrayBuffer());
+  // The type comes from the file's name; its content must agree (a renamed program is not a PDF).
+  if (!contentMatchesType(bytes, file.type)) throw validation("The receipt's content does not match its type", { errors: [{ field: 'file', message: 'This file is not a real JPEG, PNG, WebP or PDF. Upload the original receipt.' }] });
   const id = newId();
   const ext = file.type === 'application/pdf' ? 'pdf' : file.type.split('/')[1];
   const key = `org/${x.org.id}/receipts/${x.actor.membershipId}/${id}.${ext}`;
-  await x.deps.storage.put(key, Buffer.from(await file.arrayBuffer()), file.type);
+  await x.deps.storage.put(key, bytes, file.type);
   await x.tx.insert(fileObjects).values({ id, organizationId: x.org.id, purpose: 'RECEIPT', storageKey: key, contentType: file.type, bytes: file.size, uploadedBy: x.actor.membershipId });
   return { id, content_type: file.type, bytes: file.size };
 }

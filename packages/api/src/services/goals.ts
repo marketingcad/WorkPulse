@@ -14,7 +14,7 @@ import {
   timesheets,
   type Tx,
 } from '@tallywork/db';
-import { addDaysToDate, businessRule, can, evaluateGoal, forbidden, localDate, newId, notFound, type GoalMetric } from '@tallywork/domain';
+import { addDaysToDate, businessRule, can, evaluateGoal, forbidden, localDate, newId, notFound, validation, type GoalMetric } from '@tallywork/domain';
 import type { GoalDto, goalInput, goalPatchInput } from '@tallywork/contracts';
 import type { Deps, OrgInfo } from '../context';
 import type { Ctx } from './ctx';
@@ -29,6 +29,15 @@ type Goal = typeof performanceGoals.$inferSelect;
 
 /** Approved hours are stored as seconds; every other measure as a count or a percent. */
 const toStored = (metric: GoalMetric, v: number) => (metric === 'APPROVED_HOURS' ? Math.round(v * 3600) : Math.round(v));
+/**
+ * The stored target, refused when it rounds to nothing: counts and percentages are whole numbers, so a
+ * target of 0.4 tasks was saved as 0 (form validation audit, 20 Nov 2026).
+ */
+function storedTarget(metric: GoalMetric, v: number): number {
+  const stored = toStored(metric, v);
+  if (stored < 1) throw validation('The target is too small', { errors: [{ field: 'target', message: metric === 'APPROVED_HOURS' ? 'Use a target above 0 hours' : 'Use a whole number of at least 1' }] });
+  return stored;
+}
 const fromStored = (metric: GoalMetric, v: number) => (metric === 'APPROVED_HOURS' ? Math.round((v / 3600) * 10) / 10 : v);
 
 // ─── Access ──────────────────────────────────────────────────────────────────
@@ -250,7 +259,7 @@ export async function createGoal(x: Ctx, input: z.infer<typeof goalInput>) {
   const id = newId();
   const [g] = await x.tx
     .insert(performanceGoals)
-    .values({ id, organizationId: x.org.id, title: input.title, description: input.description ?? null, category: input.category ?? null, ...subject, metric: input.metric, targetValue: toStored(input.metric, input.target), startDate: input.start_date, endDate: input.end_date, createdBy: x.actor.membershipId })
+    .values({ id, organizationId: x.org.id, title: input.title, description: input.description ?? null, category: input.category ?? null, ...subject, metric: input.metric, targetValue: storedTarget(input.metric, input.target), startDate: input.start_date, endDate: input.end_date, createdBy: x.actor.membershipId })
     .returning();
   await x.tx.insert(performanceGoalProgress).values({ id: newId(), organizationId: x.org.id, goalId: id, value: 0, source: 'created', sourceKey: 'created', actorMembershipId: x.actor.membershipId });
   const after = await recalcGoal(x.tx, x.deps, x.org, g!, x.deps.now(), 'recalculation', `created:${id}`);
@@ -272,7 +281,7 @@ export async function updateGoal(x: Ctx, id: string, input: z.infer<typeof goalP
   if (input.category !== undefined) patch.category = input.category;
   if (input.target !== undefined) {
     if (g.metric === 'ON_TIME_PCT' && input.target > 100) throw businessRule('target_too_high', 'A percentage target is at most 100.');
-    patch.targetValue = toStored(g.metric, input.target);
+    patch.targetValue = storedTarget(g.metric, input.target);
   }
   if (input.end_date !== undefined) {
     if (input.end_date < g.startDate) throw businessRule('end_before_start', 'The end date must be on or after the start date.');

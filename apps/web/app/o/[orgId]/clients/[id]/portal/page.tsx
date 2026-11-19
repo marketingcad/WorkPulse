@@ -153,8 +153,8 @@ export default function ClientPortalSettingsPage() {
             if (email.trim()) invite.mutate({ email: email.trim() });
           }}
         >
-          <Field label={t('portal.admin.email')} htmlFor="portal-email" error={invite.error ? errorMessage(invite.error) : undefined} className="min-w-56 flex-1">
-            <Input id="portal-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Field label={t('portal.admin.email')} htmlFor="portal-email" required error={invite.error ? errorMessage(invite.error) : undefined} className="min-w-56 flex-1">
+            <Input id="portal-email" type="email" required maxLength={254} autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
           </Field>
           <Button type="submit" variant="primary" loading={invite.isPending}>
             {t('portal.admin.invite')}

@@ -6,6 +6,7 @@ import { Laptop } from 'lucide-react';
 import type { DeviceDto, MeDto } from '@tallywork/contracts';
 import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, PageHeader, Panel, Select, SkeletonRows, StatusBadge, Stat, fmtRelative, useToast } from '@tallywork/ui';
 import { ApiError, api, errorMessage, useOrgMutation, useOrgQuery } from '@/lib/api';
+import { REQUIRED_MESSAGE, passwordProblem } from '@/lib/form-checks';
 import { useOrg } from '@/lib/org';
 import { applyAccountLocale, t } from '@/lib/i18n';
 import { browserTimeZone, timeZones } from '@/components/settings/options';
@@ -218,9 +219,14 @@ function PasswordPanel() {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<ApiError | null>(null);
   const [loading, setLoading] = useState(false);
-  const mismatch = confirm.length > 0 && next !== confirm;
-  const short = next.length > 0 && next.length < 10;
+  const [tried, setTried] = useState(false);
+  // The server's password rule (10–200 characters) and a matching confirmation; empty fields are named
+  // once Save is pressed instead of nothing happening (form validation audit, 20 Nov 2026).
+  const currentIssue = tried && !current ? REQUIRED_MESSAGE : undefined;
+  const nextIssue = next ? passwordProblem(next) : tried ? REQUIRED_MESSAGE : null;
+  const confirmIssue = confirm ? (confirm === next ? null : 'Passwords do not match') : tried && next ? 'Type the new password again' : null;
   const submit = async () => {
+    if (loading) return;
     setLoading(true);
     setError(null);
     try {
@@ -229,6 +235,7 @@ function PasswordPanel() {
       setCurrent('');
       setNext('');
       setConfirm('');
+      setTried(false);
     } catch (e) {
       if (e instanceof ApiError) setError(e);
       else toast.error(errorMessage(e));
@@ -242,17 +249,18 @@ function PasswordPanel() {
         className="flex flex-col gap-3 p-4"
         onSubmit={(e) => {
           e.preventDefault();
-          if (current && next && !mismatch && !short) void submit();
+          setTried(true);
+          if (current && next && confirm && !passwordProblem(next) && confirm === next) void submit();
         }}
       >
-        <Field label="Current password" htmlFor="pw-current" error={error?.field('current_password') ?? (error?.code === 'invalid_password' ? error.title : undefined)}>
-          <Input id="pw-current" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
+        <Field label="Current password" htmlFor="pw-current" required error={currentIssue ?? error?.field('current_password') ?? (error?.code === 'invalid_password' ? error.title : undefined)}>
+          <Input id="pw-current" type="password" autoComplete="current-password" maxLength={200} value={current} onChange={(e) => setCurrent(e.target.value)} />
         </Field>
-        <Field label="New password" htmlFor="pw-new" hint="At least 10 characters." error={error?.field('new_password') ?? (short ? 'Use at least 10 characters' : undefined)}>
-          <Input id="pw-new" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+        <Field label="New password" htmlFor="pw-new" hint="At least 10 characters." required error={nextIssue ?? error?.field('new_password')}>
+          <Input id="pw-new" type="password" autoComplete="new-password" maxLength={200} value={next} onChange={(e) => setNext(e.target.value)} />
         </Field>
-        <Field label="Confirm new password" htmlFor="pw-confirm" error={mismatch ? 'Passwords do not match' : undefined}>
-          <Input id="pw-confirm" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+        <Field label="Confirm new password" htmlFor="pw-confirm" required error={confirmIssue}>
+          <Input id="pw-confirm" type="password" autoComplete="new-password" maxLength={200} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         </Field>
         {error && !error.errors?.length && error.code !== 'invalid_password' && (
           <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
@@ -260,7 +268,7 @@ function PasswordPanel() {
           </p>
         )}
         <div>
-          <Button type="submit" variant="primary" loading={loading} disabled={!current || !next || mismatch || short}>
+          <Button type="submit" variant="primary" loading={loading}>
             Change password
           </Button>
         </div>

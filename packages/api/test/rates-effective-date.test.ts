@@ -154,7 +154,9 @@ describe('approved time that had no rate', () => {
     await addTime(p2, '2026-09-08T13:00:00Z');
     const tsId = await approveWeek('2026-09-08');
     const run = await admin.post(o('/payroll/runs'), { profile_id: profileId, date: '2026-09-08' });
-    expect((await admin.post(o(`/payroll/runs/${run.body.id}/finalize`))).status).toBe(200);
+    // The hour has no pay rate: finalizing pays it $0, which now needs the admin's confirmation (BUG-32).
+    expect((await admin.post(o(`/payroll/runs/${run.body.id}/finalize`))).body.code).toBe('payroll_unpriced_time');
+    expect((await admin.post(o(`/payroll/runs/${run.body.id}/finalize`), { confirm_unpriced: true })).status).toBe(200);
 
     // The preview leaves out the pay the payroll already paid.
     expect((await admin.post(o('/rates/pricing-preview'), projectRates(p2, '2026-09-01', 3000, 8000))).body).toMatchObject({ entries: 1, pay_seconds: 0, bill_seconds: 3600, bill_minor: 8000 });

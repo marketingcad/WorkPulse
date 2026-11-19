@@ -67,8 +67,10 @@ export function BudgetDialog({ value, onClose, preset }: { value: BudgetStatusDt
     setErr(null);
     let amt: number | null = null;
     if (kind === 'HOURS') {
-      const h = Number(amount.trim());
-      amt = amount.trim() && Number.isFinite(h) && h > 0 ? Math.round(h * 3600) : null;
+      // A plain decimal number of hours: Number() also read "0x10" and "1e3" (form validation audit, 20 Nov 2026).
+      const text = amount.trim();
+      const h = Number(text);
+      amt = /^\d+(\.\d+)?$/.test(text) && h > 0 ? Math.round(h * 3600) : null;
     } else amt = toMinor(amount);
     if (!amt || amt < 1) {
       setErr(new ApiError(422, 'validation', 'Enter an amount', undefined, [{ field: 'amount', message: kind === 'HOURS' ? 'Enter a number of hours, e.g. 120 or 37.5' : 'Enter an amount, e.g. 5000' }]));

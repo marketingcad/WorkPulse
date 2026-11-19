@@ -30,14 +30,24 @@ export function fmtDate(iso: string | null | undefined, opts: Intl.DateTimeForma
   return new Intl.DateTimeFormat(getLocale(), { ...opts, ...(iso.length === 10 ? { timeZone: 'UTC' } : {}) }).format(d);
 }
 
+/**
+ * The time zone times are shown in when a caller names none: the signed-in person's profile zone, set by
+ * the app once it knows them. Unset, the browser's. Without it, a page that named no zone showed browser
+ * time next to pages in profile time (a Manila browser with a New York profile saw both; QA, BUG-34).
+ */
+let defaultTimeZone: string | undefined;
+export function setDefaultTimeZone(timeZone: string | null | undefined): void {
+  defaultTimeZone = timeZone || undefined;
+}
+
 export function fmtTime(iso: string | null | undefined, timeZone?: string): string {
   if (!iso) return '—';
-  return new Intl.DateTimeFormat(getLocale(), { hour: 'numeric', minute: '2-digit', timeZone }).format(new Date(iso));
+  return new Intl.DateTimeFormat(getLocale(), { hour: 'numeric', minute: '2-digit', timeZone: timeZone ?? defaultTimeZone }).format(new Date(iso));
 }
 
 export function fmtDateTime(iso: string | null | undefined, timeZone?: string): string {
   if (!iso) return '—';
-  return new Intl.DateTimeFormat(getLocale(), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone }).format(new Date(iso));
+  return new Intl.DateTimeFormat(getLocale(), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: timeZone ?? defaultTimeZone }).format(new Date(iso));
 }
 
 export function fmtRelative(iso: string | null | undefined): string {

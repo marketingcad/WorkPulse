@@ -473,6 +473,8 @@ export interface PayStubDto {
   unapproved_seconds: number;
   /** approved time from earlier periods (approved after their payroll); included in approved_seconds */
   carried_seconds: number;
+  /** approved hours with no pay rate for their day: included in approved_seconds and paid $0 */
+  unpriced_seconds: number;
   regular_seconds: number;
   overtime_seconds: number;
   time_pay_minor: number;

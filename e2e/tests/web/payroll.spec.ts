@@ -1,5 +1,6 @@
 import { request } from '@playwright/test';
 import { expect, ok, test, usd, uid } from '../../support/fixtures';
+import { invitePerson } from '../../support/people';
 import { ADMIN_STATE, PASSWORD, VIEWER_STATE, WEB_URL } from '../../support/env';
 
 /**
@@ -137,6 +138,42 @@ test.describe('Payroll (admin)', () => {
     await expect(line).toContainText(usd(6000));
   });
 
+  // QA round 8 (BUG-32): approved time with no pay rate was paid $0 with no warning, and (C-28) someone
+  // with nothing on the payroll still got a $0.00 pay stub.
+  test('approved time with no pay rate is shown before finalizing, and nobody gets an empty stub', async ({ page, data, adminApi }) => {
+    const suffix = `${data.run}-${uid()}`;
+    const una = `Una Unpriced ${suffix}`;
+    const emmy = `Emmy Empty ${suffix}`;
+    const unaId = await invitePerson(adminApi, `una+${suffix}@e2e.test`, una);
+    const emmyId = await invitePerson(adminApi, `emmy+${suffix}@e2e.test`, emmy);
+    const o = adminApi.orgApi;
+    const day = (offset: number) => new Date(Date.now() + offset * 86400_000).toISOString().slice(0, 10);
+    // Una works without any pay rate; Emmy does not work at all.
+    const project = await ok<{ id: string }>(await adminApi.api.post(o('/projects'), { data: { name: `No rate ${suffix}`, member_ids: [unaId] } }), 'project');
+    const start = new Date(`${day(-7)}T10:00:00Z`);
+    await ok(await adminApi.api.post(o('/manual-time'), { data: { membership_id: unaId, project_id: project.id, started_at: start.toISOString(), ended_at: new Date(start.getTime() + 2 * 3600_000).toISOString(), reason: 'no rate' } }), 'manual time');
+    const ts = await ok<{ id: string }>(await adminApi.api.post(o('/timesheets/submit'), { data: { membership_id: unaId, date: day(-7) } }), 'submit');
+    await ok(await adminApi.api.post(o(`/timesheets/${ts.id}/approve`), { data: {} }), 'approve');
+    const group = await ok<{ id: string }>(await adminApi.api.post(o('/payroll/profiles'), { data: { name: `No-rate group ${suffix}`, period: { type: 'weekly' }, currency: 'USD', member_ids: [unaId, emmyId] } }), 'pay group');
+    const draft = await ok<{ id: string }>(await adminApi.api.post(o('/payroll/runs'), { data: { profile_id: group.id, date: day(-7) } }), 'draft payroll');
+
+    await page.goto(`/o/${data.orgId}/finance/payroll/${draft.id}`);
+    const line = page.getByRole('row', { name: new RegExp(una) });
+    await expect(line).toContainText(/2h( 00m)? has no pay rate \(paid \$0\)/);
+    await expect(page.getByRole('status').filter({ hasText: 'has no pay rate and is paid $0' })).toContainText(una);
+    await expect(page.getByRole('row', { name: new RegExp(emmy) })).toBeVisible(); // still in the draft, so a bonus could be added
+
+    await page.getByRole('button', { name: 'Finalize' }).click();
+    const dialog = page.getByRole('alertdialog').or(page.getByRole('dialog'));
+    await expect(dialog.getByText(/has no pay rate and is paid \$0.*set the pay rates and recalculate first/)).toBeVisible();
+    await dialog.getByRole('button', { name: 'Finalize anyway' }).click();
+    await expect(page.getByText('Payroll finalized; members can see their pay stubs')).toBeVisible();
+
+    // Una's stub keeps the note; Emmy, with nothing on it, has no stub.
+    await expect(page.getByRole('row', { name: new RegExp(una) })).toContainText('has no pay rate (paid $0)');
+    await expect(page.getByRole('row', { name: new RegExp(emmy) })).toHaveCount(0);
+  });
+
   // Audit 28 Oct 2026 (F9): paid time off for someone with no worker or organization pay rate was paid
   // nothing, with no sign of it. The line now says so before anyone pays.
   test('a pay stub line with time off but no pay rate says "No pay rate for time off"', async ({ page, data, adminApi }) => {
@@ -179,15 +216,6 @@ test.describe('Payroll (no money access)', () => {
 });
 
 /** Invite someone as a Worker and accept the invitation, as a new member would. Returns their membership id. */
-async function invitePerson(adminApi: { api: import('@playwright/test').APIRequestContext; orgApi: (p: string) => string }, email: string, name: string): Promise<string> {
-  const roles = await ok<Array<{ id: string; key: string }>>(await adminApi.api.get(adminApi.orgApi('/roles')), 'roles');
-  const invite = await ok<{ invite_url: string }>(await adminApi.api.post(adminApi.orgApi('/invitations'), { data: { email, name, role_id: roles.find((r) => r.key === 'WORKER')!.id } }), 'invite');
-  // Signed out: inside a test, a new request context would otherwise reuse the file's admin session.
-  const ctx = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL }, storageState: { cookies: [], origins: [] } });
-  const accepted = await ok<{ membership_id: string }>(await ctx.post('/api/v1/auth/invitations/accept', { data: { token: new URL(invite.invite_url).searchParams.get('token'), name, password: PASSWORD } }), 'accept');
-  await ctx.dispose();
-  return accepted.membership_id;
-}
 
 /** Pick a pay group in the "Run payroll" dialog by its name (the option also shows period, currency and size). */
 async function selectGroup(dialog: import('@playwright/test').Locator, name: string): Promise<void> {

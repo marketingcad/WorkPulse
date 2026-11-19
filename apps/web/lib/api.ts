@@ -1,6 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey, type UseQueryOptions } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
+import { samePagedList } from './paging';
 
 export class ApiError extends Error {
   constructor(
@@ -86,6 +87,15 @@ export function useOrgQuery<T>(path: string | null, opts: Partial<UseQueryOption
     enabled: !!path && !!orgId,
     ...opts,
   });
+}
+
+/**
+ * A paged list: like useOrgQuery, but while the next page loads the previous page stays on screen.
+ * Only a page of the same list is kept: after a filter, tab or search change the list shows as
+ * loading, never another list's rows or empty state under the new heading (QA BUG-24).
+ */
+export function useOrgPage<T>(path: string | null, opts: Partial<UseQueryOptions<T, ApiError>> = {}) {
+  return useOrgQuery<T>(path, { placeholderData: (prev, prevQuery) => (samePagedList(prevQuery?.queryKey[2] as string | null | undefined, path) ? prev : undefined), ...opts });
 }
 
 /**

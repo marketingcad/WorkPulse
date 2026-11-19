@@ -4,6 +4,7 @@ import { agentLoginInput, agentRefreshInput, agentRegisterInput, deviceAuthorize
 import { DomainError, forbidden, notFound } from '@tallywork/domain';
 import type { AppEnv } from '../context';
 import { body, query } from '../lib/http';
+import { contentMatchesType } from '../lib/file-sniff';
 import { renderPayStubPdf } from '../lib/pay-stub-pdf';
 import { dismissRefused } from '../services/refused-time';
 import { rateLimit } from '../middleware/rate-limit';
@@ -128,6 +129,7 @@ agentOnly
     if (!/^image\/(webp|jpeg|png)$/.test(type)) throw forbidden('Unsupported content type');
     const buf = Buffer.from(await c.req.arrayBuffer());
     if (buf.length > MAX_SCREENSHOT_BYTES) throw new DomainError('validation', 'too_large', 'Screenshot is too large');
+    if (!contentMatchesType(buf, type)) throw forbidden('Unsupported content type');
     await a.deps.storage.put(key, buf, type);
     return c.body(null, 204);
   });

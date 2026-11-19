@@ -2,8 +2,9 @@
 import { useState } from 'react';
 import type { OffsetPage, SessionDto } from '@tallywork/contracts';
 import { DataTable, EmptyState, ErrorState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, StatusBadge, fmtDateTime, fmtTime, type Column } from '@tallywork/ui';
-import { qs, useOrgQuery } from '@/lib/api';
+import { qs, useOrgPage } from '@/lib/api';
 import { useOrg } from '@/lib/org';
+import { localDateOf } from '@/components/tracking/time';
 import { useClampPage, useServerPage } from '@/lib/paging';
 import { useUrlId, useUrlRange, useUrlSearch } from '@/lib/url-state';
 import { DateRangeFilter, MemberFilter } from '@/components/tracking/filters';
@@ -22,12 +23,14 @@ export default function SessionsPage() {
   // The server pages every session in the range and adds up the time worked across all of them.
   const filters = { from: range.from, to: range.to, membership_ids: member || undefined, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
-  const q = useOrgQuery<OffsetPage<SessionDto> & { summary: { worked_seconds: number } }>(allowed ? `/sessions${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  const q = useOrgPage<OffsetPage<SessionDto> & { summary: { worked_seconds: number } }>(allowed ? `/sessions${qs({ ...filters, ...paging.params })}` : null);
   useClampPage(paging, q.data, q.isPlaceholderData);
 
   if (!allowed) return <PermissionState />;
 
-  const sameDay = (a: string, b: string | null) => !!b && new Date(a).toDateString() === new Date(b).toDateString();
+  // The same calendar day in the zone the times are shown in (the profile's), not the browser's (BUG-34).
+  const tz = org.membership.timezone || org.organization.timezone;
+  const sameDay = (a: string, b: string | null) => !!b && localDateOf(a, tz) === localDateOf(b, tz);
   // Rows arrive ordered (newest first) and paged by the server, so columns are not client-sortable.
   const columns: Column<SessionDto>[] = [
     ...(org.isManagerView ? [{ key: 'member', header: 'Member', cell: (s: SessionDto) => <PersonCell name={s.worker_name ?? ''} />, sortable: false, priority: 'primary' as const }] : []),

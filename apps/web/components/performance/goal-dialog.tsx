@@ -66,6 +66,8 @@ export default function GoalDialog({ goal, presetMember, defaults, onClose }: { 
     who: !editing && subject !== 'ORG' && !who,
     target: !target.trim() || !Number.isFinite(n) || n <= 0,
     pct: metric === 'ON_TIME_PCT' && n > 100,
+    // Counts and percentages are whole numbers: 0.4 tasks was saved as 0 (form validation audit, 20 Nov 2026).
+    whole: metric !== 'APPROVED_HOURS' && target.trim() !== '' && Number.isFinite(n) && n > 0 && !Number.isInteger(n),
     dates: !start || !end || end < start,
   };
   const targetLabel = metric === 'APPROVED_HOURS' ? t('perf.gf.targetHours') : metric === 'ON_TIME_PCT' ? t('perf.gf.targetPct') : t('perf.gf.target');
@@ -154,20 +156,20 @@ export default function GoalDialog({ goal, presetMember, defaults, onClose }: { 
             ))}
           </Select>
         </Field>
-        <Field label={targetLabel} htmlFor={`${id}-target`} required error={tried && bad.target ? t('perf.gf.needTarget') : tried && bad.pct ? t('perf.gf.pctTooHigh') : (err?.field('target') ?? null)}>
-          <Input id={`${id}-target`} type="number" min={1} step="any" inputMode="decimal" className="tabular" value={target} onChange={(e) => setTarget(e.target.value)} aria-invalid={tried && (bad.target || bad.pct)} />
+        <Field label={targetLabel} htmlFor={`${id}-target`} required error={tried && bad.target ? t('perf.gf.needTarget') : tried && bad.pct ? t('perf.gf.pctTooHigh') : tried && bad.whole ? 'Use a whole number of at least 1' : (err?.field('target') ?? null)}>
+          <Input id={`${id}-target`} type="number" min={1} step={metric === 'APPROVED_HOURS' ? 'any' : 1} inputMode={metric === 'APPROVED_HOURS' ? 'decimal' : 'numeric'} className="tabular" value={target} onChange={(e) => setTarget(e.target.value)} aria-invalid={tried && (bad.target || bad.pct || bad.whole)} />
         </Field>
         <div />
-        <Field label={t('perf.gf.start')} htmlFor={`${id}-start`} required>
+        <Field label={t('perf.gf.start')} htmlFor={`${id}-start`} required error={err?.field('start_date') ?? null}>
           <Input id={`${id}-start`} type="date" value={start} disabled={editing} onChange={(e) => setStart(e.target.value)} />
         </Field>
         <Field label={t('perf.gf.end')} htmlFor={`${id}-end`} required error={tried && bad.dates ? t('perf.gf.datesInvalid') : (err?.field('end_date') ?? null)}>
           <Input id={`${id}-end`} type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} aria-invalid={tried && bad.dates} />
         </Field>
       </div>
-      {err && !err.errors?.length && (
+      {err?.general(['title', 'subject_id', 'metric', 'target', 'start_date', 'end_date']) && (
         <p role="alert" className="mt-3 text-sm text-danger">
-          {err.title}
+          {err.general(['title', 'subject_id', 'metric', 'target', 'start_date', 'end_date'])}
         </p>
       )}
     </Dialog>

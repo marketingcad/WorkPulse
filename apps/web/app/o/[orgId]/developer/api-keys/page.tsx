@@ -209,9 +209,15 @@ function CreateKeyDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
     const date = expiry === 'custom' ? customDate : addDays(todayIn(org.organization.timezone), Number(expiry));
     return date ? new Date(`${date}T23:59:59Z`).toISOString() : null;
   };
-  const submit = () => m.mutate({ name: name.trim(), scopes, expires_at: expiresAt() });
+  // A custom expiry must be a future day; the server's refusal had nowhere to show (form validation audit, 20 Nov 2026).
+  const tomorrow = addDays(todayIn(org.organization.timezone), 1);
+  const dateIssue = expiry === 'custom' && customDate && customDate < tomorrow ? 'Choose a date after today' : null;
+  const submit = () => {
+    if (m.isPending || dateIssue) return;
+    m.mutate({ name: name.trim(), scopes, expires_at: expiresAt() });
+  };
   const toggle = (s: ApiKeyScope) => setScopes((xs) => (xs.includes(s) ? xs.filter((x) => x !== s) : [...xs, s]));
-  const canSubmit = name.trim().length > 0 && scopes.length > 0 && (expiry !== 'custom' || !!customDate);
+  const canSubmit = name.trim().length > 0 && scopes.length > 0 && (expiry !== 'custom' || !!customDate) && !dateIssue;
 
   if (created)
     return (
@@ -275,7 +281,7 @@ function CreateKeyDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
           {err?.field('scopes') && <p className="text-xs text-danger">{err.field('scopes')}</p>}
         </fieldset>
         <div className="flex flex-wrap items-end gap-3">
-          <Field label="Expires" htmlFor="key-expiry" className="w-44">
+          <Field label="Expires" htmlFor="key-expiry" className="w-44" error={expiry !== 'custom' ? err?.field('expires_at') : undefined}>
             <Select id="key-expiry" value={expiry} onChange={(e) => setExpiry(e.target.value as typeof expiry)}>
               <option value="30">In 30 days</option>
               <option value="90">In 90 days</option>
@@ -285,15 +291,15 @@ function CreateKeyDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
             </Select>
           </Field>
           {expiry === 'custom' && (
-            <Field label="Expiry date" htmlFor="key-date" className="w-44">
-              <Input id="key-date" type="date" min={addDays(todayIn(org.organization.timezone), 1)} value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+            <Field label="Expiry date" htmlFor="key-date" className="w-44" error={dateIssue ?? err?.field('expires_at')} required>
+              <Input id="key-date" type="date" min={tomorrow} value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
             </Field>
           )}
         </div>
         {expiry === 'never' && <p className="text-xs text-warning">Keys without an expiry should be rotated manually at least once a year.</p>}
-        {err && !err.errors?.length && (
+        {err?.general(['name', 'scopes', 'expires_at']) && (
           <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
-            {err.title}
+            {err.general(['name', 'scopes', 'expires_at'])}
           </p>
         )}
       </form>

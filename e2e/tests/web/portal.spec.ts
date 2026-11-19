@@ -26,6 +26,7 @@ test.describe('Client portal', () => {
     await page.goto(link.pathname + link.search);
     await page.getByLabel('Your name').fill('Vic Viewer');
     await page.getByLabel('Choose a password').fill(PASSWORD);
+    await page.getByLabel('Confirm password').fill(PASSWORD);
     await page.getByRole('button', { name: 'Open dashboard' }).click();
 
     await expect(page.getByRole('heading', { level: 1, name: client })).toBeVisible({ timeout: 20_000 });
@@ -35,6 +36,65 @@ test.describe('Client portal', () => {
     await expect(page.getByText(project)).toBeVisible();
     await expect(page.getByLabel('From')).toBeVisible();
     await expect(page.getByLabel('To', { exact: true })).toBeVisible();
+    // BUG-27: the dashboard is the page's one main landmark, and "Skip to content" lands on it.
+    await expect(page.getByRole('main')).toHaveCount(1);
+    await expect(page.getByRole('main')).toContainText(client);
+    // On a fresh load (after signing in the app navigates in place, so focus is not at the top).
+    await page.reload();
+    await expect(page.getByRole('heading', { level: 1, name: client })).toBeVisible();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/#main$/);
+    await context.close();
+  });
+
+  // QA audit 13 Nov 2026 (BUG-22): a cleared, reversed or too-long period replaced the whole dashboard
+  // with an error whose "Try again" sent the same period again, so the client was stuck.
+  test('a wrong period is explained beside the dates, and the dashboard stays', async ({ browser, data, adminApi }) => {
+    const client = `Portal Range ${uid()}`;
+    const c = await ok<{ id: string }>(await adminApi.api.post(adminApi.orgApi('/clients'), { data: { name: client } }), 'client');
+    await ok(await adminApi.api.post(adminApi.orgApi('/projects'), { data: { name: `Range Project ${uid()}`, client_id: c.id, member_ids: [data.worker.membershipId] } }), 'project');
+    await ok(await adminApi.api.put(adminApi.orgApi(`/clients/${c.id}/portal`), { data: { enabled: true } }), 'portal settings');
+    const invite = await ok<{ invite_url: string }>(await adminApi.api.post(adminApi.orgApi(`/clients/${c.id}/portal/invitations`), { data: { email: `viewer+${uid()}@e2e.test` } }), 'portal invite');
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const page = await context.newPage();
+    const link = new URL(invite.invite_url);
+    await page.goto(link.pathname + link.search);
+    await page.getByLabel('Your name').fill('Rae Range');
+    await page.getByLabel('Choose a password').fill(PASSWORD);
+    await page.getByLabel('Confirm password').fill(PASSWORD);
+    await page.getByRole('button', { name: 'Open dashboard' }).click();
+    const heading = page.getByRole('heading', { level: 1, name: client });
+    await expect(heading).toBeVisible({ timeout: 20_000 });
+
+    const from = page.getByLabel('From');
+    const to = page.getByLabel('To', { exact: true });
+    const problem = page.getByRole('alert').filter({ hasText: 'The dashboard still shows the last period.' });
+    const stuck = page.getByRole('button', { name: /try again/i });
+    // The server must never be asked for a period it refuses.
+    const refused: string[] = [];
+    page.on('response', (r) => r.url().includes('/summary') && r.status() === 400 && refused.push(r.url()));
+
+    await from.fill('');
+    await expect(problem).toHaveText('Enter both dates. The dashboard still shows the last period.');
+    await expect(heading).toBeVisible();
+    await from.fill('2030-01-31');
+    await to.fill('2030-01-01');
+    await expect(problem).toHaveText('The start date is after the end date. The dashboard still shows the last period.');
+    await from.fill('2029-09-01');
+    await expect(problem).toHaveText('Choose a period of up to 93 days. The dashboard still shows the last period.');
+    await expect(heading).toBeVisible();
+    await expect(stuck).toHaveCount(0);
+    await expect(from).toHaveAttribute('aria-invalid', 'true');
+
+    // A valid period applies at once and the message goes away.
+    const loaded = page.waitForResponse((r) => r.url().includes('/summary?from=2029-12-01&to=2030-01-01') && r.status() === 200);
+    await from.fill('2029-12-01');
+    await loaded;
+    await expect(problem).toHaveCount(0);
+    await expect(heading).toBeVisible();
+    expect(refused).toEqual([]);
     await context.close();
   });
 
@@ -62,6 +122,7 @@ test.describe('Client portal', () => {
     await viewer.goto(link.pathname + link.search);
     await viewer.getByLabel('Your name').fill('Otto Offline');
     await viewer.getByLabel('Choose a password').fill(PASSWORD);
+    await viewer.getByLabel('Confirm password').fill(PASSWORD);
     await viewer.getByRole('button', { name: 'Open dashboard' }).click();
     await expect(viewer.getByRole('heading', { level: 1, name: 'This dashboard is not switched on yet' })).toBeVisible({ timeout: 20_000 });
     await expect(viewer.getByText(/Keep this link: it opens the dashboard as soon as they do\./)).toBeVisible();

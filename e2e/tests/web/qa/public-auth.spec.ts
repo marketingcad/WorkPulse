@@ -18,6 +18,7 @@ test.describe('QA · Sign-up', () => {
     await page.getByLabel('Your name').fill('Quinn Owner');
     await page.getByLabel('Work email').fill(email);
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+    await page.getByLabel('Confirm password').fill(PASSWORD);
     await page.getByLabel('Organization name').fill(`QA Studio ${uid()}`);
     await page.getByRole('button', { name: 'Create organization' }).click();
 
@@ -49,6 +50,7 @@ test.describe('QA · Sign-up', () => {
     // An invalid email too, and each message stays tied to its field.
     await page.getByLabel('Work email').fill('not-an-email');
     await page.getByLabel('Password', { exact: true }).fill('x'.repeat(12));
+    await page.getByLabel('Confirm password').fill('x'.repeat(12));
     await page.getByRole('button', { name: 'Create organization' }).click();
     await expect(alerts).toHaveText(['Enter a valid email address, like name@example.com']);
     await expect(page.getByLabel('Work email')).toHaveAttribute('aria-invalid', 'true');
@@ -72,6 +74,7 @@ test.describe('QA · Sign-up', () => {
     await page.getByLabel('Your name').fill('Someone Else');
     await page.getByLabel('Work email').fill(data.admin.email);
     await page.getByLabel('Password', { exact: true }).fill(`${PASSWORD}-other`);
+    await page.getByLabel('Confirm password').fill(`${PASSWORD}-other`);
     await page.getByRole('button', { name: 'Create organization' }).click();
     // Either a clear refusal or the neutral "check your email" screen; never the existing workspace.
     await expect(page.getByRole('alert').filter({ hasText: /./ }).or(page.getByRole('heading', { name: 'Check your email' })).first()).toBeVisible();
@@ -106,6 +109,7 @@ test.describe('QA · Links from emails', () => {
   test('a malformed password reset link shows a readable message', async ({ page }) => {
     await page.goto('/reset-password?token=not-a-real-token');
     await page.getByLabel('New password').fill(`${PASSWORD}-new`);
+    await page.getByLabel('Confirm password').fill(`${PASSWORD}-new`);
     await page.getByRole('button', { name: 'Update password' }).click();
     await expect(page.getByText(/invalid|expired/i).first()).toBeVisible();
     await expect(page.getByRole('main')).not.toContainText(RAW_VALIDATOR);
@@ -114,6 +118,7 @@ test.describe('QA · Links from emails', () => {
   test('a well-formed but unknown reset link is refused', async ({ page }) => {
     await page.goto(`/reset-password?token=${badToken}`);
     await page.getByLabel('New password').fill(`${PASSWORD}-new`);
+    await page.getByLabel('Confirm password').fill(`${PASSWORD}-new`);
     await page.getByRole('button', { name: 'Update password' }).click();
     await expect(page.getByText('This link is invalid or has expired')).toBeVisible();
     await expect(page.getByText('Password updated.')).toHaveCount(0);

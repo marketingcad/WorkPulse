@@ -103,7 +103,7 @@ function LoginForm() {
           {t('auth.login.expired')}
         </p>
       )}
-      <Field label={t('auth.workEmail')} htmlFor="email" error={fieldErrors.email}>
+      <Field label={t('auth.workEmail')} htmlFor="email" error={fieldErrors.email} required>
         <AuthInput
           icon={Mail}
           id="email"
@@ -119,7 +119,7 @@ function LoginForm() {
           autoFocus
         />
       </Field>
-      <Field label={t('auth.password')} htmlFor="password" error={fieldErrors.password}>
+      <Field label={t('auth.password')} htmlFor="password" error={fieldErrors.password} required>
         <AuthInput
           icon={Lock}
           id="password"

@@ -57,6 +57,8 @@ export interface LeaderboardRow {
   trend: Array<number | null>;
 }
 export interface Leaderboard {
+  /** when these scores were calculated (they refresh once a day, or when an admin recalculates); null: not yet */
+  calculated_at: string | null;
   type: 'workers' | 'teams' | 'projects';
   period: PerformancePeriod;
   start: string;
@@ -71,6 +73,8 @@ export interface Leaderboard {
 
 /** GET /performance/teams (services/leaderboards.ts `teamPerformance`) */
 export interface TeamPerformance {
+  /** when these scores were calculated (they refresh once a day, or when an admin recalculates); null: not yet */
+  calculated_at: string | null;
   period: PerformancePeriod;
   start: string;
   end: string;
@@ -95,6 +99,8 @@ export interface TeamPerformance {
 
 /** GET /performance/members (services/leaderboards.ts `memberPerformanceList`) */
 export interface MemberPerformanceList {
+  /** when these scores were calculated (they refresh once a day, or when an admin recalculates); null: not yet */
+  calculated_at: string | null;
   start: string;
   end: string;
   rows: Array<{ id: string; name: string; title: string | null; role: string; teams: string[]; score: number | null; eligible: boolean; approved_seconds: number; goals: { completed: number; due: number } | null; attendance: { on_time: number; scheduled: number } | null }>;
@@ -102,6 +108,8 @@ export interface MemberPerformanceList {
 
 /** GET /performance/members/:id/profile (services/leaderboards.ts `memberProfile`) */
 export interface MemberProfile {
+  /** when these scores were calculated (they refresh once a day, or when an admin recalculates); null: not yet */
+  calculated_at: string | null;
   member: { id: string; name: string; title: string | null; role: string; teams: Array<{ id: string; name: string }>; projects: Array<{ id: string; name: string }> };
   period: { type: PerformancePeriod; start: string; end: string };
   score: MemberScoreDto;
@@ -148,6 +156,8 @@ export type MilestoneStep = 'ON_TIME' | 'LATE' | 'OVERDUE' | 'OPEN';
 
 /** GET /performance/overview */
 export interface PerformanceOverview {
+  /** when these scores were calculated (they refresh once a day, or when an admin recalculates); null: not yet */
+  calculated_at: string | null;
   period: PerformancePeriod;
   start: string;
   end: string;

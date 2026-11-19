@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Check, X } from 'lucide-react';
 import type { OffsetPage } from '@tallywork/contracts';
 import { Button, ConfirmDialog, DataTable, Dialog, EmptyState, ErrorState, Field, Input, Panel, SegmentedControl, StatusBadge, Textarea, fmtRelative, useToast, type Column } from '@tallywork/ui';
-import { api, errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
+import { api, errorMessage, qs, useOrgMutation, useOrgPage, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
@@ -28,7 +28,7 @@ export function TimeOffRequests() {
   // The server searches and pages every request (approved ones keep growing), not only the latest 500.
   const filters = { status, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
-  const q = useOrgQuery<OffsetPage<TimeOffRequest>>(`/time-off/requests${qs({ ...filters, ...paging.params })}`, { placeholderData: (p) => p });
+  const q = useOrgPage<OffsetPage<TimeOffRequest>>(`/time-off/requests${qs({ ...filters, ...paging.params })}`);
   useClampPage(paging, q.data, q.isPlaceholderData);
   const decide = useOrgMutation<Decision>('POST', (b) => `/time-off/requests/${b.id}/${b.action}`);
   // What an approver needs to decide without leaving the queue: the balance after approving, and
@@ -175,7 +175,7 @@ export function TimeOffRequests() {
           columns={columns.map((c) => ({ ...c, sortable: false }))}
           rowKey={(r) => r.id}
           pagination={paging.pagination(q.data)}
-          toolbar={<Input aria-label="Search time off requests" placeholder="Search members, policies or reasons…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-72" />}
+          toolbar={<Input aria-label="Search time off requests" maxLength={100} placeholder="Search members, policies or reasons…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-72" />}
           caption="Time off requests"
           selectable={status === 'PENDING'}
           selected={selected}

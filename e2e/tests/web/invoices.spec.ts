@@ -1,4 +1,5 @@
 import { expect, ok, test, usd, uid } from '../../support/fixtures';
+import { invitePerson } from '../../support/people';
 import { ADMIN_STATE, VIEWER_STATE } from '../../support/env';
 
 /**
@@ -93,6 +94,33 @@ test.describe('Invoices (admin)', () => {
     await expect(page.getByText('This field is required')).toHaveCount(0);
     expect(previews.length).toBeGreaterThan(0);
     expect(previews.filter((p) => p.status !== 200 || !p.clientId)).toEqual([]);
+  });
+
+  // QA round 6 (BUG-26): approved billable time with no bill rate was left out with "Approve
+  // timesheets first", which sent the admin to approve time that was already approved.
+  test('approved time with no bill rate is explained, with a way to set rates, not "approve timesheets"', async ({ page, data, adminApi }) => {
+    const suffix = `${data.run}-${uid()}`;
+    const client = `Unpriced Co ${suffix}`;
+    const o = adminApi.orgApi;
+    const c = await ok<{ id: string }>(await adminApi.api.post(o('/clients'), { data: { name: client } }), 'client');
+    const member = await invitePerson(adminApi, `una-inv+${suffix}@e2e.test`, `Una Invoice ${suffix}`);
+    const project = await ok<{ id: string }>(await adminApi.api.post(o('/projects'), { data: { name: `No bill rate ${suffix}`, client_id: c.id, member_ids: [member], billable_default: true } }), 'project');
+    // Last month, which the new-invoice page opens on when nothing can be invoiced.
+    const now = new Date();
+    const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 10, 14));
+    await ok(await adminApi.api.post(o('/manual-time'), { data: { membership_id: member, project_id: project.id, started_at: day.toISOString(), ended_at: new Date(day.getTime() + 2 * 3600_000).toISOString(), reason: 'no bill rate' } }), 'manual time');
+    const ts = await ok<{ id: string }>(await adminApi.api.post(o('/timesheets/submit'), { data: { membership_id: member, date: day.toISOString().slice(0, 10) } }), 'submit');
+    await ok(await adminApi.api.post(o(`/timesheets/${ts.id}/approve`), { data: {} }), 'approve');
+
+    await page.goto(`/o/${data.orgId}/finance/invoices/new`);
+    await page.getByLabel('Client').selectOption({ label: client });
+    await page.getByRole('button', { name: 'Preview lines' }).click();
+
+    await expect(page.getByText('Nothing to invoice in this period')).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'of billable time has no bill rate' })).toContainText(/2h( 00m)? of billable time has no bill rate/);
+    await expect(page.getByText('has no bill rate, so it is worth nothing and is not invoiced')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Set rates', exact: true })).toHaveAttribute('href', `/o/${data.orgId}/finance/billing`);
+    await expect(page.getByText('Approve timesheets first')).toHaveCount(0);
   });
 
   test('the invoice composer checks the client, tax rate, lines and dates', async ({ page, data, adminApi }) => {

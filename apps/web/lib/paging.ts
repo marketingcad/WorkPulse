@@ -66,3 +66,21 @@ export function useClampPage(paging: ServerPage, data: OffsetPage<unknown> | und
     if (data && !isPlaceholder && page > 0 && page * pageSize >= data.total) setPage(Math.max(0, Math.ceil(data.total / pageSize) - 1));
   }, [data, isPlaceholder, page, pageSize, setPage]);
 }
+
+/** Query parameters that only choose a page of a list; everything else (filters, tabs, search) chooses the list. */
+const PAGE_PARAMS = new Set(['page', 'page_size']);
+
+/**
+ * Are two request paths the same list, differing at most in the page? Used so a paged list keeps the
+ * previous page on screen while the next one loads, but never shows another filter's or tab's results
+ * under the new heading (QA BUG-24: "No approved timesheets" while the Approved tab was loading).
+ */
+export function samePagedList(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const key = (p: string) => {
+    const [path, search = ''] = p.split('?', 2) as [string, string?];
+    const params = [...new URLSearchParams(search)].filter(([k]) => !PAGE_PARAMS.has(k)).sort(([x], [y]) => x.localeCompare(y));
+    return `${path}?${new URLSearchParams(params).toString()}`;
+  };
+  return key(a) === key(b);
+}

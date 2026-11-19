@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Field } from '@tallywork/ui';
 import { AuthInput, AuthShell } from '@/components/auth-shell';
 import { api, ApiError } from '@/lib/api';
+import { confirmPasswordProblem, formErrors, optionalNameProblem, passwordProblem } from '@/lib/form-checks';
 import { t } from '@/lib/i18n';
 
 function Form() {
@@ -12,17 +13,34 @@ function Form() {
   const token = useSearchParams().get('token') ?? '';
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<ApiError | null>(null);
   const [loading, setLoading] = useState(false);
   return (
     <form
       className="flex flex-col gap-4"
+      noValidate
       onSubmit={async (e) => {
         e.preventDefault();
+        if (loading) return;
+        // Checked here with the server's rules (form validation audit, 20 Nov 2026). The password is only
+        // needed for a new account; someone who already has one leaves it empty.
+        const problems: Array<{ field: string; message: string }> = [];
+        const nameIssue = optionalNameProblem(name, 100);
+        if (nameIssue) problems.push({ field: 'name', message: nameIssue });
+        if (password) {
+          const pw = passwordProblem(password);
+          if (pw) problems.push({ field: 'password', message: pw });
+          else {
+            const mismatch = confirmPasswordProblem(password, confirm);
+            if (mismatch) problems.push({ field: 'confirm_password', message: mismatch });
+          }
+        }
+        if (problems.length) return setError(formErrors(problems));
         setLoading(true);
         setError(null);
         try {
-          const r = await api<{ access_id: string }>('/portal/invitations/accept', { body: { token, name: name || undefined, password: password || undefined } });
+          const r = await api<{ access_id: string }>('/portal/invitations/accept', { body: { token, name: name.trim() || undefined, password: password || undefined } });
           router.replace(`/portal/${r.access_id}`);
         } catch (err) {
           const e2 = err instanceof ApiError ? err : new ApiError(500, 'error', t('auth.invite.failed'));
@@ -32,15 +50,20 @@ function Form() {
         }
       }}
     >
-      <Field label={t('auth.yourName')} htmlFor="name">
-        <AuthInput icon={User} id="name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" autoFocus />
+      <Field label={t('auth.yourName')} htmlFor="name" error={error?.field('name')}>
+        <AuthInput icon={User} id="name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" maxLength={100} autoFocus />
       </Field>
       <Field label={t('auth.invite.choosePassword')} htmlFor="pw" hint={t('auth.passwordHint')} error={error?.field('password')}>
-        <AuthInput icon={Lock} id="pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+        <AuthInput icon={Lock} id="pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" maxLength={200} />
       </Field>
-      {error?.general(['password']) && (
+      {password && (
+        <Field label={t('auth.confirmPassword')} htmlFor="pw-confirm" error={error?.field('confirm_password')} required>
+          <AuthInput icon={Lock} id="pw-confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" maxLength={200} />
+        </Field>
+      )}
+      {error?.general(['name', 'password', 'confirm_password']) && (
         <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
-          {error.general(['password'])}
+          {error.general(['name', 'password', 'confirm_password'])}
         </p>
       )}
       <Button type="submit" variant="primary" size="md" loading={loading}>

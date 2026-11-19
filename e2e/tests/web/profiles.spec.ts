@@ -22,7 +22,7 @@ test.describe('Client profiles', () => {
     await dialog.getByLabel('Company / client name').fill(name);
     await dialog.getByLabel('Contact person').fill('Alice Rivera');
     await dialog.getByLabel('Contact email').fill('billing@umbrella.test');
-    await dialog.getByLabel('Phone number').fill('+1 555 0100');
+    await dialog.getByLabel('Phone number').fill('+1 415 555 0100');
     await dialog.getByLabel('Document language').selectOption({ label: 'Deutsch' });
     await dialog.getByLabel('Pay rate per hour').fill('60');
     await dialog.getByLabel('Bill rate per hour').fill('120');

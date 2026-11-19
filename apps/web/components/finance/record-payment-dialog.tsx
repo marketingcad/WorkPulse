@@ -84,8 +84,22 @@ export function RecordPaymentDialog({ open, onOpenChange, invoice }: { open: boo
   const allocated = allocations.reduce((s, a) => s + a.amount_minor, 0);
   const amountMinor = toMinor(amount);
   const overAllocated = amountMinor !== null && allocated > amountMinor;
+  // Each invoice's amount is readable and within its balance, as the server requires (form validation
+  // audit, 20 Nov 2026: unreadable amounts were dropped without a word, and overpaying was only refused after sending).
+  const allocIssues: Record<string, string> = {};
+  if (!invoice)
+    for (const i of payable) {
+      const text = (alloc[i.id] ?? '').trim();
+      if (!text) continue;
+      const v = toMinor(text);
+      if (v === null) allocIssues[i.id] = 'Enter an amount like 75.50';
+      else if (v > i.balance_minor) allocIssues[i.id] = `At most ${fmtMoney(i.balance_minor, i.currency)}`;
+    }
+  const overBalance = invoice && amountMinor !== null && amountMinor > invoice.balance_minor ? `More than the balance of ${fmtMoney(invoice.balance_minor, invoice.currency)}` : null;
+  const blocked = overAllocated || !!overBalance || Object.keys(allocIssues).length > 0;
 
   const submit = async () => {
+    if (m.isPending || blocked) return;
     setErr(null);
     if (!amountMinor || amountMinor < 1) {
       setErr(new ApiError(422, 'validation', 'Enter an amount', undefined, [{ field: 'amount_minor', message: 'Enter an amount greater than zero' }]));
@@ -120,7 +134,7 @@ export function RecordPaymentDialog({ open, onOpenChange, invoice }: { open: boo
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" onClick={submit} loading={m.isPending} disabled={overAllocated}>
+          <Button variant="primary" onClick={submit} loading={m.isPending} disabled={blocked}>
             Record payment
           </Button>
         </>
@@ -139,7 +153,7 @@ export function RecordPaymentDialog({ open, onOpenChange, invoice }: { open: boo
             </Select>
           </Field>
         )}
-        <Field label={`Amount (${currency})`} htmlFor="pay-amount" required error={err?.field('amount_minor')}>
+        <Field label={`Amount (${currency})`} htmlFor="pay-amount" required error={overBalance ?? err?.field('amount_minor')}>
           <Input id="pay-amount" inputMode="decimal" className="tabular" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
         </Field>
         <Field label="Received on" htmlFor="pay-date" required error={err?.field('received_on')}>
@@ -184,14 +198,23 @@ export function RecordPaymentDialog({ open, onOpenChange, invoice }: { open: boo
                       Due {fmtDate(i.due_date)} · balance <span className="tabular">{fmtMoney(i.balance_minor, i.currency)}</span>
                     </div>
                   </div>
+                  <div className="flex flex-col items-end gap-1">
                   <Input
                     aria-label={`Amount for ${i.number}`}
                     inputMode="decimal"
                     className="tabular w-28 text-right"
                     placeholder="0.00"
                     value={alloc[i.id] ?? ''}
+                    aria-invalid={!!allocIssues[i.id] || undefined}
+                    aria-describedby={allocIssues[i.id] ? `alloc-${i.id}-error` : undefined}
                     onChange={(e) => setAlloc({ ...alloc, [i.id]: e.target.value })}
                   />
+                  {allocIssues[i.id] && (
+                    <p id={`alloc-${i.id}-error`} role="alert" className="w-28 text-right text-xs text-danger">
+                      {allocIssues[i.id]}
+                    </p>
+                  )}
+                  </div>
                 </li>
               ))}
             </ul>

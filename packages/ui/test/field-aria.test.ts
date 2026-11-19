@@ -39,3 +39,13 @@ describe('Field ARIA', () => {
     expect(ariaOf(renderToStaticMarkup(h(Input, { id: 'free' })), 'free')).toEqual([]);
   });
 });
+
+// Form validation audit (20 Nov 2026): the required mark is shown but is not part of the label, so the
+// control is still named "Password" (not "Password *"); aria-required tells assistive technology.
+describe('a required Field', () => {
+  it('keeps the asterisk out of the label and marks the control required', () => {
+    const html = render({ label: 'Password', htmlFor: 'pw', required: true, children: h(Input, { id: 'pw' }) });
+    expect(html).toMatch(/<label for="pw">Password<\/label><span aria-hidden="true"[^>]*> \*<\/span>/);
+    expect(html).toContain('aria-required="true"');
+  });
+});

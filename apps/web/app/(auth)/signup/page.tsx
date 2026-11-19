@@ -7,12 +7,13 @@ import { Button, Field } from '@tallywork/ui';
 import { AuthInput, AuthShell } from '@/components/auth-shell';
 import { CheckEmail } from '@/components/check-email';
 import { api, ApiError } from '@/lib/api';
-import { formErrors, signupProblems } from '@/lib/form-checks';
+import { confirmPasswordProblem, formErrors, signupProblems } from '@/lib/form-checks';
 import { t } from '@/lib/i18n';
 
 export default function SignupPage() {
   const router = useRouter();
   const [form, setForm] = useState({ name: '', email: '', password: '', organization_name: '' });
+  const [confirm, setConfirm] = useState('');
   const [err, setErr] = useState<ApiError | null>(null);
   const [loading, setLoading] = useState(false);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
@@ -22,7 +23,10 @@ export default function SignupPage() {
     e.preventDefault();
     // Checked here first, with the server's rules and wording: every request counts toward the
     // sign-up limit, so a typo must not use one up (QA audit BUG-16).
-    const problems = signupProblems(form);
+    const problems: Array<{ field: string; message: string }> = signupProblems(form);
+    // The password typed twice, so a typo does not lock the person out (form validation audit, 20 Nov 2026).
+    const mismatch = problems.some((x) => x.field === 'password') ? null : confirmPasswordProblem(form.password, confirm);
+    if (mismatch) problems.push({ field: 'confirm_password', message: mismatch });
     if (problems.length) return setErr(formErrors(problems));
     setLoading(true);
     setErr(null);
@@ -70,21 +74,24 @@ export default function SignupPage() {
       }
     >
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-        <Field label={t('auth.yourName')} htmlFor="name" error={err?.field('name')}>
-          <AuthInput icon={User} id="name" autoComplete="name" value={form.name} onChange={set('name')} required autoFocus />
+        <Field label={t('auth.yourName')} htmlFor="name" error={err?.field('name')} required>
+          <AuthInput icon={User} id="name" autoComplete="name" value={form.name} onChange={set('name')} required maxLength={100} autoFocus />
         </Field>
-        <Field label={t('auth.workEmail')} htmlFor="email" error={err?.field('email')}>
-          <AuthInput icon={Mail} id="email" type="email" autoComplete="email" value={form.email} onChange={set('email')} required />
+        <Field label={t('auth.workEmail')} htmlFor="email" error={err?.field('email')} required>
+          <AuthInput icon={Mail} id="email" type="email" autoComplete="email" value={form.email} onChange={set('email')} required maxLength={254} />
         </Field>
-        <Field label={t('auth.password')} htmlFor="password" hint={t('auth.passwordHint')} error={err?.field('password')}>
-          <AuthInput icon={Lock} id="password" type="password" autoComplete="new-password" value={form.password} onChange={set('password')} required minLength={10} />
+        <Field label={t('auth.password')} htmlFor="password" hint={t('auth.passwordHint')} error={err?.field('password')} required>
+          <AuthInput icon={Lock} id="password" type="password" autoComplete="new-password" value={form.password} onChange={set('password')} required minLength={10} maxLength={200} />
+        </Field>
+        <Field label={t('auth.confirmPassword')} htmlFor="confirm-password" error={err?.field('confirm_password')} required>
+          <AuthInput icon={Lock} id="confirm-password" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required maxLength={200} />
         </Field>
         <Field label={t('auth.signup.orgName')} htmlFor="org" hint={t('auth.signup.orgHint')} error={err?.field('organization_name')}>
-          <AuthInput icon={Building2} id="org" value={form.organization_name} onChange={set('organization_name')} placeholder={t('auth.signup.orgPlaceholder')} />
+          <AuthInput icon={Building2} id="org" maxLength={100} value={form.organization_name} onChange={set('organization_name')} placeholder={t('auth.signup.orgPlaceholder')} />
         </Field>
-        {err?.general(['name', 'email', 'password', 'organization_name']) && (
+        {err?.general(['name', 'email', 'password', 'confirm_password', 'organization_name']) && (
           <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
-            {err.general(['name', 'email', 'password', 'organization_name'])}
+            {err.general(['name', 'email', 'password', 'confirm_password', 'organization_name'])}
           </p>
         )}
         <Button type="submit" variant="primary" size="md" loading={loading} className="w-full">

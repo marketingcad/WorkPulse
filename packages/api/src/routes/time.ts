@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import {
   dateRangeQuery,
@@ -47,6 +47,16 @@ import {
 } from '../services/timesheets';
 
 const rangeWithMembers = dateRangeQuery.and(z.object({ membership_ids: idList, project_id: z.uuid().optional(), project_ids: idList, client_id: z.uuid().optional(), task_id: z.uuid().optional() }));
+
+async function usageRoute(c: Context<AppEnv>, kind: 'APP' | 'URL') {
+  const q = query(c, rangeWithMembers.and(z.object({ group_by: z.enum(['name', 'worker', 'project']).default('name') })));
+  return c.json(await usage(ctx(c), kind, { from: q.from, to: q.to, membershipIds: q.membership_ids, projectId: q.project_id, groupBy: q.group_by }));
+}
+
+async function spansRoute(c: Context<AppEnv>, kind: 'APP' | 'URL') {
+  const q = query(c, z.object({ membership_id: z.uuid(), date: isoDate }));
+  return c.json(await rawSpans(ctx(c), kind, q.membership_id, q.date));
+}
 
 export const timeRoutes = new Hono<AppEnv>()
   // Timer (web / API)
@@ -162,14 +172,12 @@ export const timeRoutes = new Hono<AppEnv>()
     await deleteScreenshot(ctx(c), c.req.param('id'), c.req.query('remove_time') === 'true');
     return c.body(null, 204);
   })
-  .get('/:kind{apps|urls}', requirePermission('apps:read'), async (c) => {
-    const q = query(c, rangeWithMembers.and(z.object({ group_by: z.enum(['name', 'worker', 'project']).default('name') })));
-    return c.json(await usage(ctx(c), c.req.param('kind') === 'apps' ? 'APP' : 'URL', { from: q.from, to: q.to, membershipIds: q.membership_ids, projectId: q.project_id, groupBy: q.group_by }));
-  })
-  .get('/:kind{apps|urls}/spans', requirePermission('apps:read'), async (c) => {
-    const q = query(c, z.object({ membership_id: z.uuid(), date: isoDate }));
-    return c.json(await rawSpans(ctx(c), c.req.param('kind') === 'apps' ? 'APP' : 'URL', q.membership_id, q.date));
-  })
+  // App and website usage. Four plain routes, not ":kind{apps|urls}": mounted under /orgs/:orgId, that
+  // pattern sent /apps/spans to the usage handler, so the app day timeline always failed (QA, BUG-33).
+  .get('/apps', requirePermission('apps:read'), (c) => usageRoute(c, 'APP'))
+  .get('/urls', requirePermission('apps:read'), (c) => usageRoute(c, 'URL'))
+  .get('/apps/spans', requirePermission('apps:read'), (c) => spansRoute(c, 'APP'))
+  .get('/urls/spans', requirePermission('apps:read'), (c) => spansRoute(c, 'URL'))
   .get('/idle-events', requirePermission('activity:read'), async (c) => {
     const q = query(c, rangeWithMembers.and(z.object({ status: z.enum(['PENDING', 'KEPT', 'DISCARDED', 'REASSIGNED']).optional() })));
     return c.json(await listIdleEvents(ctx(c), { from: q.from, to: q.to, membershipIds: q.membership_ids, status: q.status }));

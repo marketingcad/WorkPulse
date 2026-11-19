@@ -85,7 +85,12 @@ export async function upsertTeam(x: Ctx, teamId: string | null, input: z.infer<t
   assertCanManageTeam(x, teamId);
   let id = teamId;
   if (id) {
-    const r = await x.tx.update(teams).set({ name: input.name, description: input.description ?? null, updatedAt: new Date() }).where(eq(teams.id, id)).returning({ id: teams.id });
+    // An archived team is read-only (QA, BUG-38): renaming one answered with no body.
+    const r = await x.tx
+      .update(teams)
+      .set({ name: input.name, description: input.description ?? null, updatedAt: new Date() })
+      .where(and(eq(teams.organizationId, x.org.id), eq(teams.id, id), isNull(teams.archivedAt)))
+      .returning({ id: teams.id });
     if (!r.length) throw notFound('team');
   } else {
     id = newId();
@@ -97,21 +102,33 @@ export async function upsertTeam(x: Ctx, teamId: string | null, input: z.infer<t
 
 export async function archiveTeam(x: Ctx, teamId: string) {
   assertCanManageTeam(x, teamId);
-  await x.tx.update(teams).set({ archivedAt: new Date() }).where(eq(teams.id, teamId));
-  await x.tx.delete(teamMembers).where(eq(teamMembers.teamId, teamId));
-  await audit(x, { action: 'team.archived', targetType: 'team', targetId: teamId });
+  // Once: a team that is missing or already archived is 404, with no audit row (QA, BUG-39).
+  const r = await x.tx
+    .update(teams)
+    .set({ archivedAt: new Date() })
+    .where(and(eq(teams.organizationId, x.org.id), eq(teams.id, teamId), isNull(teams.archivedAt)))
+    .returning({ id: teams.id });
+  if (!r.length) throw notFound('team');
+  // Its members and its projects are let go. The project links went too, so the team no longer shows on
+  // its projects and nobody added to it later could regain them (BUG-38). The audit row keeps both lists.
+  const members = await x.tx.delete(teamMembers).where(eq(teamMembers.teamId, teamId)).returning({ membershipId: teamMembers.membershipId, role: teamMembers.role });
+  const projectLinks = await x.tx.delete(projectTeams).where(eq(projectTeams.teamId, teamId)).returning({ projectId: projectTeams.projectId });
+  await audit(x, { action: 'team.archived', targetType: 'team', targetId: teamId, before: { members, project_ids: projectLinks.map((p) => p.projectId) } });
 }
 
 export async function setTeamMember(x: Ctx, teamId: string, membershipId: string, role: 'MANAGER' | 'MEMBER' | null) {
   const scope = x.actor.grants['teams:manage'];
   if (!scope) throw forbidden();
-  const [t] = await x.tx.select().from(teams).where(eq(teams.id, teamId));
-  if (!t) throw notFound('team');
+  const [t] = await x.tx.select().from(teams).where(and(eq(teams.organizationId, x.org.id), eq(teams.id, teamId)));
+  // An archived team takes no one (BUG-38).
+  if (!t || t.archivedAt) throw notFound('team');
   // Team-scoped managers may only change teams they manage; nobody edits their own role.
   if (scope !== 'org' && !x.actor.managedTeamIds.includes(teamId)) throw forbidden('You can only change teams you manage');
   if (scope !== 'org' && membershipId === x.actor.membershipId) throw forbidden('You cannot change your own team role');
-  const [m] = await x.tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.id, membershipId), eq(memberships.organizationId, x.org.id)));
+  const [m] = await x.tx.select({ id: memberships.id, status: memberships.status }).from(memberships).where(and(eq(memberships.id, membershipId), eq(memberships.organizationId, x.org.id)));
   if (!m) throw notFound('worker');
+  // Someone who has left is on no team (removing them clears their teams; BUG-40). Taking them off one stays possible.
+  if (role !== null && m.status === 'REMOVED') throw businessRule('member_removed', 'This person has left the organization. Add them again from Members first.');
   // SEC-7: a team-scope grant can't pull anyone into its team (and so under its reach); it adds only
   // people it already manages through another team. Removing and changing roles stay open.
   if (scope !== 'org' && role !== null && !x.actor.managedMembershipIds.has(membershipId)) {
@@ -456,7 +473,11 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
     // client would otherwise open that client (and, with clients:manage, its settings) to them.
     if (x.actor.grants['projects:manage'] !== 'org' && !(await canOnClient(x, 'clients:read', input.client_id))) throw notFound('client');
   }
-  if (input.start_date && input.end_date && input.end_date < input.start_date) throw validation('The end date is before the start date', { errors: [{ field: 'end_date', message: 'Must be on or after the start date' }] });
+  // A change of only one date is checked against the other one already saved (form validation audit, 20 Nov 2026).
+  const [saved] = projectId && (input.start_date === undefined) !== (input.end_date === undefined) ? await x.tx.select({ start: projects.startDate, end: projects.endDate }).from(projects).where(eq(projects.id, projectId)) : [];
+  const start = input.start_date !== undefined ? input.start_date : (saved?.start ?? null);
+  const end = input.end_date !== undefined ? input.end_date : (saved?.end ?? null);
+  if (start && end && end < start) throw validation('The end date is before the start date', { errors: [{ field: 'end_date', message: 'Must be on or after the start date' }] });
   const values: Partial<typeof projects.$inferInsert> = {};
   if (input.short_name !== undefined) values.shortName = input.short_name || null;
   if (input.start_date !== undefined) values.startDate = input.start_date;

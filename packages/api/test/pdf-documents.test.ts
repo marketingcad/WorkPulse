@@ -149,6 +149,7 @@ describe('pay stub PDF', () => {
     approved_seconds: 37800,
     unapproved_seconds: 3600,
     carried_seconds: 1800,
+    unpriced_seconds: 0,
     regular_seconds: 36000,
     overtime_seconds: 1800,
     time_pay_minor: 26875,

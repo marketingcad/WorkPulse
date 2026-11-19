@@ -1,14 +1,21 @@
 'use client';
+import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { OrgContextDto } from '@tallywork/contracts';
 import { Button, Field, Input, PageHeader, Panel, Select, Switch, Textarea, fmtDuration, useToast } from '@tallywork/ui';
 import { ApiError, useOrgMutation } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { CURRENCIES, WEEKDAYS, timeZones } from '@/components/settings/options';
-import { LANGUAGES, LogoEditor } from '@/components/workspace/logo-editor';
-import { DocumentLogoEditor } from '@/components/settings/document-logo-editor';
+import { LANGUAGES } from '@/components/workspace/logo-editor';
 import { hoursToSeconds, secondsToHours } from '@/components/workspace/basics';
 import { useUnsavedChanges } from '@/lib/unsaved';
+import { emailProblem } from '@/lib/form-checks';
+import { loadedPhone } from '@/lib/phone-lazy';
+import { PhoneInput, defaultPhoneCountry } from '@/components/phone-input';
+
+// The logo editors show only on the Organization page, not on Time & pay (bundle budget, 20 Nov 2026).
+const LogoEditor = dynamic(() => import('@/components/workspace/logo-editor').then((m) => m.LogoEditor), { ssr: false });
+const DocumentLogoEditor = dynamic(() => import('@/components/settings/document-logo-editor').then((m) => m.DocumentLogoEditor), { ssr: false });
 
 type DurationFormat = 'hm' | 'clock' | 'decimal';
 type PayType = 'weekly' | 'biweekly' | 'semimonthly' | 'monthly';
@@ -146,7 +153,8 @@ export function OrgSettingsForm({ part, title, description }: { part: OrgSetting
         brief: f.brief.trim() || null,
         tax_id: f.tax_id.trim() || null,
         address: f.address.trim() || null,
-        phone: f.phone.trim() || null,
+        // Sent when changed, so a number saved before numbers were checked does not block other edits.
+        ...(f.phone !== initial.phone ? { phone: f.phone.trim() || null } : {}),
         email: f.email.trim() || null,
         document_language: f.document_language || null,
         settings: { durationFormat: f.durationFormat },
@@ -172,9 +180,16 @@ export function OrgSettingsForm({ part, title, description }: { part: OrgSetting
   const hoursBad = (v: string, max: number) => v.trim() !== '' && !(Number(v) >= 0 && Number(v) <= max);
   const lockDaysBad = f.lockDays.trim() !== '' && !(Number.isInteger(Number(f.lockDays)) && Number(f.lockDays) >= 0 && Number(f.lockDays) <= 3650);
   const reminderBad = f.reminder && hoursToSeconds(f.minDaily) === null && hoursToSeconds(f.minWeekly) === null;
+  // Shown beside their fields, so a disabled Save always says why (form validation audit, 20 Nov 2026).
+  // The number changes only in the phone field, which loads the phone module first.
+  const phoneIssue = f.phone !== initial.phone ? (loadedPhone()?.phoneProblem(f.phone) ?? null) : null;
+  const emailIssue = f.email.trim() ? emailProblem(f.email.trim()) : null;
+  const lateIssue = f.lateGraceMinutes < 0 || f.lateGraceMinutes > 240 ? 'Use a whole number from 0 to 240' : null;
+  const budgetIssue = f.budgetWarnPct < 1 || f.budgetWarnPct > 100 ? 'Use a whole number from 1 to 100' : null;
+  const phoneCountry = useMemo(() => defaultPhoneCountry(), []);
   const invalid =
     part === 'organization'
-      ? !f.name.trim()
+      ? !f.name.trim() || !!phoneIssue || !!emailIssue
       : (f.payType === 'biweekly' && !f.anchorDate) ||
         f.lateGraceMinutes < 0 ||
         f.lateGraceMinutes > 240 ||
@@ -270,10 +285,10 @@ export function OrgSettingsForm({ part, title, description }: { part: OrgSetting
                   <Field label="Tax ID" htmlFor="org-tax" error={err?.field('tax_id')}>
                     <Input id="org-tax" value={f.tax_id} maxLength={50} onChange={(e) => set('tax_id', e.target.value)} />
                   </Field>
-                  <Field label="Phone number" htmlFor="org-phone" error={err?.field('phone')}>
-                    <Input id="org-phone" type="tel" value={f.phone} maxLength={50} onChange={(e) => set('phone', e.target.value)} />
+                  <Field label="Phone number" htmlFor="org-phone" error={phoneIssue ?? err?.field('phone')}>
+                    <PhoneInput id="org-phone" value={f.phone} defaultCountry={phoneCountry} onChange={(v) => set('phone', v)} />
                   </Field>
-                  <Field label="Email" htmlFor="org-email" error={err?.field('email')}>
+                  <Field label="Email" htmlFor="org-email" error={emailIssue ?? err?.field('email')}>
                     <Input id="org-email" type="email" value={f.email} maxLength={254} onChange={(e) => set('email', e.target.value)} placeholder="billing@company.com" />
                   </Field>
                   <Field label="Document language" htmlFor="org-lang" hint="Default for new clients." error={err?.field('document_language')}>
@@ -357,10 +372,10 @@ export function OrgSettingsForm({ part, title, description }: { part: OrgSetting
 
             <Panel title="Attendance & budgets">
               <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-                <Field label="Late grace period (minutes)" htmlFor="org-late" hint="Starting within this many minutes of a shift is not marked late." error={err?.field('settings.lateGraceMinutes')}>
+                <Field label="Late grace period (minutes)" htmlFor="org-late" hint="Starting within this many minutes of a shift is not marked late." error={lateIssue ?? err?.field('settings.lateGraceMinutes')}>
                   <Input id="org-late" type="number" min={0} max={240} className="tabular" value={f.lateGraceMinutes} onChange={(e) => set('lateGraceMinutes', num(e.target.value))} />
                 </Field>
-                <Field label="Budget warning at (%)" htmlFor="org-budget" hint="Budgets turn to warning when this share is used." error={err?.field('settings.budgetWarnPct')}>
+                <Field label="Budget warning at (%)" htmlFor="org-budget" hint="Budgets turn to warning when this share is used." error={budgetIssue ?? err?.field('settings.budgetWarnPct')}>
                   <Input id="org-budget" type="number" min={1} max={100} className="tabular" value={f.budgetWarnPct} onChange={(e) => set('budgetWarnPct', num(e.target.value))} />
                 </Field>
               </div>

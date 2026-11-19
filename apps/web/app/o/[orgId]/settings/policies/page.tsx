@@ -5,6 +5,7 @@ import { Info, RotateCcw } from 'lucide-react';
 import type { TeamDto } from '@tallywork/contracts';
 // The subpath: the package root would bring every schema and zod into the page.
 import { fieldLabel } from '@tallywork/contracts/messages';
+import { HOSTNAME } from '@tallywork/contracts/limits';
 import type { TrackingPolicy } from '@tallywork/domain';
 import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, Input, PageHeader, Panel, PermissionState, SegmentedControl, Select, SkeletonRows, Switch, Textarea, cx, fmtDateTime, useToast } from '@tallywork/ui';
 import { ApiError, useOrgMutation, useOrgQuery } from '@/lib/api';
@@ -421,20 +422,33 @@ function DomainsControl({ id, value, readOnly, onChange }: { id: string; value: 
   const joined = useMemo(() => value.join('\n'), [value]);
   const [text, setText] = useState(joined);
   useEffect(() => setText(joined), [joined]);
+  // Each entry must be a host name the URL list can match, as the server requires (form validation audit, 20 Nov 2026).
+  const bad = value.filter((d) => !HOSTNAME.test(d));
+  useReportInvalid(id, bad.length > 0);
   return (
-    <Textarea
-      id={id}
-      rows={3}
-      className="font-mono text-xs"
-      placeholder={'bank.example\nhealth.example'}
-      value={text}
-      disabled={readOnly}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={() => {
-        const list = [...new Set(text.split(/[\s,]+/).map((d) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '')).filter(Boolean))].slice(0, 500);
-        if (list.join('\n') !== joined) onChange(list);
-        else setText(joined);
-      }}
-    />
+    <>
+      <Textarea
+        id={id}
+        rows={3}
+        className="font-mono text-xs"
+        placeholder={'bank.example\nhealth.example'}
+        value={text}
+        disabled={readOnly}
+        aria-invalid={bad.length > 0 || undefined}
+        aria-describedby={bad.length ? `${id}-domains-error` : undefined}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          const list = [...new Set(text.split(/[\s,]+/).map((d) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '')).filter(Boolean))].slice(0, 500);
+          if (list.join('\n') !== joined) onChange(list);
+          else setText(joined);
+        }}
+      />
+      {bad.length > 0 && !readOnly && (
+        <p id={`${id}-domains-error`} role="alert" className="text-2xs text-danger">
+          Not a domain: {bad.slice(0, 5).join(', ')}
+          {bad.length > 5 ? ' …' : ''}. Use a domain like bank.example.
+        </p>
+      )}
+    </>
   );
 }

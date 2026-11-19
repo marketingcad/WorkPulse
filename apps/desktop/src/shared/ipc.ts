@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { isSecureServerUrl } from './server-url';
+
+const serverUrl = z.url({ protocol: /^https?$/ }).max(300).refine(isSecureServerUrl, 'Use an https:// server address');
 import type { TrackingPolicy } from '@tallywork/domain';
 import type { OfflineStatus } from './offline';
 import type { NotAddedItem } from './not-added';
@@ -14,13 +17,13 @@ export type MeResource = (typeof ME_RESOURCES)[number];
  */
 export const IPC = {
   'state:get': z.void(),
-  'auth:login': z.object({ serverUrl: z.url({ protocol: /^https?$/ }).max(300).optional() }),
+  'auth:login': z.object({ serverUrl: serverUrl.optional() }),
   'auth:loginPassword': z.object({
     email: z.email().max(254),
     password: z.string().min(1).max(200),
     mfaCode: z.string().trim().max(20).optional(),
     organizationId: z.uuid().optional(),
-    serverUrl: z.url({ protocol: /^https?$/ }).max(300).optional(),
+    serverUrl: serverUrl.optional(),
   }),
   'auth:logout': z.void(),
   'timer:start': z.object({ projectId: z.uuid(), taskId: z.uuid().nullable() }),

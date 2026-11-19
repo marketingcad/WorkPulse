@@ -4,6 +4,7 @@ import type { ManualTimeDto, TimeEntryDto, TimeTypeDto } from '@tallywork/contra
 import { Badge, Button, Checkbox, ConfirmDialog, Dialog, Drawer, EmptyState, ErrorState, Field, Input, SegmentedControl, Select, SkeletonRows, Textarea, fmtDateTime, fmtTime, humanize, useToast } from '@tallywork/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError, api, errorMessage, useOrgId, useOrgQuery } from '@/lib/api';
+import { fieldError, timeRangeProblem } from '@/lib/form-checks';
 import { useOrg } from '@/lib/org';
 import { ProjectTaskPicker, type PickerValue } from '@/components/project-task-picker';
 import { fromLocalInput, toLocalInput, useAssignmentsFor, useReasonPolicy, type EntryRevision } from './shared';
@@ -79,6 +80,10 @@ export function EditEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onClo
     const e = fromLocalInput(end, tz);
     if (!s || !e) return setErr(new ApiError(422, 'validation', 'Enter a valid start and end'));
     if (!target.projectId) return setErr(new ApiError(422, 'validation', 'Choose a project'));
+    // The server's rules, beside their fields (form validation audit, 20 Nov 2026).
+    const order = timeRangeProblem(s, e);
+    if (order) return setErr(fieldError('ended_at', order));
+    if (saving) return;
     setSaving(true);
     setErr(null);
     try {
@@ -124,9 +129,10 @@ export function EditEntryDialog({ entry, onClose }: { entry: TimeEntryDto; onClo
       }
     >
       <div className="flex flex-col gap-3">
-        {err && (
+        {/* Only what has no field of its own: each field shows its own error (form validation audit, 20 Nov 2026). */}
+        {err?.general(['started_at', 'ended_at', 'project_id', 'task_id', 'time_type_id', 'note', 'reason']) && (
           <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
-            {err.title}
+            {err.general(['started_at', 'ended_at', 'project_id', 'task_id', 'time_type_id', 'note', 'reason'])}
           </p>
         )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -390,9 +396,13 @@ export function ManualTimeDialog({ membershipId: fixedMember, defaultDate, prefi
       const s = fromLocalInput(`${date}T${start}`, tz);
       const e = fromLocalInput(`${date}T${end}`, tz);
       if (!s || !e) return setErr(new ApiError(422, 'validation', 'Enter a valid date, start and end'));
+      // An end before the start was only refused by the server, and made the billable check below say "At most the time logged" (form validation audit, 20 Nov 2026).
+      const order = timeRangeProblem(s, e);
+      if (order) return fail('ended_at', order);
       when = { started_at: s, ended_at: e };
       total = (Date.parse(e) - Date.parse(s)) / 1000;
     }
+    if (saving) return;
     let billableSeconds: number | undefined;
     if (billable.trim()) {
       const b = parseDuration(billable);

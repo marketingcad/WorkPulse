@@ -31,6 +31,7 @@ test.describe('Client portal insights', () => {
       await page.goto(link.pathname + link.search);
       await page.getByLabel('Your name').fill('Ina Insights');
       await page.getByLabel('Choose a password').fill(PASSWORD);
+      await page.getByLabel('Confirm password').fill(PASSWORD);
       await page.getByRole('button', { name: 'Open dashboard' }).click();
       await expect(page.getByRole('heading', { level: 1, name: client })).toBeVisible({ timeout: 20_000 });
 

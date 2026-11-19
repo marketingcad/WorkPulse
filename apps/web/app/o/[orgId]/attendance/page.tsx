@@ -4,7 +4,7 @@ import { Clock3, Palmtree, Timer, UserCheck, UserX } from 'lucide-react';
 import { Info } from 'lucide-react';
 import type { OffsetPage } from '@tallywork/contracts';
 import { DataTable, EmptyState, ErrorState, FilterBar, Input, KpiStrip, PageHeader, Panel, PermissionState, PersonCell, SegmentedControl, Select, StatusBadge, fmtDate, fmtTime, type Column } from '@tallywork/ui';
-import { qs, useOrgQuery } from '@/lib/api';
+import { qs, useOrgPage } from '@/lib/api';
 import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
 import { useClampPage, useServerPage } from '@/lib/paging';
 import { useUrlSearch, useUrlValue } from '@/lib/url-state';
@@ -46,9 +46,7 @@ export default function AttendancePage() {
   // (each with the member's time zone), instead of every member-day.
   const filters = { from, to, status: status || undefined, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
-  const q = useOrgQuery<OffsetPage<AttendanceRow & { timezone: string }> & { summary: { counts: Record<string, number>; overtime_seconds: number } }>(allowed ? `/attendance${qs({ ...filters, ...paging.params })}` : null, {
-    placeholderData: (p) => p,
-  });
+  const q = useOrgPage<OffsetPage<AttendanceRow & { timezone: string }> & { summary: { counts: Record<string, number>; overtime_seconds: number } }>(allowed ? `/attendance${qs({ ...filters, ...paging.params })}` : null);
   useClampPage(paging, q.data, q.isPlaceholderData);
   const tzOf = (id: string) => q.data?.data.find((r) => r.membership_id === id)?.timezone || org.organization.timezone;
   const counts = q.data?.summary.counts ?? {};
@@ -113,7 +111,7 @@ export default function AttendancePage() {
             </option>
           ))}
         </Select>
-        <Input aria-label="Search members" placeholder="Search members…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-56" />
+        <Input aria-label="Search members" maxLength={100} placeholder="Search members…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-56" />
       </FilterBar>
 
       <KpiStrip

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { id, isoDateTime } from './common';
+import { email, id, isoDateTime } from './common';
 
 /**
  * Desktop agent → server ingest contract. The agent generates session ids (UUIDv7)
@@ -169,7 +169,7 @@ export const agentRegisterInput = z.object({
 
 /** Desktop sign-in with the account's email and password (plus a 2FA code when the account has one). */
 export const agentLoginInput = z.object({
-  email: z.email().max(254),
+  email,
   password: z.string().min(1).max(200),
   mfa_code: z.string().trim().min(6).max(20).optional(),
   organization_id: id.optional(),

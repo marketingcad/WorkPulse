@@ -108,9 +108,10 @@ describe('Help Center video tutorial', () => {
     const viewerRole = (await admin.post(o('/roles'), { name: 'Viewer', grants: { 'budgets:read': 'org', 'members:read': 'org' } })).body;
     const settingsRole = (await admin.post(o('/roles'), { name: 'Org settings', grants: { 'org:update': 'org', 'members:read': 'org' } })).body;
     const invite = async (email: string, role_id: string) => {
-      const inv = await admin.post(o('/invitations'), { email, name: email, role_id });
+      const name = email.startsWith('vi') ? 'Vic Viewer' : 'Sel Settings';
+      const inv = await admin.post(o('/invitations'), { email, name, role_id });
       const c = new Client(t);
-      await c.post('/auth/invitations/accept', { token: new URL(inv.body.invite_url).searchParams.get('token'), name: email, password: 'correct-horse-battery' });
+      await c.post('/auth/invitations/accept', { token: new URL(inv.body.invite_url).searchParams.get('token'), name, password: 'correct-horse-battery' });
       return c;
     };
     expect((await (await invite('vi@tutorial.test', viewerRole.id)).get(o('/help/tutorial'))).status).toBe(403);

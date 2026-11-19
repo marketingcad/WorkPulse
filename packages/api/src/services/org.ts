@@ -379,7 +379,10 @@ export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<
   }
   const changes = rateChanges(input);
   if (changes.length && !x.actor.grants['rates:manage']) throw forbidden();
-  if (input.start_date && input.end_date && input.end_date < input.start_date) throw validation('The end date is before the start date', { errors: [{ field: 'end_date', message: 'Must be on or after the start date' }] });
+  // A change of only one date is checked against the other one already saved (form validation audit, 20 Nov 2026).
+  const startDate = input.start_date !== undefined ? input.start_date : before.start_date;
+  const endDate = input.end_date !== undefined ? input.end_date : before.end_date;
+  if (startDate && endDate && endDate < startDate) throw validation('The end date is before the start date', { errors: [{ field: 'end_date', message: 'Must be on or after the start date' }] });
   if (input.role_id !== undefined || input.status !== undefined) {
     if (before.is_owner) throw businessRule('owner_protected', 'The organization owner’s role and status cannot be changed');
     if (!isSelf) await assertOutranks(x, membershipId);
@@ -476,6 +479,12 @@ export async function updateMemberDetails(x: Ctx, membershipId: string, input: z
   const { admin } = detailsAccess(x, membershipId);
   if (input.notes !== undefined && !admin) throw forbidden('Only admins can edit HR notes');
   await getWorker(x, membershipId);
+  if (input.birth_date) {
+    // A birth date is in the past, and not before 1900 (form validation audit, 20 Nov 2026).
+    const today = localDate(x.deps.now(), x.org.timezone);
+    if (input.birth_date >= today) throw validation('The birth date must be in the past', { errors: [{ field: 'birth_date', message: 'Choose a date in the past' }] });
+    if (input.birth_date < '1900-01-01') throw validation('The birth date is too long ago', { errors: [{ field: 'birth_date', message: 'Choose a date from 1900 on' }] });
+  }
   const map = {
     first_name: 'firstName',
     last_name: 'lastName',

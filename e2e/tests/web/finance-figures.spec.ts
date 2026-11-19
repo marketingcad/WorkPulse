@@ -71,12 +71,12 @@ test('Payroll export prices paid time off and adds up to what payroll pays (BUG-
 test('the invoice shows hours as priced, so hours × rate gives the amount (BUG-29)', async ({ page, data }) => {
   await page.goto(`/o/${data.orgId}/finance/invoices/new`);
   const main = page.locator('main');
-  const select = main.getByLabel('Client *');
+  const select = main.getByLabel('Client', { exact: true });
   // The client list loads after the page: wait for this client before choosing it.
   await expect(select.locator('option', { hasText: client })).toHaveCount(1);
   const option = (await select.locator('option').allTextContents()).find((x) => x.startsWith(client))!;
   await select.selectOption({ label: option });
-  await expect(main.getByLabel('Period start *')).not.toHaveValue('');
+  await expect(main.getByLabel('Period start', { exact: true })).not.toHaveValue('');
   await main.getByRole('button', { name: 'Preview lines' }).click();
   const line = main.getByRole('row').filter({ hasText: '$175.00' });
   await expect(line).toContainText('4.2333 h');

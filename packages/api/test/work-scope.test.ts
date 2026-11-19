@@ -85,10 +85,10 @@ describe('W1: narrow "manage" grants stay narrow', () => {
 
 describe('W4: a partial client update keeps the fields it does not send', () => {
   it('changes only what is sent; null clears a field (before the fix: email, phone and notes were wiped)', async () => {
-    const c = (await admin.post(o('/clients'), { name: 'Acme', email: 'billing@acme.test', phone: '555', notes: 'VIP', currency: 'EUR' })).body;
+    const c = (await admin.post(o('/clients'), { name: 'Acme', email: 'billing@acme.test', phone: '+1 415 555 0155', notes: 'VIP', currency: 'EUR' })).body;
     const r = await admin.patch(o(`/clients/${c.id}`), { name: 'Acme Inc' });
     expect(r.status).toBe(200);
-    expect([r.body.name, r.body.email, r.body.phone, r.body.notes, r.body.currency]).toEqual(['Acme Inc', 'billing@acme.test', '555', 'VIP', 'EUR']);
+    expect([r.body.name, r.body.email, r.body.phone, r.body.notes, r.body.currency]).toEqual(['Acme Inc', 'billing@acme.test', '+14155550155', 'VIP', 'EUR']);
     const cleared = await admin.patch(o(`/clients/${c.id}`), { phone: null });
     expect([cleared.body.phone, cleared.body.email]).toEqual([null, 'billing@acme.test']);
   });

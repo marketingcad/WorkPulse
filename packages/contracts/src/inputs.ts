@@ -1,7 +1,7 @@
-import { DOCUMENT_LOGO_MAX_CHARS, PORTAL_MAX_RANGE_DAYS } from './limits';
+import { DOCUMENT_LOGO_MAX_CHARS, HOSTNAME, PORTAL_MAX_RANGE_DAYS } from './limits';
 import { z } from 'zod';
 import { PERMISSIONS, SCOPES, API_KEY_SCOPES } from '@tallywork/domain';
-import { currency, hhmm, id, isoDate, isoDateTime, nonEmpty, optionalText, timeZone } from './common';
+import { currency, email, hhmm, id, isoDate, isoDateTime, nonEmpty, optionalPersonName, optionalPhone, optionalText, personName, timeZone } from './common';
 import { AVATAR_PRESETS } from './avatars';
 
 /**
@@ -38,20 +38,20 @@ export const password = z.string().min(10, 'Use at least 10 characters').max(200
 const linkToken = (message: string) => z.string().min(20, message).max(200, message);
 
 export const signupInput = z.object({
-  name: nonEmpty(100),
-  email: z.email().max(254),
+  name: personName(100),
+  email,
   password,
   organization_name: nonEmpty(100).optional(),
   timezone: timeZone.optional(),
 });
 export const loginInput = z.object({
-  email: z.email().max(254),
+  email,
   password: z.string().min(1).max(200),
   totp: z.string().regex(/^\d{6}$/).optional(),
   /** "Remember me": false keeps the sign-in only until the browser closes. */
   remember: z.boolean().default(true),
 });
-export const forgotPasswordInput = z.object({ email: z.email().max(254) });
+export const forgotPasswordInput = z.object({ email });
 export const resetPasswordInput = z.object({ token: linkToken('This link is invalid or has expired'), password });
 export const changePasswordInput = z.object({ current_password: z.string().min(1).max(200), new_password: password });
 export const totpVerifyInput = z.object({ code: z.string().regex(/^\d{6}$/) });
@@ -103,14 +103,14 @@ export const updateOrgInput = z.object({
   brief: optionalText(300),
   tax_id: optionalText(50),
   address: optionalText(500),
-  phone: optionalText(50),
-  email: z.email().max(254).optional().nullable(),
+  phone: optionalPhone,
+  email: email.optional().nullable(),
   document_language: z.enum(DOCUMENT_LANGUAGES).optional().nullable(),
 });
 
 export const inviteInput = z.object({
-  email: z.email().max(254),
-  name: nonEmpty(100).optional(),
+  email,
+  name: personName(100).optional(),
   role_id: id,
   team_ids: z.array(id).max(50).default([]),
   team_role: z.enum(['MEMBER', 'MANAGER']).default('MEMBER'),
@@ -118,7 +118,7 @@ export const inviteInput = z.object({
 });
 /** Read an invitation before accepting it (the join page): the token is its secret, so it is sent in the body. */
 export const peekInviteInput = z.object({ token: linkToken('This invitation is invalid or has expired') });
-export const acceptInviteInput = z.object({ token: linkToken('This invitation is invalid or has expired'), name: nonEmpty(100).optional(), password: password.optional() });
+export const acceptInviteInput = z.object({ token: linkToken('This invitation is invalid or has expired'), name: personName(100).optional(), password: password.optional() });
 
 export const updateWorkerInput = z.object({
   role_id: id.optional(),
@@ -140,18 +140,18 @@ export const updateWorkerInput = z.object({
 });
 
 export const memberDetailsInput = z.object({
-  first_name: optionalText(100),
-  last_name: optionalText(100),
+  first_name: optionalPersonName(100),
+  last_name: optionalPersonName(100),
   birth_date: isoDate.nullable().optional(),
-  personal_email: z.email().max(254).optional().nullable(),
-  phone: optionalText(50),
+  personal_email: email.optional().nullable(),
+  phone: optionalPhone,
   country: optionalText(100),
   region: optionalText(100),
   city: optionalText(100),
   postal_code: optionalText(20),
   address: optionalText(500),
-  emergency_contact_name: optionalText(150),
-  emergency_contact_phone: optionalText(50),
+  emergency_contact_name: optionalPersonName(150),
+  emergency_contact_phone: optionalPhone,
   education: optionalText(1000),
   /** admin-only */
   notes: optionalText(5000),
@@ -168,12 +168,12 @@ export const teamMemberInput = z.object({ role: z.enum(['MANAGER', 'MEMBER']).de
 
 export const clientInput = z.object({
   name: nonEmpty(150),
-  email: z.email().max(254).optional().nullable(),
-  phone: optionalText(50),
+  email: email.optional().nullable(),
+  phone: optionalPhone,
   address: optionalText(500),
   currency: currency.optional().nullable(),
   notes: optionalText(2000),
-  contact_name: optionalText(150),
+  contact_name: optionalPersonName(150),
   document_language: z.enum(DOCUMENT_LANGUAGES).optional().nullable(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),
   /** square PNG/JPEG/WebP as a data: URL, at most ~70 KB (it is included in every client list) */
@@ -258,11 +258,11 @@ export const clientPortalSettingsInput = z.object({
   project_ids: z.array(id).max(500).nullable().optional(),
 });
 
-export const clientPortalInviteInput = z.object({ email: z.email().max(254), name: optionalText(100) });
+export const clientPortalInviteInput = z.object({ email, name: optionalPersonName(100) });
 
 export const clientPortalAcceptInput = z.object({
   token: linkToken('This invitation is invalid or has expired'),
-  name: optionalText(100),
+  name: optionalPersonName(100),
   password: password.optional(),
 });
 
@@ -312,7 +312,7 @@ export const policyDocInput = z
       .object({
         enabled: z.boolean(),
         mode: z.enum(['domain', 'full']),
-        excludedDomains: z.array(z.string().trim().toLowerCase().max(253)).max(500),
+        excludedDomains: z.array(z.string().trim().toLowerCase().max(253).regex(HOSTNAME, 'Use a domain like bank.example')).max(500),
       })
       .partial(),
     location: z.object({ enabled: z.boolean() }).partial(),
@@ -614,7 +614,7 @@ export const savedReportInput = z.object({
   shared: z.boolean().default(false),
   schedule_cron: z.string().max(100).nullable().optional(),
   schedule_timezone: timeZone.nullable().optional(),
-  recipients: z.array(z.email()).max(20).default([]),
+  recipients: z.array(email).max(20).default([]),
 });
 
 export const breakTypeInput = z.object({

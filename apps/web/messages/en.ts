@@ -162,6 +162,7 @@ export const webEn = {
   'auth.password': 'Password',
   'auth.yourName': 'Your name',
   'auth.passwordHint': 'At least 10 characters.',
+  'auth.confirmPassword': 'Confirm password',
   'auth.signIn': 'Sign in',
   'auth.login.title': 'Welcome Back',
   'auth.login.subtitle': 'Sign in to your WorkPulse account and continue where you left off.',

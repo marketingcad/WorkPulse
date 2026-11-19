@@ -473,7 +473,11 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
     // client would otherwise open that client (and, with clients:manage, its settings) to them.
     if (x.actor.grants['projects:manage'] !== 'org' && !(await canOnClient(x, 'clients:read', input.client_id))) throw notFound('client');
   }
-  if (input.start_date && input.end_date && input.end_date < input.start_date) throw validation('The end date is before the start date', { errors: [{ field: 'end_date', message: 'Must be on or after the start date' }] });
+  // A change of only one date is checked against the other one already saved (form validation audit, 20 Nov 2026).
+  const [saved] = projectId && (input.start_date === undefined) !== (input.end_date === undefined) ? await x.tx.select({ start: projects.startDate, end: projects.endDate }).from(projects).where(eq(projects.id, projectId)) : [];
+  const start = input.start_date !== undefined ? input.start_date : (saved?.start ?? null);
+  const end = input.end_date !== undefined ? input.end_date : (saved?.end ?? null);
+  if (start && end && end < start) throw validation('The end date is before the start date', { errors: [{ field: 'end_date', message: 'Must be on or after the start date' }] });
   const values: Partial<typeof projects.$inferInsert> = {};
   if (input.short_name !== undefined) values.shortName = input.short_name || null;
   if (input.start_date !== undefined) values.startDate = input.start_date;

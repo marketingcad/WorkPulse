@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Field, Spinner } from '@tallywork/ui';
 import { AuthInput, AuthShell } from '@/components/auth-shell';
 import { api, ApiError } from '@/lib/api';
-import { passwordProblem } from '@/lib/form-checks';
+import { confirmPasswordProblem, formErrors, optionalNameProblem, passwordProblem } from '@/lib/form-checks';
 import { t } from '@/lib/i18n';
 
 /** What the join page may know before accepting (POST /auth/invitations/peek). */
@@ -30,7 +30,7 @@ function Form({ onOrganization }: { onOrganization: (name: string) => void }) {
   const [unusable, setUnusable] = useState(false);
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
-  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<ApiError | null>(null);
   const [loading, setLoading] = useState(false);
   const signInHref = `/login?next=${encodeURIComponent(`/invite?token=${token}`)}`;
@@ -78,14 +78,20 @@ function Form({ onOrganization }: { onOrganization: (name: string) => void }) {
       noValidate
       onSubmit={async (e) => {
         e.preventDefault();
+        if (loading) return;
         if (!peek.has_account) {
-          const problem = passwordProblem(password);
-          if (problem) {
-            setPasswordError(problem);
-            return;
+          // Name, password and its confirmation, with the server's rules (form validation audit, 20 Nov 2026).
+          const problems: Array<{ field: string; message: string }> = [];
+          const nameIssue = optionalNameProblem(name, 100);
+          if (nameIssue) problems.push({ field: 'name', message: nameIssue });
+          const pw = passwordProblem(password);
+          if (pw) problems.push({ field: 'password', message: pw });
+          else {
+            const mismatch = confirmPasswordProblem(password, confirm);
+            if (mismatch) problems.push({ field: 'confirm_password', message: mismatch });
           }
+          if (problems.length) return setError(formErrors(problems));
         }
-        setPasswordError(null);
         setLoading(true);
         setError(null);
         try {
@@ -112,28 +118,28 @@ function Form({ onOrganization }: { onOrganization: (name: string) => void }) {
         </p>
       ) : (
         <>
-          <Field label={t('auth.yourName')} htmlFor="name">
-            <AuthInput icon={User} id="name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" autoFocus />
+          <Field label={t('auth.yourName')} htmlFor="name" error={error?.field('name')}>
+            <AuthInput icon={User} id="name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" maxLength={100} autoFocus />
           </Field>
-          <Field label={t('auth.invite.choosePassword')} htmlFor="pw" hint={passwordError ? undefined : t('auth.invite.passwordHintNew')} error={passwordError ?? error?.field('password') ?? undefined}>
+          <Field label={t('auth.invite.choosePassword')} htmlFor="pw" hint={t('auth.invite.passwordHintNew')} error={error?.field('password')} required>
             <AuthInput
               icon={Lock}
               id="pw"
               type="password"
               value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                if (passwordError) setPasswordError(null);
-              }}
+              onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
-              aria-invalid={!!passwordError}
+              maxLength={200}
             />
+          </Field>
+          <Field label={t('auth.confirmPassword')} htmlFor="pw-confirm" error={error?.field('confirm_password')} required>
+            <AuthInput icon={Lock} id="pw-confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" maxLength={200} />
           </Field>
         </>
       )}
-      {error && !error.field('password') && (
+      {error?.general(peek.has_account ? [] : ['name', 'password', 'confirm_password']) && (
         <p role="alert" className="rounded-sm bg-danger-soft px-3 py-2 text-sm text-danger">
-          {error.title}
+          {error.general(peek.has_account ? [] : ['name', 'password', 'confirm_password'])}
         </p>
       )}
       <Button type="submit" variant="primary" size="md" loading={loading}>

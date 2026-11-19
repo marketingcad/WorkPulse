@@ -20,3 +20,10 @@ export function portalRangeProblem(r: { from: string; to: string }): 'missing' |
   if ((Date.parse(r.to) - Date.parse(r.from)) / 86_400_000 > PORTAL_MAX_RANGE_DAYS) return 'too_long';
   return null;
 }
+
+/**
+ * A host name as the URL list compares them ("bank.example", "intranet", "10.0.0.5"): letters, digits
+ * and hyphens in dot-separated labels. Anything else could never match a visited site (form
+ * validation audit, 20 Nov 2026).
+ */
+export const HOSTNAME = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/;

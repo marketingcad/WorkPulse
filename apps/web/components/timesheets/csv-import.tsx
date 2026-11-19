@@ -38,6 +38,8 @@ export function CsvImportDialog({ membershipId, onClose }: { membershipId: strin
     if (!file) return;
     setReadErr(null);
     setResults(new Map());
+    // The picker's filter can be switched to "All files" (form validation audit, 20 Nov 2026).
+    if (!/\.csv$/i.test(file.name) && file.type !== 'text/csv') return setReadErr('Choose a .csv file');
     if (file.size > 512 * 1024) return setReadErr('Use a file under 512 KB');
     const parsed = parseCsv(await file.text());
     if (parsed.length - 1 > MAX_ROWS) return setReadErr(`Import at most ${MAX_ROWS} rows at a time`);

@@ -111,7 +111,7 @@ export default function AttendancePage() {
             </option>
           ))}
         </Select>
-        <Input aria-label="Search members" placeholder="Search members…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-56" />
+        <Input aria-label="Search members" maxLength={100} placeholder="Search members…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-56" />
       </FilterBar>
 
       <KpiStrip

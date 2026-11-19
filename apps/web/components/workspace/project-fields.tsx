@@ -175,7 +175,7 @@ export function ProjectFields({
           <Input id="proj-end" type="date" value={f.end_date} min={f.start_date || undefined} onChange={(e) => setF({ ...f, end_date: e.target.value })} />
         </Field>
         <Field label={`Estimated ${unitLabel}`} htmlFor="proj-estimate" hint="Planned effort; compared with logged time on the project." error={err?.field('estimate_seconds')}>
-          <Input id="proj-estimate" type="number" min={0} step={f.estimate_unit === 'DAYS' ? 0.5 : 1} inputMode="decimal" className="tabular" value={f.estimate} onChange={(e) => setF({ ...f, estimate: e.target.value })} />
+          <Input id="proj-estimate" type="number" min={0} step={f.estimate_unit === 'DAYS' ? 0.5 : 'any'} inputMode="decimal" className="tabular" value={f.estimate} onChange={(e) => setF({ ...f, estimate: e.target.value })} />
         </Field>
         <Field label="Status" htmlFor="proj-status">
           <Select id="proj-status" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>

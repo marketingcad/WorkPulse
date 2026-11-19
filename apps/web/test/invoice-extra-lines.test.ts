@@ -24,3 +24,19 @@ describe('extraLineErrors', () => {
     expect(extraLineErrors({ ...ok, unitPrice: '12.345' }).unitPrice).toBe('Use an amount like 150 or 1,250.50.');
   });
 });
+
+/** Form validation audit, 20 Nov 2026: the server's limits, and quantities Number() read but people did not mean. */
+describe('extraLineErrors limits', () => {
+  const ok = { description: 'Setup', quantity: '1', unitPrice: '100' };
+  it('refuses hex and exponent quantities and values over the server limits', () => {
+    expect(extraLineErrors({ ...ok, quantity: '0x10' }).quantity).toBe('Use a number, e.g. 1 or 2.5.');
+    expect(extraLineErrors({ ...ok, quantity: '1e3' }).quantity).toBe('Use a number, e.g. 1 or 2.5.');
+    expect(extraLineErrors({ ...ok, quantity: '-1' }).quantity).toBe('Use zero or more.');
+    expect(extraLineErrors({ ...ok, quantity: '100001' }).quantity).toBe('Use a quantity up to 100,000.');
+    expect(extraLineErrors({ ...ok, unitPrice: '1,000,000.01' }).unitPrice).toBe('Use a price up to 1,000,000.00.');
+  });
+  it('accepts the largest values the server takes', () => {
+    expect(extraLineErrors({ ...ok, quantity: '100000', unitPrice: '1,000,000.00' })).toEqual({});
+    expect(extraLineErrors({ ...ok, quantity: '2.5' })).toEqual({});
+  });
+});

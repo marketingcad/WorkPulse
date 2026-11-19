@@ -26,6 +26,7 @@ test.describe('Client portal', () => {
     await page.goto(link.pathname + link.search);
     await page.getByLabel('Your name').fill('Vic Viewer');
     await page.getByLabel('Choose a password').fill(PASSWORD);
+    await page.getByLabel('Confirm password').fill(PASSWORD);
     await page.getByRole('button', { name: 'Open dashboard' }).click();
 
     await expect(page.getByRole('heading', { level: 1, name: client })).toBeVisible({ timeout: 20_000 });
@@ -62,6 +63,7 @@ test.describe('Client portal', () => {
     await page.goto(link.pathname + link.search);
     await page.getByLabel('Your name').fill('Rae Range');
     await page.getByLabel('Choose a password').fill(PASSWORD);
+    await page.getByLabel('Confirm password').fill(PASSWORD);
     await page.getByRole('button', { name: 'Open dashboard' }).click();
     const heading = page.getByRole('heading', { level: 1, name: client });
     await expect(heading).toBeVisible({ timeout: 20_000 });
@@ -120,6 +122,7 @@ test.describe('Client portal', () => {
     await viewer.goto(link.pathname + link.search);
     await viewer.getByLabel('Your name').fill('Otto Offline');
     await viewer.getByLabel('Choose a password').fill(PASSWORD);
+    await viewer.getByLabel('Confirm password').fill(PASSWORD);
     await viewer.getByRole('button', { name: 'Open dashboard' }).click();
     await expect(viewer.getByRole('heading', { level: 1, name: 'This dashboard is not switched on yet' })).toBeVisible({ timeout: 20_000 });
     await expect(viewer.getByText(/Keep this link: it opens the dashboard as soon as they do\./)).toBeVisible();

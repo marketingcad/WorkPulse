@@ -198,9 +198,10 @@ export function MenuSeparator() {
 }
 
 // ─── Popover / Tooltip / Switch / Tabs ───────────────────────────────────────
-export function Popover({ trigger, children, align = 'start', className }: { trigger: ReactNode; children: ReactNode; align?: 'start' | 'end' | 'center'; className?: string }) {
+/** Open state is the popover's own unless `open` and `onOpenChange` are passed (to close it after a choice). */
+export function Popover({ trigger, children, align = 'start', className, open, onOpenChange }: { trigger: ReactNode; children: ReactNode; align?: 'start' | 'end' | 'center'; className?: string; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   return (
-    <P.Root>
+    <P.Root open={open} onOpenChange={onOpenChange}>
       <P.Trigger asChild>{trigger}</P.Trigger>
       <P.Portal>
         <P.Content align={align} sideOffset={4} className={cx('z-50 rounded-md border border-border bg-surface p-3 shadow-overlay focus:outline-none', className)}>

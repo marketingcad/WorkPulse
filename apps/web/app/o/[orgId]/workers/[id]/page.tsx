@@ -45,6 +45,10 @@ const MfaResetDialog = lazy(() => import('@/components/security/mfa-reset-dialog
 import { fromMinor, toMinor } from '@/components/finance/types';
 import { useUrlValue } from '@/lib/url-state';
 import { MemberAvatar } from '@/lib/avatars';
+import { formErrors } from '@/lib/form-checks';
+import { personalInfoProblems } from '@/lib/personal-info';
+import { displayPhone } from '@tallywork/contracts/phone';
+import { PhoneInput, defaultPhoneCountry } from '@/components/phone-input';
 
 /** Platform names as on the Devices page (the desktop app reports windows, macos or linux). */
 const PLATFORM: Record<string, string> = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
@@ -473,6 +477,7 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
 }
 
 // ─── Personal info ───────────────────────────────────────────────────────────
+
 type DetailKey = keyof MemberDetailsDto;
 const DETAIL_SECTIONS: Array<{ title: string; fields: Array<{ key: DetailKey; label: string; type?: string; wide?: boolean; long?: boolean; max: number }> }> = [
   {
@@ -520,6 +525,7 @@ function PersonalTab({ w }: { w: WorkerDto }) {
   const [err, setErr] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const d = q.data;
+  const phoneCountry = useMemo(() => defaultPhoneCountry(), []);
 
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   if (!d)
@@ -537,9 +543,13 @@ function PersonalTab({ w }: { w: WorkerDto }) {
     setEditing(true);
   };
   const save = async () => {
+    if (busy) return;
+    const body = Object.fromEntries(Object.entries(f).filter(([k, v]) => v !== (d[k as DetailKey] ?? '')).map(([k, v]) => [k, v.trim() || null]));
+    // The server's rules, checked before sending so each problem shows beside its field (form validation audit, 20 Nov 2026).
+    const problems = personalInfoProblems(body, todayIn(w.timezone));
+    if (problems.length) return setErr(formErrors(problems));
     setBusy(true);
     setErr(null);
-    const body = Object.fromEntries(Object.entries(f).filter(([k, v]) => v !== (d[k as DetailKey] ?? '')).map(([k, v]) => [k, v.trim() || null]));
     try {
       await run('PATCH', `/workers/${w.id}/details`, body);
       toast.success('Personal info saved');
@@ -569,6 +579,7 @@ function PersonalTab({ w }: { w: WorkerDto }) {
       </p>
       <form
         className="flex flex-col gap-5 p-4"
+        noValidate
         onSubmit={(e) => {
           e.preventDefault();
           void save();
@@ -581,15 +592,24 @@ function PersonalTab({ w }: { w: WorkerDto }) {
               {s.fields.map((x) =>
                 editing ? (
                   <Field key={x.key} label={x.label} htmlFor={`pd-${x.key}`} error={err?.field(x.key)} className={x.wide ? 'sm:col-span-3' : undefined}>
-                    {x.long ? (
+                    {x.type === 'tel' ? (
+                      <PhoneInput id={`pd-${x.key}`} value={f[x.key] ?? ''} defaultCountry={phoneCountry} onChange={(v) => setF((cur) => ({ ...cur, [x.key]: v }))} />
+                    ) : x.long ? (
                       <Textarea id={`pd-${x.key}`} value={f[x.key] ?? ''} maxLength={x.max} onChange={(e) => setF({ ...f, [x.key]: e.target.value })} className="min-h-16" />
                     ) : (
-                      <Input id={`pd-${x.key}`} type={x.type ?? 'text'} value={f[x.key] ?? ''} maxLength={x.max} onChange={(e) => setF({ ...f, [x.key]: e.target.value })} />
+                      <Input
+                        id={`pd-${x.key}`}
+                        type={x.type ?? 'text'}
+                        value={f[x.key] ?? ''}
+                        maxLength={x.type === 'date' ? undefined : x.max}
+                        {...(x.key === 'birth_date' ? { min: '1900-01-01', max: addDays(todayIn(w.timezone), -1) } : {})}
+                        onChange={(e) => setF({ ...f, [x.key]: e.target.value })}
+                      />
                     )}
                   </Field>
                 ) : (
                   <div key={x.key} className={x.wide ? 'sm:col-span-3' : undefined}>
-                    <Stat label={x.label} value={<span className={x.long ? 'whitespace-pre-wrap' : undefined}>{x.type === 'date' && d[x.key] ? fmtDate(d[x.key]!) : (d[x.key] ?? '—')}</span>} />
+                    <Stat label={x.label} value={<span className={x.long ? 'whitespace-pre-wrap' : undefined}>{x.type === 'date' && d[x.key] ? fmtDate(d[x.key]!) : x.type === 'tel' && d[x.key] ? displayPhone(d[x.key]) : (d[x.key] ?? '—')}</span>} />
                   </div>
                 ),
               )}

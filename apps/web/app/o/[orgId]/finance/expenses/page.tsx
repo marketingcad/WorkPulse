@@ -33,6 +33,7 @@ import { todayIn, useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { toMinor, type ExpenseRow, type ExpenseStatus } from '@/components/finance/types';
 import { useListPeriod } from '@/components/finance/list-period';
+import { receiptProblem } from '@/lib/form-checks';
 import { ExportMenu } from '@/components/reports/export-menu';
 import { CURRENCIES } from '@/components/settings/options';
 
@@ -281,6 +282,8 @@ function ExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
   const [billable, setBillable] = useState(false);
   const [reimbursable, setReimbursable] = useState(true);
   const [file, setFile] = useState<File | null>(null);
+  const [fileIssue, setFileIssue] = useState<string | null>(null);
+  const uploaded = useRef<{ file: File; id: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState<ApiError | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -297,10 +300,20 @@ function ExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
     setBillable(false);
     setReimbursable(true);
     setFile(null);
+    setFileIssue(null);
+    uploaded.current = null;
     setErr(null);
   }, [open, org.organization.currency, org.organization.timezone]);
 
+  // Checked when chosen, with the server's rules, before anything is uploaded (form validation audit, 20 Nov 2026).
+  const pickFile = (f: File | null) => {
+    setFile(f);
+    setFileIssue(f ? receiptProblem(f) : null);
+  };
+
   const submit = async () => {
+    if (uploading || m.isPending) return;
+    if (fileIssue) return;
     setErr(null);
     const minor = toMinor(amount);
     if (!minor) {
@@ -312,14 +325,16 @@ function ExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
       return;
     }
     try {
-      let receiptId: string | null = null;
-      if (file) {
+      let receiptId: string | null = uploaded.current?.file === file ? uploaded.current.id : null;
+      if (file && !receiptId) {
         setUploading(true);
         const fd = new FormData();
         fd.append('file', file);
         try {
           const r = await api<{ id: string }>(`/orgs/${org.organization.id}/files/receipts`, { method: 'POST', body: fd });
           receiptId = r.id;
+          // Kept for a retry, so a failed submit does not upload the same receipt again.
+          uploaded.current = { file, id: r.id };
         } finally {
           setUploading(false);
         }
@@ -418,9 +433,9 @@ function ExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
           <Checkbox label="Billable to client" checked={billable} onChange={(e) => setBillable(e.target.checked)} />
           <Checkbox label="Reimburse me" checked={reimbursable} onChange={(e) => setReimbursable(e.target.checked)} />
         </div>
-        <Field label="Receipt" htmlFor="ex-file" className="sm:col-span-2" hint="JPEG, PNG, WebP or PDF, up to 10 MB.">
+        <Field label="Receipt" htmlFor="ex-file" className="sm:col-span-2" hint="JPEG, PNG, WebP or PDF, up to 10 MB." error={fileIssue ?? err?.field('file') ?? err?.field('receipt_file_id')}>
           <div className="flex items-center gap-2">
-            <input id="ex-file" ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <input id="ex-file" ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="sr-only" onChange={(e) => pickFile(e.target.files?.[0] ?? null)} />
             <Button size="sm" icon={<Paperclip className="size-3.5" />} onClick={() => fileRef.current?.click()}>
               {file ? 'Replace file' : 'Attach receipt'}
             </Button>
@@ -432,7 +447,7 @@ function ExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
                   aria-label="Remove receipt"
                   className="rounded-sm p-0.5 text-text-muted hover:bg-surface-muted"
                   onClick={() => {
-                    setFile(null);
+                    pickFile(null);
                     if (fileRef.current) fileRef.current.value = '';
                   }}
                 >
@@ -443,9 +458,9 @@ function ExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
           </div>
         </Field>
       </div>
-      {err && !err.errors?.length && (
+      {err?.general(['category', 'spent_on', 'amount_minor', 'currency', 'project_id', 'description', 'file', 'receipt_file_id']) && (
         <p role="alert" className="mt-3 text-sm text-danger">
-          {err.title}
+          {err.general(['category', 'spent_on', 'amount_minor', 'currency', 'project_id', 'description', 'file', 'receipt_file_id'])}
         </p>
       )}
     </Dialog>

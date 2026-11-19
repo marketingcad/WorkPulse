@@ -30,7 +30,7 @@ import {
   type Column,
 } from '@tallywork/ui';
 import { ApiError, errorMessage, qs, useOrgQuery } from '@/lib/api';
-import { emailProblem, fieldError } from '@/lib/form-checks';
+import { emailProblem, formErrors, optionalNameProblem } from '@/lib/form-checks';
 import { keepPreviousWhen, pathParam } from '@/lib/placeholder';
 import { useOrg } from '@/lib/org';
 import { MultiSelect } from '@/components/workspace/multi-select';
@@ -148,7 +148,7 @@ export default function WorkersPage() {
             caption="Members"
             toolbar={
               <>
-                <Input aria-label="Search members" placeholder="Search name, email or title…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="h-7 w-56 text-xs" />
+                <Input aria-label="Search members" maxLength={100} placeholder="Search name, email or title…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="h-7 w-56 text-xs" />
                 <Select aria-label="Filter by role" value={role} onChange={(e) => setRole(e.target.value)} className="h-7 w-40 text-xs">
                   <option value="">All roles</option>
                   {rolesQ.data?.map((r) => (
@@ -276,9 +276,14 @@ function InviteDialog({ open, onOpenChange, roles, teams }: { open: boolean; onO
   };
 
   const submit = async () => {
-    // Checked here first, with the server's rule and wording (QA audit BUG-05).
+    if (busy) return;
+    // Checked here first, with the server's rule and wording (QA audit BUG-05; the name since the form validation audit, 20 Nov 2026).
+    const problems: Array<{ field: string; message: string }> = [];
     const emailIssue = emailProblem(f.email.trim());
-    if (emailIssue) return setErr(fieldError('email', emailIssue));
+    if (emailIssue) problems.push({ field: 'email', message: emailIssue });
+    const nameIssue = optionalNameProblem(f.name, 100);
+    if (nameIssue) problems.push({ field: 'name', message: nameIssue });
+    if (problems.length) return setErr(formErrors(problems));
     setBusy(true);
     setErr(null);
     try {
@@ -404,10 +409,10 @@ function InviteDialog({ open, onOpenChange, roles, teams }: { open: boolean; onO
             error={err?.field('email')}
             hint={pending ? `An invitation to this address is pending (sent ${fmtDate(pending.created_at)}). Sending a new one replaces it, and the earlier link stops working.` : undefined}
           >
-            <Input id="inv-email" type="email" autoFocus value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="name@company.com" />
+            <Input id="inv-email" type="email" maxLength={254} autoFocus value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="name@company.com" />
           </Field>
           <Field label="Name" htmlFor="inv-name" hint="Optional. They can change it when they accept." error={err?.field('name')}>
-            <Input id="inv-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+            <Input id="inv-name" autoComplete="off" maxLength={100} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
           </Field>
           <Field label="Role" htmlFor="inv-role" required error={err?.field('role_id')}>
             <Select id="inv-role" value={roleId} onChange={(e) => setF({ ...f, role_id: e.target.value })} disabled={roles.length === 0}>

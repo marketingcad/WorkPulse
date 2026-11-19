@@ -378,7 +378,7 @@ function RetentionPanel() {
                       <Input id={id} type="number" min={r.min_days} max={36500} className="tabular w-28 text-right" value={v} disabled={!canEdit} aria-invalid={bad || !!fieldErr} onChange={(e) => setDraft((d) => ({ ...d, [r.data_class]: e.target.value }))} />
                       <span className="text-xs text-text-muted">days</span>
                     </span>
-                    <span className={cx('text-2xs', bad || fieldErr ? 'text-danger' : 'text-text-faint')}>{fieldErr ?? (bad ? `Minimum ${r.min_days} days` : `${humanDays(n)} · min ${humanDays(r.min_days)}`)}</span>
+                    <span className={cx('text-2xs', bad || fieldErr ? 'text-danger' : 'text-text-faint')}>{fieldErr ?? (bad ? (!Number.isInteger(n) ? "Use whole days" : n > 36500 ? "At most 36500 days" : `Minimum ${r.min_days} days`) : `${humanDays(n)} · min ${humanDays(r.min_days)}`)}</span>
                   </div>
                 </div>
                 {r.pending_keep_days != null && r.pending_from && (

@@ -175,7 +175,7 @@ export function TimeOffRequests() {
           columns={columns.map((c) => ({ ...c, sortable: false }))}
           rowKey={(r) => r.id}
           pagination={paging.pagination(q.data)}
-          toolbar={<Input aria-label="Search time off requests" placeholder="Search members, policies or reasons…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-72" />}
+          toolbar={<Input aria-label="Search time off requests" maxLength={100} placeholder="Search members, policies or reasons…" value={search.input} onChange={(e) => search.setInput(e.target.value)} className="w-72" />}
           caption="Time off requests"
           selectable={status === 'PENDING'}
           selected={selected}

@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage, type RGB } from 'pdf-lib';
 import type { OrgInfo } from '../context';
+import { displayPhone } from '@tallywork/contracts/phone';
 
 /**
  * The document system behind every PDF WorkPulse produces (invoices, pay stubs, report exports).
@@ -179,7 +180,7 @@ export async function drawCompanyLogo(doc: PDFDocument, page: PDFPage, org: Comp
 
 /** The company's contact details as short lines, for the header. */
 export function companyLines(org: CompanyProfile): string[] {
-  return [org.brief, ...(org.address ?? '').split('\n'), [org.phone, org.email].filter(Boolean).join('  ·  '), org.taxId ? `Tax ID ${org.taxId}` : null]
+  return [org.brief, ...(org.address ?? '').split('\n'), [displayPhone(org.phone), org.email].filter(Boolean).join('  ·  '), org.taxId ? `Tax ID ${org.taxId}` : null]
     .map((s) => s?.trim())
     .filter((s): s is string => !!s)
     .slice(0, 6);
@@ -459,7 +460,7 @@ export class PdfDoc {
   /** Draws the footer on every page and returns the file. */
   async finish(): Promise<Buffer> {
     const pages = this.doc.getPages();
-    const contact = [this.company.name, this.company.email, this.company.phone].filter(Boolean).join('  ·  ');
+    const contact = [this.company.name, this.company.email, displayPhone(this.company.phone)].filter(Boolean).join('  ·  ');
     pages.forEach((p, i) => {
       this.page = p;
       for (const w of this.stamps) {

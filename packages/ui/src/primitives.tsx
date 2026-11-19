@@ -117,10 +117,16 @@ export function Field({ label, hint, error, children, htmlFor, className, requir
   const info: FieldInfo = { htmlFor, describedBy: error || hint ? messageId : undefined, invalid: !!error, required: !!required };
   return (
     <div className={cx('flex flex-col gap-1', className)}>
-      <label htmlFor={htmlFor} className="text-xs font-semibold text-text">
-        {label}
-        {required && <span className="text-danger"> *</span>}
-      </label>
+      {/* The required mark is seen, not part of the label: aria-required on the control says it, and the
+          label stays "Password", not "Password *" (form validation audit, 20 Nov 2026). */}
+      <div className="text-xs font-semibold text-text">
+        <label htmlFor={htmlFor}>{label}</label>
+        {required && (
+          <span aria-hidden="true" className="text-danger">
+            {' *'}
+          </span>
+        )}
+      </div>
       <FieldContext.Provider value={info}>{children}</FieldContext.Provider>
       {error ? (
         <p id={messageId} role="alert" className="text-xs text-danger">

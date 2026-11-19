@@ -27,6 +27,7 @@ test.describe('Client portal AI summary', () => {
       await client.goto(link.pathname + link.search);
       await client.getByLabel('Your name').fill('Sam Summary');
       await client.getByLabel('Choose a password').fill(PASSWORD);
+      await client.getByLabel('Confirm password').fill(PASSWORD);
       await client.getByRole('button', { name: 'Open dashboard' }).click();
       await expect(client.getByRole('heading', { level: 1, name })).toBeVisible({ timeout: 20_000 });
       // Off by default: no summary, and the API refuses it.

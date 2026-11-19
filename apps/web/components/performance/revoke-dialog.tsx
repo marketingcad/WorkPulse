@@ -12,15 +12,19 @@ export default function RevokeDialog({ award, onClose }: { award: AchievementAwa
   const id = useId();
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
+  const [err, setErr] = useState<ApiError | null>(null);
   const revoke = useOrgMutation<{ reason: string }>('POST', `/performance/awards/${award.id}/revoke`, { invalidate: ['/performance'] });
   const submit = async () => {
     setTried(true);
-    if (!reason.trim()) return;
+    if (!reason.trim() || revoke.isPending) return;
+    setErr(null);
     try {
       await revoke.mutateAsync({ reason: reason.trim() });
       toast.success(t('perf.ach.revoke.done'));
       onClose();
     } catch (e) {
+      // Shown in the dialog too, beside the reason when it is about the reason (form validation audit, 20 Nov 2026).
+      if (e instanceof ApiError) setErr(e);
       toast.error(e instanceof ApiError ? e.title : errorMessage(e));
     }
   };
@@ -39,9 +43,14 @@ export default function RevokeDialog({ award, onClose }: { award: AchievementAwa
         </>
       }
     >
-      <Field label={t('perf.ach.revoke.reason')} htmlFor={`${id}-reason`} hint={t('perf.ach.revoke.reasonHint')} required error={tried && !reason.trim() ? t('perf.ach.revoke.reasonRequired') : null}>
+      <Field label={t('perf.ach.revoke.reason')} htmlFor={`${id}-reason`} hint={t('perf.ach.revoke.reasonHint')} required error={tried && !reason.trim() ? t('perf.ach.revoke.reasonRequired') : (err?.field('reason') ?? null)}>
         <Textarea id={`${id}-reason`} rows={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} aria-invalid={tried && !reason.trim()} />
       </Field>
+      {err?.general(['reason']) && (
+        <p role="alert" className="mt-3 text-sm text-danger">
+          {err.general(['reason'])}
+        </p>
+      )}
     </Dialog>
   );
 }

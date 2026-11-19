@@ -57,6 +57,7 @@ test('an invited Team Manager joins as manager of their team, with their project
   await expect(miaPage.getByRole('heading', { level: 1, name: 'You have been invited' })).toBeVisible();
   await miaPage.getByLabel('Your name').fill('Mia Manager');
   await miaPage.getByLabel('Choose a password').fill(PASSWORD);
+  await miaPage.getByLabel('Confirm password').fill(PASSWORD);
   await miaPage.getByRole('button', { name: 'Join organization' }).click();
   await expect(miaPage).toHaveURL(new RegExp(`/o/${data.orgId}`));
   // Managers stay on the web (only Workers are sent to the desktop app).
@@ -91,6 +92,7 @@ test('an invited Worker joins the team as a member and is sent to the desktop ap
   await wesPage.goto(link);
   await wesPage.getByLabel('Your name').fill('Wes Worker');
   await wesPage.getByLabel('Choose a password').fill(PASSWORD);
+  await wesPage.getByLabel('Confirm password').fill(PASSWORD);
   await wesPage.getByRole('button', { name: 'Join organization' }).click();
   await expect(wesPage).toHaveURL(/\/download\?welcome=1/);
   await expect(wesPage.getByText('Your account is ready.')).toBeVisible();
@@ -124,6 +126,7 @@ test('an invitation link can only be used once', async ({ page, browser, data })
   await p1.goto(link);
   await p1.getByLabel('Your name').fill('Olive Once');
   await p1.getByLabel('Choose a password').fill(PASSWORD);
+  await p1.getByLabel('Confirm password').fill(PASSWORD);
   await p1.getByRole('button', { name: 'Join organization' }).click();
   await expect(p1).toHaveURL(/\/download/);
   await first.close();

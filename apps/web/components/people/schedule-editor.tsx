@@ -68,7 +68,8 @@ export function ScheduleEditor({ open, onOpenChange, member, schedules }: { open
   const del = useOrgMutation<{ id: string }>('DELETE', (b) => `/schedules/${b.id}`);
 
   const setDay = (dow: number, patch: Partial<DayDraft>) => setDays((xs) => xs.map((d, i) => (i === dow ? { ...d, ...patch } : d)));
-  const invalidDay = days.findIndex((d) => d.enabled && d.end <= d.start);
+  // An emptied time counts as invalid too: "17:00" <= "" is false (form validation audit, 20 Nov 2026).
+  const invalidDay = days.findIndex((d) => d.enabled && (!d.start || !d.end || d.end <= d.start));
 
   const submit = async () => {
     setError(null);

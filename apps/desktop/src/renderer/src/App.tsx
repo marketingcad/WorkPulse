@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { ArrowRight, BarChart3, Check, ChevronLeft, Clock3, ClockPlus, ExternalLink, Eye, EyeOff, Lock, LogOut, Mail, RefreshCw, ShieldCheck, Users, type LucideIcon } from 'lucide-react';
 import type { AgentState } from '../../shared/ipc';
+import { isSecureServerUrl } from '../../shared/server-url';
 import { Dashboard } from './Dashboard';
 import { PerformancePage } from './PerformancePage';
 import { ActivityPage, PayStubsPage, ProjectsPage, ReportsPage, SchedulePage, TasksPage, TimeOffPage, TimesheetPage, TrackingPage } from './Pages';
@@ -318,7 +319,7 @@ function SignIn({ s }: { s: AgentState }) {
     // The main process refuses malformed input without reaching the server: say what to fix instead.
     const address = email.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) return setProblem('Enter a valid email address, like name@company.com.');
-    if (!/^https?:\/\/[^\s/]+/i.test(server.trim())) {
+    if (!isSecureServerUrl(server.trim())) {
       setAdvanced(true);
       return setProblem('Enter a server address that starts with https://, under Server settings.');
     }
@@ -424,8 +425,14 @@ function SignIn({ s }: { s: AgentState }) {
             <button
               disabled={busy}
               onClick={() => {
+                // The same address check as signing in here: an invalid one is said, not silently refused.
+                if (!isSecureServerUrl(server.trim())) {
+                  setAdvanced(true);
+                  return setProblem('Enter a server address that starts with https://, under Server settings.');
+                }
+                setProblem(null);
                 setViaBrowser(true);
-                void bridge.login(server);
+                void bridge.login(server.trim());
               }}
               className="mt-4 flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-medium text-text hover:bg-surface-muted disabled:opacity-60"
             >
@@ -548,7 +555,8 @@ function ManualTime({ s, prefill, onBack }: { s: AgentState; prefill: ManualPref
   const project = s.assignments.find((a) => a.project_id === projectId);
   const startedAt = new Date(`${date}T${from}`);
   const endedAt = new Date(`${date}T${to}`);
-  const seconds = (endedAt.getTime() - startedAt.getTime()) / 1000;
+  // A cleared date or time is NaN, which counts as no time rather than crashing on submit (form validation audit, 20 Nov 2026).
+  const seconds = (endedAt.getTime() - startedAt.getTime()) / 1000 || 0;
   const name = (id: string) => s.assignments.find((a) => a.project_id === id)?.project_name ?? 'Project';
   const time = (iso: string) =>
     new Date(iso).toLocaleString([], {
@@ -561,6 +569,8 @@ function ManualTime({ s, prefill, onBack }: { s: AgentState; prefill: ManualPref
   const submit = async () => {
     setError(null);
     setSentId(null);
+    if (!(seconds > 0)) return setError('Enter a date, and an end time after the start time.');
+    if (endedAt.getTime() > Date.now()) return setError('Manual time cannot be in the future.');
     try {
       // Asking for refused time links the request to it, so managers see it corrected (and the note goes).
       const id = await bridge.requestManualTime({

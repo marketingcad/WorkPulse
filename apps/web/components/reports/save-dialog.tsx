@@ -110,7 +110,8 @@ export function SaveReportDialog({ open, onOpenChange, reportKey, defaultName, p
 
   const cron = scheduled ? (freq === 'custom' ? cronText.trim() : buildCron({ ...sched, frequency: freq })) : null;
   const fixedInvalid = range === 'fixed' && (!from || !to || from > to);
-  const canSave = !!name.trim() && !fixedInvalid && (!scheduled || (!!cron && /^\d{2}:\d{2}$/.test(sched.time)));
+  // A schedule needs someone to send to, as the server requires (form validation audit, 20 Nov 2026).
+  const canSave = !!name.trim() && !fixedInvalid && (!scheduled || (!!cron && /^\d{2}:\d{2}$/.test(sched.time) && recipients.length > 0));
 
   const submit = () => {
     if (!canSave) return;

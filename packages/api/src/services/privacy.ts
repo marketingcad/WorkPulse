@@ -12,6 +12,7 @@ import {
   devices,
   emailTokens,
   expenses,
+  fileObjects,
   idleEvents,
   manualTimeRequests,
   memberships,
@@ -151,6 +152,19 @@ export async function anonymizeMember(x: Ctx, membershipId: string) {
   await x.tx.delete(taskAssignees).where(eq(taskAssignees.membershipId, membershipId));
   await x.tx.update(memberships).set({ status: 'REMOVED', updatedAt: new Date() }).where(eq(memberships.id, membershipId));
   await x.tx.update(apiKeys).set({ revokedAt: new Date() }).where(and(eq(apiKeys.createdBy, m.userId), eq(apiKeys.organizationId, x.org.id), isNull(apiKeys.revokedAt)));
+  // Every personal-data export made of them, by anyone, goes too: the file held all of it and stayed
+  // downloadable from Exports after the erasure (QA, BUG-42). Exports of other people are untouched.
+  const exportRuns = await x.tx
+    .select({ id: reportRuns.id, fileId: reportRuns.fileId })
+    .from(reportRuns)
+    .where(and(eq(reportRuns.organizationId, x.org.id), eq(reportRuns.reportKey, DATA_EXPORT_KEY), sql`${reportRuns.params}->>'membership_id' = ${membershipId}`));
+  const exportFileIds = exportRuns.flatMap((r) => (r.fileId ? [r.fileId] : []));
+  if (exportFileIds.length) {
+    const files = await x.tx.delete(fileObjects).where(and(eq(fileObjects.organizationId, x.org.id), inArray(fileObjects.id, exportFileIds))).returning({ key: fileObjects.storageKey });
+    if (files.length) await x.deps.storage.delete(files.map((f) => f.key));
+  }
+  if (exportRuns.length) await x.tx.delete(reportRuns).where(inArray(reportRuns.id, exportRuns.map((r) => r.id)));
+  counts.data_exports = exportRuns.length;
   const scrub = await x.tx.execute<{ n: number }>(sql`select tallywork_scrub_audit_actor(${membershipId}::uuid) as n`);
   counts.audit_entries_scrubbed = Number((scrub as unknown as { rows: Array<{ n: number }> }).rows[0]?.n ?? 0);
 

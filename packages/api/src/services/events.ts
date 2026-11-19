@@ -41,13 +41,24 @@ export function emitFrom(x: Ctx, eventType: string, payload: Record<string, unkn
   return emit(x.tx, x.org.id, eventType, payload, { ...opts, correlationId: x.requestId, actor: { type: a.actorType, id: a.actorId } });
 }
 
-const REDACT = new Set(['password', 'passwordHash', 'password_hash', 'secret', 'secretHash', 'secretEnc', 'token', 'tokenHash']);
-
-function redact(v: unknown): unknown {
-  if (v === null || typeof v !== 'object') return v;
-  if (Array.isArray(v)) return v.map(redact);
-  return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, val]) => [k, REDACT.has(k) ? '[redacted]' : redact(val)]));
+/**
+ * Whether a key names a secret, in any spelling (apiKey, api_key, client-secret, refreshToken…). The
+ * list of eight exact names it replaces let `apiKey` or `accessToken` through (QA, BUG-43). A count or
+ * a length about a token (`token_count`) is not a secret.
+ */
+function isSecretKey(key: string): boolean {
+  const k = key.toLowerCase().replace(/[^a-z]/g, '');
+  if (/(password|passwd|secret|privatekey|apikey|credential)/.test(k)) return true;
+  if (k === 'pass' || k === 'pwd') return true;
+  return /token(hash|enc)?$/.test(k);
 }
+
+export function redactForAudit(v: unknown): unknown {
+  if (v === null || typeof v !== 'object') return v;
+  if (Array.isArray(v)) return v.map(redactForAudit);
+  return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, val]) => [k, isSecretKey(k) ? '[redacted]' : redactForAudit(val)]));
+}
+const redact = redactForAudit;
 
 export interface AuditEntry {
   action: string;
@@ -71,7 +82,7 @@ export async function audit(x: Ctx, e: AuditEntry): Promise<void> {
     targetId: e.targetId ?? null,
     before: e.before === undefined ? null : redact(e.before),
     after: e.after === undefined ? null : redact(e.after),
-    metadata: e.metadata ?? null,
+    metadata: e.metadata === undefined ? null : (redact(e.metadata) as Record<string, unknown>),
     ipAddress: x.ip,
     userAgent: x.userAgent?.slice(0, 300) ?? null,
     requestId: x.requestId,
@@ -89,6 +100,6 @@ export async function auditSystem(tx: Tx, organizationId: string, e: AuditEntry 
     targetId: e.targetId ?? null,
     before: e.before === undefined ? null : redact(e.before),
     after: e.after === undefined ? null : redact(e.after),
-    metadata: e.metadata ?? null,
+    metadata: e.metadata === undefined ? null : (redact(e.metadata) as Record<string, unknown>),
   });
 }

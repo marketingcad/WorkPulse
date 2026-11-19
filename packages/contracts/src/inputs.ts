@@ -418,6 +418,9 @@ export const payrollRunInput = z.object({
   date: isoDate.optional(),
   notes: optionalText(1000),
 });
+/** Finalizing a payroll. `confirm_unpriced`: pay approved time that has no pay rate at $0 anyway (the admin was shown which). */
+export const finalizePayrollInput = z.object({ confirm_unpriced: z.boolean().optional() });
+
 export const payAdjustmentsInput = z.object({
   adjustments: z.array(z.object({ label: nonEmpty(100), amount_minor: z.number().int().min(-1_000_000_000).max(1_000_000_000) })).max(20),
 });

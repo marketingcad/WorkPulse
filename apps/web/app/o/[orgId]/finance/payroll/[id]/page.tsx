@@ -38,6 +38,10 @@ export default function PayrollRunPage() {
   const m = (v: number) => fmtMoney(v, r.currency);
   const h = org.fmtDuration;
   const unapproved = (r.lines ?? []).reduce((s, l) => s + l.unapproved_seconds, 0);
+  // Approved time with no pay rate is paid $0: shown on the line, in the warning and before finalizing (BUG-32).
+  const unpricedLines = (r.lines ?? []).filter((l) => l.unpriced_seconds > 0);
+  const unpriced = unpricedLines.reduce((s, l) => s + l.unpriced_seconds, 0);
+  const unpricedText = unpriced > 0 ? `${h(unpriced)} of approved time has no pay rate and is paid $0 (${unpricedLines.map((l) => `${l.name}: ${h(l.unpriced_seconds)}`).join(', ')}).` : '';
   const pdf = (l: PayStubDto) => `/api/v1/orgs/${org.organization.id}/pay-stubs/${l.id}/pdf`;
 
   const act = async (a: Action) => {
@@ -49,7 +53,8 @@ export default function PayrollRunPage() {
         router.push(`${org.base}/finance/payroll`);
         return;
       }
-      await run('POST', `/payroll/runs/${r.id}/${a}`);
+      // Finalizing with unpriced time sends the confirmation the admin just gave in the dialog.
+      await run('POST', `/payroll/runs/${r.id}/${a}`, a === 'finalize' && unpriced > 0 ? { confirm_unpriced: true } : undefined);
       toast.success({ recalculate: 'Payroll recalculated from approved time', finalize: 'Payroll finalized; members can see their pay stubs', paid: 'Payroll marked as paid' }[a]);
       setConfirm(null);
     } catch (e) {
@@ -70,6 +75,7 @@ export default function PayrollRunPage() {
         <span className="tabular">
           {h(l.approved_seconds)}
           {l.carried_seconds > 0 && <span className="block text-xs text-text-muted">incl. {h(l.carried_seconds)} from earlier periods</span>}
+          {l.unpriced_seconds > 0 && <span className="block text-xs font-medium text-warning">{h(l.unpriced_seconds)} has no pay rate (paid $0)</span>}
         </span>
       ),
     },
@@ -171,10 +177,11 @@ export default function PayrollRunPage() {
             { label: 'People', value: r.member_count },
           ]}
         />
-        {(unapproved > 0 || r.other_currency) && (
+        {(unapproved > 0 || unpriced > 0 || r.other_currency) && (
           <div role="status" className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning-soft px-4 py-3 text-sm">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
             <div>
+              {unpriced > 0 && <p>{unpricedText} {draft && 'Set their pay rates, then recalculate.'}</p>}
               {unapproved > 0 && <p>{h(unapproved)} in this period is not approved yet and is not paid. {draft && 'Approve those timesheets, then recalculate.'}</p>}
               {r.other_currency && <p>Some time was priced in another currency and is not part of this {r.currency} payroll.</p>}
             </div>
@@ -194,12 +201,12 @@ export default function PayrollRunPage() {
         description={
           confirm === 'finalize'
             ? // The warnings on the page, repeated where the decision is made.
-              `${unapproved > 0 ? `${h(unapproved)} in this period is not approved yet and is not paid by this payroll. ` : ''}${r.other_currency ? 'Some time is priced in another currency and is not part of it. ' : ''}This cannot be undone. Amounts are locked and every member gets their pay stub. Time approved later goes into the next payroll; to correct an amount, add a bonus or deduction on the next payroll.`
+              `${unpriced > 0 ? `${unpricedText} To pay it, set the pay rates and recalculate first. ` : ''}${unapproved > 0 ? `${h(unapproved)} in this period is not approved yet and is not paid by this payroll. ` : ''}${r.other_currency ? 'Some time is priced in another currency and is not part of it. ' : ''}This cannot be undone. Amounts are locked and every member gets their pay stub. Time approved later goes into the next payroll; to correct an amount, add a bonus or deduction on the next payroll.`
             : confirm === 'paid'
               ? 'Record that everyone in this payroll has been paid. This cannot be undone.'
               : 'The draft and its adjustments are removed. You can run it again.'
         }
-        confirmLabel={confirm === 'finalize' ? 'Finalize' : confirm === 'paid' ? 'Mark as paid' : 'Delete draft'}
+        confirmLabel={confirm === 'finalize' ? (unpriced > 0 ? 'Finalize anyway' : 'Finalize') : confirm === 'paid' ? 'Mark as paid' : 'Delete draft'}
         danger={confirm === 'delete'}
         loading={busy}
         onConfirm={() => confirm && act(confirm)}

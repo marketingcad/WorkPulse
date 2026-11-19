@@ -627,6 +627,15 @@ async function toExpenseRows(x: Ctx, rows: Array<{ e: typeof expenses.$inferSele
 
 export async function createExpense(x: Ctx, input: z.infer<typeof expenseInput>) {
   if (!x.actor.grants['expenses:create']) throw forbidden();
+  // Not in the future (QA, BUG-35). "Today" is the latest date anywhere on Earth (UTC+14), so a member
+  // in any time zone can claim what they spent today.
+  if (input.spent_on > localDate(x.deps.now(), 'Pacific/Kiritimati')) {
+    throw validation('An expense can’t be dated in the future', { errors: [{ field: 'spent_on', message: 'Use the date you spent it, today or earlier' }] });
+  }
+  // A billable expense is put on its client's invoice; with no project or client it never could be (BUG-36).
+  if (input.billable && !input.project_id && !input.client_id) {
+    throw validation('Choose the project to bill this expense to', { errors: [{ field: 'project_id', message: 'Choose a project, or untick Billable' }] });
+  }
   if (input.receipt_file_id) {
     // A receipt backs one claim, by the person who uploaded it (two submissions at once are
     // serialized by the member lock, so both cannot pass the check).
@@ -675,7 +684,15 @@ export async function createExpense(x: Ctx, input: z.infer<typeof expenseInput>)
   });
   await emitFrom(x, 'expense.submitted', { expense_id: id, membership_id: x.actor.membershipId, amount_minor: input.amount_minor }, { workerId: x.actor.membershipId });
   await audit(x, { action: 'expense.created', targetType: 'expense', targetId: id, after: input });
-  return (await listExpenses(x, {})).find((e) => e.id === id)!;
+  // Read back by id: the list stops at the newest 1,000, so a back-dated expense in a busy organization
+  // was not in it and the answer had no body (BUG-37).
+  const rows = await x.tx
+    .select({ e: expenses, projectName: projects.name, clientName: clients.name })
+    .from(expenses)
+    .leftJoin(projects, eq(projects.id, expenses.projectId))
+    .leftJoin(clients, eq(clients.id, expenses.clientId))
+    .where(and(eq(expenses.organizationId, x.org.id), eq(expenses.id, id)));
+  return (await toExpenseRows(x, rows))[0]!;
 }
 
 export async function decideExpense(x: Ctx, id: string, action: 'APPROVE' | 'REJECT' | 'REIMBURSE', reason?: string) {

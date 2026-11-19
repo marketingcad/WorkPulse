@@ -150,7 +150,9 @@ function Composer() {
   if (!org.can('invoices:manage')) return <PermissionState message="You need permission to manage invoices to create one." />;
 
   const step1Valid = !!clientId && !!start && !!end && start <= end && taxValid;
-  const step2Valid = extrasValid && !!preview && preview.lines.length > 0;
+  // A total of 0 can never be paid, so the server refuses it (QA, BUG-49); say so here, not at the end.
+  const zeroTotal = extrasValid && !!preview && preview.lines.length > 0 && preview.total_minor <= 0;
+  const step2Valid = extrasValid && !!preview && preview.lines.length > 0 && !zeroTotal;
   const step3Valid = !!issueDate && !!dueDate && dueDate >= issueDate;
 
   const next = () => setStep((s) => Math.min(3, s + 1));
@@ -367,6 +369,11 @@ function Composer() {
             {!extrasValid && (
               <p role="status" className="border-t border-border px-4 py-2.5 text-sm text-danger">
                 Each custom line needs a description, a quantity and a price. Fill them in, or remove the line, to continue.
+              </p>
+            )}
+            {zeroTotal && (
+              <p role="status" className="border-t border-border px-4 py-2.5 text-sm text-danger">
+                This invoice comes to 0, and an invoice for nothing can’t be paid. Add an amount to a line, or remove the empty lines.
               </p>
             )}
           </Panel>

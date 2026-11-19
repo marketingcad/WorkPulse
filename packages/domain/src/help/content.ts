@@ -226,9 +226,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'Use Activity level and “Only blocks with screenshots” to narrow it down, and click a block to see its screenshots, keyboard and mouse activity, project and task.',
       'On Apps and URLs, pick a date range and group by app or site, member or project.',
     ],
+    points: [
+      'A day is shown in the member’s time zone: the timeline, the 10-minute blocks and the app and website times all use it, and the timeline drawer names it. Someone in another time zone sees the same times.',
+    ],
     tip: 'What is collected (screenshots, apps, websites) depends on your tracking policy.',
     links: [{ label: 'Open Activity', href: '/activity' }],
-    keywords: ['screenshots', 'apps', 'websites', 'urls', 'activity level', 'monitoring'],
+    keywords: ['screenshots', 'apps', 'websites', 'urls', 'activity level', 'monitoring', 'time zone', 'timeline'],
   },
   {
     id: 'eod-reports',
@@ -348,9 +351,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'Two active projects of the same client cannot have the same name (another client may use it).',
       'A project cannot be added to an archived client, and a project of an archived client is restored by restoring the client.',
       'Moving a project to another client: the new client’s portal shows only the work done after the move.',
+      'Changes to a project’s settings are kept in its History tab: who changed what, the old and new values, and the reason. Add an optional Reason for this change before Save changes.',
     ],
     links: [{ label: 'Open Projects', href: '/projects' }],
-    keywords: ['project', 'new project', 'assign', 'members', 'move', 'duplicate name'],
+    keywords: ['project', 'new project', 'assign', 'members', 'move', 'duplicate name', 'history', 'revision', 'reason'],
     perms: ['projects:manage'],
   },
   {
@@ -400,6 +404,29 @@ export const HELP_ARTICLES: HelpArticle[] = [
     links: [{ label: 'Open Clients', href: '/clients' }],
     keywords: ['client', 'customer', 'portal', 'share', 'archive', 'restore', 'currency'],
     perms: ['clients:manage'],
+  },
+  {
+    id: 'client-folders',
+    category: 'work',
+    title: 'Organize projects in client folders',
+    summary: 'One folder per client, with each project’s progress and revision history.',
+    steps: [
+      'An admin turns it on once: Settings › Organization › Client folders › Organize projects in client folders.',
+      'Open Projects and switch the view from All projects to Client folders.',
+      'Click New folder, choose the client and, optionally, a folder name and description. Click Create folder.',
+      'Open a folder to see its projects. Expand a project for its status, task progress, members, milestones and dates; Revision history shows every change to it.',
+      'Use New project to create one for that client, or the ⋯ menu › Add existing projects to bring in projects that have no client yet.',
+    ],
+    points: [
+      'A folder’s projects are its client’s projects: nothing is copied or moved. A project that belongs to another client stays with it; change its client in the project’s settings if the work really moved.',
+      'Renaming a folder changes only the label here. Invoices keep the client’s name.',
+      'Archiving a folder only hides it from Client folders. The client and its projects are not archived, and time, invoices and reports carry on. Show archived lets you restore it.',
+      'Turning client folders off hides them and keeps them for when you turn it on again. The project list works the same either way.',
+      'System Admins manage folders. Others see the folders and projects they already have access to.',
+    ],
+    links: [{ label: 'Open Client folders', href: '/projects?view=folders' }],
+    keywords: ['folder', 'client folder', 'organize', 'group projects', 'revision history', 'history', 'by client'],
+    perms: ['clients:read'],
   },
   {
     id: 'project-milestones',
@@ -487,10 +514,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'Extra lines cannot have a negative price: to give a discount, lower the client’s rate or explain it in the notes.',
       'To chase payment, open a sent, partly paid or overdue invoice and click Send reminder. The client is emailed the amount still due and the due date; the invoice does not change. At most 3 reminders a day per invoice, and the client needs an email address.',
       'Export on Invoices gives the invoices the list shows: the period, status, client and search you chose.',
+      'The PDF prints your Logo on documents (Settings › Organization › Company profile). Without one it uses the square company logo, and without either just the company name.',
     ],
     tip: 'Only approved, billable time is invoiced, so approve timesheets first.',
     links: [{ label: 'Open Invoices', href: '/finance/invoices' }],
-    keywords: ['invoice', 'bill', 'billing', 'client', 'pdf', 'send', 'reminder', 'overdue', 'chase', 'export'],
+    keywords: ['invoice', 'bill', 'billing', 'client', 'pdf', 'send', 'reminder', 'overdue', 'chase', 'export', 'logo'],
     perms: ['invoices:manage'],
   },
   {
@@ -515,20 +543,22 @@ export const HELP_ARTICLES: HelpArticle[] = [
     steps: [
       'Open Payroll and click Run payroll. Choose the pay group and period, and click Create draft.',
       'Check each person’s pay. Use Adjust to add a bonus or a deduction, and Recalculate after approving late timesheets.',
-      'Click Finalize. This cannot be undone: amounts are locked and each member’s pay stub is published.',
+      'Click Finalize. This cannot be undone: amounts are locked and each member’s pay stub is published. People with no time, time off, pay or adjustments get no pay stub.',
       'After paying, click Mark as paid.',
     ],
     points: [
+      'Approved time with no pay rate is paid $0. The payroll shows those hours on each person’s line and in a warning: set their pay rates and click Recalculate. Finalizing without that asks you to confirm with Finalize anyway.',
       'To correct a finalized payroll, add a bonus or a deduction for that person on the next payroll.',
       'The Owed tab shows what members are owed for any dates before you run payroll: an estimate from tracked time, and the amount from approved time.',
       'Pay groups set how often a group of members is paid and in which currency.',
+      'Pay stub PDFs carry your Logo on documents, like invoices.',
       'Members add their own bank details on Pay stubs. When someone else changes a member’s bank details, the member is told in the app and by email; when members change their own, payroll managers are told.',
     ],
     links: [
       { label: 'Open Payroll', href: '/finance/payroll' },
       { label: 'See what is owed', href: '/finance/payroll?tab=owed' },
     ],
-    keywords: ['payroll', 'pay', 'salary', 'wages', 'pay stub', 'owed', 'bonus', 'deduction', 'bank details', 'correct', 'finalize'],
+    keywords: ['payroll', 'pay', 'salary', 'wages', 'pay stub', 'owed', 'bonus', 'deduction', 'bank details', 'correct', 'finalize', 'no rate', 'unpriced', 'logo'],
   },
 
   // ─── Reports and exports ──────────────────────────────────────────────────
@@ -679,15 +709,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'The score is made of five parts: Goal completion (30%), Project delivery (25%), Approved-work consistency (20%), Quality from final manager reviews (15%) and Attendance (10%).',
       'Activity levels, keystrokes and screenshots are never part of a score. A part with no data is left out and the others are re-weighted; it never counts as zero.',
       'Scores stay open for two weeks after a period ends, so late approvals count. Then they are final and never change. A profile’s Score history shows each period as Final or Still open.',
+      'Scores are calculated once a day, and each page says “Scores as of” that time. Time approved since then counts from the next update, so other pages and the desktop app may show newer hours for a while.',
       'A team’s score is the average of its members’ scores, weighted by approved days.',
-      'Admins can change the weights in Scoring rules (they must add up to 100%). Saving creates a new version; final scores keep the version they were calculated with. Recalculate updates the scores of the period you are looking at.',
+      'Admins can change the weights in Scoring rules (they must add up to 100%). Saving creates a new version; final scores keep the version they were calculated with. Recalculate (on the Overview) updates the scores of the period you are looking at right away.',
     ],
     links: [
       { label: 'Open Performance overview', href: '/performance' },
       { label: 'Team performance', href: '/performance/teams' },
       { label: 'Worker performance', href: '/performance/workers' },
     ],
-    keywords: ['performance', 'score', 'kpi', 'weights', 'scoring rules', 'recalculate', 'team performance', 'final', 'still open'],
+    keywords: ['performance', 'score', 'kpi', 'weights', 'scoring rules', 'recalculate', 'team performance', 'final', 'still open', 'as of', 'out of date', 'update'],
     perms: ['performance:read'],
   },
   {
@@ -808,14 +839,19 @@ export const HELP_ARTICLES: HelpArticle[] = [
     summary: 'Name, time zone and currency; timesheet periods, locks and reminders.',
     steps: [
       'Open Settings › Organization for the name, time zone, week start, currency and the company details printed on invoices.',
+      'Under Company profile, click Upload document logo for the logo on invoice and pay stub PDFs (PNG, JPEG, WebP or SVG). It is never cropped, so wide logos keep their shape.',
       'Open Settings › Time & pay for the timesheet period, working hours per day, timesheet locks and minimums, missing-time reminders, the late grace period, overtime, time types and break types.',
       'Each page has its own Save changes button.',
+    ],
+    points: [
+      'Without a document logo, PDFs use the square company logo; without either, they show the company name only.',
+      'Client folders, on the same page, adds a Client folders view to Projects.',
     ],
     links: [
       { label: 'Organization', href: '/settings' },
       { label: 'Time & pay', href: '/settings/time' },
     ],
-    keywords: ['settings', 'organization', 'time zone', 'currency', 'timesheet period', 'pay period', 'lock', 'overtime', 'reminder'],
+    keywords: ['settings', 'organization', 'time zone', 'currency', 'timesheet period', 'pay period', 'lock', 'overtime', 'reminder', 'logo', 'document logo', 'company profile', 'client folders'],
     perms: ['org:update'],
   },
   {

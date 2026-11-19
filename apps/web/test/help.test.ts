@@ -62,6 +62,52 @@ describe('help search', () => {
   });
 });
 
+describe('help covers the features shipped in November 2026', () => {
+  const ids = (q: string) => searchArticles(asSearchable, q).map((a) => a.id);
+  const text = (id: string) => {
+    const a = HELP_ARTICLES.find((x) => x.id === id)!;
+    return [a.summary, ...(a.steps ?? []), ...(a.points ?? []), a.tip ?? ''].join(' ');
+  };
+
+  it('has a client folders guide for people who can read clients, found by search', () => {
+    const a = HELP_ARTICLES.find((x) => x.id === 'client-folders');
+    expect(a?.category).toBe('work');
+    expect(a?.perms).toEqual(['clients:read']);
+    expect(a?.links?.[0]?.href).toBe('/projects?view=folders');
+    expect(ids('client folder')[0]).toBe('client-folders');
+    expect(text('client-folders')).toMatch(/Settings › Organization › Client folders/);
+    expect(text('client-folders')).toMatch(/Archiving a folder only hides it/);
+  });
+
+  it('explains project revision history and the reason for a change', () => {
+    expect(ids('revision history')).toEqual(expect.arrayContaining(['create-project', 'client-folders']));
+    expect(text('create-project')).toMatch(/History tab/);
+    expect(text('create-project')).toMatch(/Reason for this change/);
+  });
+
+  it('explains the logo on documents for settings, invoices and pay stubs', () => {
+    expect(ids('document logo')).toContain('organization-settings');
+    expect(ids('logo')).toEqual(expect.arrayContaining(['organization-settings', 'invoice', 'payroll']));
+    expect(text('organization-settings')).toMatch(/Upload document logo/);
+  });
+
+  it('warns that approved time with no pay rate is paid 0 and needs Finalize anyway', () => {
+    expect(ids('no rate')).toContain('payroll');
+    expect(text('payroll')).toMatch(/Finalize anyway/);
+    expect(text('payroll')).toMatch(/get no pay stub/);
+  });
+
+  it('says performance scores update once a day and show when they were calculated', () => {
+    expect(ids('scores as of')).toContain('performance-scores');
+    expect(text('performance-scores')).toMatch(/calculated once a day/);
+  });
+
+  it('says activity is shown in the member’s time zone', () => {
+    expect(ids('activity time zone')).toContain('activity');
+    expect(text('activity')).toMatch(/member’s time zone/);
+  });
+});
+
 describe('help content matches the app', () => {
   it('has unique guide ids, real categories, and no empty category', () => {
     const ids = HELP_ARTICLES.map((a) => a.id);

@@ -174,6 +174,20 @@ test('archiving a folder hides it but leaves the client and its projects working
   await expect(page.getByText(`Retainers ${run} restored`)).toBeVisible();
 });
 
+test('a folder’s Help link opens the client folders guide', async ({ page, data }) => {
+  await page.goto(`/o/${data.orgId}/projects?view=folders`);
+  await page.getByRole('list', { name: 'Client folders' }).getByRole('link', { name: new RegExp(`Retainers ${run}`) }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(`Retainers ${run}`);
+  await page.getByRole('link', { name: 'Help for this page' }).click();
+  const guide = page.getByRole('button', { name: /Organize projects in client folders/ });
+  await expect(guide).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByText(/Archiving a folder only hides it from Client folders/)).toBeVisible();
+  // Its button goes back to the folder view.
+  await page.getByRole('link', { name: 'Open Client folders' }).click();
+  await expect(page).toHaveURL(new RegExp(`/o/${data.orgId}/projects\\?view=folders$`));
+  await expect(page.getByRole('list', { name: 'Client folders' })).toBeVisible();
+});
+
 test('the API refuses to put another client’s project in the folder', async ({ data }) => {
   const api = await adminApi();
   const o = (p: string) => `/api/v1/orgs/${data.orgId}${p}`;

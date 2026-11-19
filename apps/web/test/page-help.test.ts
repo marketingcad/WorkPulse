@@ -29,6 +29,14 @@ describe('the top bar Help link', () => {
     expect(guideFor('/performance/goals', (p: Permission) => p !== 'goals:manage')).toBeNull();
   });
 
+  it('opens the client folders guide on the folder list and on any folder, only for people who can read clients', () => {
+    expect(guideFor('/projects/folders', all)?.id).toBe('client-folders');
+    expect(guideFor('/projects/folders/0b5f3c1e-0000-4000-8000-000000000001', all)?.id).toBe('client-folders');
+    expect(guideFor('/projects/folders/abc', (p: Permission) => p !== 'clients:read')).toBeNull();
+    // The project list keeps the guide it had.
+    expect(guideFor('/projects', all)?.id).not.toBe('client-folders');
+  });
+
   it('covers every page in the guides’ own links', () => {
     const pages = [...new Set(HELP_ARTICLES.flatMap((a) => a.links?.map((l) => l.href) ?? []))].filter((h) => !h.includes('#') && !h.includes('?'));
     for (const page of pages) expect(guideFor(page, all), page).not.toBeNull();

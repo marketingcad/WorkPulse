@@ -80,6 +80,24 @@ test.describe('Help Center', () => {
     await expect(results.getByText(/paid in a finalized payroll cannot be reopened/)).toBeVisible();
   });
 
+  test('guides explain the features shipped in November 2026', async ({ page, data }) => {
+    await page.goto(`/o/${data.orgId}/help`);
+    const search = page.getByRole('searchbox', { name: 'Search help' });
+    const results = page.getByRole('region', { name: 'Search results' });
+    for (const [q, guide, text] of [
+      ['client folder', 'Organize projects in client folders', /Settings › Organization › Client folders/],
+      ['revision history', 'Create a project', /Reason for this change/],
+      ['document logo', 'Change organization, timesheet period and timesheet rules', /click Upload document logo/],
+      ['no rate', 'Run payroll', /Finalize anyway/],
+      ['scores as of', 'How performance scores work', /Scores are calculated once a day/],
+      ['activity time zone', 'Review screenshots, apps and websites', /A day is shown in the member’s time zone/],
+    ] as const) {
+      await search.fill(q);
+      await expect(results.getByRole('button', { name: new RegExp(guide) }).first()).toBeVisible();
+      await expect(results.getByText(text).first()).toBeVisible();
+    }
+  });
+
   test('covers Performance, the calculator, the theme, integrations and the Settings menu', { tag: '@smoke' }, async ({ page, data }) => {
     await page.goto(`/o/${data.orgId}/help`);
     const topic = page.getByRole('region', { name: 'Performance', exact: true });
@@ -165,7 +183,7 @@ test.describe('Help for a restricted role', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Help Center' })).toBeVisible();
     await expect(page.getByRole('button', { name: /How WorkPulse works/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /Set a budget/ })).toHaveCount(0); // can read budgets, not set them
-    for (const hidden of ['Run payroll', 'Approve timesheets', 'Invite a member', 'Create and send an invoice']) {
+    for (const hidden of ['Run payroll', 'Approve timesheets', 'Invite a member', 'Create and send an invoice', 'Organize projects in client folders']) {
       await expect(page.getByRole('button', { name: new RegExp(hidden) })).toHaveCount(0);
     }
   });

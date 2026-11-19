@@ -1,11 +1,14 @@
 'use client';
-import { PageHeader, Panel, PermissionState, Tabs } from '@tallywork/ui';
+import dynamic from 'next/dynamic';
+import { PageHeader, Panel, PermissionState, SkeletonRows, Tabs } from '@tallywork/ui';
 import { qs, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
-import { MyTimeOff } from '@/components/people/time-off-mine';
-import { TimeOffRequests } from '@/components/people/time-off-requests';
-import { TimeOffCalendar } from '@/components/people/time-off-calendar';
-import { TimeOffAdmin } from '@/components/people/time-off-admin';
+// Each tab loads when it is opened (bundle budget, 20 Nov 2026).
+const tabLoading = () => <SkeletonRows rows={4} />;
+const MyTimeOff = dynamic(() => import('@/components/people/time-off-mine').then((m) => m.MyTimeOff), { ssr: false, loading: tabLoading });
+const TimeOffRequests = dynamic(() => import('@/components/people/time-off-requests').then((m) => m.TimeOffRequests), { ssr: false, loading: tabLoading });
+const TimeOffCalendar = dynamic(() => import('@/components/people/time-off-calendar').then((m) => m.TimeOffCalendar), { ssr: false, loading: tabLoading });
+const TimeOffAdmin = dynamic(() => import('@/components/people/time-off-admin').then((m) => m.TimeOffAdmin), { ssr: false, loading: tabLoading });
 import type { TimeOffRequest } from '@/components/people/shared';
 import { useUrlParams } from '@/components/timesheets/use-url-params';
 

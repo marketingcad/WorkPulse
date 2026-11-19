@@ -5,7 +5,7 @@ import type { ClientDto } from '@tallywork/contracts';
 import { Button, Checkbox, Dialog, Field, Input, Select, Textarea, cx, useToast } from '@tallywork/ui';
 import { ApiError, errorMessage } from '@/lib/api';
 import { emailProblem, formErrors, optionalNameProblem } from '@/lib/form-checks';
-import { phoneProblem } from '@tallywork/contracts/phone';
+import { loadPhone } from '@/lib/phone-lazy';
 import { PhoneInput, defaultPhoneCountry } from '@/components/phone-input';
 import { todayIn, useOrg } from '@/lib/org';
 import { useRatePricingConfirm } from '@/components/finance/rate-pricing-confirm';
@@ -78,7 +78,7 @@ export function ClientDialog({ client, open, onOpenChange, onSaved }: { client: 
     add('email', f.email.trim() ? emailProblem(f.email.trim()) : null);
     add('contact_name', optionalNameProblem(f.contact_name, 150));
     const phoneChanged = f.phone !== (client?.phone ?? '');
-    if (phoneChanged) add('phone', phoneProblem(f.phone));
+    if (phoneChanged) add('phone', (await loadPhone()).phoneProblem(f.phone));
     if (problems.length) return setErr(formErrors(problems));
     saving.current = true;
     setBusy(true);

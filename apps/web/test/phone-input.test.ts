@@ -1,6 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import { phoneProblem } from '@tallywork/contracts/phone';
 import { phoneValue } from '../lib/phone';
+import { loadPhone, loadedPhone } from '../lib/phone-lazy';
+import { defaultPhoneCountry } from '../lib/phone-region';
+
+/** The phone module loads on demand (bundle budget, 20 Nov 2026); the checks then use the same module. */
+describe('the phone module on demand', () => {
+  it('is not loaded until asked for, then loads once and is the real module', async () => {
+    expect(loadedPhone()).toBeNull();
+    const [a, b] = await Promise.all([loadPhone(), loadPhone()]);
+    expect(a).toBe(b);
+    expect(loadedPhone()).toBe(a);
+    expect(a.phoneProblem).toBe(phoneProblem);
+    expect(a.phoneProblem('+63 917 123 4567')).toBeNull();
+    expect(a.phoneProblem('12')).toBe(a.PHONE_COUNTRY_MESSAGE);
+  });
+
+  it('starts a new number in the browser’s region without loading it, else the United States', () => {
+    const lang = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    const set = (language: string | undefined) => Object.defineProperty(globalThis, 'navigator', { value: language === undefined ? undefined : { language }, configurable: true });
+    try {
+      set('en-PH');
+      expect(defaultPhoneCountry()).toBe('PH');
+      set('fr');
+      expect(defaultPhoneCountry()).toBe('FR');
+      set(undefined);
+      expect(defaultPhoneCountry()).toBe('US');
+    } finally {
+      if (lang) Object.defineProperty(globalThis, 'navigator', lang);
+      else delete (globalThis as { navigator?: unknown }).navigator;
+    }
+  });
+});
 
 /** Form validation audit, 20 Nov 2026: what the phone field sends for a country and a typed number. */
 describe('phoneValue', () => {

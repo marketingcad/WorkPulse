@@ -124,6 +124,52 @@ describe('the contracts package in the browser', () => {
   });
 });
 
+// The form validation audit (20 Nov 2026) put libphonenumber (~30 KB gzip with its numbering plan
+// data) in the first load of every page with a phone field: Settings, Time & pay, Clients and the member
+// page went to 276–281 KB. The phone field and the phone checks load it on demand (lib/phone-lazy).
+describe('the phone number library', () => {
+  const importsPhone = (page: string) => [...reachable(page)].filter((f) => staticImports(path.join(web, f)).includes('@tallywork/contracts/phone'));
+
+  it.each([
+    'app/o/[orgId]/settings/page.tsx',
+    'app/o/[orgId]/settings/time/page.tsx',
+    'app/o/[orgId]/clients/page.tsx',
+    'app/o/[orgId]/workers/[id]/page.tsx',
+    'app/o/[orgId]/layout.tsx',
+  ])('is not in the first load of %s', (page) => {
+    expect(importsPhone(page)).toEqual([]);
+  });
+
+  it('is still what the phone field uses (the walk would see it if the field were imported statically)', () => {
+    expect(importsPhone('components/phone-field.tsx')).toContain('components/phone-field.tsx');
+    expect(reachable('components/phone-input.tsx')).not.toContain('components/phone-field.tsx');
+  });
+});
+
+// The same audit's form checks put four pages 0–1.7 KB over the budget; what only shows after a click
+// or on another tab loads then.
+describe('tabs and editors that load when they are shown', () => {
+  it('Time off loads each tab when it is opened', () => {
+    const page = reachable('app/o/[orgId]/time-off/page.tsx');
+    for (const tab of ['time-off-mine', 'time-off-requests', 'time-off-calendar', 'time-off-admin']) expect(page).not.toContain(`components/people/${tab}.tsx`);
+  });
+
+  it('Activity loads the screenshots review and the apps and websites view when opened', () => {
+    const page = reachable('app/o/[orgId]/activity/page.tsx');
+    expect(page).not.toContain('components/tracking/activity-review.tsx');
+    expect(page).not.toContain('components/tracking/usage-view.tsx');
+  });
+
+  it('Time & pay does not load the logo editors of the Organization page', () => {
+    const page = reachable('app/o/[orgId]/settings/time/page.tsx');
+    expect(page).not.toContain('components/settings/document-logo-editor.tsx');
+  });
+
+  it('the member page loads its Personal info tab when it is opened', () => {
+    expect(reachable('app/o/[orgId]/workers/[id]/page.tsx')).not.toContain('components/people/personal-info-tab.tsx');
+  });
+});
+
 describe('time entries page', () => {
   it('opens its entry dialogs on demand (edit, split, delete, manual time, history)', () => {
     expect(reachable('app/o/[orgId]/timesheets/all/page.tsx')).not.toContain('components/timesheets/entry-dialogs.tsx');

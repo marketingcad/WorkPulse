@@ -1,17 +1,21 @@
 'use client';
+import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { OrgContextDto } from '@tallywork/contracts';
 import { Button, Field, Input, PageHeader, Panel, Select, Switch, Textarea, fmtDuration, useToast } from '@tallywork/ui';
 import { ApiError, useOrgMutation } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { CURRENCIES, WEEKDAYS, timeZones } from '@/components/settings/options';
-import { LANGUAGES, LogoEditor } from '@/components/workspace/logo-editor';
-import { DocumentLogoEditor } from '@/components/settings/document-logo-editor';
+import { LANGUAGES } from '@/components/workspace/logo-editor';
 import { hoursToSeconds, secondsToHours } from '@/components/workspace/basics';
 import { useUnsavedChanges } from '@/lib/unsaved';
 import { emailProblem } from '@/lib/form-checks';
-import { phoneProblem } from '@tallywork/contracts/phone';
+import { loadedPhone } from '@/lib/phone-lazy';
 import { PhoneInput, defaultPhoneCountry } from '@/components/phone-input';
+
+// The logo editors show only on the Organization page, not on Time & pay (bundle budget, 20 Nov 2026).
+const LogoEditor = dynamic(() => import('@/components/workspace/logo-editor').then((m) => m.LogoEditor), { ssr: false });
+const DocumentLogoEditor = dynamic(() => import('@/components/settings/document-logo-editor').then((m) => m.DocumentLogoEditor), { ssr: false });
 
 type DurationFormat = 'hm' | 'clock' | 'decimal';
 type PayType = 'weekly' | 'biweekly' | 'semimonthly' | 'monthly';
@@ -177,7 +181,8 @@ export function OrgSettingsForm({ part, title, description }: { part: OrgSetting
   const lockDaysBad = f.lockDays.trim() !== '' && !(Number.isInteger(Number(f.lockDays)) && Number(f.lockDays) >= 0 && Number(f.lockDays) <= 3650);
   const reminderBad = f.reminder && hoursToSeconds(f.minDaily) === null && hoursToSeconds(f.minWeekly) === null;
   // Shown beside their fields, so a disabled Save always says why (form validation audit, 20 Nov 2026).
-  const phoneIssue = f.phone !== initial.phone ? phoneProblem(f.phone) : null;
+  // The number changes only in the phone field, which loads the phone module first.
+  const phoneIssue = f.phone !== initial.phone ? (loadedPhone()?.phoneProblem(f.phone) ?? null) : null;
   const emailIssue = f.email.trim() ? emailProblem(f.email.trim()) : null;
   const lateIssue = f.lateGraceMinutes < 0 || f.lateGraceMinutes > 240 ? 'Use a whole number from 0 to 240' : null;
   const budgetIssue = f.budgetWarnPct < 1 || f.budgetWarnPct > 100 ? 'Use a whole number from 1 to 100' : null;

@@ -1,10 +1,12 @@
 'use client';
 import { Suspense, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { PageHeader, PermissionState, Spinner, Tabs } from '@tallywork/ui';
+import { PageHeader, PermissionState, SkeletonRows, Spinner, Tabs } from '@tallywork/ui';
 import { useOrg } from '@/lib/org';
-import { ActivityReview } from '@/components/tracking/activity-review';
-import { UsageView } from '@/components/tracking/usage-view';
+// Each tab loads when it is opened (bundle budget, 20 Nov 2026).
+const ActivityReview = dynamic(() => import('@/components/tracking/activity-review').then((m) => m.ActivityReview), { ssr: false, loading: () => <SkeletonRows rows={4} /> });
+const UsageView = dynamic(() => import('@/components/tracking/usage-view').then((m) => m.UsageView), { ssr: false, loading: () => <SkeletonRows rows={4} /> });
 
 type Tab = 'screenshots' | 'apps' | 'urls';
 

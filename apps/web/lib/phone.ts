@@ -1,15 +1,6 @@
-import { callingCode, isCountryCode, toE164, type CountryCode } from '@tallywork/contracts/phone';
+import { callingCode, toE164, type CountryCode } from '@tallywork/contracts/phone';
 
-/** The country a new number starts in: the browser's region ("en-PH" → PH), else the United States. */
-export function defaultPhoneCountry(): CountryCode {
-  try {
-    const region = new Intl.Locale(navigator.language).maximize().region;
-    if (isCountryCode(region)) return region;
-  } catch {
-    // no navigator (server render) or an unusual locale
-  }
-  return 'US';
-}
+// Imports the phone module (libphonenumber): only the phone field (loaded on demand) uses it.
 
 /**
  * What the form sends for a country and the number typed: E.164 when it is valid ("+639171234567"),

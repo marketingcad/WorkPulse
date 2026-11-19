@@ -270,7 +270,7 @@ export async function portalSummaryTx(tx: Tx, access: PortalAccess, range: { fro
       ? await tx
           .select({ taskId: timeEntries.taskId, secs: sql<number>`coalesce(sum(${timeEntries.durationSeconds}), 0)::int` })
           .from(timeEntries)
-          .where(and(inArray(timeEntries.taskId, taskRows.map((t) => t.id)), isNull(timeEntries.deletedAt), ...afterMove(access, timeEntries.projectId, (d) => gte(timeEntries.startedAt, d))))
+          .where(and(eq(timeEntries.organizationId, access.organizationId), inArray(timeEntries.taskId, taskRows.map((t) => t.id)), isNull(timeEntries.deletedAt), ...afterMove(access, timeEntries.projectId, (d) => gte(timeEntries.startedAt, d))))
           .groupBy(timeEntries.taskId)
       : [];
     const trackedByTask = new Map(taskTime.map((t) => [t.taskId, t.secs]));

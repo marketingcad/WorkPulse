@@ -50,6 +50,8 @@ export const trackingSessions = pgTable(
       .where(sql`${t.state} in ('CREATED','ACTIVE','PAUSED','INTERRUPTED') and ${t.backfill} = false`),
     index().on(t.organizationId, t.membershipId, t.startedAt),
     index().on(t.organizationId, t.state),
+    // Sessions list: sessions that ended in the range (or are still open), across the organization.
+    index('tracking_sessions_org_ended_idx').on(t.organizationId, t.endedAt),
     index('tracking_sessions_live_idx').on(t.state).where(sql`${t.state} <> 'STOPPED'`),
   ],
 );
@@ -167,6 +169,8 @@ export const timeEntries = pgTable(
     index().on(t.organizationId, t.projectId, t.localDate),
     index().on(t.organizationId, t.localDate),
     index().on(t.sessionId),
+    // Time per task (task lists, portal summary, AI insights): all-time totals for a set of tasks.
+    index('time_entries_org_task_idx').on(t.organizationId, t.taskId),
   ],
 );
 
@@ -391,6 +395,8 @@ export const rollupWorkerDay = pgTable(
   (t) => [
     primaryKey({ columns: [t.organizationId, t.membershipId, t.localDate, t.projectId, t.taskKey, t.billable] }),
     index().on(t.organizationId, t.localDate),
+    // Projects list and project page: all-time hours per project.
+    index('rollup_worker_day_org_project_idx').on(t.organizationId, t.projectId),
   ],
 );
 

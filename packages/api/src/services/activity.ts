@@ -146,9 +146,21 @@ export async function listScreenshots(x: Ctx, q: { from: string; to: string; mem
   const rows = await x.tx
     .select({ s: screenshots, pct: activityWindows.activityPct, projectId: activityWindows.projectId })
     .from(screenshots)
-    .leftJoin(activityWindows, and(eq(activityWindows.membershipId, screenshots.membershipId), eq(activityWindows.windowStart, screenshots.windowStart)))
+    // The organization and the period are stated on both sides (not left to RLS), so the planner reads only
+    // this organization's windows for the period. A screenshot's window starts at most 10 minutes before it.
+    .leftJoin(
+      activityWindows,
+      and(
+        eq(activityWindows.membershipId, screenshots.membershipId),
+        eq(activityWindows.windowStart, screenshots.windowStart),
+        eq(activityWindows.organizationId, x.org.id),
+        gte(activityWindows.windowStart, new Date(from.getTime() - 10 * 60_000)),
+        lt(activityWindows.windowStart, to),
+      ),
+    )
     .where(
       and(
+        eq(screenshots.organizationId, x.org.id),
         isNull(screenshots.deletedAt),
         eq(screenshots.status, 'READY'),
         gte(screenshots.capturedAt, from),

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import {
   breakTypes,
   idleEvents,
@@ -675,15 +675,18 @@ export async function toSessionDtos(tx: Tx, rows: Session[], now: Date): Promise
   });
 }
 
-export async function recentSessions(tx: Tx, membershipIds: string[] | 'all', from: Date, to: Date, limit = 200): Promise<Session[]> {
+export async function recentSessions(tx: Tx, organizationId: string, membershipIds: string[] | 'all', from: Date, to: Date, limit = 200): Promise<Session[]> {
   return tx
     .select()
     .from(trackingSessions)
     .where(
       and(
+        eq(trackingSessions.organizationId, organizationId),
         membershipIds === 'all' ? undefined : inArray(trackingSessions.membershipId, membershipIds.length ? membershipIds : ['00000000-0000-7000-8000-000000000000']),
         lt(trackingSessions.startedAt, to),
         sql`coalesce(${trackingSessions.endedAt}, now()) >= ${from}`,
+        // Implied by the line above; stated so the (organization_id, ended_at) index can find recent sessions.
+        or(gte(trackingSessions.endedAt, from), isNull(trackingSessions.endedAt)),
       ),
     )
     .orderBy(desc(trackingSessions.startedAt))

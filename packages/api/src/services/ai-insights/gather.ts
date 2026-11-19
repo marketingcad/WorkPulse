@@ -4,7 +4,7 @@ import type { Ctx } from '../ctx';
 import { getOvertimeRules, listTimeOffRequests } from '../operations';
 import { listMemberOptions } from '../org';
 import { overtimeInRange } from '../pay-figures';
-import { listMilestones } from '../performance';
+import { listMilestonesByProject } from '../performance';
 import { runReport } from '../reports';
 import { canSeeMembership } from '../scope';
 import { approvalQueue, listManualTime, listTimeEntries, pageApprovalQueue, timeEntryTotals, timeEntryTotalsByProject } from '../timesheets';
@@ -196,11 +196,13 @@ export async function projectInputs(x: Ctx, period: Period, previous: Period, to
   }
   const h = (s: number) => Math.round(s / 36) / 100;
 
+  // One query for every project's milestones (it used to be two per project).
+  const milestonesOf = await listMilestonesByProject(x, projects.map((p) => p.id));
   const out: ProjectFacts[] = [];
   for (const p of projects) {
     const mine = tasks.filter((t) => t.project_id === p.id);
     const open = mine.filter((t) => t.status !== 'DONE');
-    const milestones = await listMilestones(x, p.id);
+    const milestones = milestonesOf.get(p.id) ?? [];
     const nextMs = milestones.filter((m) => !m.completed_at && m.due_date >= today).sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
     out.push({
       id: p.id,

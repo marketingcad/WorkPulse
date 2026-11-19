@@ -131,7 +131,7 @@ export async function listSessions(x: Ctx, q: { from: string; to: string; member
   const visible = narrowMemberships(x.actor, 'tracking:read', q.membershipIds);
   const from = startOfLocalDay(q.from, x.org.timezone);
   const to = startOfLocalDay(addDaysToDate(q.to, 1), x.org.timezone);
-  const rows = await recentSessions(x.tx, visible, from, to, 500);
+  const rows = await recentSessions(x.tx, x.org.id, visible, from, to, 500);
   const dtos = await toSessionDtos(x.tx, rows, x.deps.now());
   const names = await memberNames(x, [...new Set(rows.map((r) => r.membershipId))]);
   return dtos.map((d) => ({ ...d, worker_name: names.get(d.membership_id) ?? '' }));
@@ -144,9 +144,12 @@ function sessionWhere(x: Ctx, q: { from: string; to: string; membershipIds?: str
   const to = startOfLocalDay(addDaysToDate(q.to, 1), x.org.timezone);
   const term = q.search ? likePattern(q.search) : null;
   return and(
+    eq(trackingSessions.organizationId, x.org.id),
     visible === 'all' ? undefined : inArray(trackingSessions.membershipId, visible.length ? visible : ['00000000-0000-7000-8000-000000000000']),
     lt(trackingSessions.startedAt, to),
     sql`coalesce(${trackingSessions.endedAt}, now()) >= ${from}`,
+    // Implied by the line above; stated so the (organization_id, ended_at) index can find recent sessions.
+    or(gte(trackingSessions.endedAt, from), isNull(trackingSessions.endedAt)),
     term
       ? or(
           inArray(trackingSessions.membershipId, x.tx.select({ id: memberships.id }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).where(ilike(users.name, term))),

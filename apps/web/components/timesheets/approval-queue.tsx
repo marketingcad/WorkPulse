@@ -6,7 +6,7 @@ import { CheckCheck, ExternalLink } from 'lucide-react';
 import type { ApprovalQueueItemDto, OffsetPage } from '@tallywork/contracts';
 import { ActivityBar, Button, DataTable, Drawer, EmptyState, ErrorState, Input, Panel, SkeletonRows, StatusBadge, Tabs, cx, fmtDateTime, useToast, type Column } from '@tallywork/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
+import { api, errorMessage, qs, useOrgId, useOrgPage, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { FlagBadges, periodLabel, type BulkResult } from '@/components/timesheets/shared';
@@ -35,7 +35,7 @@ export function ApprovalQueue() {
   const filters = { status, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
   const queuePath = allowed ? `/timesheets/approvals${qs({ ...filters, ...paging.params })}` : null;
-  const q = useOrgQuery<OffsetPage<ApprovalQueueItemDto>>(queuePath, { placeholderData: (p) => p });
+  const q = useOrgPage<OffsetPage<ApprovalQueueItemDto>>(queuePath);
   useClampPage(paging, q.data, q.isPlaceholderData);
   const pendingQ = useOrgQuery<OffsetPage<ApprovalQueueItemDto>>(allowed ? '/timesheets/approvals?status=SUBMITTED&page=1&page_size=1' : null);
 

@@ -4,7 +4,7 @@ import { Check, Plus, X } from 'lucide-react';
 import type { ManualTimeDto, OffsetPage } from '@tallywork/contracts';
 import { Button, DataTable, EmptyState, ErrorState, Input, Panel, StatusBadge, Tabs, fmtDate, fmtDateTime, fmtTime, useToast, type Column } from '@tallywork/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
+import { api, errorMessage, qs, useOrgId, useOrgPage, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { CommentDialog, ManualTimeDialog } from '@/components/timesheets/entry-dialogs';
@@ -29,7 +29,7 @@ export function ManualRequests() {
   // The server searches and pages every request, and counts every pending one.
   const filters = { status: tab === 'ALL' ? undefined : tab, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
-  const q = useOrgQuery<OffsetPage<ManualTimeDto>>(allowed ? `/manual-time${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  const q = useOrgPage<OffsetPage<ManualTimeDto>>(allowed ? `/manual-time${qs({ ...filters, ...paging.params })}` : null);
   useClampPage(paging, q.data, q.isPlaceholderData);
   const pendingQ = useOrgQuery<OffsetPage<ManualTimeDto>>(allowed ? '/manual-time?status=PENDING&page=1&page_size=1' : null);
 

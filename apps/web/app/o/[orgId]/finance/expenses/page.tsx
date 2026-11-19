@@ -28,7 +28,7 @@ import {
   useToast,
   type Column,
 } from '@tallywork/ui';
-import { ApiError, api, errorMessage, qs, useOrgMutation, useOrgQuery } from '@/lib/api';
+import { ApiError, api, errorMessage, qs, useOrgMutation, useOrgPage, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { toMinor, type ExpenseRow, type ExpenseStatus } from '@/components/finance/types';
@@ -57,7 +57,7 @@ export default function ExpensesPage() {
   // The server filters, pages and adds up every expense the person may see, not only the newest 1000.
   const filters = { status: status === 'ALL' ? undefined : status, ...period.filter, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
-  const q = useOrgQuery<OffsetPage<ExpenseRow> & { summary: ExpensePageSummary }>(org.can('expenses:read') ? `/expenses${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  const q = useOrgPage<OffsetPage<ExpenseRow> & { summary: ExpensePageSummary }>(org.can('expenses:read') ? `/expenses${qs({ ...filters, ...paging.params })}` : null);
   useClampPage(paging, q.data, q.isPlaceholderData);
   const decide = useOrgMutation<{ id: string; action: Action; reason?: string }>('POST', (b) => `/expenses/${b.id}/${b.action}`);
   const [pending, setPending] = useState<string | null>(null);

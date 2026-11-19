@@ -30,6 +30,7 @@ import { addDays, todayIn, useOrg } from '@/lib/org';
 import { Stepper } from '@/components/finance/stepper';
 import { extraLineErrors } from '@/components/finance/extra-lines';
 import { previewIsCurrent } from '@/components/finance/preview-state';
+import { UnpricedTimeWarning } from '@/components/finance/unpriced-time';
 import { invoiceQuantity } from '@/components/finance/invoice-quantity';
 import { useUnsavedChanges } from '@/lib/unsaved';
 import { monthRange, toMinor, type InvoiceDetail, type InvoicePreview } from '@/components/finance/types';
@@ -277,6 +278,8 @@ function Composer() {
               <SkeletonRows rows={4} cols={4} />
             ) : (
               <>
+                {/* Approved billable time with no bill rate is worth 0 and left out: said, with a way to fix it (BUG-26). */}
+                {preview.unpriced_bill_seconds > 0 && <UnpricedTimeWarning pay={null} bill={preview.unpriced_bill_seconds} className="mx-4 mt-4" />}
                 {sourceLines.length === 0 && preview.already_invoiced.length > 0 && (
                   <EmptyState
                     icon={<Clock className="size-5" />}
@@ -297,11 +300,21 @@ function Composer() {
                   <EmptyState
                     icon={<Clock className="size-5" />}
                     title="Nothing to invoice in this period"
-                    description="Approve timesheets first — only approved billable time can be invoiced. Time already on another invoice is excluded. You can still add custom lines below."
+                    description={
+                      preview.unpriced_bill_seconds > 0
+                        ? 'The approved billable time in this period has no bill rate, so it is worth nothing and is not invoiced. Set a bill rate for the client, project or member that starts on or before that time, and it appears here. You can still add custom lines below.'
+                        : 'Approve timesheets first — only approved billable time can be invoiced. Time already on another invoice is excluded. You can still add custom lines below.'
+                    }
                     action={
-                      <Link href={`${org.base}/timesheets/approvals`} className="text-sm font-medium text-interactive hover:underline">
-                        Go to timesheet approvals
-                      </Link>
+                      preview.unpriced_bill_seconds > 0 ? (
+                        <Link href={`${org.base}/finance/billing`} className="text-sm font-medium text-interactive hover:underline">
+                          Set rates
+                        </Link>
+                      ) : (
+                        <Link href={`${org.base}/timesheets/approvals`} className="text-sm font-medium text-interactive hover:underline">
+                          Go to timesheet approvals
+                        </Link>
+                      )
                     }
                   />
                 )}

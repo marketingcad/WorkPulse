@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { FileText, Plus } from 'lucide-react';
 import type { ClientDto, InvoicePageSummary, OffsetPage } from '@tallywork/contracts';
 import { Button, DataTable, EmptyState, ErrorState, FilterBar, Input, KpiStrip, PageHeader, Panel, PermissionState, Select, StatusBadge, Tabs, fmtDate, fmtMoney, type Column } from '@tallywork/ui';
-import { qs, useOrgQuery } from '@/lib/api';
+import { qs, useOrgPage, useOrgQuery } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { useListPeriod } from '@/components/finance/list-period';
@@ -43,7 +43,7 @@ function InvoicesInner() {
   // The server filters, pages and adds up every matching invoice, so totals and tab counts are never cut short.
   const filters = { client_id: clientId || undefined, status: status === 'ALL' ? undefined : status, ...period.filter, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
-  const q = useOrgQuery<OffsetPage<InvoiceRow> & { summary: InvoicePageSummary }>(allowed ? `/invoices${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  const q = useOrgPage<OffsetPage<InvoiceRow> & { summary: InvoicePageSummary }>(allowed ? `/invoices${qs({ ...filters, ...paging.params })}` : null);
   useClampPage(paging, q.data, q.isPlaceholderData);
   const clientsQ = useOrgQuery<ClientDto[]>(allowed ? '/clients?include_archived=true' : null);
   const summary = q.data?.summary;

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AuditLogDto, OffsetPage } from '@tallywork/contracts';
 import { Badge, Button, DataTable, Drawer, EmptyState, ErrorState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, Select, Stat, cx, fmtDateTime, useToast, type Column, type Tone } from '@tallywork/ui';
-import { api, errorMessage, qs, useOrgQuery } from '@/lib/api';
+import { api, errorMessage, qs, useOrgPage } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { downloadText, toCsv } from '@/lib/csv';
 import { Download } from 'lucide-react';
@@ -38,7 +38,7 @@ export default function AuditPage() {
   const [open, setOpen] = useState<AuditLogDto | null>(null);
   const allowed = org.can('audit:read');
   const filters = { action: action.trim() || undefined, target_type: targetType || undefined, from: toIso(from), to: toIso(to, true), order };
-  const q = useOrgQuery<OffsetPage<AuditLogDto>>(allowed ? `/audit-logs${qs({ ...filters, page: page + 1, page_size: pageSize })}` : null, { placeholderData: (p) => p });
+  const q = useOrgPage<OffsetPage<AuditLogDto>>(allowed ? `/audit-logs${qs({ ...filters, page: page + 1, page_size: pageSize })}` : null);
   const total = q.data?.total ?? 0;
 
   // Query once typing pauses rather than on every keystroke; a new filter starts at page 1.

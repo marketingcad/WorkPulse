@@ -844,6 +844,19 @@ async function assertCanManageInvoicesFor(x: Ctx, clientId: string) {
   if (!(await canOnClient(x, 'invoices:manage', clientId))) throw notFound('client');
 }
 
+/**
+ * Approved billable time for the client in the period that has no bill rate: it is worth 0, so it is
+ * never invoiced. The preview says so, instead of an empty invoice telling the admin to approve
+ * timesheets that are already approved (QA round 6, BUG-26).
+ */
+async function unpricedBillSeconds(x: Ctx, clientId: string, from: string, to: string): Promise<number> {
+  const [r] = await x.tx
+    .select({ s: sql<number>`coalesce(sum(${billingEntries.seconds}), 0)::int` })
+    .from(billingEntries)
+    .where(and(eq(billingEntries.clientId, clientId), eq(billingEntries.billable, true), isNull(billingEntries.billRateId), isNull(billingEntries.voidedAt), isNull(billingEntries.invoiceLineId), gte(billingEntries.localDate, from), lte(billingEntries.localDate, to)));
+  return Number(r?.s ?? 0);
+}
+
 export async function previewInvoice(x: Ctx, input: z.infer<typeof invoiceCreateInput>) {
   await assertCanManageInvoicesFor(x, input.client_id);
   const d = await buildInvoiceDraft(x, input);
@@ -855,6 +868,7 @@ export async function previewInvoice(x: Ctx, input: z.infer<typeof invoiceCreate
     tax_minor: d.tax,
     total_minor: d.total,
     other_currency_entries: d.otherCurrencyEntries,
+    unpriced_bill_seconds: await unpricedBillSeconds(x, d.client.id, input.period_start, input.period_end),
     // Only worth asking when nothing in the period can be invoiced: it explains the empty preview.
     already_invoiced: d.lines.some((l) => l.kind === 'TIME') ? [] : await invoicesHolding(x, d.client.id, input.period_start, input.period_end),
     lines: d.lines.map((l) => ({ kind: l.kind, description: l.description, quantity: l.quantity, unit_price_minor: l.unitPriceMinor, amount_minor: l.amountMinor, tax_minor: l.taxMinor, entries: l.billingEntryIds.length })),

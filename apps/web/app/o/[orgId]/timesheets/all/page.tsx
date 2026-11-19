@@ -32,7 +32,7 @@ import {
   fmtTime,
   useToast,
 } from '@tallywork/ui';
-import { api, errorMessage, qs, useOrgId, useOrgQuery } from '@/lib/api';
+import { api, errorMessage, qs, useOrgId, useOrgPage, useOrgQuery } from '@/lib/api';
 import { addDays, todayIn, useOrg, weekStartOf } from '@/lib/org';
 import { downloadText, toCsv } from '@/lib/csv';
 import { useClampPage, useServerPage } from '@/lib/paging';
@@ -150,7 +150,7 @@ export default function AllTimeEntriesPage() {
   // whole range and for each day, so day headers stay right when a day spans two pages.
   const filters = { from: range.from, to: range.to, membership_ids: member ? [member] : undefined, client_id: client || undefined, project_ids: project ? [project] : undefined, task_id: task || undefined, q: search.term || undefined, order: desc ? 'desc' : 'asc' };
   const paging = useServerPage(JSON.stringify(filters), 100);
-  const entriesQ = useOrgQuery<OffsetPage<TimeEntryDto> & { summary: TimeEntryPageSummary }>(org.can('time:read') ? `/time-entries${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  const entriesQ = useOrgPage<OffsetPage<TimeEntryDto> & { summary: TimeEntryPageSummary }>(org.can('time:read') ? `/time-entries${qs({ ...filters, ...paging.params })}` : null);
   useClampPage(paging, entriesQ.data, entriesQ.isPlaceholderData);
   // Bulk actions act only on rows in view: any change of filter, search, dates, order or page clears the
   // selection, so a hidden row is never deleted or re-marked (audit 28 Oct 2026, U1).

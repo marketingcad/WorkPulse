@@ -1,5 +1,6 @@
 import { request } from '@playwright/test';
 import { expect, ok, test, usd, uid } from '../../support/fixtures';
+import { invitePerson } from '../../support/people';
 import { ADMIN_STATE, PASSWORD, VIEWER_STATE, WEB_URL } from '../../support/env';
 
 /**
@@ -215,15 +216,6 @@ test.describe('Payroll (no money access)', () => {
 });
 
 /** Invite someone as a Worker and accept the invitation, as a new member would. Returns their membership id. */
-async function invitePerson(adminApi: { api: import('@playwright/test').APIRequestContext; orgApi: (p: string) => string }, email: string, name: string): Promise<string> {
-  const roles = await ok<Array<{ id: string; key: string }>>(await adminApi.api.get(adminApi.orgApi('/roles')), 'roles');
-  const invite = await ok<{ invite_url: string }>(await adminApi.api.post(adminApi.orgApi('/invitations'), { data: { email, name, role_id: roles.find((r) => r.key === 'WORKER')!.id } }), 'invite');
-  // Signed out: inside a test, a new request context would otherwise reuse the file's admin session.
-  const ctx = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL }, storageState: { cookies: [], origins: [] } });
-  const accepted = await ok<{ membership_id: string }>(await ctx.post('/api/v1/auth/invitations/accept', { data: { token: new URL(invite.invite_url).searchParams.get('token'), name, password: PASSWORD } }), 'accept');
-  await ctx.dispose();
-  return accepted.membership_id;
-}
 
 /** Pick a pay group in the "Run payroll" dialog by its name (the option also shows period, currency and size). */
 async function selectGroup(dialog: import('@playwright/test').Locator, name: string): Promise<void> {

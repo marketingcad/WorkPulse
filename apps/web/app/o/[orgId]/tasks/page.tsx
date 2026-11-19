@@ -24,7 +24,7 @@ import {
   useToast,
   type Column,
 } from '@tallywork/ui';
-import { errorMessage, qs, useOrgQuery } from '@/lib/api';
+import { errorMessage, qs, useOrgPage, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { useClampPage, useSearch, useServerPage } from '@/lib/paging';
 import { ColorDot, PriorityBadge, TASK_STATUSES, TaskDialog, TaskStatusSelect, useOrgAction } from '@/components/workspace/shared';
@@ -50,7 +50,7 @@ export default function TasksPage() {
   // The server filters, searches and pages every task (the plain list stops at 2000).
   const filters = { project_id: projectId || undefined, status: status || undefined, mine: mine || undefined, archived: archived || undefined, q: search.term || undefined };
   const paging = useServerPage(JSON.stringify(filters));
-  const q = useOrgQuery<OffsetPage<TaskDto> & { summary: { counts: Record<string, number> } }>(org.can('tasks:read') ? `/tasks${qs({ ...filters, ...paging.params })}` : null, { placeholderData: (p) => p });
+  const q = useOrgPage<OffsetPage<TaskDto> & { summary: { counts: Record<string, number> } }>(org.can('tasks:read') ? `/tasks${qs({ ...filters, ...paging.params })}` : null);
   useClampPage(paging, q.data, q.isPlaceholderData);
   const projectsQ = useOrgQuery<ProjectDto[]>(org.can('projects:read') ? '/projects' : null);
   const workersQ = useMemberOptions(org.can('members:read'));

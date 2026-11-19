@@ -129,6 +129,8 @@ export async function listRoles(x: Ctx) {
     .from(memberships)
     .where(eq(memberships.organizationId, x.org.id))
     .groupBy(memberships.roleId);
+  // A pending invitation gives the role when it is accepted, so it keeps the role in use too (QA, BUG-46).
+  const pendingInvites = await pendingInvitationRoles(x);
   return rs
     .filter((r) => r.key !== 'AGENT')
     .map((r) => ({
@@ -139,7 +141,7 @@ export async function listRoles(x: Ctx) {
       builtin: r.builtin,
       grants: Object.fromEntries(perms.filter((p) => p.roleId === r.id).map((p) => [p.permission, p.scope])) as Grants,
       member_count: held.find((h) => h.roleId === r.id)?.current ?? 0,
-      in_use: (held.find((h) => h.roleId === r.id)?.all ?? 0) > 0,
+      in_use: (held.find((h) => h.roleId === r.id)?.all ?? 0) > 0 || pendingInvites.has(r.id),
     }));
 }
 
@@ -188,6 +190,20 @@ export async function assertOutranks(x: Ctx, membershipId: string) {
   if (power.some((g) => !holdsGrant(x, g.permission, g.scope))) throw forbidden('This member has access you don’t have, so your role can’t change them');
 }
 
+async function pendingInvitationRoles(x: Ctx): Promise<Set<string>> {
+  const rows = await x.tx
+    .select({ roleId: invitations.roleId })
+    .from(invitations)
+    .where(and(eq(invitations.organizationId, x.org.id), isNull(invitations.acceptedAt), isNull(invitations.revokedAt), sql`${invitations.expiresAt} > ${x.deps.now()}`));
+  return new Set(rows.map((r) => r.roleId));
+}
+
+/** What a role gives now, for the audit log's before (QA: an edit recorded only the new grants). */
+async function grantsOf(x: Ctx, roleId: string): Promise<Grants> {
+  const rows = await x.tx.select({ permission: rolePermissions.permission, scope: rolePermissions.scope }).from(rolePermissions).where(and(eq(rolePermissions.organizationId, x.org.id), eq(rolePermissions.roleId, roleId)));
+  return Object.fromEntries(rows.map((p) => [p.permission, p.scope])) as Grants;
+}
+
 export async function upsertRole(x: Ctx, roleId: string | null, input: z.infer<typeof roleInput>) {
   if (!x.actor.grants['roles:manage']) throw forbidden();
   // A custom role can never grant more than the editor holds.
@@ -197,6 +213,7 @@ export async function upsertRole(x: Ctx, roleId: string | null, input: z.infer<t
     if (ORG_ONLY_PERMISSIONS.includes(perm as Permission) && scope !== 'org') throw validation(`${perm} can only be granted for the whole organization`, { errors: [{ field: `grants.${perm}`, message: 'Organization scope only' }] });
   }
   let id = roleId;
+  let before: { name: string; description: string | null; grants: Grants } | undefined;
   if (id) {
     const [r] = await x.tx.select().from(roles).where(eq(roles.id, id));
     if (!r) throw notFound('role');
@@ -204,6 +221,7 @@ export async function upsertRole(x: Ctx, roleId: string | null, input: z.infer<t
     // A role is edited only by someone who holds everything it gives now (AUTHZ-008): otherwise an editor
     // without payroll access could strip it from the payroll team's role.
     await assertCanAssignRole(x, id, 'This role has access you don’t have, so your role can’t change it');
+    before = { name: r.name, description: r.description, grants: await grantsOf(x, id) };
     await x.tx.update(roles).set({ name: input.name, description: input.description ?? null, updatedAt: new Date() }).where(eq(roles.id, id));
     await x.tx.delete(rolePermissions).where(eq(rolePermissions.roleId, id));
   } else {
@@ -212,7 +230,7 @@ export async function upsertRole(x: Ctx, roleId: string | null, input: z.infer<t
   }
   const rows = Object.entries(input.grants).map(([permission, scope]) => ({ organizationId: x.org.id, roleId: id!, permission, scope }));
   if (rows.length) await x.tx.insert(rolePermissions).values(rows);
-  await audit(x, { action: roleId ? 'role.updated' : 'role.created', targetType: 'role', targetId: id, after: input });
+  await audit(x, { action: roleId ? 'role.updated' : 'role.created', targetType: 'role', targetId: id, before, after: input });
   return (await listRoles(x)).find((r) => r.id === id)!;
 }
 
@@ -224,8 +242,13 @@ export async function deleteRole(x: Ctx, roleId: string) {
   await assertCanAssignRole(x, roleId, 'This role has access you don’t have, so your role can’t delete it');
   const [used] = await x.tx.select({ id: memberships.id }).from(memberships).where(eq(memberships.roleId, roleId)).limit(1);
   if (used) throw conflict('role_in_use', 'Reassign members before deleting this role');
+  // A pending invitation would give this role; one accepted, revoked or expired is history and no longer
+  // holds it (BUG-46: any invitation blocked the delete with "Something this refers to no longer exists").
+  if ((await pendingInvitationRoles(x)).has(roleId)) throw conflict('role_in_use', 'An invitation that is still pending gives this role. Revoke it, or let it expire, before deleting the role');
+  const grants = await grantsOf(x, roleId);
+  const oldInvitations = await x.tx.delete(invitations).where(and(eq(invitations.organizationId, x.org.id), eq(invitations.roleId, roleId))).returning({ id: invitations.id });
   await x.tx.delete(roles).where(eq(roles.id, roleId));
-  await audit(x, { action: 'role.deleted', targetType: 'role', targetId: roleId, before: r });
+  await audit(x, { action: 'role.deleted', targetType: 'role', targetId: roleId, before: { ...r, grants }, metadata: { old_invitations_removed: oldInvitations.length } });
 }
 
 // ─── Workers ─────────────────────────────────────────────────────────────────
@@ -385,6 +408,9 @@ export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<
   if (startDate && endDate && endDate < startDate) throw validation('The end date is before the start date', { errors: [{ field: 'end_date', message: 'Must be on or after the start date' }] });
   if (input.role_id !== undefined || input.status !== undefined) {
     if (before.is_owner) throw businessRule('owner_protected', 'The organization owner’s role and status cannot be changed');
+    // Someone removed comes back by invitation, which checks who may bring them back and with what role
+    // (QA, BUG-47: a status change made them active again with their old role).
+    if (before.status === 'REMOVED') throw businessRule('member_removed', 'This person has left the organization. Invite them again to bring them back');
     if (!isSelf) await assertOutranks(x, membershipId);
     if (input.role_id && input.role_id !== before.role_id) {
       if (isSelf) throw forbidden('You cannot change your own role');

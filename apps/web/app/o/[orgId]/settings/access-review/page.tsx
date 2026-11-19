@@ -33,7 +33,8 @@ function grouped(grants: Review['roles'][number]['grants']) {
 export default function AccessReviewPage() {
   const org = useOrg();
   const router = useRouter();
-  const allowed = org.can('members:manage') || org.can('settings:security');
+  // The whole organization's access: only for those who manage everyone, as the server requires (QA, BUG-45).
+  const allowed = org.can('members:manage', 'org') || org.can('settings:security');
   const q = useOrgQuery<Review>(allowed ? '/permissions/review' : null);
   const [memberView, setMemberView] = useState<'no-mfa' | 'all' | null>(null);
   const withoutMfa = useMemo(() => (q.data?.members ?? []).filter((m) => !m.mfa_enabled), [q.data]);

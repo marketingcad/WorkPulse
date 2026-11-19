@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import {
   activityMinutes,
   activityWindows,
@@ -195,18 +195,24 @@ async function anonymizeUser(tx: Tx, deps: Deps, userId: string) {
  * their role and two-factor status, and active API keys with their scopes and creator.
  */
 export async function permissionReview(x: Ctx) {
-  if (!x.actor.grants['members:manage'] && !x.actor.grants['settings:security']) throw forbidden();
+  // The whole organization's access, emails and two-factor status: only for those who manage everyone
+  // (QA, BUG-45: a grant over one team was enough). settings:security is organization-wide by definition.
+  if (x.actor.grants['members:manage'] !== 'org' && !x.actor.grants['settings:security']) throw forbidden();
   const { rolePermissions } = await import('@tallywork/db');
-  const rs = await x.tx.select().from(roles).where(ne(roles.key, 'AGENT')).orderBy(asc(roles.name));
-  const perms = await x.tx.select().from(rolePermissions);
+  const rs = await x.tx.select().from(roles).where(and(eq(roles.organizationId, x.org.id), ne(roles.key, 'AGENT'))).orderBy(asc(roles.name));
+  const perms = await x.tx.select().from(rolePermissions).where(eq(rolePermissions.organizationId, x.org.id));
   const ms = await x.tx
     .select({ id: memberships.id, roleId: memberships.roleId, isOwner: memberships.isOwner, name: users.name, email: users.email, userId: users.id })
     .from(memberships)
     .innerJoin(users, eq(users.id, memberships.userId))
-    .where(eq(memberships.status, 'ACTIVE'))
+    .where(and(eq(memberships.organizationId, x.org.id), eq(memberships.status, 'ACTIVE')))
     .orderBy(asc(users.name));
   const mfa = new Set((await x.tx.select({ u: mfaFactors.userId }).from(mfaFactors).where(sql`${mfaFactors.verifiedAt} is not null`)).map((r) => r.u));
-  const keys = await x.tx.select().from(apiKeys).where(isNull(apiKeys.revokedAt));
+  // Keys that still work: an expired key was counted as active (BUG-48).
+  const keys = await x.tx
+    .select()
+    .from(apiKeys)
+    .where(and(eq(apiKeys.organizationId, x.org.id), isNull(apiKeys.revokedAt), or(isNull(apiKeys.expiresAt), gt(apiKeys.expiresAt, x.deps.now()))));
   const nameOfUser = new Map(ms.map((m) => [m.userId, m.name]));
   return {
     roles: rs.map((r) => ({ id: r.id, key: r.key, name: r.name, members: ms.filter((m) => m.roleId === r.id).length, grants: Object.fromEntries(perms.filter((p) => p.roleId === r.id).map((p) => [p.permission, p.scope])) })),

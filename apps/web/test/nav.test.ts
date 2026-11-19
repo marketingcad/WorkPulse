@@ -83,6 +83,14 @@ describe('sidebar dropdown (subnavGroups)', () => {
 });
 
 describe('who sees what', () => {
+  // QA BUG-45: the access review covers the whole organization, so a grant over one team doesn't show it.
+  it('the access review is for those who manage every member', () => {
+    const hrefs = (groups: NavGroup[]) => groups.flatMap((g) => g.items).flatMap((i) => [i.href, ...(i.tabs ?? []).map((t) => t.href)]);
+    expect(hrefs(navFor({ 'org:read': 'org', 'members:read': 'team', 'members:manage': 'team' }))).not.toContain('/settings/access-review');
+    expect(hrefs(navFor({ 'org:read': 'org', 'members:read': 'org', 'members:manage': 'org' }))).toContain('/settings/access-review');
+    expect(hrefs(navFor({ 'org:read': 'org', 'settings:security': 'org' }))).toContain('/settings/access-review');
+  });
+
   it('someone with billing access but no payroll access still reaches what members are owed, on Payroll', () => {
     const nav = navFor({ 'org:read': 'org', 'billing:read': 'org', 'tracking:read': 'team' });
     expect(item(nav, 'nav.item.payroll')!.href).toBe('/finance/payroll');

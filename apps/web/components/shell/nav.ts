@@ -204,7 +204,7 @@ export const NAV: NavGroup[] = [
           { label: 'nav.item.timePay', href: '/settings/time', perms: ['org:update'], group: 'nav.settings.time' },
           { label: 'nav.item.trackingPolicies', href: '/settings/policies', perms: ['policies:read'], minScope: 'team_or_org', group: 'nav.settings.time' },
           { label: 'nav.item.roles', href: '/settings/roles', perms: ['roles:manage'], group: 'nav.settings.people' },
-          { label: 'nav.item.accessReview', href: '/settings/access-review', perms: ['members:manage', 'settings:security'], group: 'nav.settings.people' },
+          { label: 'nav.item.accessReview', href: '/settings/access-review', perms: ['members:manage', 'settings:security'], minScope: 'org', group: 'nav.settings.people' },
           { label: 'nav.item.devices', href: '/devices', perms: ['devices:read'], group: 'nav.settings.people' },
           { label: 'nav.item.security', href: '/settings/security', perms: ['retention:manage', 'settings:security'], group: 'nav.settings.data' },
           { label: 'nav.item.screenshotRetention', href: '/settings/screenshot-retention', perms: ['retention:manage', 'settings:security'], group: 'nav.settings.data' },
@@ -223,7 +223,14 @@ type Can = (p: Permission, s?: Scope) => boolean;
 
 function allowed(g: Gate, can: Can, grants: Partial<Record<Permission, Scope>>): boolean {
   if (!g.perms) return true;
-  return g.perms.some((p) => can(p) && (g.minScope !== 'team_or_org' || grants[p] === 'team' || grants[p] === 'org'));
+  return g.perms.some((p) => {
+    if (!can(p)) return false;
+    if (!g.minScope) return true;
+    if (g.minScope === 'team_or_org') return grants[p] === 'team' || grants[p] === 'org';
+    // A named scope: that scope or the whole organization (QA: 'org' was ignored, so the access review
+    // showed in the menu for a grant over one team).
+    return grants[p] === 'org' || grants[p] === g.minScope;
+  });
 }
 
 /**

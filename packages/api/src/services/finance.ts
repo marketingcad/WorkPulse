@@ -254,11 +254,28 @@ export async function previewRatePricing(x: Ctx, input: z.infer<typeof ratePrici
   return out;
 }
 
+/** The currency a client, or a project's client, is invoiced in (the organization's without a client). */
+async function billingCurrencyOf(x: Ctx, scope: 'CLIENT' | 'PROJECT' | 'PROJECT_WORKER', scopeId: string): Promise<string | null> {
+  if (scope === 'CLIENT') {
+    const [c] = await x.tx.select({ currency: clients.currency }).from(clients).where(and(eq(clients.organizationId, x.org.id), eq(clients.id, scopeId)));
+    return c ? (c.currency ?? x.org.currency) : null;
+  }
+  const projectId = scope === 'PROJECT_WORKER' ? scopeId.split(':')[0]! : scopeId;
+  const [p] = await x.tx.select({ currency: clients.currency, id: projects.id }).from(projects).leftJoin(clients, eq(clients.id, projects.clientId)).where(and(eq(projects.organizationId, x.org.id), eq(projects.id, projectId)));
+  return p ? (p.currency ?? x.org.currency) : null;
+}
+
 export async function setRate(x: Ctx, input: z.infer<typeof rateInput>) {
   if (!x.actor.grants['rates:manage']) throw forbidden();
   const scopeId = input.scope === 'ORG' ? null : (input.scope_id ?? null);
   if (input.scope !== 'ORG' && !scopeId) throw validation('scope_id is required for this scope');
   await assertCanManageRate(x, input.scope, scopeId);
+  // A bill rate for a client or project is in the currency that client is invoiced in, or its time could
+  // never be invoiced (QA, BUG-57).
+  if (input.kind === 'BILL' && scopeId && (input.scope === 'CLIENT' || input.scope === 'PROJECT' || input.scope === 'PROJECT_WORKER')) {
+    const billed = await billingCurrencyOf(x, input.scope, scopeId);
+    if (billed && input.currency.toUpperCase() !== billed) throw businessRule('rate_currency', `This client is invoiced in ${billed}. Set the bill rate in ${billed}.`, { errors: [{ field: 'currency', message: `Use ${billed}` }] });
+  }
   const prev = await closeOpenRates(x, input.kind, input.scope, scopeId, input.effective_from);
   const id = newId();
   await x.tx.insert(billingRates).values({ id, organizationId: x.org.id, kind: input.kind, scope: input.scope, scopeId, amountMinor: input.amount_minor, currency: input.currency, effectiveFrom: input.effective_from, createdBy: x.actor.membershipId });
@@ -453,10 +470,13 @@ export async function upsertBudget(x: Ctx, input: z.infer<typeof budgetInput>) {
     warnPct: input.warn_pct,
     includeNonBillable: input.include_non_billable,
   };
+  // Alerts start over only when the budget itself changes (QA, BUG-59: saving it unchanged sent them again).
+  const [was] = await x.tx.select().from(budgets).where(and(eq(budgets.organizationId, x.org.id), eq(budgets.subjectType, input.subject_type), eq(budgets.subjectId, input.subject_id)));
+  const same = !!was && was.kind === values.kind && Number(was.amount) === values.amount && was.period === values.period && was.warnPct === values.warnPct && was.includeNonBillable === values.includeNonBillable;
   await x.tx
     .insert(budgets)
     .values({ id: newId(), ...values })
-    .onConflictDoUpdate({ target: [budgets.organizationId, budgets.subjectType, budgets.subjectId], set: { ...values, lastNotifiedLevel: 0, notifiedPeriod: null, updatedAt: new Date() } });
+    .onConflictDoUpdate({ target: [budgets.organizationId, budgets.subjectType, budgets.subjectId], set: { ...values, ...(same ? {} : { lastNotifiedLevel: 0, notifiedPeriod: null }), updatedAt: new Date() } });
   await audit(x, { action: 'budget.set', targetType: input.subject_type.toLowerCase(), targetId: input.subject_id, after: input });
   return listBudgets(x);
 }

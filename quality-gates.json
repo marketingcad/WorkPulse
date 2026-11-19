@@ -32,7 +32,7 @@
       "covers": "Web workflows, desktop screens, integrations, reports, notifications, the client portal, the Performance Center and the support console.",
       "vitest": {
         "packages/domain": ["performance", "project-revisions", "screenshot-retention", "insights-compare", "insights-timesheets", "insights-workforce", "insights-projects", "insights-workflow", "insights-performance", "insights-finance", "insights-capacity", "insights-forecast", "portal-summary", "notifications", "expense-categories", "assistant-navigation", "help-search"],
-        "packages/contracts": ["assistant"],
+        "packages/contracts": ["assistant", "portal-range"],
         "e2e/tutorial": ["anchors", "align", "captions", "retime", "voice-timing", "timeline", "recordings-anchors", "assistant", "coverage", "coverage-scenes", "visuals-plan"],
         "packages/api": [
           "agent-time-off-cancel", "notification-priority", "insights-weekly", "ai-provider", "assistant-retention", "assistant-stream", "avatar", "client-delete", "clients", "dashboard", "db-unavailable", "email", "email-verification", "expense-rejection",

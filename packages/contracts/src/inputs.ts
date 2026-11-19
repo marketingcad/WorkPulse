@@ -1,4 +1,4 @@
-import { DOCUMENT_LOGO_MAX_CHARS } from './limits';
+import { DOCUMENT_LOGO_MAX_CHARS, PORTAL_MAX_RANGE_DAYS } from './limits';
 import { z } from 'zod';
 import { PERMISSIONS, SCOPES, API_KEY_SCOPES } from '@tallywork/domain';
 import { currency, hhmm, id, isoDate, isoDateTime, nonEmpty, optionalText, timeZone } from './common';
@@ -266,10 +266,10 @@ export const clientPortalAcceptInput = z.object({
   password: password.optional(),
 });
 
-/** Dashboard range; at most 93 days. */
+/** Dashboard range; at most PORTAL_MAX_RANGE_DAYS. */
 export const portalRangeInput = z
   .object({ from: isoDate, to: isoDate })
-  .refine((r) => r.from <= r.to && (Date.parse(r.to) - Date.parse(r.from)) / 86_400_000 <= 93, { message: 'Choose a range of up to 93 days' });
+  .refine((r) => r.from <= r.to && (Date.parse(r.to) - Date.parse(r.from)) / 86_400_000 <= PORTAL_MAX_RANGE_DAYS, { message: `Choose a range of up to ${PORTAL_MAX_RANGE_DAYS} days` });
 
 // ─── Tracking policy (deep partial; server validates the merged result) ──────
 export const policyDocInput = z

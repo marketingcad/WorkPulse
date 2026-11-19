@@ -13,7 +13,7 @@ import { ApiError, qs, useOrgQuery } from '@/lib/api';
 import { todayIn, useOrg } from '@/lib/org';
 import { t } from '@/components/performance/i18n';
 import '@/components/performance/messages/workers';
-import { HexBadge, METRICS, METRIC_COLOR, PeriodPicker, ScoreRing, metricLabel, metricSource, ratio, scoreText, usePerfPeriod, type MetricKey, type Tier } from '@/components/performance/ui';
+import { HexBadge, METRICS, METRIC_COLOR, PeriodPicker, ScoreRing, metricLabel, metricSource, ratio, scoreText, usePerfPeriod, type MetricKey, type Tier, ScoresAsOf } from '@/components/performance/ui';
 import { ScoreLines } from '@/components/performance/score-lines';
 import type { MemberProfile, Review } from '@/components/performance/types';
 
@@ -123,6 +123,7 @@ export default function WorkerProfilePage() {
       />
       <FilterBar className="flex-wrap">
         <PeriodPicker p={p} />
+        <ScoresAsOf at={q.data?.calculated_at} />
       </FilterBar>
 
       {!data ? (

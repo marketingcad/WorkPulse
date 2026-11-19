@@ -2,7 +2,8 @@
 import { Suspense, lazy, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { addDaysToDate, periodBounds, type PerformancePeriod } from '@tallywork/domain';
-import { Button, SegmentedControl, cx } from '@tallywork/ui';
+import { Button, SegmentedControl, cx, fmtDateTime } from '@tallywork/ui';
+import { useOrg } from '@/lib/org';
 import { t } from './i18n';
 
 /** Shared pieces of the Performance Center pages (designs: the "Performance Center designs" canvas). */
@@ -184,3 +185,19 @@ export const ratio = (a: { on_time?: number; completed?: number; due: number } |
   if (!a || !a.due) return '—';
   return `${a.on_time ?? a.completed} ${t('perf.of')} ${a.due}`;
 };
+
+/**
+ * When the scores on a page were calculated. They refresh once a day (or when an admin recalculates),
+ * not on every approval, so the page says how old they are (QA round 7, BUG-31).
+ */
+export function ScoresAsOf({ at, showRecalcHint = true }: { at: string | null | undefined; showRecalcHint?: boolean }) {
+  const org = useOrg();
+  if (at === undefined) return null;
+  const tz = org.membership.timezone || org.organization.timezone;
+  return (
+    <p className="text-xs text-text-muted sm:ml-auto" data-testid="scores-as-of">
+      {at ? t('perf.asOf', { time: fmtDateTime(at, tz) }) : t('perf.asOf.never')}
+      {at && showRecalcHint && org.can('performance:manage') && <> {t('perf.asOf.admin')}</>}
+    </p>
+  );
+}

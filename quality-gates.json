@@ -35,7 +35,7 @@
         "packages/contracts": ["assistant", "portal-range"],
         "e2e/tutorial": ["anchors", "align", "captions", "retime", "voice-timing", "timeline", "recordings-anchors", "assistant", "coverage", "coverage-scenes", "visuals-plan"],
         "packages/api": [
-          "agent-time-off-cancel", "notification-priority", "insights-weekly", "ai-provider", "assistant-retention", "assistant-stream", "avatar", "client-delete", "clients", "dashboard", "db-unavailable", "email", "email-verification", "expense-rejection",
+          "agent-time-off-cancel", "performance-as-of", "notification-priority", "insights-weekly", "ai-provider", "assistant-retention", "assistant-stream", "avatar", "client-delete", "clients", "dashboard", "db-unavailable", "email", "email-verification", "expense-rejection",
           "finance-paging", "help-tutorial", "insights", "invoice-export-filters", "invoice-reminder", "mailer", "monitoring-card",
           "new-organization", "org-route-rate-limits", "people-paging", "performance-center", "performance-foundation", "performance-integrity",
           "performance-jobs-isolation", "policy-notice", "portal", "projects-details", "reports", "screenshot-cleanup", "seed", "simplification",
@@ -54,7 +54,7 @@
         "web/csv-import", "web/form-checks", "web/public-hydration", "web/data-export", "web/download", "web/finance-paging", "web/help", "web/help-video", "web/insights", "web/invitations",
         "web/member-profile", "web/monitoring-card-setting", "web/multi-monitor", "web/navigation", "web/navigation-flows", "web/organizations", "web/people-paging",
         "web/performance-achievements", "web/performance-goals", "web/performance-leaderboards", "web/performance-overview", "web/performance-teams",
-        "web/performance-workers", "web/portal", "web/portal-insights", "web/profile-avatar", "web/profiles", "web/project-milestones", "web/client-folders", "web/enrollment-tokens", "web/activity-timezone",
+        "web/performance-workers", "web/portal", "web/portal-insights", "web/profile-avatar", "web/profiles", "web/project-milestones", "web/client-folders", "web/enrollment-tokens", "web/activity-timezone", "web/performance-as-of",
         "web/qa/activity-default", "web/qa/people-flows", "web/qa/public-auth", "web/qa/settings-integrations", "web/qa/work-flows",
         "web/screenshot-retention", "web/simplified-nav", "web/support-console", "web/time-paging", "web/work-forms", "web/document-logo",
         "desktop/avatar", "desktop/navigation", "desktop/performance", "desktop/startup-transparency",

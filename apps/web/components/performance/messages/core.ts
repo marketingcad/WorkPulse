@@ -41,6 +41,9 @@ export const perfCoreEn = {
   'perf.recognition.source.AUTOMATIC': 'Earned from their work',
   'perf.recognition.source.MANAGER': 'From a manager',
   'perf.recognition.source.CLIENT': 'From a client',
+  'perf.asOf': 'Scores as of {time}. They update once a day, so time approved since then counts from the next update.',
+  'perf.asOf.admin': 'To update them now, recalculate on the Overview.',
+  'perf.asOf.never': 'Scores for this period have not been calculated yet.',
 } as const;
 
 registerCatalog('en', perfCoreEn, { base: true });

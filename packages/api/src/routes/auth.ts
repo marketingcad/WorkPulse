@@ -90,7 +90,13 @@ export const authRoutes = new Hono<AppEnv>()
       currency: 'USD',
       ownerUserId: uid,
     });
-    await sendVerificationEmail(deps, uid, input.email);
+    // The account exists now: a failed email must not turn the sign-up into an error that can't be retried
+    // ("email taken"). The link can be sent again from the sign-in page (QA, BUG-67).
+    try {
+      await sendVerificationEmail(deps, uid, input.email);
+    } catch (e) {
+      console.error('signup: verification email not sent', e);
+    }
     // With verification required, the account stays signed out until the emailed link is opened.
     if (deps.config.requireEmailVerification) return c.json({ user_id: uid, organization_id: org.organizationId, verification_required: true }, 201);
     await startUserSession(c, uid);

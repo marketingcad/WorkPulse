@@ -65,7 +65,10 @@ test.describe('two-factor sign-in', () => {
     await page.getByRole('button', { name: 'Verify' }).click();
     await expect(page.getByText('That code is not valid')).toBeVisible();
     await page.getByRole('button', { name: 'Use a recovery code' }).click();
-    await page.getByLabel('Recovery code').fill(codes[0]!);
+    // QA BUG-68: the box shows the real format, and a code typed without its hyphen (or in capitals) works.
+    await expect(page.getByLabel('Recovery code')).toHaveAttribute('placeholder', 'xxxxx-xxxxx');
+    expect(codes[0]).toMatch(/^[a-z0-9]{5}-[a-z0-9]{5}$/);
+    await page.getByLabel('Recovery code').fill(codes[0]!.replace('-', '').toUpperCase());
     await page.getByRole('button', { name: 'Verify' }).click();
     await expect(page).toHaveURL(new RegExp(`/o/${orgId}`));
     await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();

@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import QRCode from 'qrcode';
-import { memberships, mfaFactors, rateLimitBuckets, userSessions, users } from '@tallywork/db';
+import { deviceCredentials, devices, memberships, mfaFactors, rateLimitBuckets, userSessions, users } from '@tallywork/db';
 import { DomainError, businessRule, forbidden, newId, notFound, validation } from '@tallywork/domain';
 import type { Deps } from '../context';
 import { decrypt, encrypt, sha256, verifyPassword } from '../lib/crypto';
@@ -8,6 +8,7 @@ import { renderEmail } from '../lib/email';
 import { newRecoveryCodes, newTotpSecret, otpauthUrl, verifyTotp } from '../lib/totp';
 import type { Ctx } from './ctx';
 import { audit } from './events';
+import { recordWrongPassword, signOutEverywhere } from './identity';
 
 /**
  * Two-factor authentication with an authenticator app (TOTP) plus single-use recovery codes.
@@ -31,9 +32,14 @@ export async function hasMfa(deps: Deps, userId: string): Promise<boolean> {
 }
 
 async function requirePassword(deps: Deps, userId: string, password: string): Promise<{ email: string }> {
-  const [u] = await deps.db.select({ email: users.email, hash: users.passwordHash }).from(users).where(eq(users.id, userId));
+  const [u] = await deps.db.select({ id: users.id, email: users.email, hash: users.passwordHash, failedLoginCount: users.failedLoginCount, lockedUntil: users.lockedUntil }).from(users).where(eq(users.id, userId));
   if (!u) throw notFound('user');
-  if (!(await verifyPassword(u.hash, password))) throw validation('Your password is incorrect', { errors: [{ field: 'password', message: 'Incorrect password' }] });
+  // The same lockout as sign-in: here too a wrong password counts, and a locked account is refused (QA, BUG-69).
+  if (u.lockedUntil && u.lockedUntil > deps.now()) throw new DomainError('rate_limited', 'account_locked', 'Too many failed attempts. Try again in a few minutes.');
+  if (!(await verifyPassword(u.hash, password))) {
+    await recordWrongPassword(deps.db as never, u, deps.now());
+    throw validation('Your password is incorrect', { errors: [{ field: 'password', message: 'Incorrect password' }] });
+  }
   return { email: u.email };
 }
 
@@ -67,9 +73,20 @@ async function recordFailure(deps: Deps, userId: string): Promise<void> {
  * Check a TOTP code or a recovery code for the user's active factor, and use it up: a TOTP step and a
  * recovery code each work once, also when two requests send the same one at the same moment.
  */
+/**
+ * A code as the person typed it: spaces and case don't matter, and a recovery code works with or without
+ * its hyphen (QA, BUG-68: "abcde12345" was refused for "abcde-12345").
+ */
+export function normalizeCode(code: string): string {
+  const c = code.trim().toLowerCase().replace(/\s+/g, '');
+  if (/^\d{6}$/.test(c)) return c;
+  const plain = c.replace(/-/g, '');
+  return /^[a-z0-9]{10}$/.test(plain) ? `${plain.slice(0, 5)}-${plain.slice(5)}` : c;
+}
+
 async function checkSecondFactor(deps: Deps, userId: string, code: string): Promise<boolean> {
   await assertNotLocked(deps, userId);
-  const ok = await useSecondFactor(deps, userId, code.trim().toLowerCase());
+  const ok = await useSecondFactor(deps, userId, normalizeCode(code));
   if (ok) await deps.db.delete(rateLimitBuckets).where(eq(rateLimitBuckets.key, failKey(userId)));
   else await recordFailure(deps, userId);
   return ok;
@@ -172,6 +189,9 @@ export async function confirmTotpSetup(deps: Deps, userId: string, sessionId: st
     return old.length > 0;
   });
   await deps.db.delete(rateLimitBuckets).where(eq(rateLimitBuckets.key, failKey(userId)));
+  // Sessions and desktop devices signed in with the password alone are signed out: the second factor
+  // protects the account only once nothing older bypasses it (QA, BUG-64).
+  await signOutEverywhere(deps.db as never, userId, sessionId);
   const [u] = await deps.db.select({ email: users.email }).from(users).where(eq(users.id, userId));
   if (u) await notifyChange(deps, u.email, replaced ? 'Two-factor authentication now uses a new authenticator app. The previous app no longer works.' : 'Two-factor authentication was turned on for your account.');
   return { recovery_codes: codes, note: 'Store these recovery codes somewhere safe. Each works once if you lose your phone.' };
@@ -200,7 +220,9 @@ export async function disableTotp(deps: Deps, userId: string, sessionId: string,
     await tx.update(userSessions).set({ revokedAt: deps.now() }).where(and(eq(userSessions.userId, userId), isNull(userSessions.revokedAt), ne(userSessions.id, sessionId)));
     await tx.update(userSessions).set({ mfaVerified: false }).where(eq(userSessions.id, sessionId));
   });
-  await notifyChange(deps, email, 'Two-factor authentication was turned off for your account. Your other sessions were signed out.');
+  // Desktop devices too, like a password change (QA, BUG-65: they stayed signed in).
+  await signOutEverywhere(deps.db as never, userId, sessionId);
+  await notifyChange(deps, email, 'Two-factor authentication was turned off for your account. Your other sessions and devices were signed out.');
 }
 
 /** New set of recovery codes (the old ones stop working); needs the password and a current code. */
@@ -254,6 +276,11 @@ export async function ownerResetMfa(x: Ctx, membershipId: string, ownerPassword:
   if (!(await hasMfa(deps, m.userId))) throw businessRule('mfa_not_enabled', 'Two-factor authentication is not on for this person');
   await x.tx.delete(mfaFactors).where(eq(mfaFactors.userId, m.userId));
   await x.tx.update(userSessions).set({ revokedAt: x.deps.now() }).where(and(eq(userSessions.userId, m.userId), isNull(userSessions.revokedAt)));
+  // Their desktop devices in this organization (their only one) too (QA, BUG-65).
+  await x.tx
+    .update(deviceCredentials)
+    .set({ revokedAt: x.deps.now() })
+    .where(and(isNull(deviceCredentials.revokedAt), inArray(deviceCredentials.deviceId, x.tx.select({ id: devices.id }).from(devices).where(eq(devices.membershipId, membershipId)))));
   await x.tx.delete(rateLimitBuckets).where(inArray(rateLimitBuckets.key, [failKey(m.userId)]));
   await audit(x, { action: 'member.mfa_reset', targetType: 'membership', targetId: membershipId });
   const [u] = await x.tx.select({ email: users.email }).from(users).where(eq(users.id, m.userId));

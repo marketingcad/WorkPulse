@@ -196,7 +196,7 @@ function CodeStep({ email, remember, onVerified, onRestart }: { email: string; r
       </p>
       {recovery ? (
         <Field label={t('auth.mfa.recoveryCode')} htmlFor="mfa-code">
-          <Input id="mfa-code" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="xxxx-xxxx" className="font-mono" value={code} maxLength={20} onChange={(e) => setCode(e.target.value)} autoFocus />
+          <Input id="mfa-code" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="xxxxx-xxxxx" className="font-mono" value={code} maxLength={20} onChange={(e) => setCode(e.target.value)} autoFocus />
         </Field>
       ) : (
         <Field label={t('auth.mfa.code')} htmlFor="mfa-code">

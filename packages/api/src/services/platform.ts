@@ -19,7 +19,7 @@ import {
   type Tx,
   withSystem,
 } from '@tallywork/db';
-import { API_KEY_SCOPES, can, forbidden, newId, notFound, notificationPriority, resolvePolicy, validation, type DeepPartial, type TrackingPolicy } from '@tallywork/domain';
+import { API_KEY_SCOPES, businessRule, can, forbidden, newId, notFound, notificationPriority, resolvePolicy, validation, type DeepPartial, type TrackingPolicy } from '@tallywork/domain';
 import type { AuditLogDto, DeviceDto, EffectivePolicyDto, NotificationDto, OffsetPage, apiKeyInput, policyDocInput, retentionInput, webhookInput } from '@tallywork/contracts';
 import type { Deps } from '../context';
 import type { Ctx } from './ctx';
@@ -265,14 +265,28 @@ export async function deleteWebhook(x: Ctx, id: string) {
   await audit(x, { action: 'webhook.deleted', targetType: 'webhook', targetId: id });
 }
 
+/**
+ * The endpoint, or 404; with `live`, it must also be turned on: deliveries go only to enabled endpoints, so
+ * a test or replay for one turned off would wait forever (QA, BUG-92).
+ */
+async function endpointFor(x: Ctx, id: string, live = false) {
+  if (!isUuid(id)) throw notFound('webhook');
+  const [w] = await x.tx.select({ id: webhookEndpoints.id, enabled: webhookEndpoints.enabled }).from(webhookEndpoints).where(and(eq(webhookEndpoints.id, id), eq(webhookEndpoints.organizationId, x.org.id)));
+  if (!w) throw notFound('webhook');
+  if (live && !w.enabled) throw businessRule('webhook_disabled', 'This endpoint is turned off. Turn it on to send to it.');
+  return w;
+}
+
 export async function listDeliveries(x: Ctx, endpointId: string) {
   if (!x.actor.grants['webhooks:manage']) throw forbidden();
+  await endpointFor(x, endpointId);
   const rows = await x.tx.select().from(webhookDeliveries).where(eq(webhookDeliveries.endpointId, endpointId)).orderBy(desc(webhookDeliveries.createdAt)).limit(100);
   return rows.map((d) => ({ id: d.id, event_id: d.eventId, event_type: d.eventType, attempt: d.attempt, status: d.status, response_status: d.responseStatus, duration_ms: d.durationMs, next_attempt_at: iso(d.nextAttemptAt), created_at: d.createdAt.toISOString() }));
 }
 
 export async function replayDelivery(x: Ctx, endpointId: string, deliveryId: string) {
   if (!x.actor.grants['webhooks:manage']) throw forbidden();
+  await endpointFor(x, endpointId, true);
   const [d] = await x.tx.select().from(webhookDeliveries).where(and(eq(webhookDeliveries.id, deliveryId), eq(webhookDeliveries.endpointId, endpointId)));
   if (!d) throw notFound('delivery');
   const nid = newId();
@@ -283,6 +297,7 @@ export async function replayDelivery(x: Ctx, endpointId: string, deliveryId: str
 
 export async function testWebhook(x: Ctx, endpointId: string) {
   if (!x.actor.grants['webhooks:manage']) throw forbidden();
+  await endpointFor(x, endpointId, true);
   const id = newId();
   await x.tx.insert(webhookDeliveries).values({ id, organizationId: x.org.id, endpointId, eventId: newId(), eventType: 'webhook.test', payload: { event_type: 'webhook.test', organization_id: x.org.id, sent_at: x.deps.now().toISOString() }, nextAttemptAt: x.deps.now() });
   return { id };

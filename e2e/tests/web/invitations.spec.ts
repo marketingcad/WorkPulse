@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from '../../support/fixtures';
+import { expect, ok, test } from '../../support/fixtures';
 import { ADMIN_STATE, PASSWORD } from '../../support/env';
 
 /**
@@ -141,4 +141,25 @@ test('an invitation link can only be used once', async ({ page, browser, data })
   const second = await again.request.post('/api/v1/auth/invitations/accept', { data: { token: new URL(link).searchParams.get('token'), name: 'Olive Again', password: PASSWORD }, headers: { Origin: new URL(link).origin } });
   expect([second.status(), (await second.json()).code]).toEqual([422, 'invalid_invitation']);
   await again.close();
+});
+
+test('an invitation naming a project deleted since still lets the person join (QA BUG-74)', async ({ browser, data, adminApi }) => {
+  const { api, orgApi } = adminApi;
+  const stamp = Date.now().toString(36);
+  const client = await ok<{ id: string }>(await api.post(orgApi('/clients'), { data: { name: `Short-lived ${stamp}` } }), 'client');
+  const project = await ok<{ id: string }>(await api.post(orgApi('/projects'), { data: { name: `Short-lived project ${stamp}`, client_id: client.id } }), 'project');
+  const roles = await ok<Array<{ id: string; key: string }>>(await api.get(orgApi('/roles')), 'roles');
+  const inv = await ok<{ invite_url: string }>(await api.post(orgApi('/invitations'), { data: { email: unique('gone'), name: 'Gil Gone', role_id: roles.find((r) => r.key === 'WORKER')!.id, project_ids: [project.id] } }), 'invite');
+  // The client, never used, is deleted with its project after the invitation went out.
+  await ok(await api.delete(orgApi(`/clients/${client.id}`)), 'delete client');
+
+  const gil = await browser.newContext(SIGNED_OUT);
+  const p = await gil.newPage();
+  await p.goto(new URL(inv.invite_url).pathname + new URL(inv.invite_url).search);
+  await p.getByLabel('Your name').fill('Gil Gone');
+  await p.getByLabel('Choose a password').fill(PASSWORD);
+  await p.getByLabel('Confirm password').fill(PASSWORD);
+  await p.getByRole('button', { name: 'Join organization' }).click();
+  await expect(p).toHaveURL(/\/download\?welcome=1/);
+  await gil.close();
 });

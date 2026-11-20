@@ -12,6 +12,7 @@ import {
   organizations,
   overtimeRuleSets,
   projectMembers,
+  projects,
   taskAssignees,
   retentionPolicies,
   rolePermissions,
@@ -370,6 +371,9 @@ export async function acceptInvitation(
     let membershipId: string;
     if (dup) {
       membershipId = dup.id;
+      // Already active again (reactivated since it was sent): the invitation must not replace the role they
+      // have now (QA, BUG-75). The throw rolls back the claim.
+      if (dup.status === 'ACTIVE') throw conflict('already_member', 'You are already a member of this organization');
       if (dup.status === 'REMOVED') {
         // Someone coming back starts afresh: only the invitation's teams and projects, not what they had
         // before they left (removal clears these now; this also covers people removed before it did).
@@ -391,7 +395,9 @@ export async function acceptInvitation(
     for (const teamId of liveTeams) {
       await tx.insert(teamMembers).values({ organizationId: inv.organizationId, teamId, membershipId, role: inv.teamRole }).onConflictDoUpdate({ target: [teamMembers.teamId, teamMembers.membershipId], set: { role: inv.teamRole } });
     }
-    for (const projectId of inv.projectIds) {
+    // Projects that still exist: one deleted since (with its client) made the invitation impossible to accept (QA, BUG-74).
+    const liveProjects = inv.projectIds.length ? (await tx.select({ id: projects.id }).from(projects).where(and(eq(projects.organizationId, inv.organizationId), inArray(projects.id, inv.projectIds)))).map((r) => r.id) : [];
+    for (const projectId of liveProjects) {
       await tx.insert(projectMembers).values({ organizationId: inv.organizationId, projectId, membershipId }).onConflictDoNothing();
     }
     await auditSystem(tx, inv.organizationId, { action: 'invitation.accepted', actorType: 'user', actorId: membershipId, targetType: 'membership', targetId: membershipId, after: { email: inv.email } });

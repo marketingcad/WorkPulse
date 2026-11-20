@@ -23,7 +23,7 @@ import { budgetStatuses, redactBudgetMoney } from './finance';
 import { listAttendance } from './operations';
 import { effectivePolicy } from './policies';
 import { insights } from './insights';
-import { clientFilter, narrowMemberships } from './scope';
+import { clientFilter, narrowMemberships, projectFilter } from './scope';
 import { todayAndWeek, workerTimezone } from './tracking';
 import { currentTracking, liveWorkers, listSessions } from './timer';
 import { memberNames } from './timer';
@@ -255,7 +255,9 @@ export async function widgetData(x: Ctx, keys: string[], scope: 'ALL' | 'ME' | '
       .from(tasks)
       .innerJoin(taskAssignees, eq(taskAssignees.taskId, tasks.id))
       .innerJoin(projects, eq(projects.id, tasks.projectId))
-      .where(and(eq(taskAssignees.membershipId, x.actor.membershipId), isNull(tasks.archivedAt), sql`${tasks.status} <> 'DONE'`))
+      // Like the Tasks page: projects the person can still see, not archived ones (QA, BUG-90: someone taken off a
+      // project still saw its task titles here).
+      .where(and(eq(taskAssignees.membershipId, x.actor.membershipId), isNull(tasks.archivedAt), isNull(projects.archivedAt), sql`${tasks.status} <> 'DONE'`, projectFilter(x.actor, 'tasks:read', tasks.projectId)))
       .orderBy(sql`${tasks.dueDate} nulls last`, desc(tasks.priority))
       .limit(8);
     out.assigned_tasks = rows.map(({ t, projectName }) => ({ id: t.id, title: t.title, project_id: t.projectId, project_name: projectName, status: t.status, priority: t.priority, due_date: t.dueDate }));

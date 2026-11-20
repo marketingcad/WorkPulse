@@ -1,5 +1,5 @@
-import { and, eq, gte, inArray, lte } from 'drizzle-orm';
-import { clients, holidays, projects, rollupWorkerDay, timeOffPolicies, timeOffRequests } from '@tallywork/db';
+import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { clients, holidays, projects, rollupWorkerDay, timeEntries, timeOffPolicies, timeOffRequests } from '@tallywork/db';
 import { addDaysToDate, forbidden } from '@tallywork/domain';
 import type { InsightsDto } from '@tallywork/contracts';
 import type { Ctx } from './ctx';
@@ -27,10 +27,37 @@ export async function insights(x: Ctx, from: string, to: string, requested?: str
   const seesMoney = (m: string) => moneyVisible === 'all' || moneyVisible.includes(m);
   const memberFilter = (col: Parameters<typeof inArray>[0]) => (target === 'all' ? undefined : inArray(col, target.length ? target : NONE));
 
-  const rows = await x.tx
-    .select()
-    .from(rollupWorkerDay)
-    .where(and(gte(rollupWorkerDay.localDate, from), lte(rollupWorkerDay.localDate, to), memberFilter(rollupWorkerDay.membershipId)));
+  // Hours from the time records themselves, like the money below (QA, BUG-89: they came from the daily
+  // totals, which the background job writes a moment later, so new money showed before its hours).
+  // Activity is only in the daily totals: read in the same query (one round trip).
+  const combined = await x.tx
+    .select({
+      membershipId: timeEntries.membershipId,
+      localDate: timeEntries.localDate,
+      projectId: timeEntries.projectId,
+      billable: timeEntries.billable,
+      seconds: sql<number>`coalesce(sum(${timeEntries.durationSeconds}), 0)::int`,
+      active: sql<number>`0`,
+      tracked: sql<number>`0`,
+    })
+    .from(timeEntries)
+    .where(and(gte(timeEntries.localDate, from), lte(timeEntries.localDate, to), isNull(timeEntries.deletedAt), memberFilter(timeEntries.membershipId)))
+    .groupBy(timeEntries.membershipId, timeEntries.localDate, timeEntries.projectId, timeEntries.billable)
+    .unionAll(
+      x.tx
+        .select({
+          membershipId: rollupWorkerDay.membershipId,
+          localDate: rollupWorkerDay.localDate,
+          projectId: rollupWorkerDay.projectId,
+          billable: sql<boolean>`false`,
+          seconds: sql<number>`0`,
+          active: rollupWorkerDay.activeSeconds,
+          tracked: rollupWorkerDay.activityTrackedSeconds,
+        })
+        .from(rollupWorkerDay)
+        .where(and(gte(rollupWorkerDay.localDate, from), lte(rollupWorkerDay.localDate, to), memberFilter(rollupWorkerDay.membershipId), sql`(${rollupWorkerDay.activeSeconds} > 0 or ${rollupWorkerDay.activityTrackedSeconds} > 0)`)),
+    );
+  const rows = combined.map((r) => ({ ...r, seconds: Number(r.seconds), active: Number(r.active), tracked: Number(r.tracked) }));
 
   const projectIds = [...new Set(rows.map((r) => r.projectId))];
   const ps = projectIds.length
@@ -52,7 +79,7 @@ export async function insights(x: Ctx, from: string, to: string, requested?: str
   let paidAtZero = 0;
 
   for (const r of rows) {
-    const secs = r.trackedSeconds + r.manualSeconds;
+    const secs = r.seconds;
     const clientId = project.get(r.projectId)?.clientId ?? null;
     for (const [map, key] of [
       [byMember, r.membershipId],
@@ -63,14 +90,14 @@ export async function insights(x: Ctx, from: string, to: string, requested?: str
       const a = map.get(key) ?? acc();
       a.logged += secs;
       if (r.billable) a.billable += secs;
-      a.active += r.activeSeconds;
-      a.activityTracked += r.activityTrackedSeconds;
+      a.active += r.active;
+      a.activityTracked += r.tracked;
       map.set(key, a);
     }
     totals.logged += secs;
     if (r.billable) totals.billable += secs;
-    totals.active += r.activeSeconds;
-    totals.activityTracked += r.activityTrackedSeconds;
+    totals.active += r.active;
+    totals.activityTracked += r.tracked;
   }
   // Money per entry, as payroll and approval price it (approved time at its approved amounts).
   if (moneyPerm) {

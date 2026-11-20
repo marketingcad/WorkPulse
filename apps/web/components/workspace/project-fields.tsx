@@ -161,7 +161,7 @@ export function ProjectFields({
                 </option>
               ))}
             </Select>
-            {org.can('clients:manage') && (
+            {org.can('clients:manage', 'org') && (
               <IconButton label="New client" variant="secondary" onClick={() => setNewClient(true)}>
                 <Plus className="size-3.5" />
               </IconButton>

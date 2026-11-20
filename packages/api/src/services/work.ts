@@ -230,6 +230,8 @@ export async function upsertClient(x: Ctx, clientId: string | null, input: Parti
   if (!x.actor.grants['clients:manage']) throw forbidden();
   // A narrower scope than org manages only the clients of the actor's projects.
   if (clientId && !(await canOnClient(x, 'clients:manage', clientId))) throw notFound('client');
+  // So it can't add one: a new client has no projects yet, and it would vanish from their list (QA, BUG-79).
+  if (!clientId && x.actor.grants['clients:manage'] !== 'org') throw forbidden('Only an organization-wide role can add clients');
   const changes = rateChanges(input);
   if (changes.length && !x.actor.grants['rates:manage']) throw forbidden();
   const fields = {
@@ -286,6 +288,15 @@ export async function setClientArchived(x: Ctx, clientId: string, archived: bool
   const [c] = await x.tx.select({ archivedAt: clients.archivedAt }).from(clients).where(eq(clients.id, clientId));
   if (!c) throw notFound('client');
   if (!!c.archivedAt === archived) return; // already so
+  // Restoring keeps the rule creating and renaming follow: one active client per name (QA, BUG-78).
+  if (!archived) {
+    const [same] = await x.tx
+      .select({ id: clients.id })
+      .from(clients)
+      .where(and(eq(clients.organizationId, x.org.id), ne(clients.id, clientId), isNull(clients.archivedAt), sql`lower(trim(${clients.name})) = (select lower(trim(name)) from ${clients} c where c.id = ${clientId})`))
+      .limit(1);
+    if (same) throw conflict('duplicate_name', 'An active client already has this name. Rename or archive it first, then restore this one.');
+  }
   // A client's projects go with it, stamped with the same moment, so restoring the client brings back
   // exactly those (a project archived on its own before stays archived). Archived projects take no new
   // time, so tracking for the client stops.

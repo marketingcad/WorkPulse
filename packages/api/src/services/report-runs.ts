@@ -327,7 +327,9 @@ export async function runSchedules(deps: Deps): Promise<{ queued: number; proces
       let params: ReportParams | null = null;
       let error: string | null = null;
       try {
-        params = resolveParams(s.params, localDate(now, tz), weekStart);
+        // "Last week" is the schedule's own: resolved on the date where it fires (QA, BUG-87: the
+        // organization's date, a day behind for a Monday-morning report in Tokyo, sent the week before last).
+        params = resolveParams(s.params, localDate(now, zone), weekStart);
       } catch (e) {
         error = e instanceof Error ? e.message : 'Invalid parameters';
       }

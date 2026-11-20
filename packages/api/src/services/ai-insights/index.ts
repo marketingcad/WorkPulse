@@ -1,4 +1,5 @@
 import { localDate } from '@tallywork/domain';
+import { sha256 } from '../../lib/crypto';
 import { capacityFindings, capFindings, financeFindings, previousPeriod, projectFindings, timesheetFindings, workflowFindings, workforceFindings, type Finding, type InsightSection, type Period } from '@tallywork/domain/insights';
 import { insightResultSchema, type InsightResultDto, type InsightSectionParam } from '@tallywork/contracts';
 import type { Ctx } from '../ctx';
@@ -57,8 +58,12 @@ async function section(x: Ctx, s: InsightSection, period: Period, previous: Peri
 
 const bySeverity = (a: Finding, b: Finding) => SEVERITY[a.severity] - SEVERITY[b.severity] || SECTIONS.indexOf(a.section) - SECTIONS.indexOf(b.section);
 
+/** The people, teams and projects a narrower grant reaches, as one stable string. */
+const reachOf = (a: Ctx['actor']) => sha256([[...a.managedMembershipIds].sort().join(','), [...a.managedTeamIds].sort().join(','), [...a.assignedProjectIds].sort().join(',')].join('|'));
+
 export async function getInsights(x: Ctx, which: InsightSectionParam, q: Period): Promise<InsightResultDto> {
-  const key = insightCacheKey(x.org.id, x.actor.membershipId, which, q.from, q.to, x.actor.grants);
+  // Whom and what the person reaches is part of the key too (QA, BUG-91): a team or project change takes effect at once.
+  const key = insightCacheKey(x.org.id, x.actor.membershipId, which, q.from, q.to, x.actor.grants, reachOf(x.actor));
   const now = x.deps.now().getTime();
   const cached = insightCache.get(key, now);
   if (cached) {

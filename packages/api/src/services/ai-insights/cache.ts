@@ -10,11 +10,11 @@ const MAX_KEYS = 500;
 const store = new Map<string, { at: number; value: InsightResultDto }>();
 
 /**
- * The key also carries the person's current grants: after a role change, nothing computed under the
- * old access is served again (a removed finance permission takes effect at once).
+ * The key also carries the person's current grants and reach (whom they manage, their teams and
+ * projects): after a role or team change, nothing computed under the old access is served again.
  */
-export const insightCacheKey = (orgId: string, membershipId: string, section: string, from: string, to: string, grants: Record<string, unknown> = {}) =>
-  `${orgId}:${membershipId}:${section}:${from}:${to}:${JSON.stringify(Object.entries(grants).sort(([a], [b]) => a.localeCompare(b)))}`;
+export const insightCacheKey = (orgId: string, membershipId: string, section: string, from: string, to: string, grants: Record<string, unknown> = {}, reach = '') =>
+  `${orgId}:${membershipId}:${section}:${from}:${to}:${JSON.stringify(Object.entries(grants).sort(([a], [b]) => a.localeCompare(b)))}:${reach}`;
 
 export const insightCache = {
   get(key: string, now: number): InsightResultDto | null {

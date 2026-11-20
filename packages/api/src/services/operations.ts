@@ -79,7 +79,16 @@ export async function listSchedules(x: Ctx, membershipIds?: string[]) {
 export async function upsertSchedule(x: Ctx, id: string | null, input: z.infer<typeof scheduleInput>) {
   if (!can(x.actor, 'schedules:manage', { ownerMembershipId: input.membership_id })) throw forbidden();
   if (!(await existsInOrg(x, 'member', input.membership_id))) throw notFound('worker');
+  // Not someone who has left: their schedule would never be used (QA, BUG-86).
+  const [member] = await x.tx.select({ status: memberships.status }).from(memberships).where(eq(memberships.id, input.membership_id));
+  if (member?.status === 'REMOVED') throw businessRule('member_removed', 'This person has left the organization');
   for (const d of input.days) if (d.end <= d.start) throw validation('Each shift must end after it starts (overnight shifts: split across two days)');
+  // Shifts on one day may be split (a lunch break) but not overlap: the overlap would count twice (QA, BUG-84).
+  const sorted = [...input.days].sort((a, b) => a.dow - b.dow || a.start.localeCompare(b.start));
+  for (let i = 1; i < sorted.length; i++) {
+    const [a, b] = [sorted[i - 1]!, sorted[i]!];
+    if (a.dow === b.dow && b.start < a.end) throw validation(`Two shifts overlap (${a.start}–${a.end} and ${b.start}–${b.end})`, { errors: [{ field: 'days', message: 'Shifts on one day must not overlap' }] });
+  }
   // A member's schedule versions follow one another without overlapping (U5): one version applies on
   // any day. The end date is exclusive (the next version's start).
   if (input.effective_to && input.effective_to <= input.effective_from) throw validation('The end must be after the start', { errors: [{ field: 'effective_to', message: 'After the start date' }] });
@@ -344,8 +353,10 @@ export async function addHoliday(x: Ctx, input: z.infer<typeof holidayInput>) {
 export async function deleteHoliday(x: Ctx, id: string) {
   // Holidays and leave policies apply to everyone: org-wide grant only (A2b).
   if (x.actor.grants['time_off:manage'] !== 'org') throw forbidden();
-  await x.tx.delete(holidays).where(eq(holidays.id, id));
-  await audit(x, { action: 'holiday.deleted', targetType: 'holiday', targetId: id });
+  // Only one that exists: otherwise 404 and nothing recorded (QA, BUG-85).
+  const [gone] = await x.tx.delete(holidays).where(eq(holidays.id, id)).returning();
+  if (!gone) throw notFound('holiday');
+  await audit(x, { action: 'holiday.deleted', targetType: 'holiday', targetId: id, before: { date: gone.date, name: gone.name, paid: gone.paid } });
 }
 
 // ─── Time off ────────────────────────────────────────────────────────────────

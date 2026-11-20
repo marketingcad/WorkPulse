@@ -182,11 +182,12 @@ function RequestDialog({ open, onOpenChange, balances }: { open: boolean; onOpen
   const [error, setError] = useState<ApiError | null>(null);
   const m = useOrgMutation<RequestBody, TimeOffRequest>('POST', '/time-off/requests');
   const selected = balances.find((b) => b.policy_id === policyId);
+  const oneDay = start === end;
 
   const submit = async () => {
     setError(null);
     try {
-      const r = await m.mutateAsync({ policy_id: policyId, start_date: start, end_date: end, half_day: halfDay, reason: reason.trim() || null });
+      const r = await m.mutateAsync({ policy_id: policyId, start_date: start, end_date: end, half_day: halfDay && oneDay, reason: reason.trim() || null });
       toast.success(r.status === 'APPROVED' ? `Approved automatically (${fmtHours(r.hours)})` : `Request sent for approval (${fmtHours(r.hours)})`);
       onOpenChange(false);
     } catch (e) {
@@ -242,7 +243,9 @@ function RequestDialog({ open, onOpenChange, balances }: { open: boolean; onOpen
             <Input id="to-end" type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} />
           </Field>
         </div>
-        <Checkbox label="Half day" checked={halfDay} onChange={(e) => setHalfDay(e.target.checked)} />
+        {/* A half day is a single day, as on the desktop and the server (QA, BUG-62: on a longer request it was ignored). */}
+        <Checkbox label="Half day" checked={halfDay && oneDay} disabled={!oneDay} onChange={(e) => setHalfDay(e.target.checked)} />
+        {!oneDay && <p className="-mt-2 text-xs text-text-muted">Half day is for a single day: choose the same start and end date.</p>}
         <Field label="Reason" htmlFor="to-reason" hint="Optional. Visible to your approver." error={error?.field('reason')}>
           <Textarea id="to-reason" value={reason} maxLength={1000} onChange={(e) => setReason(e.target.value)} />
         </Field>

@@ -1,14 +1,16 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import type { AuditLogDto, OffsetPage } from '@tallywork/contracts';
-import { Badge, Button, DataTable, Drawer, EmptyState, ErrorState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, Select, Stat, cx, fmtDateTime, useToast, type Column, type Tone } from '@tallywork/ui';
+import { Badge, Button, DataTable, Drawer, EmptyState, ErrorState, FilterBar, Input, PageHeader, Panel, PermissionState, PersonCell, Select, Stat, cx, useToast, type Column, type Tone } from '@tallywork/ui';
 import { api, errorMessage, qs, useOrgPage } from '@/lib/api';
 import { useOrg } from '@/lib/org';
 import { downloadText, toCsv } from '@/lib/csv';
 import { Download } from 'lucide-react';
 import { JsonDiff } from '@/components/settings/json-diff';
+import { dayEndIn, dayStartIn } from '@/lib/zoned';
 
-const TARGET_TYPES = ['organization', 'membership', 'role', 'team', 'project', 'client', 'task', 'timesheet', 'time_entry', 'invoice', 'payment', 'expense', 'device', 'api_key', 'webhook', 'report', 'policy_org', 'policy_team', 'policy_worker'];
+// Every target type the server records (QA: invitations, rates, payroll and others were missing).
+const TARGET_TYPES = ['organization', 'membership', 'invitation', 'role', 'team', 'project', 'client', 'client_folder', 'task', 'timesheet', 'time_entry', 'time_off_request', 'schedule', 'rate', 'invoice', 'payment', 'expense', 'payroll_profile', 'payroll_run', 'goal', 'device', 'enrollment_token', 'api_key', 'webhook', 'integration', 'report', 'saved_report', 'screenshot_cleanup_run', 'support', 'policy_org', 'policy_team', 'policy_worker'];
 
 function actionTone(a: string): Tone {
   if (/(deleted|revoked|rejected|removed|suspended|void)/.test(a)) return 'danger';
@@ -18,7 +20,12 @@ function actionTone(a: string): Tone {
   return 'neutral';
 }
 const actorLabel = (r: AuditLogDto) => r.actor_name ?? (r.actor_type === 'user' ? 'Unknown user' : r.actor_type === 'system' ? 'System' : `${r.actor_type}${r.actor_id ? ` ${r.actor_id.slice(0, 8)}` : ''}`);
-const toIso = (d: string, end = false) => (d ? new Date(`${d}T${end ? '23:59:59.999' : '00:00:00'}`).toISOString() : undefined);
+/**
+ * When an entry happened, with the year (entries are kept for years) and in the viewer's profile zone,
+ * the same in the list and the detail (QA, BUG-44: no year, and the detail used the browser's zone).
+ */
+const stamp = (iso: string, timeZone: string, seconds = false) =>
+  new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', ...(seconds ? { second: '2-digit', timeZoneName: 'short' } : {}), timeZone }).format(new Date(iso));
 const PAGE_SIZES = [25, 50, 100, 200];
 /** The API's cap for a CSV export (the newest matching entries). */
 const EXPORT_LIMIT = 1000;
@@ -37,7 +44,9 @@ export default function AuditPage() {
   const [exporting, setExporting] = useState(false);
   const [open, setOpen] = useState<AuditLogDto | null>(null);
   const allowed = org.can('audit:read');
-  const filters = { action: action.trim() || undefined, target_type: targetType || undefined, from: toIso(from), to: toIso(to, true), order };
+  // Dates are read and shown in the profile zone (else the organization's), like the rest of the app.
+  const tz = org.membership.timezone || org.organization.timezone;
+  const filters = { action: action.trim() || undefined, target_type: targetType || undefined, from: dayStartIn(from, tz), to: dayEndIn(to, tz), order };
   const q = useOrgPage<OffsetPage<AuditLogDto>>(allowed ? `/audit-logs${qs({ ...filters, page: page + 1, page_size: pageSize })}` : null);
   const total = q.data?.total ?? 0;
 
@@ -59,7 +68,7 @@ export default function AuditPage() {
   // Rows come back already filtered, ordered and paged by the server, so columns aren't client-sortable.
   const columns = useMemo<Column<AuditLogDto>[]>(
     () => [
-      { key: 'when', header: 'When', priority: 'secondary', sortable: false, cell: (r) => <span className="tabular whitespace-nowrap text-text-muted">{fmtDateTime(r.created_at)}</span> },
+      { key: 'when', header: 'When', priority: 'secondary', sortable: false, cell: (r) => <span className="tabular whitespace-nowrap text-text-muted">{stamp(r.created_at, tz)}</span> },
       { key: 'actor', header: 'Actor', priority: 'secondary', sortable: false, cell: (r) => (r.actor_type === 'user' ? <PersonCell name={actorLabel(r)} size={20} /> : <span className="text-text-muted">{actorLabel(r)}</span>) },
       { key: 'action', header: 'Action', priority: 'primary', sortable: false, cell: (r) => <Badge tone={actionTone(r.action)} className="font-mono">{r.action}</Badge> },
       {
@@ -78,7 +87,7 @@ export default function AuditPage() {
       },
       { key: 'ip', header: 'IP', sortable: false, cell:(r) => <span className="font-mono text-xs text-text-muted">{r.ip_address ?? '—'}</span> },
     ],
-    [],
+    [tz],
   );
 
   if (!allowed) return <PermissionState />;
@@ -216,7 +225,7 @@ export default function AuditPage() {
         )}
       </Panel>
 
-      <Drawer open={!!open} onOpenChange={(o) => !o && setOpen(null)} title={open?.action ?? ''} subtitle={open ? fmtDateTime(open.created_at) : undefined} width={620}>
+      <Drawer open={!!open} onOpenChange={(o) => !o && setOpen(null)} title={open?.action ?? ''} subtitle={open ? stamp(open.created_at, tz) : undefined} width={620}>
         {open && (
           <div className="flex flex-col gap-4 p-5">
             <dl className="grid grid-cols-2 gap-3">
@@ -225,7 +234,7 @@ export default function AuditPage() {
               <Stat label="Target" value={open.target_type ?? '—'} />
               <Stat label="Target ID" value={<span className="font-mono text-xs">{open.target_id ?? '—'}</span>} />
               <Stat label="IP address" value={<span className="font-mono text-xs">{open.ip_address ?? '—'}</span>} />
-              <Stat label="Time" value={new Date(open.created_at).toLocaleString()} />
+              <Stat label="Time" value={stamp(open.created_at, tz, true)} />
             </dl>
             <JsonDiff before={open.before} after={open.after} />
           </div>

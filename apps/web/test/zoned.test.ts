@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fromZonedInput, toZonedInput } from '../lib/zoned';
+import { dayEndIn, dayStartIn, editedInstant, fromZonedInput, toZonedInput } from '../lib/zoned';
 
 // Audit 28 Oct 2026 (U7/FE-4): entry times are edited on the member's clock, not the browser's.
 describe('wall-clock times in a named time zone', () => {
@@ -22,5 +22,38 @@ describe('wall-clock times in a named time zone', () => {
   it('refuses something that is not a time', () => {
     expect(fromZonedInput('', 'UTC')).toBeNull();
     expect(fromZonedInput('tomorrow', 'UTC')).toBeNull();
+  });
+});
+
+// QA BUG-44: the audit log's date filters are whole days in the viewer's profile zone.
+describe('a calendar day in a named time zone', () => {
+  it('starts and ends at that zone’s midnight', () => {
+    expect(dayStartIn('2026-11-20', 'Asia/Manila')).toBe('2026-11-19T16:00:00.000Z');
+    expect(dayEndIn('2026-11-20', 'Asia/Manila')).toBe('2026-11-20T15:59:59.999Z');
+    expect(dayStartIn('2026-11-20', 'America/New_York')).toBe('2026-11-20T05:00:00.000Z');
+    expect(dayEndIn('2026-11-20', 'UTC')).toBe('2026-11-20T23:59:59.999Z');
+  });
+
+  it('is nothing for no date', () => {
+    expect(dayStartIn('', 'UTC')).toBeUndefined();
+    expect(dayEndIn('', 'UTC')).toBeUndefined();
+  });
+});
+
+// QA BUG-53: an edit form sends a time only when its field was changed. The field has no seconds, so a
+// tracked time like 09:14:37 must not come back as 09:14:00 when only the note changed.
+describe('a time field of an edit form', () => {
+  const tracked = '2026-11-18T01:14:37.000Z'; // 9:14:37 AM in Manila
+
+  it('left as opened, changes nothing', () => {
+    expect(editedInstant(toZonedInput(tracked, 'Asia/Manila'), tracked, 'Asia/Manila')).toBeUndefined();
+  });
+
+  it('changed, gives the new instant in the entry’s zone', () => {
+    expect(editedInstant('2026-11-18T09:30', tracked, 'Asia/Manila')).toBe('2026-11-18T01:30:00.000Z');
+  });
+
+  it('not a time, gives nothing', () => {
+    expect(editedInstant('', tracked, 'Asia/Manila')).toBeUndefined();
   });
 });

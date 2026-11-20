@@ -254,11 +254,28 @@ export async function previewRatePricing(x: Ctx, input: z.infer<typeof ratePrici
   return out;
 }
 
+/** The currency a client, or a project's client, is invoiced in (the organization's without a client). */
+async function billingCurrencyOf(x: Ctx, scope: 'CLIENT' | 'PROJECT' | 'PROJECT_WORKER', scopeId: string): Promise<string | null> {
+  if (scope === 'CLIENT') {
+    const [c] = await x.tx.select({ currency: clients.currency }).from(clients).where(and(eq(clients.organizationId, x.org.id), eq(clients.id, scopeId)));
+    return c ? (c.currency ?? x.org.currency) : null;
+  }
+  const projectId = scope === 'PROJECT_WORKER' ? scopeId.split(':')[0]! : scopeId;
+  const [p] = await x.tx.select({ currency: clients.currency, id: projects.id }).from(projects).leftJoin(clients, eq(clients.id, projects.clientId)).where(and(eq(projects.organizationId, x.org.id), eq(projects.id, projectId)));
+  return p ? (p.currency ?? x.org.currency) : null;
+}
+
 export async function setRate(x: Ctx, input: z.infer<typeof rateInput>) {
   if (!x.actor.grants['rates:manage']) throw forbidden();
   const scopeId = input.scope === 'ORG' ? null : (input.scope_id ?? null);
   if (input.scope !== 'ORG' && !scopeId) throw validation('scope_id is required for this scope');
   await assertCanManageRate(x, input.scope, scopeId);
+  // A bill rate for a client or project is in the currency that client is invoiced in, or its time could
+  // never be invoiced (QA, BUG-57).
+  if (input.kind === 'BILL' && scopeId && (input.scope === 'CLIENT' || input.scope === 'PROJECT' || input.scope === 'PROJECT_WORKER')) {
+    const billed = await billingCurrencyOf(x, input.scope, scopeId);
+    if (billed && input.currency.toUpperCase() !== billed) throw businessRule('rate_currency', `This client is invoiced in ${billed}. Set the bill rate in ${billed}.`, { errors: [{ field: 'currency', message: `Use ${billed}` }] });
+  }
   const prev = await closeOpenRates(x, input.kind, input.scope, scopeId, input.effective_from);
   const id = newId();
   await x.tx.insert(billingRates).values({ id, organizationId: x.org.id, kind: input.kind, scope: input.scope, scopeId, amountMinor: input.amount_minor, currency: input.currency, effectiveFrom: input.effective_from, createdBy: x.actor.membershipId });
@@ -453,10 +470,13 @@ export async function upsertBudget(x: Ctx, input: z.infer<typeof budgetInput>) {
     warnPct: input.warn_pct,
     includeNonBillable: input.include_non_billable,
   };
+  // Alerts start over only when the budget itself changes (QA, BUG-59: saving it unchanged sent them again).
+  const [was] = await x.tx.select().from(budgets).where(and(eq(budgets.organizationId, x.org.id), eq(budgets.subjectType, input.subject_type), eq(budgets.subjectId, input.subject_id)));
+  const same = !!was && was.kind === values.kind && Number(was.amount) === values.amount && was.period === values.period && was.warnPct === values.warnPct && was.includeNonBillable === values.includeNonBillable;
   await x.tx
     .insert(budgets)
     .values({ id: newId(), ...values })
-    .onConflictDoUpdate({ target: [budgets.organizationId, budgets.subjectType, budgets.subjectId], set: { ...values, lastNotifiedLevel: 0, notifiedPeriod: null, updatedAt: new Date() } });
+    .onConflictDoUpdate({ target: [budgets.organizationId, budgets.subjectType, budgets.subjectId], set: { ...values, ...(same ? {} : { lastNotifiedLevel: 0, notifiedPeriod: null }), updatedAt: new Date() } });
   await audit(x, { action: 'budget.set', targetType: input.subject_type.toLowerCase(), targetId: input.subject_id, after: input });
   return listBudgets(x);
 }
@@ -718,7 +738,8 @@ export async function decideExpense(x: Ctx, id: string, action: 'APPROVE' | 'REJ
       ...(action === 'REJECT' ? { rejectionReason: why, rejectedBy: x.actor.membershipId, rejectedAt: new Date() } : {}),
       updatedAt: new Date(),
     })
-    .where(and(eq(expenses.id, id), eq(expenses.status, e.status)))
+    // Rejecting also needs it to be on no invoice still: an invoice made at the same moment wins (QA).
+    .where(and(eq(expenses.id, id), eq(expenses.status, e.status), ...(action === 'REJECT' ? [isNull(expenses.invoiceLineId)] : [])))
     .returning({ id: expenses.id });
   if (!done) throw conflict('expense_changed', 'This expense was just decided by someone else. Refresh to see its status.');
   await emitFrom(x, `expense.${next.toLowerCase()}`, { expense_id: id, membership_id: e.membershipId, ...(action === 'REJECT' ? { reason: why } : {}) }, { workerId: e.membershipId });
@@ -896,6 +917,9 @@ export async function createInvoice(x: Ctx, input: z.infer<typeof invoiceCreateI
   await assertCanManageInvoicesFor(x, input.client_id);
   const d = await buildInvoiceDraft(x, input);
   if (!d.lines.length) throw businessRule('nothing_to_invoice', 'There is no approved billable time or expenses for this client and period');
+  // A total of 0 can never be paid (a payment is at least 1), so the invoice would turn Overdue with
+  // nothing to collect (QA, BUG-49).
+  if (d.total <= 0) throw businessRule('invoice_total_zero', 'This invoice comes to 0. Add an amount to a line, or remove the empty lines', { errors: [{ field: 'extra_lines', message: 'The invoice total must be more than 0' }] });
   const [seq] = await x.tx.update(invoiceSequences).set({ next: sql`${invoiceSequences.next} + 1` }).where(eq(invoiceSequences.organizationId, x.org.id)).returning();
   const number = `${seq?.prefix ?? 'INV-'}${(seq?.next ?? 1001) - 1}`;
   const id = newId();
@@ -1110,7 +1134,13 @@ export async function sendInvoice(x: Ctx, id: string) {
   const inv = await getInvoice(x, id);
   await assertCanManageInvoicesFor(x, inv.client_id);
   if (inv.status !== 'DRAFT') throw businessRule('invoice_not_draft', 'Only draft invoices can be sent');
-  await x.tx.update(invoices).set({ status: 'SENT', sentAt: new Date(), updatedAt: new Date() }).where(eq(invoices.id, id));
+  // Conditional: two sends at once can't both email the client (QA).
+  const [sent] = await x.tx
+    .update(invoices)
+    .set({ status: 'SENT', sentAt: x.deps.now(), updatedAt: new Date() })
+    .where(and(eq(invoices.id, id), eq(invoices.status, 'DRAFT')))
+    .returning({ id: invoices.id });
+  if (!sent) throw businessRule('invoice_not_draft', 'Only draft invoices can be sent');
   if (inv.client.email) {
     const fmt = (m: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: inv.currency }).format(m / 100);
     await x.deps.mailer.send(
@@ -1145,6 +1175,8 @@ export async function sendInvoice(x: Ctx, id: string) {
 export async function remindInvoice(x: Ctx, id: string): Promise<{ sent_to: string; overdue: boolean }> {
   if (!x.actor.grants['invoices:manage']) throw forbidden();
   const inv = await getInvoice(x, id);
+  // Like sending and voiding: only for someone who manages this client's invoices (QA, BUG-52).
+  await assertCanManageInvoicesFor(x, inv.client_id);
   if (!['SENT', 'PARTIALLY_PAID', 'OVERDUE'].includes(inv.status)) throw businessRule('invoice_not_open', 'Only a sent invoice with an amount still due can be sent again');
   if (!inv.client.email) throw businessRule('client_no_email', 'This client has no email address. Add one to the client to send reminders.');
   // At most 3 reminders a day per invoice, counted from the audit log in this request's transaction
@@ -1155,7 +1187,8 @@ export async function remindInvoice(x: Ctx, id: string): Promise<{ sent_to: stri
     .where(and(eq(auditLogs.organizationId, x.org.id), eq(auditLogs.action, 'invoice.reminder_sent'), eq(auditLogs.targetId, id), gte(auditLogs.createdAt, new Date(x.deps.now().getTime() - 24 * 3600_000))));
   if ((sentToday?.n ?? 0) >= 3) throw businessRule('reminder_limit', 'This client was already reminded 3 times about this invoice in the last 24 hours. Try again tomorrow.');
   const fmt = (m: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: inv.currency }).format(m / 100);
-  const overdue = inv.status === 'OVERDUE' || inv.due_date < new Date().toISOString().slice(0, 10);
+  // Overdue where the organization is, as the invoice's status says (BUG-50: the server's UTC date).
+  const overdue = inv.status === 'OVERDUE' || inv.due_date < localDate(x.deps.now(), x.org.timezone);
   await x.deps.mailer.send(
     await invoiceMail(
       x,
@@ -1189,7 +1222,7 @@ export async function voidInvoice(x: Ctx, id: string) {
   // or finds the invoice void (and is refused). Before, both could commit: a void invoice holding money.
   const [voided] = await x.tx
     .update(invoices)
-    .set({ status: 'VOID', voidedAt: new Date(), updatedAt: new Date() })
+    .set({ status: 'VOID', voidedAt: x.deps.now(), updatedAt: new Date() })
     .where(and(eq(invoices.id, id), ne(invoices.status, 'VOID'), eq(invoices.paidMinor, 0)))
     .returning({ id: invoices.id });
   if (!voided) {
@@ -1311,7 +1344,9 @@ export async function recordPayment(x: Ctx, input: z.infer<typeof paymentInput>)
   }
   await emitFrom(x, 'payment.received', { payment_id: id, amount_minor: input.amount_minor, currency: input.currency });
   await audit(x, { action: 'payment.recorded', targetType: 'payment', targetId: id, after: input });
-  return (await listPayments(x)).find((p) => p.id === id)!;
+  // Read back by id: the list stops at the newest 1,000, so an older payment answered with no body (BUG-51).
+  const rows = await x.tx.select({ p: payments, clientName: clients.name }).from(payments).leftJoin(clients, eq(clients.id, payments.clientId)).where(and(eq(payments.organizationId, x.org.id), eq(payments.id, id)));
+  return (await toPaymentRows(x, rows))[0]!;
 }
 
 /** Delete a payment and reverse its allocations (e.g. recorded by mistake). */
@@ -1359,6 +1394,8 @@ export async function deleteDraftInvoice(x: Ctx, id: string) {
     await x.tx.update(billingEntries).set({ invoiceLineId: null }).where(inArray(billingEntries.invoiceLineId, lineIds));
     await x.tx.update(expenses).set({ invoiceLineId: null }).where(inArray(expenses.invoiceLineId, lineIds));
   }
-  await x.tx.delete(invoices).where(eq(invoices.id, id));
+  // Conditional: an invoice sent at the same moment is not deleted.
+  const [gone] = await x.tx.delete(invoices).where(and(eq(invoices.id, id), eq(invoices.status, 'DRAFT'))).returning({ id: invoices.id });
+  if (!gone) throw businessRule('invoice_not_draft', 'Only draft invoices can be deleted; void sent invoices instead');
   await audit(x, { action: 'invoice.deleted', targetType: 'invoice', targetId: id, before: { number: inv.number, total: inv.totalMinor } });
 }

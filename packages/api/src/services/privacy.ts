@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import {
   activityMinutes,
   activityWindows,
@@ -12,6 +12,7 @@ import {
   devices,
   emailTokens,
   expenses,
+  fileObjects,
   idleEvents,
   manualTimeRequests,
   memberships,
@@ -151,6 +152,19 @@ export async function anonymizeMember(x: Ctx, membershipId: string) {
   await x.tx.delete(taskAssignees).where(eq(taskAssignees.membershipId, membershipId));
   await x.tx.update(memberships).set({ status: 'REMOVED', updatedAt: new Date() }).where(eq(memberships.id, membershipId));
   await x.tx.update(apiKeys).set({ revokedAt: new Date() }).where(and(eq(apiKeys.createdBy, m.userId), eq(apiKeys.organizationId, x.org.id), isNull(apiKeys.revokedAt)));
+  // Every personal-data export made of them, by anyone, goes too: the file held all of it and stayed
+  // downloadable from Exports after the erasure (QA, BUG-42). Exports of other people are untouched.
+  const exportRuns = await x.tx
+    .select({ id: reportRuns.id, fileId: reportRuns.fileId })
+    .from(reportRuns)
+    .where(and(eq(reportRuns.organizationId, x.org.id), eq(reportRuns.reportKey, DATA_EXPORT_KEY), sql`${reportRuns.params}->>'membership_id' = ${membershipId}`));
+  const exportFileIds = exportRuns.flatMap((r) => (r.fileId ? [r.fileId] : []));
+  if (exportFileIds.length) {
+    const files = await x.tx.delete(fileObjects).where(and(eq(fileObjects.organizationId, x.org.id), inArray(fileObjects.id, exportFileIds))).returning({ key: fileObjects.storageKey });
+    if (files.length) await x.deps.storage.delete(files.map((f) => f.key));
+  }
+  if (exportRuns.length) await x.tx.delete(reportRuns).where(inArray(reportRuns.id, exportRuns.map((r) => r.id)));
+  counts.data_exports = exportRuns.length;
   const scrub = await x.tx.execute<{ n: number }>(sql`select tallywork_scrub_audit_actor(${membershipId}::uuid) as n`);
   counts.audit_entries_scrubbed = Number((scrub as unknown as { rows: Array<{ n: number }> }).rows[0]?.n ?? 0);
 
@@ -181,18 +195,24 @@ async function anonymizeUser(tx: Tx, deps: Deps, userId: string) {
  * their role and two-factor status, and active API keys with their scopes and creator.
  */
 export async function permissionReview(x: Ctx) {
-  if (!x.actor.grants['members:manage'] && !x.actor.grants['settings:security']) throw forbidden();
+  // The whole organization's access, emails and two-factor status: only for those who manage everyone
+  // (QA, BUG-45: a grant over one team was enough). settings:security is organization-wide by definition.
+  if (x.actor.grants['members:manage'] !== 'org' && !x.actor.grants['settings:security']) throw forbidden();
   const { rolePermissions } = await import('@tallywork/db');
-  const rs = await x.tx.select().from(roles).where(ne(roles.key, 'AGENT')).orderBy(asc(roles.name));
-  const perms = await x.tx.select().from(rolePermissions);
+  const rs = await x.tx.select().from(roles).where(and(eq(roles.organizationId, x.org.id), ne(roles.key, 'AGENT'))).orderBy(asc(roles.name));
+  const perms = await x.tx.select().from(rolePermissions).where(eq(rolePermissions.organizationId, x.org.id));
   const ms = await x.tx
     .select({ id: memberships.id, roleId: memberships.roleId, isOwner: memberships.isOwner, name: users.name, email: users.email, userId: users.id })
     .from(memberships)
     .innerJoin(users, eq(users.id, memberships.userId))
-    .where(eq(memberships.status, 'ACTIVE'))
+    .where(and(eq(memberships.organizationId, x.org.id), eq(memberships.status, 'ACTIVE')))
     .orderBy(asc(users.name));
   const mfa = new Set((await x.tx.select({ u: mfaFactors.userId }).from(mfaFactors).where(sql`${mfaFactors.verifiedAt} is not null`)).map((r) => r.u));
-  const keys = await x.tx.select().from(apiKeys).where(isNull(apiKeys.revokedAt));
+  // Keys that still work: an expired key was counted as active (BUG-48).
+  const keys = await x.tx
+    .select()
+    .from(apiKeys)
+    .where(and(eq(apiKeys.organizationId, x.org.id), isNull(apiKeys.revokedAt), or(isNull(apiKeys.expiresAt), gt(apiKeys.expiresAt, x.deps.now()))));
   const nameOfUser = new Map(ms.map((m) => [m.userId, m.name]));
   return {
     roles: rs.map((r) => ({ id: r.id, key: r.key, name: r.name, members: ms.filter((m) => m.roleId === r.id).length, grants: Object.fromEntries(perms.filter((p) => p.roleId === r.id).map((p) => [p.permission, p.scope])) })),

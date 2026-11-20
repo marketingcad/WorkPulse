@@ -43,3 +43,27 @@ export function fromZonedInput(v: string, timeZone?: string): string | null {
   t = wall - offsetMs(new Date(t), timeZone);
   return new Date(t).toISOString();
 }
+
+/**
+ * The first and last instant of a calendar day ("YYYY-MM-DD") in `timeZone`, for date filters on
+ * instants. The audit log built them at the browser's midnight, so a viewer abroad got the wrong
+ * day's entries (QA, BUG-44).
+ */
+export function dayStartIn(date: string, timeZone?: string): string | undefined {
+  return date ? (fromZonedInput(`${date}T00:00:00`, timeZone) ?? undefined) : undefined;
+}
+export function dayEndIn(date: string, timeZone?: string): string | undefined {
+  const last = date ? fromZonedInput(`${date}T23:59:59`, timeZone) : null;
+  return last ? new Date(Date.parse(last) + 999).toISOString() : undefined;
+}
+
+/**
+ * The instant to save for a time field of an edit form, or undefined when the field was left as it was
+ * opened. The field shows minutes only, so comparing it as an instant with a time that has seconds
+ * always differed: saving only a note moved the start and end by up to 59 seconds and could clash
+ * with the entry before (QA, BUG-53).
+ */
+export function editedInstant(input: string, originalIso: string, timeZone?: string): string | undefined {
+  if (input === toZonedInput(originalIso, timeZone)) return undefined;
+  return fromZonedInput(input, timeZone) ?? undefined;
+}

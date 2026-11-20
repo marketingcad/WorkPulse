@@ -149,6 +149,12 @@ test.describe('Invoices (admin)', () => {
     await expect(page.getByRole('button', { name: 'Dates & notes', exact: true })).toBeDisabled();
     await page.getByLabel('Description').fill('Setup fee');
     await expect(page.getByRole('button', { name: 'Dates & notes', exact: true })).toBeEnabled();
+    // QA BUG-49: an invoice for nothing can't be paid, so it can't be made.
+    await page.getByLabel('Unit price (USD)').fill('0');
+    await expect(page.getByText('This invoice comes to 0, and an invoice for nothing can’t be paid.', { exact: false })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Dates & notes', exact: true })).toBeDisabled();
+    await page.getByLabel('Unit price (USD)').fill('200');
+    await expect(page.getByRole('button', { name: 'Dates & notes', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: 'Dates & notes', exact: true }).click();
 
     await page.getByLabel('Issue date').fill('2026-03-10');

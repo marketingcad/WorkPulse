@@ -159,8 +159,8 @@ async function assertRatesInCurrency(x: Ctx, currency: string, projectIds: strin
     .from(billingRates)
     .where(
       and(
+        // In effect now or starting later (QA, BUG-58: a rate starting next month in the old currency passed).
         ne(billingRates.currency, currency),
-        lte(billingRates.effectiveFrom, today),
         or(isNull(billingRates.effectiveTo), gt(billingRates.effectiveTo, today)),
         or(
           clientId ? and(eq(billingRates.scope, 'CLIENT'), eq(billingRates.scopeId, clientId)) : undefined,

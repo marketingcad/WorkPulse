@@ -550,6 +550,8 @@ export async function requestManualTime(x: Ctx, input: z.infer<typeof manualTime
   await lockWorker(x.tx, membershipId);
   const tz = await workerTimezone(x.tx, membershipId, x.org.timezone);
   const durationOnly = !(input.started_at && input.ended_at);
+  // A day still to come is in the future, which is what to say (QA, BUG-55: "There is no free slot").
+  if (durationOnly && input.local_date! > localDate(x.deps.now(), tz)) throw validation('Manual time cannot be in the future', { errors: [{ field: 'local_date', message: 'Cannot be in the future' }] });
   const { start, end } = durationOnly
     ? await freeSlot(x, membershipId, tz, input.local_date!, input.duration_seconds!)
     : { start: new Date(input.started_at!), end: new Date(input.ended_at!) };

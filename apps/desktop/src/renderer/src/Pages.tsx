@@ -3,7 +3,7 @@ import { Activity, CalendarPlus, Check, ChevronLeft, ChevronRight, Clock3, Clock
 import type { AgentState } from '../../shared/ipc';
 import { ProjectsCard } from './Dashboard';
 import { SessionList, localDay } from './HomeCards';
-import { addDays, bridge, card, errorText, fmtDay, fmtHm, fmtTime, localDateInput, useMe, weekStartOf, type View } from './lib';
+import { addDays, bridge, card, errorText, fmtDay, fmtHm, fmtTime, localDateInput, todayIn, useAgentState, useMe, weekStartOf, type View } from './lib';
 import type { ActivityDayDto, PayStubDto, SessionDto, ShiftDto, SummaryDto, TaskDto, TimeOffDto, TimesheetDto } from './types';
 import { BarList } from '@tallywork/ui/charts';
 
@@ -611,6 +611,9 @@ const TO_TONE: Record<TimeOffDto['requests'][number]['status'], 'success' | 'war
 
 export function TimeOffPage() {
   const q = useMe<TimeOffDto>('time-off');
+  // Approved time off can be cancelled here only until it starts, in the worker's own time zone, as the
+  // server decides (QA, BUG-63: the computer's date, and its start day, showed a Cancel the server refused).
+  const today = todayIn(useAgentState()?.account?.timezone);
   const [open, setOpen] = useState(false);
   const [sent, setSent] = useState(false);
   const d = q.data;
@@ -663,7 +666,7 @@ export function TimeOffPage() {
                         </span>
                       </span>
                       <Badge tone={TO_TONE[r.status]}>{r.status.charAt(0) + r.status.slice(1).toLowerCase()}</Badge>
-                      {(r.status === 'PENDING' || (r.status === 'APPROVED' && r.start_date >= localDateInput())) && <CancelRequest id={r.id} approved={r.status === 'APPROVED'} hours={r.hours} onDone={q.reload} />}
+                      {(r.status === 'PENDING' || (r.status === 'APPROVED' && r.start_date > today)) && <CancelRequest id={r.id} approved={r.status === 'APPROVED'} hours={r.hours} onDone={q.reload} />}
                     </li>
                   ))}
                 </ul>

@@ -129,3 +129,31 @@ test.describe('Who may decide whose time off', () => {
     await ctx.close();
   });
 });
+
+// QA BUG-62: "Half day" on a request of several days was sent and silently ignored (full days were
+// charged). The form offers it for a single day only, as the desktop app and the server do.
+test.describe('Requesting time off', () => {
+  test.use({ storageState: ADMIN_STATE });
+
+  test('offers a half day only for a single day', async ({ page, data, adminApi }) => {
+    const me = await ok<{ membership: { id: string } }>(await adminApi.api.get(adminApi.orgApi('')), 'me');
+    const policy = await policyFor(adminApi, [me.membership.id]);
+    try {
+      await page.goto(`/o/${data.orgId}/time-off?tab=mine`);
+      await page.getByRole('button', { name: 'Request time off' }).first().click();
+      const dialog = page.getByRole('dialog', { name: 'Request time off' });
+      await dialog.getByLabel(/^Policy/).selectOption(policy.id);
+      const half = dialog.getByRole('checkbox', { name: 'Half day' });
+      await expect(half).toBeEnabled();
+      await dialog.getByLabel(/^Start date/).fill('2033-03-07');
+      await dialog.getByLabel(/^End date/).fill('2033-03-09');
+      await expect(half).toBeDisabled();
+      await expect(half).not.toBeChecked();
+      await expect(dialog.getByText('Half day is for a single day: choose the same start and end date.')).toBeVisible();
+      await dialog.getByLabel(/^End date/).fill('2033-03-07');
+      await expect(half).toBeEnabled();
+    } finally {
+      await adminApi.api.post(adminApi.orgApi(`/time-off/policies/${policy.id}/archive`), {});
+    }
+  });
+});

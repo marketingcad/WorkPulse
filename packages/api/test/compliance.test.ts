@@ -238,6 +238,8 @@ describe('security settings', () => {
     await admin.patch(o(''), { settings: { sessionTtlHours: 336 } }).catch(() => undefined);
     await relogin2FA();
     expect((await admin.patch(o(''), { settings: { sessionTtlHours: 336 } })).status).toBe(200);
+    // The shorter lifetime ended sessions already open too (QA, BUG-76), Mona's included.
+    expect((await manager.get('/me')).status).toBe(200);
   });
 
   it('IP allowlist: validated, cannot lock out the admin saving it, and enforced for people and API keys', async () => {
@@ -281,8 +283,8 @@ describe('security settings', () => {
 });
 
 async function relogin2FA() {
-  // Admin and Ben have two-factor now: sign in again with codes.
-  for (const [c, e] of [[admin, 'ada'], [ben, 'ben']] as const) {
+  // Admin, Mona and Ben have two-factor now: sign in again with codes.
+  for (const [c, e] of [[admin, 'ada'], [manager, 'mona'], [ben, 'ben']] as const) {
     await login(c, `${e}@sec.test`);
     const f = await asOwner<{ secret_enc: string; id: string; user_id: string }>(sql`select f.id, f.secret_enc, f.user_id from mfa_factors f join users u on u.id = f.user_id where u.email = ${`${e}@sec.test`}`);
     const { decrypt } = await import('../src/lib/crypto');

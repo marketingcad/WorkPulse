@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   apiKeys,
@@ -14,6 +14,7 @@ import {
   teamMembers,
   teams,
   timesheets,
+  userSessions,
   users,
   workerProfiles,
 } from '@tallywork/db';
@@ -109,6 +110,16 @@ export async function updateOrg(x: Ctx, input: z.infer<typeof updateOrgInput>) {
     patch.settings = { ...before!.settings, ...input.settings };
   }
   await x.tx.update(organizations).set(patch).where(eq(organizations.id, x.org.id));
+  // A shorter session lifetime reaches people already signed in: their sessions end at most that long
+  // from now (QA, BUG-76: only new sign-ins got it, so a session could run on for 14 days).
+  const ttl = input.settings?.sessionTtlHours;
+  if (ttl !== undefined && ttl < (before!.settings.sessionTtlHours ?? Infinity)) {
+    const cap = new Date(x.deps.now().getTime() + ttl * 3600_000);
+    await x.tx
+      .update(userSessions)
+      .set({ expiresAt: cap })
+      .where(and(isNull(userSessions.revokedAt), gt(userSessions.expiresAt, cap), inArray(userSessions.userId, x.tx.select({ id: memberships.userId }).from(memberships).where(and(eq(memberships.organizationId, x.org.id), ne(memberships.status, 'REMOVED'))))));
+  }
   // Images never go into the audit trail, only whether one was set.
   const shrink = <T extends { logo?: string | null; documentLogo?: string | null }>(o: T) => ({
     ...o,
@@ -350,7 +361,15 @@ async function toWorkerDtos(
   const rates = x.actor.grants['rates:read'] ? await currentScopedRates(x, 'WORKER') : null;
   const rateVisible = rates ? narrowMemberships(x.actor, 'rates:read') : [];
   const ratesOf = (id: string) =>
-    rates && (rateVisible === 'all' || rateVisible.includes(id)) ? { pay_rate_minor: rates.get(`PAY:${id}`)?.amountMinor ?? null, bill_rate_minor: rates.get(`BILL:${id}`)?.amountMinor ?? null } : {};
+    rates && (rateVisible === 'all' || rateVisible.includes(id))
+      ? {
+          pay_rate_minor: rates.get(`PAY:${id}`)?.amountMinor ?? null,
+          bill_rate_minor: rates.get(`BILL:${id}`)?.amountMinor ?? null,
+          // A rate keeps the currency it was set in, which can differ after the organization's changes (QA, BUG-77).
+          pay_rate_currency: rates.get(`PAY:${id}`)?.currency ?? null,
+          bill_rate_currency: rates.get(`BILL:${id}`)?.currency ?? null,
+        }
+      : {};
   return rows.map(({ m, u, p, r }) => ({
     id: m.id,
     user_id: u.id,

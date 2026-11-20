@@ -180,8 +180,8 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
             <Stat label="Expected per week" value={w.weekly_expected_seconds === null ? 'Not set' : org.fmtDuration(w.weekly_expected_seconds)} />
             <Stat label="Start date" value={w.start_date ? fmtDate(w.start_date) : 'Not set'} />
             {w.end_date && <Stat label="Date left" value={fmtDate(w.end_date)} />}
-            {w.pay_rate_minor !== undefined && <Stat label="Pay rate" value={w.pay_rate_minor === null ? 'Not set (project or client rates apply)' : `${fmtMoney(w.pay_rate_minor, org.organization.currency)} / h`} />}
-            {w.bill_rate_minor !== undefined && <Stat label="Bill rate" value={w.bill_rate_minor === null ? 'Not set (project or client rates apply)' : `${fmtMoney(w.bill_rate_minor, org.organization.currency)} / h`} />}
+            {w.pay_rate_minor !== undefined && <Stat label="Pay rate" value={w.pay_rate_minor === null ? 'Not set (project or client rates apply)' : `${fmtMoney(w.pay_rate_minor, w.pay_rate_currency ?? org.organization.currency)} / h`} />}
+            {w.bill_rate_minor !== undefined && <Stat label="Bill rate" value={w.bill_rate_minor === null ? 'Not set (project or client rates apply)' : `${fmtMoney(w.bill_rate_minor, w.bill_rate_currency ?? org.organization.currency)} / h`} />}
             <Stat
               label="Time tracking"
               value={
@@ -322,6 +322,11 @@ function OverviewTab({ w, teamNames }: { w: WorkerDto; teamNames: string[] }) {
   );
 }
 
+/** A rate set before the workspace currency changed keeps its currency; a new amount is saved in today's (QA, BUG-77). */
+function rateHint(saved: string | null | undefined, current: string, what: string) {
+  return saved && saved !== current ? `Now ${saved}. A new amount is saved in ${current} / hour, ${what}` : `${current} / hour, ${what}`;
+}
+
 function QuickLink({ href, icon, label }: { href: string; icon: ReactNode; label: string }) {
   return (
     <li>
@@ -451,10 +456,10 @@ function ProfileForm({ w, roles, admin, onDone }: { w: WorkerDto; roles: RoleDto
           </Field>
           {canRates && (
             <>
-              <Field label="Pay rate per hour" htmlFor="wk-pay" hint={`${org.organization.currency} / hour, what you pay this member`} error={err?.field('pay_rate_minor')}>
+              <Field label="Pay rate per hour" htmlFor="wk-pay" hint={rateHint(w.pay_rate_currency, org.organization.currency, 'what you pay this member')} error={err?.field('pay_rate_minor')}>
                 <Input id="wk-pay" inputMode="decimal" className="tabular" placeholder="0.00" value={f.pay_rate} onChange={(e) => setF({ ...f, pay_rate: e.target.value })} />
               </Field>
-              <Field label="Bill rate per hour" htmlFor="wk-bill" hint={`${org.organization.currency} / hour, what you charge for their time`} error={err?.field('bill_rate_minor')}>
+              <Field label="Bill rate per hour" htmlFor="wk-bill" hint={rateHint(w.bill_rate_currency, org.organization.currency, 'what you charge for their time')} error={err?.field('bill_rate_minor')}>
                 <Input id="wk-bill" inputMode="decimal" className="tabular" placeholder="0.00" value={f.bill_rate} onChange={(e) => setF({ ...f, bill_rate: e.target.value })} />
               </Field>
               {pricing.dialog}

@@ -98,4 +98,22 @@ test.describe('saving a client or a task once', () => {
     const tasks = (await (await adminApi.api.get(adminApi.orgApi(`/projects/${project.id}/tasks`))).json()) as Array<{ title: string }>;
     expect(tasks.filter((t) => t.title === title)).toHaveLength(1);
   });
+
+  test('a task can’t be assigned to someone who isn’t on its project, and the form says so (QA BUG-82)', async ({ page, data, adminApi }) => {
+    const title = `Outsider task ${uid()}`;
+    // Its own project, with nobody on it: the shared worker is not on it.
+    const project = (await (await adminApi.api.post(adminApi.orgApi('/projects'), { data: { name: `Closed ${data.run} ${uid()}` } })).json()) as { id: string; name: string };
+    await page.goto(`/o/${data.orgId}/tasks`);
+    await page.getByRole('button', { name: 'New task' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'New task' });
+    await dialog.getByLabel('Project').selectOption({ label: project.name });
+    await dialog.getByLabel('Title').fill(title);
+    await dialog.getByRole('button', { name: 'Assignees' }).click();
+    await page.getByRole('option', { name: new RegExp(data.worker.name) }).getByRole('checkbox').check();
+    await page.keyboard.press('Escape');
+    await dialog.getByRole('button', { name: 'Create task' }).click();
+    await expect(dialog.getByText('Add them to the project first, or choose someone on it')).toBeVisible();
+    const tasks = (await (await adminApi.api.get(adminApi.orgApi(`/projects/${project.id}/tasks`))).json()) as Array<{ title: string }>;
+    expect(tasks.filter((t) => t.title === title)).toHaveLength(0);
+  });
 });

@@ -190,6 +190,9 @@ async function milestoneFor(x: Ctx, id: string) {
   const [m] = await x.tx.select().from(projectMilestones).where(and(eq(projectMilestones.id, id), isNull(projectMilestones.archivedAt)));
   if (!m || !can(x.actor, 'projects:read', { projectId: m.projectId })) throw notFound('milestone');
   if (!can(x.actor, 'projects:manage', { projectId: m.projectId })) throw forbidden();
+  // Like adding one: an archived project's milestones are kept as they were (QA, BUG-81).
+  const [p] = await x.tx.select({ archivedAt: projects.archivedAt }).from(projects).where(eq(projects.id, m.projectId));
+  if (p?.archivedAt) throw businessRule('project_archived', 'This project is archived. Restore it to change its milestones.');
   return m;
 }
 

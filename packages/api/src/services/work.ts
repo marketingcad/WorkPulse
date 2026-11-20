@@ -22,6 +22,7 @@ import {
   projectMembers,
   projectTeams,
   projects,
+  rolePermissions,
   rollupAppDay,
   rollupWorkerDay,
   taskAssignees,
@@ -578,14 +579,47 @@ export async function upsertProject(x: Ctx, projectId: string | null, input: z.i
 
 export async function setProjectArchived(x: Ctx, projectId: string, archived: boolean) {
   if (!canOnProject(x.actor, 'projects:manage', projectId)) throw x.actor.grants['projects:manage'] ? notFound('project') : forbidden();
+  const [cur] = await x.tx.select({ name: projects.name, clientId: projects.clientId, archivedAt: projects.archivedAt }).from(projects).where(eq(projects.id, projectId));
+  if (!cur) throw notFound('project');
+  // Already so: nothing changes and nothing is recorded. Archiving again would also move its archive time,
+  // and restoring its client brings back only projects archived at the client's time (QA, BUG-83).
+  if (!!cur.archivedAt === archived) return;
   if (!archived) {
     // An archived client's projects stay archived with it: restore the client (which brings them back).
     const [row] = await x.tx.select({ clientArchivedAt: clients.archivedAt }).from(projects).leftJoin(clients, eq(clients.id, projects.clientId)).where(eq(projects.id, projectId));
     if (row?.clientArchivedAt) throw businessRule('client_archived', 'This project’s client is archived. Restore the client to bring its projects back.');
+    // One active project per name and client, as creating and renaming require (QA, BUG-80).
+    const [same] = await x.tx
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.organizationId, x.org.id), ne(projects.id, projectId), isNull(projects.archivedAt), sql`lower(trim(${projects.name})) = lower(trim(${cur.name}))`, cur.clientId ? eq(projects.clientId, cur.clientId) : isNull(projects.clientId)))
+      .limit(1);
+    if (same) throw conflict('duplicate_name', 'An active project of this client already has this name. Rename or archive it first, then restore this one.');
   }
   const r = await x.tx.update(projects).set({ archivedAt: archived ? new Date() : null, updatedAt: new Date() }).where(eq(projects.id, projectId)).returning({ id: projects.id });
   if (!r.length) throw notFound('project');
   await audit(x, { action: archived ? 'project.archived' : 'project.restored', targetType: 'project', targetId: projectId });
+}
+
+/**
+ * Every one of these members can see the project's tasks: on it (directly or through a team), or reading
+ * tasks across the whole organization. Otherwise 400 naming the field.
+ */
+async function assertCanSeeProject(x: Ctx, projectId: string, membershipIds: string[]): Promise<void> {
+  if (!membershipIds.length) return;
+  const orgWide = new Set(
+    (
+      await x.tx
+        .select({ id: memberships.id })
+        .from(memberships)
+        .innerJoin(rolePermissions, and(eq(rolePermissions.roleId, memberships.roleId), eq(rolePermissions.permission, 'tasks:read'), eq(rolePermissions.scope, 'org')))
+        .where(inArray(memberships.id, membershipIds))
+    ).map((r) => r.id),
+  );
+  for (const m of membershipIds) {
+    if (orgWide.has(m) || (await workerCanTrackProject(x, m, projectId))) continue;
+    throw validation('Assign people who are on this project', { errors: [{ field: 'assignee_ids', message: 'Add them to the project first, or choose someone on it' }] });
+  }
 }
 
 /** Can this worker track time to this project? (direct member or via a team) */
@@ -750,6 +784,9 @@ export async function upsertTask(x: Ctx, projectId: string, taskId: string | nul
   if (input.assignee_ids) {
     if (!canManage && !canCreate) throw forbidden();
     await assertActiveMembers(x, input.assignee_ids, 'assignee_ids');
+    // Someone newly assigned must be able to see the task (QA, BUG-82: a member not on the project never saw it).
+    const already = id === taskId ? new Set((await x.tx.select({ m: taskAssignees.membershipId }).from(taskAssignees).where(eq(taskAssignees.taskId, id!))).map((a) => a.m)) : new Set<string>();
+    await assertCanSeeProject(x, projectId, [...new Set(input.assignee_ids)].filter((m) => !already.has(m)));
     await x.tx.delete(taskAssignees).where(eq(taskAssignees.taskId, id));
     if (input.assignee_ids.length) await x.tx.insert(taskAssignees).values(input.assignee_ids.map((m) => ({ organizationId: x.org.id, taskId: id!, membershipId: m })));
   }
@@ -771,16 +808,18 @@ export async function restoreTask(x: Ctx, taskId: string) {
   if (!can(x.actor, 'tasks:manage', { projectId: t.projectId })) throw forbidden();
   const [p] = await x.tx.select({ archivedAt: projects.archivedAt }).from(projects).where(eq(projects.id, t.projectId));
   if (p?.archivedAt) throw businessRule('project_archived', 'This task’s project is archived. Restore the project first.');
-  await x.tx.update(tasks).set({ archivedAt: null, updatedAt: new Date() }).where(eq(tasks.id, taskId));
-  await audit(x, { action: 'task.restored', targetType: 'task', targetId: taskId });
+  // A task in use stays as it is, with no audit row (QA, BUG-83).
+  const r = await x.tx.update(tasks).set({ archivedAt: null, updatedAt: new Date() }).where(and(eq(tasks.id, taskId), isNotNull(tasks.archivedAt))).returning({ id: tasks.id });
+  if (r.length) await audit(x, { action: 'task.restored', targetType: 'task', targetId: taskId });
 }
 
 export async function archiveTask(x: Ctx, taskId: string) {
   const [t] = await x.tx.select().from(tasks).where(eq(tasks.id, taskId));
   if (!t) throw notFound('task');
   if (!can(x.actor, 'tasks:manage', { projectId: t.projectId })) throw forbidden();
-  await x.tx.update(tasks).set({ archivedAt: new Date() }).where(eq(tasks.id, taskId));
-  await audit(x, { action: 'task.archived', targetType: 'task', targetId: taskId });
+  // Archived once: again changes nothing and records nothing (QA, BUG-83).
+  const r = await x.tx.update(tasks).set({ archivedAt: new Date() }).where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt))).returning({ id: tasks.id });
+  if (r.length) await audit(x, { action: 'task.archived', targetType: 'task', targetId: taskId });
 }
 
 /** Projects + tasks a worker can track to (used by timer UIs and the agent). */

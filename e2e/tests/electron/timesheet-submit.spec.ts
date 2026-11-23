@@ -26,8 +26,10 @@ test.beforeAll(async ({ adminApi }) => {
   await ctx.dispose();
   worker = { email, membershipId: accepted.membership_id };
   // One hour today, in the organization's time zone, added by the admin: the week now has time but no saved timesheet.
-  const org = await ok<{ timezone: string }>(await api.get(orgApi('')), 'org');
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: org.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  // The time zone is under `organization` (reading `org.timezone` gave undefined, so Intl used this
+  // computer's zone: ahead of UTC, "today" was tomorrow for the server from 16:00 UTC, and the test failed).
+  const org = await ok<{ organization: { timezone: string } }>(await api.get(orgApi('')), 'org');
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: org.organization.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   await ok(await api.post(orgApi('/manual-time'), { data: { membership_id: worker.membershipId, project_id: project.id, local_date: today, duration_seconds: 3600, reason: 'BUG-25 regression' } }), 'manual time');
 });
 

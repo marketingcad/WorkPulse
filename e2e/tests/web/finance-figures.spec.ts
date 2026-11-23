@@ -20,8 +20,9 @@ const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T12:00:00Z`) 
 test.beforeAll(async ({ adminApi }) => {
   const { api, orgApi } = adminApi;
   const run = uid();
-  const org = await ok<{ timezone: string }>(await api.get(orgApi('')), 'org');
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: org.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  // The time zone is under `organization` (`org.timezone` was undefined, so this computer's zone was used).
+  const org = await ok<{ organization: { timezone: string } }>(await api.get(orgApi('')), 'org');
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: org.organization.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   // Monday of last week (weeks start on Monday in the test organization).
   const dow = (new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7;
   const monday = addDays(today, -dow - 7);

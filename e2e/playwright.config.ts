@@ -41,6 +41,9 @@ export default defineConfig({
     { name: 'desktop', testDir: './tests/desktop', use: { ...devices['Desktop Chrome'], baseURL: DESKTOP_URL, viewport: { width: 1120, height: 760 } } },
     // The real Electron app (support/electron.ts). Opens app windows while it runs; needs a display (xvfb on Linux).
     { name: 'electron', testDir: './tests/electron', fullyParallel: false },
+    // The app as installed from its real installer (support/installed.ts): only when INSTALLED_APP names it
+    // (the "Desktop installer" workflow), so a normal run is unchanged.
+    ...(process.env.INSTALLED_APP ? [{ name: 'installed', testDir: './tests/installed', fullyParallel: false }] : []),
     // Opt-in cross-browser smoke of the web app: E2E_CROSS_BROWSER=1 pnpm test:e2e --project=firefox --project=webkit
     ...(process.env.E2E_CROSS_BROWSER
       ? [

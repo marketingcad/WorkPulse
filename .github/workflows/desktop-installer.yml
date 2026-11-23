@@ -1,0 +1,162 @@
+name: Desktop installer
+
+# Builds the real desktop installers, installs them silently the way people and IT tools do, checks
+# what was installed, runs the installed app against the isolated test server (sign in, version,
+# clock in and out: e2e/tests/installed), then uninstalls and checks it is gone.
+#   Windows  the .exe installer (per user) and the .msi (per machine, for Intune / Group Policy / SCCM)
+#   macOS    the .dmg, copied to /Applications
+# Linux packages are covered after release by "Desktop Linux smoke test".
+#
+# Code signing is not set up yet (see apps/desktop/electron-builder.yml): the signature checks report
+# the current state as a warning instead of failing, until signing is in place.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - apps/desktop/**
+      - e2e/tests/installed/**
+      - e2e/support/installed.ts
+      - .github/workflows/desktop-installer.yml
+
+concurrency:
+  group: desktop-installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installer:
+    name: Install and run (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, name: Windows }
+          - { os: macos-latest, name: macOS }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Version
+        id: version
+        shell: bash
+        run: echo "version=$(node -p "require('./apps/desktop/package.json').version")" >> "$GITHUB_OUTPUT"
+      - run: pnpm --filter @tallywork/desktop exec electron-vite build
+
+      # ── Windows ────────────────────────────────────────────────────────────────
+      - name: Build the Windows installers (.exe and .msi)
+        if: runner.os == 'Windows'
+        run: pnpm --filter @tallywork/desktop exec electron-builder --win nsis msi --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Install the .exe silently (per user)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = "apps/desktop/release/${{ steps.version.outputs.version }}/Tallywork-Setup.exe"
+          $p = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Error "installer exited with $($p.ExitCode)"; exit 1 }
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter Tallywork.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) { Write-Error 'Tallywork.exe not found under %LOCALAPPDATA%\Programs'; exit 1 }
+          "INSTALLED_APP=$($exe.FullName)" >> $env:GITHUB_ENV
+          "INSTALL_DIR=$($exe.DirectoryName)" >> $env:GITHUB_ENV
+          Write-Host "installed at $($exe.FullName)"
+      - name: Check what the .exe installed
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./.github/scripts/check-windows-install.ps1 -Exe $env:INSTALLED_APP -Version '${{ steps.version.outputs.version }}'
+      - name: Run the app installed by the .exe
+        if: runner.os == 'Windows'
+        run: pnpm test:e2e --project=installed
+      - name: Uninstall the .exe install and check it is gone
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $un = Get-ChildItem $env:INSTALL_DIR -Filter 'Uninstall*.exe' | Select-Object -First 1
+          if (-not $un) { Write-Error 'no uninstaller next to the app'; exit 1 }
+          $p = Start-Process -FilePath $un.FullName -ArgumentList '/S' -Wait -PassThru
+          # The uninstaller copies itself to a temp folder and finishes from there: wait for the files to go.
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path $env:INSTALLED_APP) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+          if (Test-Path $env:INSTALLED_APP) { Write-Error 'Tallywork.exe is still there after uninstalling'; exit 1 }
+          Write-Host 'uninstalled'
+      - name: Install the .msi silently (per machine)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $msi = Resolve-Path "apps/desktop/release/${{ steps.version.outputs.version }}/Tallywork-${{ steps.version.outputs.version }}-x64.msi"
+          $p = Start-Process msiexec.exe -ArgumentList '/i', "`"$msi`"", '/qn', '/l*v', "`"$env:RUNNER_TEMP\msi-install.log`"" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\msi-install.log" -Tail 40; Write-Error "msiexec exited with $($p.ExitCode)"; exit 1 }
+          $exe = Get-ChildItem $env:ProgramFiles -Recurse -Filter Tallywork.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) { Write-Error 'Tallywork.exe not found under Program Files'; exit 1 }
+          "INSTALLED_APP=$($exe.FullName)" >> $env:GITHUB_ENV
+          "MSI_PATH=$msi" >> $env:GITHUB_ENV
+          Write-Host "installed at $($exe.FullName)"
+      - name: Check what the .msi installed
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./.github/scripts/check-windows-install.ps1 -Exe $env:INSTALLED_APP -Version '${{ steps.version.outputs.version }}'
+      - name: Run the app installed by the .msi
+        if: runner.os == 'Windows'
+        run: pnpm test:e2e --project=installed
+      - name: Uninstall the .msi install and check it is gone
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $p = Start-Process msiexec.exe -ArgumentList '/x', "`"$env:MSI_PATH`"", '/qn' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Error "msiexec /x exited with $($p.ExitCode)"; exit 1 }
+          if (Test-Path $env:INSTALLED_APP) { Write-Error 'Tallywork.exe is still there after uninstalling'; exit 1 }
+          Write-Host 'uninstalled'
+
+      # ── macOS ──────────────────────────────────────────────────────────────────
+      # Universal, as released: one .dmg for Intel and Apple Silicon Macs.
+      - name: Build the macOS installer (.dmg)
+        if: runner.os == 'macOS'
+        run: pnpm --filter @tallywork/desktop exec electron-builder --mac dmg --universal --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Install from the .dmg (copy to /Applications)
+        if: runner.os == 'macOS'
+        run: |
+          dmg="apps/desktop/release/${{ steps.version.outputs.version }}/Tallywork-mac.dmg"
+          hdiutil attach -nobrowse -readonly -mountpoint /Volumes/TallyworkInstall "$dmg"
+          ls /Volumes/TallyworkInstall
+          ditto /Volumes/TallyworkInstall/Tallywork.app /Applications/Tallywork.app
+          hdiutil detach /Volumes/TallyworkInstall
+          echo "INSTALLED_APP=/Applications/Tallywork.app/Contents/MacOS/Tallywork" >> "$GITHUB_ENV"
+      - name: Check what was installed
+        if: runner.os == 'macOS'
+        run: |
+          app=/Applications/Tallywork.app
+          v=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
+          echo "version $v"
+          [ "$v" = "${{ steps.version.outputs.version }}" ] || { echo "::error::installed version $v, built ${{ steps.version.outputs.version }}"; exit 1; }
+          lipo -archs "$app/Contents/MacOS/Tallywork" | tee /dev/stderr | grep -q 'x86_64 arm64' || { echo "::error::not a universal app"; exit 1; }
+          for f in "$app"/Contents/Resources/app.asar.unpacked/node_modules/uiohook-napi/prebuilds/darwin-*/*.node; do echo "native module: $f"; done
+          # The app must be intact and (ad-hoc) signed: Apple Silicon refuses to run unsigned code.
+          codesign --verify --deep --strict "$app" && echo "signature intact (ad-hoc)" || { echo "::error::codesign --verify failed"; exit 1; }
+          # Gatekeeper: until Developer ID signing and notarization, people approve the first launch.
+          if spctl --assess --type execute "$app" 2>/dev/null; then echo "Gatekeeper accepts the app"; else echo "::warning::Gatekeeper does not accept the app yet (not signed with a Developer ID or notarized): people must approve the first launch"; fi
+      - name: Run the installed app
+        if: runner.os == 'macOS'
+        run: pnpm test:e2e --project=installed
+      - name: Uninstall and check it is gone
+        if: runner.os == 'macOS'
+        run: |
+          rm -rf /Applications/Tallywork.app
+          [ ! -e /Applications/Tallywork.app ] && echo uninstalled
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: desktop-installer-${{ matrix.name }}
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+            ${{ runner.temp }}/msi-install.log
+          retention-days: 14

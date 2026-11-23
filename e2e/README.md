@@ -158,6 +158,26 @@ E2E_SKIP_BUILD=1 pnpm test:e2e:audit   # reuse the last build
 
 `pnpm test:e2e` never runs it, and it must not share a server with that run. It creates a team manager and a client viewer, and the full regression run already uses the whole per-IP budget for invitations and sign-ups that production rate limits allow (20 and 10 an hour). Run it on its own, and stop any E2E server already on :3100 first, because a running server is reused. Run it after UI-wide changes such as layout, theme, navigation or permissions.
 
+## Installed desktop app (real installers)
+
+[tests/installed](tests/installed) runs the desktop app **as installed from its real installer**, not the development build. The [Desktop installer workflow](../.github/workflows/desktop-installer.yml) does this in five steps:
+
+1. Builds the installers.
+2. Installs them silently: the Windows .exe (per user) and .msi (per machine), and the macOS .dmg copied to /Applications.
+3. Checks the install: version, files, Start menu, signing.
+4. Runs these tests against the installed app.
+5. Uninstalls it and checks it is gone.
+
+It runs on pull requests that change the desktop app, and from Actions → "Desktop installer" → Run workflow.
+
+The installed app keeps Electron's security fuses on, so Playwright connects to its window over CDP (`--remote-debugging-port`) instead of using its Electron driver ([support/installed.ts](support/installed.ts)). The project exists only when `INSTALLED_APP` names the app, so a normal run is unchanged. To try it without installing anything, point it at a packaged build:
+
+```bash
+pnpm --filter @tallywork/desktop exec electron-vite build
+pnpm --filter @tallywork/desktop exec electron-builder --win --dir --publish never   # or --mac --dir
+INSTALLED_APP="$PWD/apps/desktop/release/<version>/win-unpacked/Tallywork.exe" pnpm test:e2e --project=installed
+```
+
 ## Video tutorial recordings
 
 [tutorial/](tutorial/README.md) uses the same tools to record the screen footage of the WorkPulse video tutorial, one clip per scene, against its own isolated server with demo data on :3200 (`pnpm tutorial:record`). It is not part of `pnpm test:e2e`. When a feature that the tutorial shows changes, re-record its scenes.

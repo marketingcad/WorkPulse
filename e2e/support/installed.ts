@@ -77,10 +77,16 @@ export async function launchInstalled(): Promise<InstalledApp> {
 export async function closeInstalled(a: InstalledApp): Promise<void> {
   await a.browser.close().catch(() => undefined);
   if (a.process.exitCode === null && a.process.pid) {
+    const exited = new Promise((r) => (a.process.exitCode !== null ? r(true) : a.process.once('exit', () => r(true))));
+    const within = (ms: number) => Promise.race([exited, new Promise((r) => setTimeout(() => r(false), ms))]);
     // Electron starts helper processes: end the whole tree.
     if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(a.process.pid), '/T', '/F']);
     else a.process.kill('SIGTERM');
-    await new Promise((r) => (a.process.exitCode !== null ? r(null) : a.process.once('exit', r)));
+    // On macOS the app can stay running after SIGTERM (it lives on in the menu bar): then it is ended.
+    if (!(await within(10_000))) {
+      a.process.kill('SIGKILL');
+      await within(10_000);
+    }
   }
   rmSync(a.userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
 }

@@ -120,6 +120,9 @@ jobs:
         run: pnpm --filter @tallywork/desktop exec electron-builder --mac dmg --universal --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # electron-builder skips signing on pull-request builds. The ad-hoc signature (identity "-") needs
+          # no secret, so sign as the release does: otherwise the app is tested unsigned.
+          CSC_FOR_PULL_REQUEST: 'true'
       - name: Install from the .dmg (copy to /Applications)
         if: runner.os == 'macOS'
         run: |
@@ -142,7 +145,8 @@ jobs:
           # electron-builder.yml asks for ad-hoc signing (identity "-"), which Apple Silicon needs to open an app.
           echo "── bundle"; codesign -dv --verbose=2 "$app" 2>&1 || true
           echo "── main executable"; codesign -dv --verbose=2 "$app/Contents/MacOS/Tallywork" 2>&1 || true
-          if codesign --verify --deep --strict "$app" 2>&1; then echo "signature intact"; else echo "::warning::the app bundle is not signed (expected ad-hoc): see the codesign output above"; fi
+          # Ad-hoc signed, as released: Apple Silicon refuses to open an app whose signature is missing or broken.
+          codesign --verify --deep --strict "$app" 2>&1 && echo "signature intact (ad-hoc)" || { echo "::error::the app is not signed as released (codesign --verify failed)"; exit 1; }
           # Gatekeeper: until Developer ID signing and notarization, people approve the first launch.
           if spctl --assess --type execute "$app" 2>/dev/null; then echo "Gatekeeper accepts the app"; else echo "::warning::Gatekeeper does not accept the app yet (not signed with a Developer ID or notarized): people must approve the first launch"; fi
       # The same signature check on the .dmg people download today (the latest published release).

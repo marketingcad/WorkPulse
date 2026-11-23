@@ -29,6 +29,7 @@ That one command builds the web app, starts isolated test servers, creates test 
 - Files go to `e2e/.tmp`.
 - Global setup refuses to run against anything other than `localhost`.
 - Rate limits, permissions and every other business rule stay on.
+- A test that creates a person by accepting an invitation through the API gives that person their own request context with `inviteeAddress()` ([support/invitee.ts](support/invitee.ts)), as each real invitee accepts from their own computer. Without it, every accept in a run came from one address, and a run inside one clock hour went past the 20-accepts-per-address limit. Joins through the browser, and tests of the limit itself, keep the machine's address.
 
 **Your dev server is not touched.** The suite uses ports 3100 and 3101, so `pnpm dev` on :3000 can keep running. Locally, Playwright reuses a server that is already up on those ports. Otherwise it starts its own servers and stops them at the end.
 

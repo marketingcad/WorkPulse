@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { request, type Page } from '@playwright/test';
 import { expect, ok, test, uid } from '../../support/fixtures';
 import { ADMIN_STATE, PASSWORD, VIEWER_STATE, WEB_URL, WORKER_STATE } from '../../support/env';
+import { inviteeAddress } from '../../support/invitee';
 
 /**
  * UX remediation, phase 3: nobody finishes an important action wondering what to do next. Covers the
@@ -285,7 +286,7 @@ test.describe('Time not added (managers)', () => {
     const project = await ok<{ id: string; name: string }>(await adminApi.api.post(adminApi.orgApi('/projects'), { data: { name: `Refused ${uid()}` } }), 'project');
     const roles = await ok<Array<{ id: string; key: string }>>(await adminApi.api.get(adminApi.orgApi('/roles')), 'roles');
     const inv = await ok<{ invite_url: string }>(await adminApi.api.post(adminApi.orgApi('/invitations'), { data: { email, name, role_id: roles.find((x) => x.key === 'WORKER')!.id, project_ids: [project.id] } }), 'invite');
-    const anon = await request.newContext({ baseURL: WEB_URL, storageState: { cookies: [], origins: [] }, extraHTTPHeaders: { Origin: WEB_URL } });
+    const anon = await request.newContext({ baseURL: WEB_URL, storageState: { cookies: [], origins: [] }, extraHTTPHeaders: { Origin: WEB_URL, ...inviteeAddress() } });
     const member = await ok<{ membership_id: string }>(await anon.post('/api/v1/auth/invitations/accept', { data: { token: new URL(inv.invite_url).searchParams.get('token'), name, password: PASSWORD } }), 'accept');
     await anon.dispose();
     const device = await request.newContext({ baseURL: WEB_URL, storageState: { cookies: [], origins: [] } });

@@ -2,6 +2,7 @@ import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { request, type APIRequestContext } from '@playwright/test';
 import { ADMIN_STATE, AUTH_DIR, DATA_FILE, MANAGER_STATE, PASSWORD, VIEWER_STATE, WEB_URL, WORKER_STATE } from './env';
+import { inviteeAddress } from './invitee';
 
 /**
  * Builds this run's test data through the public API, the same way a customer would:
@@ -36,7 +37,8 @@ async function json<T = any>(res: Awaited<ReturnType<APIRequestContext['get']>>,
 const newContext = () => request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL } });
 
 async function accept(inviteUrl: string, name: string): Promise<{ ctx: APIRequestContext; membershipId: string }> {
-  const ctx = await newContext();
+  // Each person accepts from their own address, as in real life (see support/invitee.ts).
+  const ctx = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL, ...inviteeAddress() } });
   const token = new URL(inviteUrl).searchParams.get('token');
   const r = await json(await ctx.post('/api/v1/auth/invitations/accept', { data: { token, name, password: PASSWORD } }), `accept ${name}`);
   return { ctx, membershipId: r.membership_id };

@@ -1,6 +1,7 @@
 import { request } from '@playwright/test';
 import { expect, ok, test, uid } from '../../support/fixtures';
 import { ADMIN_STATE, PASSWORD, WEB_URL } from '../../support/env';
+import { inviteeAddress } from '../../support/invitee';
 
 /**
  * Finance figures as an owner sees them (QA audit 16 Nov 2026), for a worker of their own:
@@ -19,8 +20,9 @@ const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T12:00:00Z`) 
 test.beforeAll(async ({ adminApi }) => {
   const { api, orgApi } = adminApi;
   const run = uid();
-  const org = await ok<{ timezone: string }>(await api.get(orgApi('')), 'org');
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: org.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  // The time zone is under `organization` (`org.timezone` was undefined, so this computer's zone was used).
+  const org = await ok<{ organization: { timezone: string } }>(await api.get(orgApi('')), 'org');
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: org.organization.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   // Monday of last week (weeks start on Monday in the test organization).
   const dow = (new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7;
   const monday = addDays(today, -dow - 7);
@@ -33,7 +35,7 @@ test.beforeAll(async ({ adminApi }) => {
   const email = `fran+${run}@e2e.test`;
   const inv = await ok<{ invite_url: string }>(await api.post(orgApi('/invitations'), { data: { email, name: worker.name, role_id: roles.find((r) => r.key === 'WORKER')!.id, project_ids: [p.id] } }), 'invite');
   // Signed out: this file's admin session must not come along, or the invitation is “sent to someone else”.
-  const anon = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL }, storageState: { cookies: [], origins: [] } });
+  const anon = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL, ...inviteeAddress() }, storageState: { cookies: [], origins: [] } });
   worker.id = (await ok<{ membership_id: string }>(await anon.post('/api/v1/auth/invitations/accept', { data: { token: new URL(inv.invite_url).searchParams.get('token'), name: worker.name, password: PASSWORD } }), 'accept')).membership_id;
 
   await ok(await api.post(orgApi('/rates'), { data: { kind: 'PAY', scope: 'WORKER', scope_id: worker.id, amount_minor: 3300, currency: 'USD', effective_from: '2026-01-01' } }), 'pay rate');

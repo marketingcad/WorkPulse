@@ -1,6 +1,7 @@
 import { request } from '@playwright/test';
 import { expect, ok, search, test, uid } from '../../support/fixtures';
 import { ADMIN_STATE, PASSWORD, WEB_URL } from '../../support/env';
+import { inviteeAddress } from '../../support/invitee';
 
 /**
  * Members, tasks and attendance are paged and searched by the server. Each test makes its own
@@ -18,7 +19,7 @@ test('Members search and filter on the server', { tag: '@smoke' }, async ({ page
   // Three people join through invitations, as in production.
   for (const n of [1, 2, 3]) {
     const inv = await ok<{ invite_url: string }>(await api.post(orgApi('/invitations'), { data: { email: `${tag.toLowerCase()}${n}@e2e.test`, name: `${tag} Person ${n}`, role_id: worker.id } }), `invite ${n}`);
-    const ctx = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL }, storageState: { cookies: [], origins: [] } });
+    const ctx = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL, ...inviteeAddress() }, storageState: { cookies: [], origins: [] } });
     await ok(await ctx.post('/api/v1/auth/invitations/accept', { data: { token: new URL(inv.invite_url).searchParams.get('token'), name: `${tag} Person ${n}`, password: PASSWORD } }), `accept ${n}`);
     await ctx.dispose();
   }

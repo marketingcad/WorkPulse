@@ -3,6 +3,7 @@ import { request, type Page } from '@playwright/test';
 import { closeApp, expect, launch, signIn, test, type DesktopApp } from '../../support/electron';
 import { ok, uid } from '../../support/fixtures';
 import { PASSWORD, WEB_URL } from '../../support/env';
+import { inviteeAddress } from '../../support/invitee';
 import { startProxy, type Proxy } from '../../support/proxy';
 
 /**
@@ -26,7 +27,7 @@ test.beforeAll(async ({ data, adminApi }) => {
   const project = await ok<{ id: string }>(await api.post(orgApi('/projects'), { data: { name: projectName } }), 'project');
   const email = `olive+${run}@e2e.test`;
   const inv = await ok<{ invite_url: string }>(await api.post(orgApi('/invitations'), { data: { email, name: `Olive Offline ${run}`, role_id: roles.find((r) => r.key === 'WORKER')!.id, project_ids: [project.id] } }), 'invite');
-  const ctx = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL } });
+  const ctx = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL, ...inviteeAddress() } });
   const accepted = await ok<{ membership_id: string }>(await ctx.post('/api/v1/auth/invitations/accept', { data: { token: new URL(inv.invite_url).searchParams.get('token'), name: `Olive Offline ${run}`, password: PASSWORD } }), 'accept');
   await ctx.dispose();
   worker = { email, membershipId: accepted.membership_id, projectId: project.id, projectName };

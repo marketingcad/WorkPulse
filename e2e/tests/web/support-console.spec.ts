@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { request, type Page, type Route } from '@playwright/test';
 import { expect, ok, test } from '../../support/fixtures';
 import { ADMIN_STATE, PASSWORD, WEB_URL } from '../../support/env';
+import { inviteeAddress } from '../../support/invitee';
 
 /**
  * The support console (/support) for WorkPulse staff.
@@ -38,7 +39,7 @@ test.describe('Support console on the real server', () => {
     // per server (the address can be invited only once), without using one of the run's sign-ups.
     const roles = await ok<Array<{ id: string; key: string }>>(await api.get(orgApi('/roles')), 'roles');
     const invite = await ok<{ invite_url: string }>(await api.post(orgApi('/invitations'), { data: { email: STAFF, name: 'Sam Support', role_id: roles.find((r) => r.key === 'WORKER')!.id } }), 'invite');
-    const staffApi = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL } });
+    const staffApi = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL, ...inviteeAddress() } });
     const token = new URL(invite.invite_url).searchParams.get('token')!;
     const accepted = await ok<{ membership_id: string }>(await staffApi.post('/api/v1/auth/invitations/accept', { data: { token, name: 'Sam Support', password: PASSWORD } }), 'accept');
     expect((await api.delete(orgApi(`/workers/${accepted.membership_id}`))).status()).toBe(204);

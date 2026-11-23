@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { request } from '@playwright/test';
 import { expect, ok, test, uid } from '../../support/fixtures';
 import { ADMIN_STATE, PASSWORD, VIEWER_STATE, WEB_URL } from '../../support/env';
+import { inviteeAddress } from '../../support/invitee';
 
 /**
  * Organizations and the audit log: creating another organization from the switcher, signing in
@@ -93,7 +94,7 @@ test.describe('Signing in to the last workspace', () => {
     const email = `mona+${data.run}-${uid()}@e2e.test`;
     const roles = await ok<Array<{ id: string; key: string }>>(await adminApi.api.get(adminApi.orgApi('/roles')), 'roles');
     const invite = await ok<{ invite_url: string }>(await adminApi.api.post(adminApi.orgApi('/invitations'), { data: { email, name: 'Mona Manager', role_id: roles.find((r) => r.key === 'TEAM_MANAGER')!.id } }), 'invite');
-    const mona = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL }, storageState: { cookies: [], origins: [] } });
+    const mona = await request.newContext({ baseURL: WEB_URL, extraHTTPHeaders: { Origin: WEB_URL, ...inviteeAddress() }, storageState: { cookies: [], origins: [] } });
     await ok(await mona.post('/api/v1/auth/invitations/accept', { data: { token: new URL(invite.invite_url).searchParams.get('token'), name: 'Mona Manager', password: PASSWORD } }), 'accept');
     const second = await ok<{ organization_id: string }>(await mona.post('/api/v1/me/organizations', { data: { name: unique('Mona Co', data.run) } }), 'second org');
     await mona.dispose();

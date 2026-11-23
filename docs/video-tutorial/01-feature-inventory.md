@@ -22,7 +22,9 @@ Menus follow permissions, so two people can see different menus (scene 14.1).
 | | Profile › Two-factor authentication | QR setup, 10 recovery codes, password-checked changes | 02.4 |
 | Overview | Overview | Live cards (This month, Worked today, Waiting for approval, Project budgets, and more); scope All / Me / Member; Customize layout; Getting started checklist for new organizations | 03.1, 03.2, 02.1 |
 | Shell | Sidebar, organization switcher, notifications, account menu | Menu groups; switch or create organizations; notifications; profile, What is monitored, theme | 03.3 |
-| Help | Help Center, product tour | 45 guides with search, FAQ and troubleshooting; guided tour | 03.4, 15.1, 15.2 |
+| Help | Help Center, product tour | 66 guides with search, FAQ and troubleshooting; guided tour; the video tutorial for system admins | 03.4, 17.1, 17.2 |
+| Performance | Overview · Teams · Workers · Goals & challenges · Achievements · Leaderboards | A 0–100 score from outcomes (never activity), calculated once a day with "Scores as of" on every page; scoring rules; goals, recognition and leaderboards | 15.1, 15.2, 15.3 |
+| WorkPulse AI | Assistant · AI Insights · Write with AI | Questions answered from organization data; weekly insights; drafted text; notifications | 16.1, 16.2, 16.3, 16.4 |
 | Time Tracking | Time entries | Filter, edit with a reason, revision history, split, duplicate, bulk actions, Add time | 09.1, 09.2 |
 | | Approvals · Team week | Approve, reject or request changes on timesheets; bulk approve; manual time requests; hours per member | 09.3, 09.4 |
 | | Live · Session history | Who is working now; force stop a timer; session details | 08.1, 08.2 |
@@ -33,19 +35,20 @@ Menus follow permissions, so two people can see different menus (scene 14.1).
 | | Time off | Requests, calendar, policies with accruals, balances, holidays | 10.3 |
 | Project Management | Clients | Client profiles, archive and restore, **delete a client that was never used**, client portal | 06.1–06.3 |
 | | Projects | Dates, estimates, members and teams, rates, documents, **planned breaks** | 06.4, 06.5 |
+| | Client folders (Projects view, optional) | One folder per client with each project's status, task progress, members, milestones and dates; add existing projects; **project revision history** | 06.7 |
 | | Tasks | Status, priority, due date, estimate, assignees, archive and restore | 06.6 |
 | Finance | Rates | Effective-dated bill and pay rates at organization, client, project, member or member-on-project level | 11.1 |
 | | Budgets | Hour or money budgets per project or client, lifetime or monthly, warning level | 11.2 |
 | | Expenses | Submitted with receipts; approve, reject, reimburse; billable to client | 11.3 |
 | | Invoices · Payments received | Four-step invoice wizard, PDF, send, void, record and allocate payments | 11.4, 11.5 |
-| | Payroll (Payrolls · Owed · Pay groups) | Pay groups, payroll runs from approved time, bonuses and deductions, finalize, mark as paid, pay stub PDFs, amounts owed | 11.6, 11.7 |
+| | Payroll (Payrolls · Owed · Pay groups) | Pay groups, payroll runs from approved time, bonuses and deductions, approved time with no pay rate confirmed before finalizing, finalize, mark as paid, pay stub PDFs, amounts owed | 11.6, 11.7 |
 | | Export on every finance list | Period filter; CSV, Excel, PDF | 11.3 |
 | Reports | Summary | Time, pay, billing, activity and days off per period, client, project and person | 12.1 |
 | | Report library | 9 reports (Time & activity, Work sessions, Manual time edits, Apps & URLs, Timesheet approval, Attendance, Time off, Payroll export, Billing); filters, grouping, export, saved and scheduled reports | 12.2, 12.3 |
-| Settings | Organization · Time & pay | Company details and logo; timesheet period and rules, overtime, time types, break types | 04.1, 04.2 |
+| Settings | Organization · Time & pay | Company details and logo, **logo on documents** (invoices and pay stubs), the Client folders switch; timesheet period and rules, overtime, time types, break types | 04.1, 04.2 |
 | | Tracking policies | What the desktop app records, per organization, team or member | 04.3 |
 | | Roles & permissions | Permission matrix; custom roles | 04.4 |
-| | Devices | Approve, require sign-in again, revoke | 13.1 |
+| | Devices | Approve, require sign-in again, revoke; **enrollment tokens** for managed installs (Intune, Group Policy, per-machine .msi) | 13.1 |
 | | Security & retention · Access review | Require two-factor, session lifetime, device approval, IP allowlist; data retention; access review | 13.2 |
 | | Screenshot retention | Retention period, preview and approval before any deletion, history | 13.3 |
 | | API keys · Webhooks | Scoped, expiring keys; signed webhooks | 13.4 |

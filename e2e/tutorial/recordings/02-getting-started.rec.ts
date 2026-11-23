@@ -15,6 +15,7 @@ test('02.1', async ({ d, page }) => {
   await d.type(page.getByLabel('Work email'), OWNER.email);
   await d.type(page.getByLabel('Password', { exact: true }), OWNER.password);
   await d.mark('password hint', page.getByText('At least 10 characters.'), { on: 'at least ten characters' });
+  await d.type(page.getByLabel('Confirm password'), OWNER.password, { on: 'type it again to confirm it' });
   await d.click(page.getByRole('button', { name: 'Create organization' }), { on: 'click Create organization' });
   const checklist = page.getByRole('list', { name: 'Getting started' });
   await expect(checklist).toBeVisible();
@@ -63,6 +64,7 @@ test('02.3', async ({ d, page }) => {
   await d.mark('zoom to the invitation form', page.getByLabel('Your name'), { on: 'Check your name' });
   await d.point(page.getByLabel('Your name'), { hold: 1500 });
   await d.type(page.getByLabel('Choose a password'), 'Rivera-Team-2026', { on: 'choose a password' });
+  await d.type(page.getByLabel('Confirm password'), 'Rivera-Team-2026', { on: 'type it again to confirm it' });
   await d.click(page.getByRole('button', { name: 'Join organization' }), { on: 'click Join organization' });
   await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
   await d.finish();

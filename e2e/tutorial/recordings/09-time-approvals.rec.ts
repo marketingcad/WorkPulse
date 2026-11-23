@@ -1,4 +1,4 @@
-import { expect, label, test } from '../kit';
+import { expect, label, localDay, test } from '../kit';
 
 test('09.1', async ({ d, page }) => {
   await d.go('');
@@ -42,8 +42,11 @@ test('09.2', async ({ d, page }) => {
   await d.mark('zoom to the Add time dialog', dialog, { on: 'Click Add time' });
   const member = dialog.getByLabel(label('Member'));
   if (await member.isVisible()) await d.choose(member, 'Kenji Mensah');
-  const yesterday = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
-  await d.set(dialog.getByLabel(label('Date')), yesterday);
+  // A day of this week, in local time: the demo seed submits last week's timesheets, and a submitted
+  // period refuses new time until it is reopened. Yesterday, unless today is the first day of the week.
+  const now = new Date();
+  const day = now.getDay() === 1 ? now : new Date(now.getTime() - 86400_000);
+  await d.set(dialog.getByLabel(label('Date')), localDay(day));
   await d.type(dialog.getByLabel(label('Time logged')), '1:30');
   await d.click(dialog.getByRole('button', { name: 'Choose project and task' }), { settle: false });
   await d.click(page.getByRole('option', { name: /Globex — Website Redesign/ }).first(), { settle: false });

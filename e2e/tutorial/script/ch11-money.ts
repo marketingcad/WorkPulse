@@ -113,7 +113,7 @@ export const ch11: Chapter = {
         'Click "Finalize" and confirm.',
       ],
       narration:
-        'Payroll pays your people from approved time. First, pay groups set who is paid together, how often, and in which currency. Then, on the Payrolls tab, click Run payroll, choose the pay group and the period, and create a draft. WorkPulse calculates each person\'s pay from their approved hours, overtime and paid time off. Each approved hour is paid exactly once. Add bonuses or deductions with Adjust. When everything is right, click Finalize. Finalizing cannot be undone: corrections go on the next payroll. Members can now see their pay stubs.',
+        'Payroll pays your people from approved time. First, pay groups set who is paid together, how often, and in which currency. Then, on the Payrolls tab, click Run payroll, choose the pay group and the period, and create a draft. WorkPulse calculates each person\'s pay from their approved hours, overtime and paid time off. Each approved hour is paid exactly once. Add bonuses or deductions with Adjust. If any approved time has no pay rate, the payroll shows those hours and asks you to confirm before it pays them at zero, so set the missing rates first. When everything is right, click Finalize. Finalizing cannot be undone: corrections go on the next payroll. Members can now see their pay stubs.',
       overlays: ['Callout: "Each approved hour is paid exactly once"', 'Callout: "Finalize cannot be undone"'],
       focus: ['Zoom to the pay stubs table.', 'Zoom to the bonuses dialog.', 'Highlight the Finalize button.'],
       transition: 'Cut (stay on the payroll).',

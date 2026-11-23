@@ -3,7 +3,7 @@ import type { Chapter } from '../scenes';
 export const ch06: Chapter = {
   n: 6,
   title: 'Clients, projects and tasks',
-  goal: 'Add clients, delete or archive them, share a client portal, create projects with planned breaks, and add tasks.',
+  goal: 'Add clients, delete or archive them, share a client portal, create projects with planned breaks, add tasks, and organize projects in client folders.',
   scenes: [
     {
       id: '06.1',
@@ -117,6 +117,26 @@ export const ch06: Chapter = {
         'Tasks break a project into pieces of work. Open Tasks and click New task. Choose the project, give the task a title, and set its status, priority, due date and an estimate in hours. Assign it to one or more people. When they track time, they can pick the task, so you see exactly where the hours went. Filter the list by project or status, or switch on Assigned to me to see your own work.',
       overlays: [],
       focus: ['Zoom to the New task dialog.'],
+      transition: 'Cut to Projects.',
+    },
+    {
+      id: '06.7',
+      title: 'Organize projects in client folders',
+      persona: 'admin',
+      app: 'web',
+      screen: 'Project Management › Projects in the "Client folders" view, the "New client folder" dialog, a folder with its projects, and the "Revision history" drawer.',
+      actions: [
+        'Open Projects and switch the view to "Client folders".',
+        'Click "New folder", choose the client "Lumen Outdoor Co." and click "Create folder".',
+        'Open the folder "Lumen Outdoor Co.".',
+        'Expand the project "Lumen — Spring Campaign" and point at its status, progress and members.',
+        'Click "Revision history"; point at the list; press Escape.',
+        'Open the folder\'s actions menu and point at "Add existing projects"; press Escape.',
+      ],
+      narration:
+        'With many clients, the project list gets long. Once folders are switched on in Settings, the Projects page gets a second view. Choose Client folders, then click New folder and pick the client. A folder simply shows all of that client\'s projects together: nothing is copied or moved. Open the folder. Each project opens up to show its status, task progress, team members, milestones and dates. Revision history shows every change made to the project: who changed what, the old and new values, and the reason given. From the folder\'s actions you can also add existing projects that have no client yet. Renaming or archiving a folder never changes the client or its projects.',
+      overlays: ['Callout: "A folder shows a client\'s projects; nothing is moved"'],
+      focus: ['Zoom to the New client folder dialog.', 'Zoom to the project details.', 'Zoom to the Revision history drawer.'],
       transition: 'Wipe to a chapter card: "Chapter 7 — The desktop app for workers".',
     },
   ],

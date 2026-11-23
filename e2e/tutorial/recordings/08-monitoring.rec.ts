@@ -1,5 +1,5 @@
 import { startWorking } from '../desktop';
-import { choice, expect, test } from '../kit';
+import { choice, expect, localDay, test } from '../kit';
 
 /** The most recent weekday before today, in the organization's time zone (screenshots are seeded for it). */
 function lastWorkday(): string {
@@ -82,6 +82,10 @@ test('08.4', async ({ d, page }) => {
   await d.go('/tracking/live');
   d.begin();
   await d.click(page.getByRole('complementary', { name: 'Primary' }).getByRole('link', { name: 'End-of-day reports' }), { on: 'under End-of-day reports' });
+  // The last few evenings, so the reports seeded before the recording are in view whatever day it is.
+  const from = new Date(Date.now() - 4 * 86400_000);
+  await d.set(page.getByLabel('From date'), localDay(from));
+  await expect.poll(() => page.getByRole('button', { name: /^Read full report from / }).count()).toBeGreaterThan(1);
   for (const k of ['Reports', 'People reporting', 'Marked finished', 'Time covered']) await d.point(page.getByText(k, { exact: true }).first(), { hold: 1100 });
   const read = page.getByRole('button', { name: 'Read full report from Ava Okafor' }).first();
   await d.scrollTo(read);

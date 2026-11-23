@@ -22,6 +22,7 @@ import { DomainError, businessRule, forbidden, newId, notFound, validation } fro
 import type { Deps, Principal } from '../context';
 import type { Ctx } from './ctx';
 import { audit } from './events';
+import { likePattern } from '../lib/search';
 
 /**
  * Support console for Tallywork staff. Staff are listed in SUPPORT_STAFF_EMAILS and must have
@@ -61,12 +62,14 @@ async function activeGrant(tx: Tx, now: Date) {
 export async function searchOrganizations(deps: Deps, staff: { userId: string; email: string }, q: string) {
   const term = q.trim();
   if (term.length < 2) throw validation('Type at least 2 characters');
+  // Typed text, not a pattern: "%" and "_" match only themselves (QA, BUG-93: "%%" listed every organization).
+  const like = likePattern(term);
   return withSystem(deps.db, async (tx) => {
-    const byOwner = tx.select({ id: memberships.organizationId }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).where(and(eq(memberships.isOwner, true), ilike(users.email, `%${term}%`)));
+    const byOwner = tx.select({ id: memberships.organizationId }).from(memberships).innerJoin(users, eq(users.id, memberships.userId)).where(and(eq(memberships.isOwner, true), ilike(users.email, like)));
     const rows = await tx
       .select({ id: organizations.id, name: organizations.name, slug: organizations.slug, createdAt: organizations.createdAt })
       .from(organizations)
-      .where(or(ilike(organizations.name, `%${term}%`), ilike(organizations.slug, `%${term}%`), /^[0-9a-f-]{36}$/i.test(term) ? eq(organizations.id, term) : undefined, inArray(organizations.id, byOwner)))
+      .where(or(ilike(organizations.name, like), ilike(organizations.slug, like), /^[0-9a-f-]{36}$/i.test(term) ? eq(organizations.id, term) : undefined, inArray(organizations.id, byOwner)))
       .orderBy(organizations.name)
       .limit(25);
     void staff;
@@ -116,6 +119,9 @@ export async function organizationOverview(deps: Deps, staff: { userId: string; 
 /** With an active grant only: members, devices and the latest audit entries. Read-only. */
 export async function grantedDetails(deps: Deps, staff: { userId: string; email: string }, organizationId: string) {
   return withTenant(deps.db, organizationId, async (tx) => {
+    // An organization that doesn't exist is not found, not "has not granted access" (QA, BUG-94).
+    const [org] = await tx.select({ id: organizations.id }).from(organizations).where(eq(organizations.id, organizationId));
+    if (!org) throw notFound('organization');
     const grant = await activeGrant(tx, deps.now());
     if (!grant) throw forbidden('This organization has not granted support access. Ask an admin to grant it under Settings → Security.');
     const members = await tx

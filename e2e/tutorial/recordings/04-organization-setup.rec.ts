@@ -14,7 +14,13 @@ test('04.1', async ({ d, page }) => {
   await d.scrollTo(brief);
   await d.point(page.getByRole('heading', { level: 2, name: 'Company profile' }), { hold: 1200, on: 'The Company profile below' });
   for (const name of ['Tax ID', 'Full address']) await d.point(page.getByLabel(label(name)), { hold: 1200 });
-  await d.point(page.getByRole('button', { name: 'Save changes' }), { hold: 1500, on: 'click Save changes' });
+  const docLogo = page.getByText('Logo on documents', { exact: true }).first();
+  await d.scrollTo(docLogo);
+  await d.point(docLogo, { hold: 1800, on: 'upload a Logo on documents' });
+  const folders = page.getByRole('switch', { name: /Organize projects in client folders/ });
+  await d.scrollTo(folders);
+  await d.point(folders, { hold: 1800, on: 'Further down, Client folders' });
+  await d.point(page.getByRole('button', { name: 'Save changes' }).first(), { hold: 1500, on: 'click Save changes' });
   await d.finish();
 });
 

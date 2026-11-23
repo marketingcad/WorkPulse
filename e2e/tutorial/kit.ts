@@ -330,6 +330,11 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
 });
 
 /** A field's exact label, with or without the " *" that marks a required field. */
+/** A day as a date field takes it ("2026-11-24"), in this computer's time zone (not UTC). */
+export function localDay(t: Date): string {
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+}
+
 export function label(name: string): RegExp {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`^${escaped}( \\*)?$`);

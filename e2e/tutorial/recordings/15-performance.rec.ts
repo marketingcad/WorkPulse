@@ -17,6 +17,7 @@ test('15.1', async ({ d, page }) => {
   await d.click(page.getByRole('radio', { name: 'Quarter', exact: true }).or(page.getByRole('button', { name: 'Quarter', exact: true })).first(), { settle: false, on: 'a quarter' });
   await d.beat(1200);
   await d.click(page.getByRole('radio', { name: 'Month', exact: true }).or(page.getByRole('button', { name: 'Month', exact: true })).first(), { settle: false });
+  await d.point(page.getByText(/^Scores as of /).first(), { hold: 1800, on: 'Scores as of' });
   const parts = page.getByText('What the score is made of', { exact: true }).first();
   await d.scrollTo(parts, { on: 'What the score is made of' });
   await d.mark('zoom to what the score is made of', parts.locator('xpath=ancestor::section[1]').or(parts).first(), { on: 'goal completion' });

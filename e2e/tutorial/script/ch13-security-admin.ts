@@ -11,11 +11,11 @@ export const ch13: Chapter = {
       persona: 'admin',
       app: 'web',
       screen: 'Settings › Devices: every computer signed in to the desktop app, and the actions for one device.',
-      actions: ['Open Settings and click the "Devices" tab.', 'Point at the list: member, system, version and status.', 'Open the actions of a device and point at "Approve device", "Require sign-in again" and "Revoke device"; press Escape.'],
+      actions: ['Open Settings and click the "Devices" tab.', 'Point at the list: member, system, version and status.', 'Open the actions of a device and point at "Approve device", "Require sign-in again" and "Revoke device"; press Escape.', 'Scroll to "Enrollment tokens" and point at "New token".'],
       narration:
-        'Settings, Devices lists every computer signed in to the desktop app: whose it is, the operating system, the app version and its status. From a device\'s actions you can approve it, when your organization requires approval for new computers, ask for a new sign-in, or revoke it, for example when a laptop is lost. A revoked device can no longer send any data.',
+        'Settings, Devices lists every computer signed in to the desktop app: whose it is, the operating system, the app version and its status. From a device\'s actions you can approve it, when your organization requires approval for new computers, ask for a new sign-in, or revoke it, for example when a laptop is lost. A revoked device can no longer send any data. Installing on many company computers at once? Under Enrollment tokens, create a token and use it with the per-machine installer in Intune or Group Policy: those computers join your organization already approved.',
       overlays: ['Callout: "Lost laptop? Revoke the device"'],
-      focus: ['Zoom to the device actions.'],
+      focus: ['Zoom to the device actions.', 'Zoom to Enrollment tokens.'],
       transition: 'Cut to Security & retention.',
     },
     {

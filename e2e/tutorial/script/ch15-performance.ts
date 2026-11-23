@@ -14,12 +14,13 @@ export const ch15: Chapter = {
       actions: [
         'Open Performance › Performance overview.',
         'Point at the organization score.',
+        'Point at the "Scores as of" line.',
         'Click "Quarter", then "Month".',
         'Scroll to "What the score is made of" and point at its five parts.',
         'Click "Scoring rules"; point at the weights and the total; close the dialog.',
       ],
       narration:
-        'Performance shows how work is going, measured from real outcomes. Open Performance, then Performance overview. The organization score runs from 0 to 100 for the period you choose: a week, a month, a quarter or a year. What the score is made of lists its five parts: goal completion, project delivery, approved-work consistency, quality from manager reviews, and attendance. A part with no data yet is left out, and the others count for more. Activity levels, keystrokes and screenshots are never part of a score. Click Scoring rules to decide how much each part counts. The weights must add up to one hundred percent.',
+        'Performance shows how work is going, measured from real outcomes. Open Performance, then Performance overview. The organization score runs from 0 to 100 for the period you choose: a week, a month, a quarter or a year. Scores are calculated once a day, and each page says when: Scores as of, then the time. What the score is made of lists its five parts: goal completion, project delivery, approved-work consistency, quality from manager reviews, and attendance. A part with no data yet is left out, and the others count for more. Activity levels, keystrokes and screenshots are never part of a score. Click Scoring rules to decide how much each part counts. The weights must add up to one hundred percent.',
       overlays: ['Callout: "Measured from outcomes, never from keystrokes"'],
       focus: ['Zoom to the organization score.', 'Zoom to "What the score is made of".', 'Zoom to the Scoring rules dialog.'],
       transition: 'Cut to Goals & challenges.',

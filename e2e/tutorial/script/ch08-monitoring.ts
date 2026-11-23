@@ -63,6 +63,7 @@ export const ch08: Chapter = {
       screen: 'Time Tracking › End-of-day reports: the summary counts, the reports grouped by day, and the full report of Ava Okafor.',
       actions: [
         'Open Time Tracking › End-of-day reports.',
+        'Set the From date a few days back.',
         'Point at Reports, People reporting, Marked finished and Time covered.',
         'Click "Read full report from Ava Okafor".',
         'Click "Next" to read the next report, then "Copy report", then close.',

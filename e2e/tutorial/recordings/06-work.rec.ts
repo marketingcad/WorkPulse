@@ -149,3 +149,42 @@ test('06.6', async ({ d, page }) => {
   await expect(dialog).toBeHidden();
   await d.finish();
 });
+
+test('06.7', async ({ d, page }) => {
+  // Client folders are an organization setting (off by default); chapter 4 shows the switch.
+  const admin = await request.newContext({ baseURL: TUTORIAL_URL, storageState: STATE.admin, extraHTTPHeaders: { Origin: TUTORIAL_URL } });
+  const o = (p: string) => `/api/v1/orgs/${d.data.orgId}${p}`;
+  const on = await admin.patch(o(''), { data: { settings: { clientFolders: true } } });
+  expect(on.ok(), await on.text()).toBe(true);
+  // A folder left by an interrupted recording: archive it, so "New folder" can offer the client again.
+  const list = await (await admin.get(o('/client-folders?include_archived=true'))).json();
+  for (const f of list.folders as Array<{ id: string; client_name: string; archived_at: string | null }>)
+    if (f.client_name === 'Lumen Outdoor Co.' && !f.archived_at) await admin.post(o(`/client-folders/${f.id}/archive`), { data: {} });
+  await admin.dispose();
+
+  await d.go('/projects');
+  d.begin();
+  await d.click(page.getByRole('radio', { name: 'Client folders' }), { settle: false, on: 'Choose Client folders' });
+  await d.click(page.getByRole('button', { name: 'New folder' }).first(), { settle: false, on: 'click New folder' });
+  const dialog = page.getByRole('dialog', { name: 'New client folder' });
+  await d.mark('zoom to the New client folder dialog', dialog, { on: 'pick the client' });
+  await d.choose(dialog.getByLabel(label('Client')), 'Lumen Outdoor Co.');
+  await d.click(dialog.getByRole('button', { name: 'Create folder' }));
+  await expect(dialog).toBeHidden();
+  await d.click(page.getByRole('list', { name: 'Client folders' }).getByRole('link', { name: /Lumen Outdoor Co./ }).first(), { on: 'Open the folder' });
+  const projects = page.getByRole('list', { name: 'Projects in this folder' });
+  const project = projects.getByRole('button', { name: /Lumen — Spring Campaign/ });
+  await d.click(project, { settle: false, on: 'Each project opens up' });
+  const details = page.getByRole('region', { name: 'Lumen — Spring Campaign details' });
+  await d.mark('zoom to the project details', details, { on: 'its status, task progress' });
+  await d.beat(2500);
+  await d.click(details.getByRole('button', { name: 'Revision history' }), { settle: false, on: 'Revision history shows' });
+  const drawer = page.getByRole('dialog', { name: 'Revision history' });
+  await d.mark('zoom to the Revision history drawer', drawer, { on: 'every change made to the project' });
+  await d.beat(3000);
+  await page.keyboard.press('Escape');
+  await d.click(page.getByRole('button', { name: 'Folder actions' }), { settle: false, on: "From the folder's actions" });
+  await d.point(page.getByRole('menuitem', { name: 'Add existing projects' }), { hold: 1800, on: 'add existing projects' });
+  await page.keyboard.press('Escape');
+  await d.finish();
+});

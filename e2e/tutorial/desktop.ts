@@ -214,8 +214,12 @@ export async function openDesktop(page: Page, device: WorkerDevice, opts: Deskto
       setNote: async (note: string) => set({ tracking: { note } }),
       resolveIdle: async () => set({ idlePrompt: null }),
       resolveRecovery: async () => set({ recoveryPrompt: null }),
-      requestManualTime: async (r: any) =>
-        set({ manualRequests: [{ id: crypto.randomUUID(), projectId: r.projectId, startedAt: r.startedAt, endedAt: r.endedAt, status: 'sent', message: null }, ...state.manualRequests] }),
+      // Returns the request's id, as the real bridge does: the form follows that request to say "Request sent." (BUG-23).
+      requestManualTime: async (r: any) => {
+        const id = crypto.randomUUID();
+        set({ manualRequests: [{ id, projectId: r.projectId, startedAt: r.startedAt, endedAt: r.endedAt, status: 'sent', message: null }, ...state.manualRequests] });
+        return id;
+      },
       submitTimesheet: (date: string, version?: number) => api('submitTimesheet', { date, version }),
       requestTimeOff: (r: unknown) => api('requestTimeOff', r),
       readNotifications: (ids: unknown) => api('readNotifications', { ids }),

@@ -25,50 +25,50 @@ Who is this for? Administrators and managers who run WorkPulse in the web app, a
 Chapters
 0:00 Welcome to WorkPulse
 1:53 Getting started: sign up, sign in and stay secure
-4:33 Finding your way around
-7:24 Set up your organization
-10:23 Add your people
-12:06 Clients, projects and tasks
-15:57 The desktop app for workers
-21:12 Watching the work
-23:59 Time and approvals
-26:21 Schedules, attendance and time off
-27:59 Money: rates, budgets, expenses, invoices and payroll
-32:13 Reports
-34:00 Security and administration
-36:51 The team manager's view
-37:34 The Performance Center
-39:40 WorkPulse AI
-42:24 Questions and troubleshooting
-44:07 Wrap-up
+4:37 Finding your way around
+7:28 Set up your organization
+10:42 Add your people
+12:25 Clients, projects and tasks
+17:04 The desktop app for workers
+22:19 Watching the work
+25:06 Time and approvals
+27:28 Schedules, attendance and time off
+29:06 Money: rates, budgets, expenses, invoices and payroll
+33:32 Reports
+35:19 Security and administration
+38:22 The team manager's view
+39:05 The Performance Center
+41:18 WorkPulse AI
+44:02 Questions and troubleshooting
+45:45 Wrap-up
 
 Tags: WorkPulse, time tracking, timesheets, employee monitoring, payroll, invoicing, workforce management, desktop time tracker, WorkPulse AI, AI insights, performance management, tutorial, how to
 ```
 
 ## Chapter timestamps
 
-Planned from the narration length; update them after the final edit. Total: **45:02**.
+Planned from the narration length; update them after the final edit. Total: **46:40**.
 
 | Start | Chapter | Scenes |
 |---|---|---|
 | 0:00 | 1. Welcome to WorkPulse | 01.1, 01.2, 01.3 |
 | 1:53 | 2. Getting started: sign up, sign in and stay secure | 02.1, 02.2, 02.3, 02.4 |
-| 4:33 | 3. Finding your way around | 03.1, 03.2, 03.3, 03.4 |
-| 7:24 | 4. Set up your organization | 04.1, 04.2, 04.3, 04.4 |
-| 10:23 | 5. Add your people | 05.1, 05.2, 05.3 |
-| 12:06 | 6. Clients, projects and tasks | 06.1, 06.2, 06.3, 06.4, 06.5, 06.6 |
-| 15:57 | 7. The desktop app for workers | 07.1, 07.2, 07.3, 07.4, 07.5, 07.6, 07.7, 07.8 |
-| 21:12 | 8. Watching the work | 08.1, 08.2, 08.3, 08.4, 08.5 |
-| 23:59 | 9. Time and approvals | 09.1, 09.2, 09.3, 09.4 |
-| 26:21 | 10. Schedules, attendance and time off | 10.1, 10.2, 10.3 |
-| 27:59 | 11. Money: rates, budgets, expenses, invoices and payroll | 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7 |
-| 32:13 | 12. Reports | 12.1, 12.2, 12.3 |
-| 34:00 | 13. Security and administration | 13.1, 13.2, 13.3, 13.4, 13.5 |
-| 36:51 | 14. The team manager's view | 14.1 |
-| 37:34 | 15. The Performance Center | 15.1, 15.2, 15.3 |
-| 39:40 | 16. WorkPulse AI | 16.1, 16.2, 16.3, 16.4 |
-| 42:24 | 17. Questions and troubleshooting | 17.1, 17.2 |
-| 44:07 | 18. Wrap-up | 18.1, 18.2 |
+| 4:37 | 3. Finding your way around | 03.1, 03.2, 03.3, 03.4 |
+| 7:28 | 4. Set up your organization | 04.1, 04.2, 04.3, 04.4 |
+| 10:42 | 5. Add your people | 05.1, 05.2, 05.3 |
+| 12:25 | 6. Clients, projects and tasks | 06.1, 06.2, 06.3, 06.4, 06.5, 06.6, 06.7 |
+| 17:04 | 7. The desktop app for workers | 07.1, 07.2, 07.3, 07.4, 07.5, 07.6, 07.7, 07.8 |
+| 22:19 | 8. Watching the work | 08.1, 08.2, 08.3, 08.4, 08.5 |
+| 25:06 | 9. Time and approvals | 09.1, 09.2, 09.3, 09.4 |
+| 27:28 | 10. Schedules, attendance and time off | 10.1, 10.2, 10.3 |
+| 29:06 | 11. Money: rates, budgets, expenses, invoices and payroll | 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7 |
+| 33:32 | 12. Reports | 12.1, 12.2, 12.3 |
+| 35:19 | 13. Security and administration | 13.1, 13.2, 13.3, 13.4, 13.5 |
+| 38:22 | 14. The team manager's view | 14.1 |
+| 39:05 | 15. The Performance Center | 15.1, 15.2, 15.3 |
+| 41:18 | 16. WorkPulse AI | 16.1, 16.2, 16.3, 16.4 |
+| 44:02 | 17. Questions and troubleshooting | 17.1, 17.2 |
+| 45:45 | 18. Wrap-up | 18.1, 18.2 |
 
 ## Opening script
 

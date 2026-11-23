@@ -16,6 +16,10 @@ test('13.1', async ({ d, page }) => {
     if (await el.isVisible()) await d.point(el, { hold: 1300 });
   }
   await page.keyboard.press('Escape');
+  const tokens = page.getByRole('heading', { name: 'Enrollment tokens' }).first();
+  await d.scrollTo(tokens, { on: 'Under Enrollment tokens' });
+  await d.mark('zoom to Enrollment tokens', tokens.locator('xpath=ancestor::section[1]').or(tokens).first(), { on: 'Under Enrollment tokens' });
+  await d.point(page.getByRole('button', { name: 'New token' }).first(), { hold: 2000, on: 'create a token' });
   await d.finish();
 });
 

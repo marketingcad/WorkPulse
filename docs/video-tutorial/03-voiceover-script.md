@@ -2,7 +2,7 @@
 
 # Voiceover script
 
-The complete narration, 6,201 words, about 41 minutes at 150 words a minute. Read it in a professional, friendly tone, a little slower than conversation. Leave a breath of about two seconds between scenes, and three seconds at each chapter card.
+The complete narration, 6,446 words, about 43 minutes at 150 words a minute. Read it in a professional, friendly tone, a little slower than conversation. Leave a breath of about two seconds between scenes, and three seconds at each chapter card.
 
 Recording tips: one take per scene, named after the scene number (for example `03.2.wav`), so each take lines up with its clip.
 
@@ -22,17 +22,17 @@ The menu on the left follows the way work flows through WorkPulse. You set up th
 
 ## Chapter 2 — Getting started: sign up, sign in and stay secure
 
-**[02.1] Create your organization** *(42 s)*
+**[02.1] Create your organization** *(44 s)*
 
-To start using WorkPulse, create your organization. Enter your name, the name of your company, your work email and a password of at least ten characters. Then click Create organization. You are the owner of this new organization, and WorkPulse takes you straight to the Overview. For a new organization, the Overview shows a Getting started checklist with five steps: invite your team, create a project, set pay and bill rates, connect the desktop app, and review what is tracked. Each step links to the right page, and it ticks itself off as you go. You can hide the checklist at any time.
+To start using WorkPulse, create your organization. Enter your name, the name of your company, your work email and a password of at least ten characters, then type it again to confirm it. Then click Create organization. You are the owner of this new organization, and WorkPulse takes you straight to the Overview. For a new organization, the Overview shows a Getting started checklist with five steps: invite your team, create a project, set pay and bill rates, connect the desktop app, and review what is tracked. Each step links to the right page, and it ticks itself off as you go. You can hide the checklist at any time.
 
 **[02.2] Sign in and reset a forgotten password** *(34 s)*
 
 Next time, sign in from the Welcome Back page. If you forget your password, click Forgot password, enter your work email and click Send reset link. WorkPulse emails you a link to choose a new password. For your privacy, the message is the same whether or not the address has an account. Back on the sign-in page, enter your email and password. The eye button shows the password so you can check it. Click Sign in, and WorkPulse opens the organization you used last.
 
-**[02.3] Join from an invitation** *(28 s)*
+**[02.3] Join from an invitation** *(30 s)*
 
-When someone invites you to their organization, you receive an invitation link. Opening it shows this page. Check your name, choose a password and click Join organization. Managers and administrators land in the web app, ready to work. Workers are taken to a page where they download the desktop app instead, because that is where they track their time. You will see that page in the desktop chapter.
+When someone invites you to their organization, you receive an invitation link. Opening it shows this page. Check your name, choose a password, type it again to confirm it, and click Join organization. Managers and administrators land in the web app, ready to work. Workers are taken to a page where they download the desktop app instead, because that is where they track their time. You will see that page in the desktop chapter.
 
 **[02.4] Turn on two-factor sign-in** *(45 s)*
 
@@ -58,9 +58,9 @@ Whenever you are unsure, open Help. The Help Center is a plain-language manual f
 
 ## Chapter 4 — Set up your organization
 
-**[04.1] Organization settings** *(33 s)*
+**[04.1] Organization settings** *(48 s)*
 
-Now let us set up the organization. Open Settings in the menu on the left. It lists every settings page, and you only see the ones your role allows. On the Organization page, the General panel sets your company name, time zone, the day your week starts, your currency, and how durations are shown. The Company profile below holds your logo, tax ID, address and contact details. They appear on your invoices and pay stubs. After a change, click Save changes.
+Now let us set up the organization. Open Settings in the menu on the left. It lists every settings page, and you only see the ones your role allows. On the Organization page, the General panel sets your company name, time zone, the day your week starts, your currency, and how durations are shown. The Company profile below holds your logo, tax ID, address and contact details. They appear on your invoices and pay stubs. For those documents you can also upload a Logo on documents: any shape, never cropped, so a wide logo keeps its proportions. Further down, Client folders lets you organize projects by client; you will see it in chapter six. After a change, click Save changes.
 
 **[04.2] Time & pay: periods, rules, overtime and break types** *(46 s)*
 
@@ -113,6 +113,10 @@ For projects with a regular rhythm, you can plan breaks. Open the project and go
 **[06.6] Add tasks** *(31 s)*
 
 Tasks break a project into pieces of work. Open Tasks and click New task. Choose the project, give the task a title, and set its status, priority, due date and an estimate in hours. Assign it to one or more people. When they track time, they can pick the task, so you see exactly where the hours went. Filter the list by project or status, or switch on Assigned to me to see your own work.
+
+**[06.7] Organize projects in client folders** *(46 s)*
+
+With many clients, the project list gets long. Once folders are switched on in Settings, the Projects page gets a second view. Choose Client folders, then click New folder and pick the client. A folder simply shows all of that client's projects together: nothing is copied or moved. Open the folder. Each project opens up to show its status, task progress, team members, milestones and dates. Revision history shows every change made to the project: who changed what, the old and new values, and the reason given. From the folder's actions you can also add existing projects that have no client yet. Renaming or archiving a folder never changes the client or its projects.
 
 ## Chapter 7 — The desktop app for workers
 
@@ -224,9 +228,9 @@ Invoices turn billable time into money. The Invoices page shows what is outstand
 
 On the invoice, Download PDF gives you the finished document with your logo and the client's details. Click Send to email it to the client's contact; if the client has no email, you can mark it as sent and deliver it yourself. When the client pays, click Record payment. Enter the amount, the date, the method and a reference such as the transfer ID. A payment can also be split across several open invoices. The invoice is now paid, and Payments received lists every payment.
 
-**[11.6] Run payroll** *(36 s)*
+**[11.6] Run payroll** *(48 s)*
 
-Payroll pays your people from approved time. First, pay groups set who is paid together, how often, and in which currency. Then, on the Payrolls tab, click Run payroll, choose the pay group and the period, and create a draft. WorkPulse calculates each person's pay from their approved hours, overtime and paid time off. Each approved hour is paid exactly once. Add bonuses or deductions with Adjust. When everything is right, click Finalize. Finalizing cannot be undone: corrections go on the next payroll. Members can now see their pay stubs.
+Payroll pays your people from approved time. First, pay groups set who is paid together, how often, and in which currency. Then, on the Payrolls tab, click Run payroll, choose the pay group and the period, and create a draft. WorkPulse calculates each person's pay from their approved hours, overtime and paid time off. Each approved hour is paid exactly once. Add bonuses or deductions with Adjust. If any approved time has no pay rate, the payroll shows those hours and asks you to confirm before it pays them at zero, so set the missing rates first. When everything is right, click Finalize. Finalizing cannot be undone: corrections go on the next payroll. Members can now see their pay stubs.
 
 **[11.7] Pay stubs, paid and owed** *(27 s)*
 
@@ -248,9 +252,9 @@ If you need the same report regularly, save it. Click Save report and give it a 
 
 ## Chapter 13 — Security and administration
 
-**[13.1] Devices** *(26 s)*
+**[13.1] Devices** *(38 s)*
 
-Settings, Devices lists every computer signed in to the desktop app: whose it is, the operating system, the app version and its status. From a device's actions you can approve it, when your organization requires approval for new computers, ask for a new sign-in, or revoke it, for example when a laptop is lost. A revoked device can no longer send any data.
+Settings, Devices lists every computer signed in to the desktop app: whose it is, the operating system, the app version and its status. From a device's actions you can approve it, when your organization requires approval for new computers, ask for a new sign-in, or revoke it, for example when a laptop is lost. A revoked device can no longer send any data. Installing on many company computers at once? Under Enrollment tokens, create a token and use it with the per-machine installer in Intune or Group Policy: those computers join your organization already approved.
 
 **[13.2] Sign-in security and access review** *(34 s)*
 
@@ -276,9 +280,9 @@ Here is the same organization through the eyes of Maya, who manages the Design t
 
 ## Chapter 15 — The Performance Center
 
-**[15.1] The performance score** *(42 s)*
+**[15.1] The performance score** *(49 s)*
 
-Performance shows how work is going, measured from real outcomes. Open Performance, then Performance overview. The organization score runs from 0 to 100 for the period you choose: a week, a month, a quarter or a year. What the score is made of lists its five parts: goal completion, project delivery, approved-work consistency, quality from manager reviews, and attendance. A part with no data yet is left out, and the others count for more. Activity levels, keystrokes and screenshots are never part of a score. Click Scoring rules to decide how much each part counts. The weights must add up to one hundred percent.
+Performance shows how work is going, measured from real outcomes. Open Performance, then Performance overview. The organization score runs from 0 to 100 for the period you choose: a week, a month, a quarter or a year. Scores are calculated once a day, and each page says when: Scores as of, then the time. What the score is made of lists its five parts: goal completion, project delivery, approved-work consistency, quality from manager reviews, and attendance. A part with no data yet is left out, and the others count for more. Activity levels, keystrokes and screenshots are never part of a score. Click Scoring rules to decide how much each part counts. The weights must add up to one hundred percent.
 
 **[15.2] Goals and achievements** *(43 s)*
 

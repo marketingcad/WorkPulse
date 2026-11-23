@@ -11,9 +11,9 @@ export const ch04: Chapter = {
       persona: 'admin',
       app: 'web',
       screen: 'Settings › Organization: the General panel (name, time zone, week start, currency, duration format) and the Company profile panel.',
-      actions: ['Click "Settings" in the sidebar.', 'Point at Organization name, Time zone, Week starts on, Currency and Duration format.', 'Scroll to "Company profile" and point at the logo, Tax ID and Full address.', 'Point at "Save changes".'],
+      actions: ['Click "Settings" in the sidebar.', 'Point at Organization name, Time zone, Week starts on, Currency and Duration format.', 'Scroll to "Company profile" and point at the logo, Tax ID and Full address.', 'Point at "Logo on documents".', 'Scroll to "Client folders" and point at its switch.', 'Point at "Save changes".'],
       narration:
-        'Now let us set up the organization. Open Settings in the menu on the left. It lists every settings page, and you only see the ones your role allows. On the Organization page, the General panel sets your company name, time zone, the day your week starts, your currency, and how durations are shown. The Company profile below holds your logo, tax ID, address and contact details. They appear on your invoices and pay stubs. After a change, click Save changes.',
+        'Now let us set up the organization. Open Settings in the menu on the left. It lists every settings page, and you only see the ones your role allows. On the Organization page, the General panel sets your company name, time zone, the day your week starts, your currency, and how durations are shown. The Company profile below holds your logo, tax ID, address and contact details. They appear on your invoices and pay stubs. For those documents you can also upload a Logo on documents: any shape, never cropped, so a wide logo keeps its proportions. Further down, Client folders lets you organize projects by client; you will see it in chapter six. After a change, click Save changes.',
       overlays: ['Callout: "Logo and address appear on invoices and pay stubs"'],
       focus: ['Zoom to the Settings menu.', 'Zoom to the General panel.'],
       transition: 'Cut to the Time & pay page.',

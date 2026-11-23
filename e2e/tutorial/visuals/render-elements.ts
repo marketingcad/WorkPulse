@@ -31,6 +31,13 @@ export interface ElementClip {
 let browser: Promise<Browser> | null = null;
 let pageHash: string | null = null;
 
+/**
+ * Drawings in progress, by file. Scenes render in parallel, and two of them can need the same element
+ * (the same ring on the same button): the second waits for the first instead of drawing it again into
+ * the same `.part` file, which made one of them fail to rename it.
+ */
+const drawing = new Map<string, Promise<string>>();
+
 /** The path of the element's clip, drawing it first unless it is cached. */
 export async function renderElement(e: ElementClip, o: { ffmpeg: string; work: string; opaque?: boolean }): Promise<string> {
   pageHash ??= createHash('sha256').update(readFileSync(PAGE)).digest('hex').slice(0, 12);
@@ -38,10 +45,38 @@ export async function renderElement(e: ElementClip, o: { ffmpeg: string; work: s
   const dir = path.join(o.work, 'visuals');
   const file = path.join(dir, `${e.kind}-${key}.mov`);
   if (existsSync(file)) return file;
+  const pending = drawing.get(file);
+  if (pending) return pending;
+  const job = drawWithRetry(e, o, dir, file).finally(() => drawing.delete(file));
+  drawing.set(file, job);
+  return job;
+}
+
+/**
+ * Draws the element, starting a fresh browser and trying again when the drawing browser stalls: after
+ * hundreds of elements in a long render, a screenshot can hang (seen at 40 and 50 of 90 segments).
+ */
+async function drawWithRetry(e: ElementClip, o: { ffmpeg: string; work: string; opaque?: boolean }, dir: string, file: string): Promise<string> {
+  for (let attempt = 1; ; attempt++) {
+    const used = (browser ??= chromium.launch());
+    try {
+      return await draw(e, o, dir, file, await used);
+    } catch (err) {
+      if (attempt >= 3) throw err;
+      console.log(`[render] drawing ${path.basename(file)} failed (${err instanceof Error ? err.message.split('\n')[0] : err}); retrying with a new browser`);
+      // Only the first job to notice replaces the browser; the others retry on the new one.
+      if (browser === used) {
+        browser = null;
+        await (await used).close().catch(() => undefined);
+      }
+    }
+  }
+}
+
+async function draw(e: ElementClip, o: { ffmpeg: string; work: string; opaque?: boolean }, dir: string, file: string, b: Browser): Promise<string> {
   mkdirSync(dir, { recursive: true });
 
-  browser ??= chromium.launch();
-  const page = await (await browser).newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
+  const page = await b.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
   try {
     await page.goto(pathToFileURL(PAGE).href);
     await page.evaluate(([kind, spec, w, h, d]) => (window as any).mount(kind, spec, w, h, d), [e.kind, e.spec, e.w, e.h, e.duration] as const);
@@ -51,17 +86,25 @@ export async function renderElement(e: ElementClip, o: { ffmpeg: string; work: s
     let err = '';
     ff.stderr.on('data', (d) => (err += d));
     const done = new Promise<void>((resolve, reject) => ff.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg could not write ${path.basename(file)}: ${err}`)))));
-    for (let f = 0; f < frames; f++) {
-      await page.evaluate((ms) => (window as any).seek(ms), (f * 1000) / FPS);
-      const png = await page.screenshot({ clip: { x: 0, y: 0, width: e.w, height: e.h }, omitBackground: !o.opaque, type: 'png' });
-      if (!ff.stdin.write(png)) await new Promise((r) => ff.stdin.once('drain', r));
+    try {
+      for (let f = 0; f < frames; f++) {
+        await page.evaluate((ms) => (window as any).seek(ms), (f * 1000) / FPS);
+        // A generous limit: the scenes' ffmpeg encodes run alongside and can take every core for a while.
+        const png = await page.screenshot({ clip: { x: 0, y: 0, width: e.w, height: e.h }, omitBackground: !o.opaque, type: 'png', timeout: 90_000 });
+        if (!ff.stdin.write(png)) await new Promise((r) => ff.stdin.once('drain', r));
+      }
+    } catch (err) {
+      // Stop this drawing's ffmpeg, so a retry can write the same .part file.
+      ff.kill();
+      await done.catch(() => undefined);
+      throw err;
     }
     ff.stdin.end();
     await done;
     renameSync(part, file);
     return file;
   } finally {
-    await page.close();
+    await page.close().catch(() => undefined);
   }
 }
 

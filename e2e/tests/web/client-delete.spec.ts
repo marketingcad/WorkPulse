@@ -75,3 +75,24 @@ test.describe('deleting a client (worker)', () => {
     expect(res.status()).toBe(403);
   });
 });
+
+test.describe('restoring a client (admin)', () => {
+  test.use({ storageState: ADMIN_STATE });
+
+  test('an archived client whose name an active client now uses is not restored, and the page says why (QA BUG-78)', async ({ page, data, adminApi }) => {
+    const name = `Twin ${uid()}`;
+    const old = await ok<{ id: string }>(await adminApi.api.post(adminApi.orgApi('/clients'), { data: { name } }), 'client');
+    await ok(await adminApi.api.post(adminApi.orgApi(`/clients/${old.id}/archive`)), 'archive');
+    await ok(await adminApi.api.post(adminApi.orgApi('/clients'), { data: { name } }), 'new client, same name');
+
+    await page.goto(`/o/${data.orgId}/clients`);
+    await page.getByLabel('Show archived').check();
+    await page.getByPlaceholder('Search clients…').fill(name);
+    await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveCount(2);
+    await page.getByRole('row', { name: new RegExp(name) }).filter({ hasText: 'Archived' }).getByRole('button', { name: `Actions for ${name}` }).click();
+    await page.getByRole('menuitem', { name: 'Restore' }).click();
+    await expect(page.getByText('An active client already has this name. Rename or archive it first, then restore this one.')).toBeVisible();
+    const clients = await ok<Array<{ id: string; archived_at: string | null }>>(await adminApi.api.get(adminApi.orgApi('/clients?include_archived=true')), 'clients');
+    expect(clients.find((c) => c.id === old.id)?.archived_at).not.toBeNull();
+  });
+});

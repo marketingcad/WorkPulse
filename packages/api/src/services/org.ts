@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   apiKeys,
@@ -14,6 +14,7 @@ import {
   teamMembers,
   teams,
   timesheets,
+  userSessions,
   users,
   workerProfiles,
 } from '@tallywork/db';
@@ -109,6 +110,16 @@ export async function updateOrg(x: Ctx, input: z.infer<typeof updateOrgInput>) {
     patch.settings = { ...before!.settings, ...input.settings };
   }
   await x.tx.update(organizations).set(patch).where(eq(organizations.id, x.org.id));
+  // A shorter session lifetime reaches people already signed in: their sessions end at most that long
+  // from now (QA, BUG-76: only new sign-ins got it, so a session could run on for 14 days).
+  const ttl = input.settings?.sessionTtlHours;
+  if (ttl !== undefined && ttl < (before!.settings.sessionTtlHours ?? Infinity)) {
+    const cap = new Date(x.deps.now().getTime() + ttl * 3600_000);
+    await x.tx
+      .update(userSessions)
+      .set({ expiresAt: cap })
+      .where(and(isNull(userSessions.revokedAt), gt(userSessions.expiresAt, cap), inArray(userSessions.userId, x.tx.select({ id: memberships.userId }).from(memberships).where(and(eq(memberships.organizationId, x.org.id), ne(memberships.status, 'REMOVED'))))));
+  }
   // Images never go into the audit trail, only whether one was set.
   const shrink = <T extends { logo?: string | null; documentLogo?: string | null }>(o: T) => ({
     ...o,
@@ -350,7 +361,15 @@ async function toWorkerDtos(
   const rates = x.actor.grants['rates:read'] ? await currentScopedRates(x, 'WORKER') : null;
   const rateVisible = rates ? narrowMemberships(x.actor, 'rates:read') : [];
   const ratesOf = (id: string) =>
-    rates && (rateVisible === 'all' || rateVisible.includes(id)) ? { pay_rate_minor: rates.get(`PAY:${id}`)?.amountMinor ?? null, bill_rate_minor: rates.get(`BILL:${id}`)?.amountMinor ?? null } : {};
+    rates && (rateVisible === 'all' || rateVisible.includes(id))
+      ? {
+          pay_rate_minor: rates.get(`PAY:${id}`)?.amountMinor ?? null,
+          bill_rate_minor: rates.get(`BILL:${id}`)?.amountMinor ?? null,
+          // A rate keeps the currency it was set in, which can differ after the organization's changes (QA, BUG-77).
+          pay_rate_currency: rates.get(`PAY:${id}`)?.currency ?? null,
+          bill_rate_currency: rates.get(`BILL:${id}`)?.currency ?? null,
+        }
+      : {};
   return rows.map(({ m, u, p, r }) => ({
     id: m.id,
     user_id: u.id,
@@ -411,6 +430,8 @@ export async function updateWorker(x: Ctx, membershipId: string, input: z.infer<
     // Someone removed comes back by invitation, which checks who may bring them back and with what role
     // (QA, BUG-47: a status change made them active again with their old role).
     if (before.status === 'REMOVED') throw businessRule('member_removed', 'This person has left the organization. Invite them again to bring them back');
+    // Nobody suspends themselves: it locks them out with no way back but another admin (QA, BUG-72).
+    if (isSelf && input.status !== undefined && input.status !== before.status) throw businessRule('self_protected', 'You can’t suspend yourself. Ask another admin');
     if (!isSelf) await assertOutranks(x, membershipId);
     if (input.role_id && input.role_id !== before.role_id) {
       if (isSelf) throw forbidden('You cannot change your own role');
@@ -450,6 +471,8 @@ export async function removeWorker(x: Ctx, membershipId: string) {
   if (!can(x.actor, 'members:manage', { ownerMembershipId: membershipId })) throw forbidden();
   const w = await getWorker(x, membershipId);
   if (w.is_owner) throw businessRule('owner_protected', 'Transfer ownership before removing the owner');
+  // Nor removes themselves (QA, BUG-72: the page hides it, the API allowed it).
+  if (membershipId === x.actor.membershipId) throw businessRule('self_protected', 'You can’t remove yourself. Ask another admin');
   await assertOutranks(x, membershipId);
   await x.tx.update(memberships).set({ status: 'REMOVED', updatedAt: new Date() }).where(eq(memberships.id, membershipId));
   await revokeKeysOf(x, membershipId);
@@ -562,7 +585,9 @@ export async function inviteWorker(x: Ctx, input: z.infer<typeof inviteInput>) {
     if (teamIds.length && input.team_role === 'MANAGER') throw forbidden('Your role can’t make someone a team manager');
     if (projectIds.some((p) => !x.actor.assignedProjectIds.has(p))) throw forbidden('You can only add people to projects you are on');
   }
-  if (teamIds.length && (await x.tx.select({ id: teams.id }).from(teams).where(inArray(teams.id, teamIds))).length !== teamIds.length) throw validation('Choose teams from this workspace', { errors: [{ field: 'team_ids', message: 'Choose teams from this workspace' }] });
+  // Live teams only: one archived would be dropped when the invitation is accepted (QA, BUG-71).
+  if (teamIds.length && (await x.tx.select({ id: teams.id }).from(teams).where(and(eq(teams.organizationId, x.org.id), inArray(teams.id, teamIds), isNull(teams.archivedAt)))).length !== teamIds.length)
+    throw validation('Choose active teams from this workspace', { errors: [{ field: 'team_ids', message: 'Choose active teams from this workspace' }] });
   if (projectIds.length && (await x.tx.select({ id: projects.id }).from(projects).where(and(inArray(projects.id, projectIds), isNull(projects.archivedAt)))).length !== projectIds.length)
     throw validation('Choose active projects from this workspace', { errors: [{ field: 'project_ids', message: 'Choose active projects from this workspace' }] });
   const token = randomToken(32);
@@ -628,7 +653,8 @@ export async function revokeInvitation(x: Ctx, id: string) {
   const r = await x.tx
     .update(invitations)
     .set({ revokedAt: new Date() })
-    .where(and(eq(invitations.id, id), isNull(invitations.acceptedAt), x.actor.grants['members:manage'] === 'org' ? undefined : eq(invitations.invitedBy, x.actor.membershipId)))
+    // Open invitations only: revoking one twice is "not found", with one audit row (QA, BUG-73).
+    .where(and(eq(invitations.organizationId, x.org.id), eq(invitations.id, id), isNull(invitations.acceptedAt), isNull(invitations.revokedAt), x.actor.grants['members:manage'] === 'org' ? undefined : eq(invitations.invitedBy, x.actor.membershipId)))
     .returning({ id: invitations.id });
   if (!r.length) throw notFound('invitation');
   await audit(x, { action: 'invitation.revoked', targetType: 'invitation', targetId: id });

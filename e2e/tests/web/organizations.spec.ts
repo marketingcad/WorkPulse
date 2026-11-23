@@ -157,3 +157,22 @@ test.describe('Audit log', () => {
     expect(lines.slice(1).every((l) => l.includes('team.created'))).toBe(true);
   });
 });
+
+test.describe('Currency change (admin)', () => {
+  test.use({ storageState: ADMIN_STATE });
+
+  test('a member’s rate set before the currency changed still shows in its own currency (QA BUG-77)', async ({ page, data, adminApi }) => {
+    // Its own organization, so the shared one keeps its currency.
+    const created = await ok<{ organization_id: string; membership_id: string }>(await adminApi.api.post('/api/v1/me/organizations', { data: { name: unique('Currency Co', data.run), timezone: 'UTC', currency: 'USD' } }), 'organization');
+    const api = (p: string) => `/api/v1/orgs/${created.organization_id}${p}`;
+    await ok(await adminApi.api.patch(api(`/workers/${created.membership_id}`), { data: { pay_rate_minor: 5000 } }), 'rate');
+    await ok(await adminApi.api.patch(api(''), { data: { currency: 'EUR' } }), 'currency');
+
+    await page.goto(`/o/${created.organization_id}/workers/${created.membership_id}`);
+    await expect(page.getByText('$50.00 / h')).toBeVisible();
+    await expect(page.getByText('€50.00 / h')).toHaveCount(0);
+    // Editing says which currency a new amount is saved in.
+    await page.getByRole('button', { name: 'Edit' }).click();
+    await expect(page.getByText('Now USD. A new amount is saved in EUR / hour, what you pay this member')).toBeVisible();
+  });
+});

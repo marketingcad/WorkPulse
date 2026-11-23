@@ -26,8 +26,11 @@ test.beforeAll(async ({ adminApi }) => {
   const accepted = await ok<{ membership_id: string }>(await ctx.post('/api/v1/auth/invitations/accept', { data: { token: new URL(inv.invite_url).searchParams.get('token'), name, password: PASSWORD } }), 'accept');
   await ctx.dispose();
   worker = { email, membershipId: accepted.membership_id };
-  // A day last week, on this computer's calendar (the form's dates are local); its week is approved.
+  // Wednesday of last week, on this computer's calendar (the form's dates are local); its week is approved.
+  // Mid-week and at midday (below): "this weekday last week" on a Monday, early in the morning on a
+  // computer ahead of UTC, fell in the week before, which is not approved, so the test failed on Mondays.
   const d = new Date(Date.now() - 7 * 86_400_000);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + 2);
   lastWeek = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   await ok(await api.post(orgApi('/manual-time'), { data: { membership_id: worker.membershipId, project_id: project.id, local_date: lastWeek, duration_seconds: 3600, reason: 'BUG-23 regression' } }), 'manual time');
   const ts = await ok<{ id: string }>(await api.post(orgApi('/timesheets/submit'), { data: { membership_id: worker.membershipId, date: lastWeek } }), 'submit');
@@ -47,8 +50,8 @@ test('time asked for in an approved week is refused in the form, with who to ask
   await expect(window.getByRole('heading', { name: 'Add manual time' })).toBeVisible();
 
   await window.getByLabel('Date').fill(lastWeek);
-  await window.getByLabel('From').fill('07:00');
-  await window.getByLabel('To').fill('08:00');
+  await window.getByLabel('From').fill('12:00');
+  await window.getByLabel('To').fill('13:00');
   await window.getByLabel(/^Reason/).fill('Forgot the timer');
   await window.getByRole('button', { name: /^(Request time|Add time)$/ }).click();
 

@@ -12,6 +12,7 @@ import {
   organizations,
   overtimeRuleSets,
   projectMembers,
+  projects,
   taskAssignees,
   retentionPolicies,
   rolePermissions,
@@ -162,6 +163,18 @@ export async function createSession(deps: Deps, userIdValue: string, meta: { ip:
   return { token, expiresAt };
 }
 
+/**
+ * A wrong password counts toward the account lockout wherever it is typed: sign-in, password change and
+ * the two-factor settings (QA, BUG-69: the settings didn't count, so a stolen session could guess there).
+ */
+export async function recordWrongPassword(db: Db, u: { id: string; failedLoginCount: number }, now: Date): Promise<void> {
+  const failed = u.failedLoginCount + 1;
+  await db
+    .update(users)
+    .set({ failedLoginCount: failed >= MAX_FAILED_LOGINS ? 0 : failed, lockedUntil: failed >= MAX_FAILED_LOGINS ? new Date(now.getTime() + LOCK_MINUTES * 60_000) : null })
+    .where(eq(users.id, u.id));
+}
+
 export async function login(deps: Deps, email: string, password: string): Promise<{ userId: string }> {
   // One answer for a wrong password, an unknown email and a locked account (AUTH-009): a different reply
   // for locked accounts told anyone which emails have one.
@@ -176,11 +189,7 @@ export async function login(deps: Deps, email: string, password: string): Promis
     throw invalid;
   }
   if (!(await verifyPassword(u.passwordHash, password))) {
-    const failed = u.failedLoginCount + 1;
-    await deps.db
-      .update(users)
-      .set({ failedLoginCount: failed >= MAX_FAILED_LOGINS ? 0 : failed, lockedUntil: failed >= MAX_FAILED_LOGINS ? new Date(deps.now().getTime() + LOCK_MINUTES * 60_000) : null })
-      .where(eq(users.id, u.id));
+    await recordWrongPassword(deps.db, u, deps.now());
     throw invalid;
   }
   // Checked only after the password, so it does not reveal which emails have accounts.
@@ -270,6 +279,11 @@ export async function signOutEverywhere(db: Db, uid: string, keepSessionId: stri
   );
 }
 
+/** Reset links not used yet stop working (expired, not marked used: a used link proves the inbox was opened). */
+async function retireResetLinks(db: Db, uid: string): Promise<void> {
+  await db.update(emailTokens).set({ expiresAt: new Date() }).where(and(eq(emailTokens.userId, uid), eq(emailTokens.purpose, 'RESET_PASSWORD'), isNull(emailTokens.usedAt), gt(emailTokens.expiresAt, new Date())));
+}
+
 export async function resetPassword(db: Db, token: string, password: string): Promise<void> {
   const uid = await consumeEmailToken(db, token, 'RESET_PASSWORD');
   await db.update(users).set({ passwordHash: await hashPassword(password), failedLoginCount: 0, lockedUntil: null, updatedAt: new Date() }).where(eq(users.id, uid));
@@ -286,15 +300,19 @@ export async function changePassword(deps: Deps, uid: string, keepSessionId: str
   if (!u) throw businessRule('invalid_password', 'Current password is incorrect');
   if (u.lockedUntil && u.lockedUntil > deps.now()) throw new DomainError('rate_limited', 'account_locked', 'Too many failed attempts. Try again in a few minutes.');
   if (!(await verifyPassword(u.passwordHash, current))) {
-    const failed = u.failedLoginCount + 1;
-    await deps.db
-      .update(users)
-      .set({ failedLoginCount: failed >= MAX_FAILED_LOGINS ? 0 : failed, lockedUntil: failed >= MAX_FAILED_LOGINS ? new Date(deps.now().getTime() + LOCK_MINUTES * 60_000) : null })
-      .where(eq(users.id, uid));
+    await recordWrongPassword(deps.db, u, deps.now());
     throw businessRule('invalid_password', 'Current password is incorrect');
   }
   await deps.db.update(users).set({ passwordHash: await hashPassword(next), failedLoginCount: 0, lockedUntil: null, updatedAt: new Date() }).where(eq(users.id, uid));
+  // A reset link already sent no longer works: it would undo this change (QA, BUG-66).
+  await retireResetLinks(deps.db, uid);
   await signOutEverywhere(deps.db, uid, keepSessionId);
+}
+
+/** "s***@example.com": enough for the invited person to recognise, not to read someone's address (QA, BUG-70). */
+export function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  return `${(local ?? '').slice(0, 1)}***@${domain ?? ''}`;
 }
 
 /** Accept an invitation: creates the user if needed, then the membership. */
@@ -336,7 +354,7 @@ export async function acceptInvitation(
   const existing = await findUserByEmail(db, inv.email);
   if (uid) {
     const [me] = await db.select().from(users).where(eq(users.id, uid)).limit(1);
-    if (!me || me.email.toLowerCase() !== inv.email.toLowerCase()) throw businessRule('invitation_email_mismatch', `This invitation was sent to ${inv.email}`);
+    if (!me || me.email.toLowerCase() !== inv.email.toLowerCase()) throw businessRule('invitation_email_mismatch', `This invitation was sent to ${maskEmail(inv.email)}. Sign in with that address to accept it.`);
   } else if (existing) {
     throw businessRule('login_required', 'Sign in with your existing account to accept this invitation');
   } else {
@@ -353,6 +371,9 @@ export async function acceptInvitation(
     let membershipId: string;
     if (dup) {
       membershipId = dup.id;
+      // Already active again (reactivated since it was sent): the invitation must not replace the role they
+      // have now (QA, BUG-75). The throw rolls back the claim.
+      if (dup.status === 'ACTIVE') throw conflict('already_member', 'You are already a member of this organization');
       if (dup.status === 'REMOVED') {
         // Someone coming back starts afresh: only the invitation's teams and projects, not what they had
         // before they left (removal clears these now; this also covers people removed before it did).
@@ -374,7 +395,9 @@ export async function acceptInvitation(
     for (const teamId of liveTeams) {
       await tx.insert(teamMembers).values({ organizationId: inv.organizationId, teamId, membershipId, role: inv.teamRole }).onConflictDoUpdate({ target: [teamMembers.teamId, teamMembers.membershipId], set: { role: inv.teamRole } });
     }
-    for (const projectId of inv.projectIds) {
+    // Projects that still exist: one deleted since (with its client) made the invitation impossible to accept (QA, BUG-74).
+    const liveProjects = inv.projectIds.length ? (await tx.select({ id: projects.id }).from(projects).where(and(eq(projects.organizationId, inv.organizationId), inArray(projects.id, inv.projectIds)))).map((r) => r.id) : [];
+    for (const projectId of liveProjects) {
       await tx.insert(projectMembers).values({ organizationId: inv.organizationId, projectId, membershipId }).onConflictDoNothing();
     }
     await auditSystem(tx, inv.organizationId, { action: 'invitation.accepted', actorType: 'user', actorId: membershipId, targetType: 'membership', targetId: membershipId, after: { email: inv.email } });

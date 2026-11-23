@@ -123,6 +123,8 @@ export const insightRoutes = new Hono<AppEnv>()
     const [r] = await x.tx.select().from(savedReports).where(eq(savedReports.id, c.req.param('id')));
     if (!r || r.membershipId !== x.actor.membershipId) throw notFound('saved_report');
     await x.tx.delete(savedReports).where(eq(savedReports.id, r.id));
+    // Recorded like creating and changing one (QA, BUG-88).
+    await audit(x, { action: 'saved_report.deleted', targetType: 'saved_report', targetId: r.id, before: r });
     return c.body(null, 204);
   })
 

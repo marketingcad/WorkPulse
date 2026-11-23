@@ -65,6 +65,9 @@ export interface WorkerDto {
   /** current personal hourly rates (minor units, workspace currency); absent without rates:read */
   pay_rate_minor?: number | null;
   bill_rate_minor?: number | null;
+  /** the currency each rate is kept in (it stays when the workspace currency changes) */
+  pay_rate_currency?: string | null;
+  bill_rate_currency?: string | null;
   team_ids: string[];
   created_at: string;
 }

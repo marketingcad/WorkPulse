@@ -15,6 +15,8 @@ export default function ClientsPage() {
   const org = useOrg();
   const router = useRouter();
   const canManage = org.can('clients:manage');
+  // Adding a client is organization-wide: a narrower role manages only its projects' clients (QA, BUG-79).
+  const canAdd = org.can('clients:manage', 'org');
   const [showArchived, setShowArchived] = useState(false);
   const q = useOrgQuery<ClientDto[]>(org.can('clients:read') ? `/clients${qs({ include_archived: showArchived || undefined })}` : null);
   const [edit, setEdit] = useState<ClientDto | 'new' | null>(null);
@@ -108,7 +110,7 @@ export default function ClientsPage() {
         title="Clients"
         description="The companies you bill. Projects and invoices belong to a client."
         actions={
-          canManage && (
+          canAdd && (
             <Button variant="primary" icon={<Plus className="size-3.5" />} onClick={() => setEdit('new')}>
               New client
             </Button>
@@ -134,8 +136,8 @@ export default function ClientsPage() {
             empty={
               <EmptyState
                 title="No clients yet"
-                description={canManage ? 'Add a client to group projects and create invoices from tracked time.' : undefined}
-                action={canManage && <Button onClick={() => setEdit('new')}>New client</Button>}
+                description={canAdd ? 'Add a client to group projects and create invoices from tracked time.' : undefined}
+                action={canAdd && <Button onClick={() => setEdit('new')}>New client</Button>}
               />
             }
           />
